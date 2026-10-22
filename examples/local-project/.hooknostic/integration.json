@@ -63,6 +63,11 @@
       "context": []
     },
     {
+      "path": ".github/hooks/hooknostic.json",
+      "hash": "8b7603a787b2d689e2b061b5e470297ef690630c9ddb253818add65ef29fb404",
+      "mode": 420
+    },
+    {
       "path": ".hooknostic/.gitattributes",
       "hash": "48747480eddba024928d03be9bf83dc579e5515768647507a767e8187a85c9ab",
       "mode": 420
@@ -123,6 +128,31 @@
       "mode": 420
     },
     {
+      "path": ".hooknostic/artifacts/copilot/.gitattributes",
+      "hash": "705fd4d6451a31d36b3df7de96f83f30ac976c9b4a6d1e51671d8e2f33e2d0da",
+      "mode": 420
+    },
+    {
+      "path": ".hooknostic/artifacts/copilot/hooks/hooknostic.json",
+      "hash": "dedc2f1e716829b2c72467b9d9e91720fc971febdb67467566c2fef825b0b7cf",
+      "mode": 420
+    },
+    {
+      "path": ".hooknostic/artifacts/copilot/mcp-launcher.mjs",
+      "hash": "5e4bd9cfb72b7f9e1735ccbc3ba60796438a5ba3da044b96a4d40e3e39370772",
+      "mode": 420
+    },
+    {
+      "path": ".hooknostic/artifacts/copilot/mcp-servers.json",
+      "hash": "837cd0aa242d3bcdfa576758b4ad8c64b26255954a7dd33483917a4ff7954022",
+      "mode": 420
+    },
+    {
+      "path": ".hooknostic/artifacts/copilot/runtime/hooknostic.mjs",
+      "hash": "68324df7659dfc07b9a7aebaac2edabc6db1b0240dbe6db6d533854aa15f0bd2",
+      "mode": 420
+    },
+    {
       "path": ".hooknostic/artifacts/opencode/.gitattributes",
       "hash": "705fd4d6451a31d36b3df7de96f83f30ac976c9b4a6d1e51671d8e2f33e2d0da",
       "mode": 420
@@ -169,7 +199,7 @@
         "sample"
       ],
       "kind": "property",
-      "hash": "312a022c478ac049e3b6a5d9dcb4fa8437b34a5e4d120202b81bb5948ab49d7b"
+      "hash": "31da5544e89615d34b4c180903aca1474c5274a312a1e62fce254f44629df725"
     },
     {
       "path": ".opencode/plugins/.gitattributes",

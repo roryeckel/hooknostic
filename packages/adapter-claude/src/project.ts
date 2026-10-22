@@ -2,7 +2,7 @@ import type { AgentPluginProjectionProfile } from "@hooknostic/agent-plugin";
 import type { ProjectComponents } from "@hooknostic/agent-plugin";
 import { contentsText, SKILL_REFERENCE_UNEXPANDED, skillInvocationPolicyProfiles } from "@hooknostic/agent-plugin";
 import type { GeneratedArtifact, ProjectComponentOptions, ProjectEntry, ProjectIntegration } from "@hooknostic/core";
-import { projectMcpLauncher, projectSkillFiles } from "@hooknostic/core";
+import { projectMcpLauncher, projectSkillFiles, sharedMcpServerKey } from "@hooknostic/core";
 
 import { claudeHarness } from "./harness.js";
 import {
@@ -96,15 +96,26 @@ export async function projectComponents(
           });
         }
       }
+      // GitHub Copilot CLI reads this root file too, and only it when it exists,
+      // so the entry is shared (ADR-0033). cwd "." keeps the relative launcher
+      // on the project when Copilot would start it in GITHUB_WORKSPACE; Claude
+      // accepts the key and runs the server in the project either way
+      // (claude-mcp-fence-probe.mjs, 2.1.238 and 2.1.306).
       const value =
         server.type === "stdio"
-          ? { command: "node", args: [`./${output}/mcp-launcher.mjs`, String(index++)] }
+          ? { command: "node", args: [`./${output}/mcp-launcher.mjs`, String(index++)], cwd: "." }
           : {
               type: server.type === "streamable-http" ? "http" : "sse",
               url: server.url,
               ...(server.headers === undefined ? {} : { headers: server.headers }),
             };
-      result.entries.push({ path: ".mcp.json", key: ["mcpServers", name], kind: "property", value });
+      result.entries.push({
+        path: ".mcp.json",
+        key: ["mcpServers", name],
+        kind: "property",
+        value,
+        share: sharedMcpServerKey(server),
+      });
     }
     result.guidance.push(
       "Launch Claude Code from the project root for project MCP commands; approve servers through the harness.",

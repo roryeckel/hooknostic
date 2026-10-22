@@ -41,6 +41,9 @@ resolved for each target.
    the key and still run the entry.
 3. **Otherwise, avoid the location.** Write the owning target's output where
    the reader does not look, if the owning harness supports such a location.
+   When the location is native to both harnesses and neither can avoid it,
+   share it instead: each target marks its entries with a definition key, and
+   core composes equal definitions into one entry and refuses different ones.
 4. **If neither works, do not ship it silently.** A build whose output a
    configured or common reader would misread reports it, with the evidence, as
    a shortfall under ADR-0022 rather than passing as `exact`.
@@ -64,9 +67,23 @@ standard has one meaning for every reader, and a foreign file has its owner's.
   Hand-written hooks in `.claude/settings.json` no longer run under Copilot. That
   is documented; it is the cost of not running Claude-format hooks in a harness
   that only approximates them.
-- Known instances on Copilot 1.0.101. The `.claude/settings.json` hooks are
-  fenced. `.claude/skills` and the root `.mcp.json`, which Claude's project
-  target writes, are read by Copilot too, and still need the probe in decision 5.
+- Known instances on Copilot 1.0.101, each decided by capture
+  (`.capture/copilot/README.md`):
+  - `.claude/settings.json` hooks are fenced by the marker in decision 2.
+  - The root `.mcp.json` is a native workspace file for both harnesses, and
+    Copilot reads `.github/mcp.json` only when no root file exists. So it is a
+    shared location, not a foreign one: both targets write it, and each server
+    entry is marked with its portable definition (`ProjectEntry.share`). Core
+    composes one entry per server when every target defines it the same way,
+    and refuses `sync` when per-target overrides would define it differently.
+    Entries carry `cwd: "."`, which Copilot needs under `GITHUB_WORKSPACE` and
+    Claude ignores. The two per-server fences, Copilot's `disabledMcpServers`
+    and Claude's `disabledMcpjsonServers`, are captured but unused: every
+    project target receives the same servers.
+  - `.claude/skills` holds Agent Skills `SKILL.md` files. A skill in both it
+    and `.agents/skills` resolves to Copilot's own copy, and a Claude-only copy
+    is accepted as a shared standard format, with `${CLAUDE_SKILL_DIR}` left
+    literal under Copilot.
 - Opt-out markers depend on two harnesses' validators. The harness-watch lanes
   replay each adapter, and the cross-adapter test fails if a reader's captured
   rules start accepting the marker.

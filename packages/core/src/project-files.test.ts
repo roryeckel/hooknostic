@@ -49,6 +49,44 @@ describe("project reconciliation", () => {
     expect(text.indexOf('"custom"')).toBeLessThan(text.indexOf('"command"'));
     expect((await reconcileProject(root, config, integration())).changes).toEqual([]);
   });
+  // A root .mcp.json is read by Claude Code and GitHub Copilot CLI alike, so
+  // both targets emit the same server key (ADR-0033).
+  const mcpEntry = (launcher: string, share: string | undefined) => ({
+    path: ".mcp.json",
+    key: ["mcpServers", "probe"],
+    kind: "property" as const,
+    value: { command: "node", args: [`./${launcher}/mcp-launcher.mjs`, "0"], cwd: "." },
+    ...(share === undefined ? {} : { share }),
+  });
+  it("composes one shared entry, the first target's, when every emitter shares the same definition", async () => {
+    await sync({
+      files: [],
+      entries: [mcpEntry("claude", '{"type":"stdio"}'), mcpEntry("copilot", '{"type":"stdio"}')],
+      guidance: [],
+    });
+    const doc = JSON.parse(await readFile(join(root, ".mcp.json"), "utf8"));
+    expect(doc.mcpServers.probe.args[0]).toBe("./claude/mcp-launcher.mjs");
+    const manifest = JSON.parse(await readFile(join(root, ".hooknostic/integration.json"), "utf8"));
+    expect(manifest.owned.filter((owned: { path: string }) => owned.path === ".mcp.json")).toHaveLength(1);
+  });
+  it("rejects shared entries whose targets define them differently", async () => {
+    await expect(
+      reconcileProject(root, config, {
+        files: [],
+        entries: [mcpEntry("claude", '{"args":["a"]}'), mcpEntry("copilot", '{"args":["b"]}')],
+        guidance: [],
+      }),
+    ).rejects.toThrow("conflicting shared entry: .mcp.json:mcpServers.probe");
+  });
+  it("still rejects a duplicate entry that one emitter does not share", async () => {
+    await expect(
+      reconcileProject(root, config, {
+        files: [],
+        entries: [mcpEntry("claude", '{"type":"stdio"}'), mcpEntry("copilot", undefined)],
+        guidance: [],
+      }),
+    ).rejects.toThrow("duplicate integration destination: .mcp.json");
+  });
   it("rejects duplicate JSONC properties before editing", async () => {
     await writeFile(join(root, "settings.json"), '{"hooks":{"Stop":[]},"hooks":{}}');
     await expect(reconcileProject(root, config, integration())).rejects.toThrow("duplicate JSONC property");

@@ -19,6 +19,16 @@ export interface ProjectEntry {
   key: string[];
   kind: "array" | "property";
   value: unknown;
+  /**
+   * Marks an entry in a file several harnesses read natively, such as a root
+   * `.mcp.json` that Claude Code and GitHub Copilot CLI both load. Targets that
+   * emit the same path and key compose into one entry, the first target's,
+   * when every emitter shares it with the same string: each value is then
+   * correct for every reader. Different strings, or a duplicate that does not
+   * share, are a conflict, because the file can hold one value per key
+   * (ADR-0033).
+   */
+  share?: string;
 }
 export interface ProjectComponentOmission {
   component: AgentPluginComponentId;
@@ -360,6 +370,15 @@ export async function reconcileProject(
         (sameDestination.mode ?? 0o644) === (entry.mode ?? 0o644)
       )
         continue;
+      const existingShare = "share" in sameDestination ? sameDestination.share : undefined;
+      const share = "share" in entry ? entry.share : undefined;
+      if (existingShare !== undefined && share !== undefined && "key" in entry) {
+        if (existingShare === share) continue;
+        throw new Error(
+          `conflicting shared entry: ${entry.path}:${entry.key.join(".")} is read by more than one harness, ` +
+            "and the targets that write it define it differently",
+        );
+      }
       throw new Error(`duplicate integration destination: ${entry.path}`);
     }
     desired.set(id, entry);

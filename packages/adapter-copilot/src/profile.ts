@@ -132,6 +132,13 @@ export const copilotValidationRecords: AgentPluginProjectionProfile["source"]["v
     artifact: CAPTURE,
     what: "Foreign components on Linux: a skill in both .agents/skills and .claude/skills is listed once from .agents/skills, distinct names merge, and a root .mcp.json, even empty or unparseable, is the only workspace MCP file read, so .github/mcp.json is ignored beside it (foreign-components-probe.sh).",
   },
+  {
+    version: "1.0.101",
+    date: "2026-10-21",
+    method: "live-probe",
+    artifact: CAPTURE,
+    what: 'A root .mcp.json shared with Claude: .github/copilot/settings.json disabledMcpServers kept named servers from starting while repo-level deniedMcpServers was ignored, Claude\'s disabledMcpjsonServers was ignored, and a cwd "." entry started in the project with GITHUB_WORKSPACE set elsewhere (foreign-components-probe.sh).',
+  },
   COPILOT_SKILL_POLICY_VALIDATION,
 ];
 

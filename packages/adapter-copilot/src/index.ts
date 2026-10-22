@@ -111,7 +111,7 @@ export function copilotAdapter(): HarnessAdapter {
     id: "copilot",
     adapterVersion: "0.8.0", // kept equal to package.json by versions.test.ts
     harness: copilotHarness,
-    projectPaths: [".github/hooks", ".github/mcp.json", ".agents/skills"],
+    projectPaths: [".github/hooks", ".mcp.json", ".github/mcp.json", ".agents/skills"],
     projectIntegration,
     projectComponents,
     projectComponentProfiles,

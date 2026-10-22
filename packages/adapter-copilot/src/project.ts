@@ -15,7 +15,7 @@ import type {
   ProjectEntry,
   ProjectIntegration,
 } from "@hooknostic/core";
-import { MCP_LAUNCHER_FILE, projectMcpLauncher, projectSkillFiles } from "@hooknostic/core";
+import { MCP_LAUNCHER_FILE, projectMcpLauncher, projectSkillFiles, sharedMcpServerKey } from "@hooknostic/core";
 
 import { copilotHarness } from "./harness.js";
 import {
@@ -29,6 +29,14 @@ import { copilotSkillPolicy, copilotSkillPolicyProfiles } from "./skill-policy.j
 import { COPILOT_SKILL_TEXT, copilotSkillDirectoryDegradation } from "./skill-text.js";
 
 const CAPTURE = ".capture/copilot/README.md";
+
+/**
+ * Copilot reads one workspace MCP file: a root `.mcp.json` whenever it exists,
+ * even empty or unparseable, and `.github/mcp.json` only without one (1.0.101
+ * and 1.0.102, foreign-components-probe.sh). Claude Code reads the root file
+ * too, so its entries are shared and compose with a Claude target's (ADR-0033).
+ */
+const COPILOT_MCP_FILE = ".mcp.json";
 
 const SKILL_REFERENCE_DEGRADATION = {
   id: SKILL_REFERENCE_UNEXPANDED,
@@ -95,7 +103,7 @@ export function projectIntegration(artifacts: readonly GeneratedArtifact[], outp
 /**
  * Project components. Copilot discovers skills in `.agents/skills` (as well as
  * `.github/skills` and `.claude/skills`), reads project MCP servers from
- * `.github/mcp.json`, and expands no project directory variable in a hook.
+ * the root `.mcp.json`, and expands no project directory variable in a hook.
  *
  * Every stdio server goes through the shared launcher: a project `.mcp.json`
  * has no variable naming a package root, and `${PLUGIN_ROOT}` in its args stays
@@ -213,10 +221,11 @@ export async function projectComponents(
     // is set, so on a CI runner a session started anywhere but the checkout
     // resolved the launcher against the wrong directory (captured on 1.0.101).
     const entries: ProjectEntry[] = stdio.map((server, index) => ({
-      path: ".github/mcp.json",
+      path: COPILOT_MCP_FILE,
       key: ["mcpServers", server.name],
       kind: "property" as const,
       value: { type: "stdio", command: "node", args: [launcherPath, String(index)], cwd: "." },
+      share: sharedMcpServerKey(source.mcp!.config.mcpServers[server.name]!),
     }));
     result.entries.push(...entries);
   }
@@ -237,7 +246,7 @@ export async function projectComponents(
       }
     }
     result.entries.push({
-      path: ".github/mcp.json",
+      path: COPILOT_MCP_FILE,
       key: ["mcpServers", name],
       kind: "property",
       value: {
@@ -245,9 +254,10 @@ export async function projectComponents(
         url: server.url,
         ...(server.headers === undefined ? {} : { headers: server.headers }),
       },
+      share: sharedMcpServerKey(server),
     });
   }
-  result.guidance.push("Approve project MCP servers in the CLI; .github/mcp.json is read when the session starts.");
+  result.guidance.push("Approve project MCP servers in the CLI; the root .mcp.json is read when the session starts.");
   return result;
 }
 
@@ -258,7 +268,7 @@ const nativeProjectComponentProfiles: readonly AgentPluginProjectionProfile[] = 
       "agent-plugin.manifest": {
         level: "unsupported",
         rationale:
-          "Project delivery writes .github/hooks/hooknostic.json, a skills tree and .github/mcp.json. Copilot reads a plugin.json only from an installed plugin or a --plugin-dir directory, which project delivery does not create.",
+          "Project delivery writes .github/hooks/hooknostic.json, a skills tree and the root .mcp.json. Copilot reads a plugin.json only from an installed plugin or a --plugin-dir directory, which project delivery does not create.",
       },
       "agent-plugin.skills": {
         level: "exact",
@@ -269,7 +279,7 @@ const nativeProjectComponentProfiles: readonly AgentPluginProjectionProfile[] = 
       "agent-plugin.mcp.stdio": {
         level: "emulated",
         rationale:
-          "A generated Node launcher resolves the source root, working directory and the package's PLUGIN_ROOT/PLUGIN_DATA text, because a project .github/mcp.json has no variable naming a package root and Copilot left ${PLUGIN_ROOT} literal there. Copilot sees only the launcher. Dependencies are supplied by the project.",
+          "A generated Node launcher resolves the source root, working directory and the package's PLUGIN_ROOT/PLUGIN_DATA text, because a project .mcp.json has no variable naming a package root and Copilot left ${PLUGIN_ROOT} literal there. Copilot sees only the launcher. Dependencies are supplied by the project.",
       },
       "agent-plugin.mcp.streamable-http": {
         level: "exact",
@@ -282,7 +292,7 @@ const nativeProjectComponentProfiles: readonly AgentPluginProjectionProfile[] = 
       "agent-plugin.client-extension.files": {
         level: "unsupported",
         rationale:
-          "Project integration writes .github/hooks, .agents/skills and .github/mcp.json. Copilot reads com.github.copilot components from an installed plugin's root, and project delivery installs nothing, so there is no surface at project scope that would read them. Deliver the package to reach them.",
+          "Project integration writes .github/hooks, .agents/skills and the root .mcp.json. Copilot reads com.github.copilot components from an installed plugin's root, and project delivery installs nothing, so there is no surface at project scope that would read them. Deliver the package to reach them.",
       },
       "agent-plugin.runtime-package": {
         level: "unsupported",

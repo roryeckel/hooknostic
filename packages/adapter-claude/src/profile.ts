@@ -17,6 +17,20 @@ export const claudeCapabilityProfiles: CapabilityProfile[] = [
           date: "2026-10-21",
           method: "live-probe",
           artifact: ".capture/copilot/README.md",
+          what: "A root .mcp.json shared with GitHub Copilot CLI: an entry with cwd ran in the project with the key ignored, disabledMcpjsonServers in .claude/settings.json kept the named server from starting, and .github/copilot/settings.json was ignored (claude-mcp-fence-probe.mjs).",
+        },
+        {
+          version: "2.1.306",
+          date: "2026-10-21",
+          method: "live-probe",
+          artifact: ".capture/copilot/README.md",
+          what: "The same shared root .mcp.json behavior on the current build: cwd accepted and ignored, disabledMcpjsonServers honoured, Copilot's settings file ignored (claude-mcp-fence-probe.mjs).",
+        },
+        {
+          version: "2.1.238",
+          date: "2026-10-21",
+          method: "live-probe",
+          artifact: ".capture/copilot/README.md",
           what: "Project hook entries with a non-numeric timeoutSec (the key that makes GitHub Copilot CLI drop the file's hooks): Claude ignored the key, ran the SessionStart entry, and applied the same settings file's env (claude-tolerance-probe.mjs).",
         },
         {

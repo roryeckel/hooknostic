@@ -99,4 +99,29 @@ for variant in empty unparseable rejected-entry; do
   session "$d" "mcp root $variant beside .github"
 done
 
+# A root .mcp.json shared with Claude, fenced both ways: Claude's
+# disabledMcpjsonServers (.claude/settings.json, which Copilot also reads) and
+# Copilot's disabledMcpServers (.github/copilot/settings.json). The session runs
+# with GITHUB_WORKSPACE elsewhere, as on a runner, so the cwd "." entry shows
+# whether a composed entry still starts in the project.
+d=$(project mcp-shared-fenced)
+mkdir -p "$d/.claude" "$d/.github/copilot"
+cat > "$root/cwd-server.mjs" <<'EOF'
+import { appendFileSync } from "node:fs";
+appendFileSync(process.argv[2], process.argv[3] + "@" + process.cwd() + "\n");
+setTimeout(() => process.exit(0), 15000);
+EOF
+cwd_server() { printf '"%s":{"command":"node","args":["%s","%s","%s"]%s}' "$1" "$root/cwd-server.mjs" "$log" "$1" "$2"; }
+printf '{"mcpServers":{%s,%s,%s,%s}}' "$(cwd_server plain '')" "$(cwd_server claude-fenced '')" \
+  "$(cwd_server copilot-fenced '')" "$(cwd_server with-cwd-dot ',"cwd":"."')" > "$d/.mcp.json"
+printf '{"enableAllProjectMcpServers":true,"disabledMcpjsonServers":["claude-fenced"]}' > "$d/.claude/settings.json"
+printf '{"disabledMcpServers":["copilot-fenced"]}' > "$d/.github/copilot/settings.json"
+mkdir -p "$root/elsewhere"
+: > "$log"
+(cd "$d" && GITHUB_WORKSPACE="$root/elsewhere" COPILOT_HOME="$d/home" COPILOT_PROVIDER_BASE_URL=http://127.0.0.1:9/v1 \
+  COPILOT_PROVIDER_TYPE=openai COPILOT_PROVIDER_API_KEY=x COPILOT_MODEL=probe timeout 60 copilot --trust-folder \
+  --allow-all-tools --disable-client-telemetry --no-auto-update -p "Reply OK." >/dev/null 2>&1)
+sleep 2
+echo "mcp shared and fenced: launched=[$(sort -u "$log" | sed "s#$root#<root>#g" | tr '\n' ' ')]"
+
 copilot --version | head -n 1

@@ -22,6 +22,8 @@ examples/local-project/.claude/**
 examples/local-project/.codex/**
 examples/local-project/.opencode/**
 examples/local-project/.pi/**
+examples/local-project/.github/**
+examples/local-project/.mcp.json
 
 # Generated build reports and lockfiles (rewritten by tooling, not by editors)
 **/hooknostic-build.json

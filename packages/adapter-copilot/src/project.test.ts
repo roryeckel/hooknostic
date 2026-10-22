@@ -253,27 +253,32 @@ describe("Copilot project components", () => {
     const dir = await mkdtemp(join(tmpdir(), "hooknostic-copilot-project-"));
     try {
       const integration = await projectComponents(source("direct", dir), dir, "out", "", { support });
+      // The root .mcp.json: Copilot reads only it when it exists, and Claude
+      // reads it too, so every entry is shared (ADR-0033).
       expect(integration.entries).toEqual([
         expect.objectContaining({
-          path: ".github/mcp.json",
+          path: ".mcp.json",
           key: ["mcpServers", "local"],
           // cwd "." keeps the relative launcher path on the project when
           // GITHUB_WORKSPACE names another directory (captured).
           value: { type: "stdio", command: "node", args: ["./out/mcp-launcher.mjs", "0"], cwd: "." },
+          share: expect.any(String),
         }),
         expect.objectContaining({
-          path: ".github/mcp.json",
+          path: ".mcp.json",
           key: ["mcpServers", "referenced"],
           value: {
             type: "http",
             url: "https://example.invalid/${HOOKNOSTIC_PROJECT_TOKEN}/mcp",
             headers: { Authorization: "Bearer ${HOOKNOSTIC_PROJECT_TOKEN}" },
           },
+          share: expect.any(String),
         }),
         expect.objectContaining({
-          path: ".github/mcp.json",
+          path: ".mcp.json",
           key: ["mcpServers", "events"],
           value: { type: "sse", url: "https://example.invalid/sse" },
+          share: expect.any(String),
         }),
       ]);
       expect(integration.files.map((file) => file.path)).toContain("out/mcp-launcher.mjs");

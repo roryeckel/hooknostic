@@ -137,7 +137,7 @@ Direct project sources preserve additional harness-native frontmatter while
 Hooknostic validates every portable Agent Skills field. Agent Plugin package
 inputs remain strict about unknown skill fields.
 
-Claude MCP uses `.mcp.json`; Copilot uses `.github/mcp.json`; OpenCode uses an adapter-owned configuration module.
+Claude and Copilot MCP share the root `.mcp.json`: Copilot reads only that file when it exists, so one entry per server serves both, and per-target overrides that would define a server differently for them fail `sync` (ADR-0033). OpenCode uses an adapter-owned configuration module.
 Both support stdio and remote transports as recorded in the project support
 profiles. Stdio uses the existing portable launcher; command paths and cwd resolve
 from the MCP source file's directory. A direct-source cwd may move above that

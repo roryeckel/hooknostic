@@ -4,6 +4,7 @@ import { resolve } from "node:path";
 
 import {
   type AgentPluginDegradation,
+  type AgentPluginMcpServer,
   type ProjectComponents,
   projectSkillText,
   SKILL_REFERENCE_UNEXPANDED,
@@ -103,6 +104,27 @@ export function projectSkillFiles(
     ...(relinquishPrefixes.length ? { relinquishPrefixes } : {}),
   };
 }
+/**
+ * The `share` string for a server entry in a root `.mcp.json`: the server's
+ * portable definition after the target's overrides, with keys in a stable
+ * order. Every project launcher bundles the same front end and reads the same
+ * record, so two targets whose definitions are equal emit entries that each
+ * run correctly for either harness, and one entry serves both (ADR-0033).
+ */
+export function sharedMcpServerKey(server: AgentPluginMcpServer): string {
+  const stable = (value: unknown): unknown =>
+    Array.isArray(value)
+      ? value.map(stable)
+      : value !== null && typeof value === "object"
+        ? Object.fromEntries(
+            Object.keys(value)
+              .sort()
+              .map((key) => [key, stable((value as Record<string, unknown>)[key])]),
+          )
+        : value;
+  return JSON.stringify(stable(server));
+}
+
 export async function projectMcpLauncher(
   source: ProjectComponents,
   root: string,

@@ -139,7 +139,7 @@ the separator when the name is not a native tool, and never sets `tool.mcp`
 
 ## MCP
 
-- Project: `.mcp.json` (or `.github/mcp.json`) with `mcpServers`; stdio,
+- Project: `.mcp.json` or, only when no root `.mcp.json` exists, `.github/mcp.json` (re-probed 2026-10-21: a root file, even empty or unparseable, makes Copilot ignore `.github/mcp.json`), with `mcpServers`; stdio,
   `type: "http"` (Streamable HTTP) and `type: "sse"` all work. `cwd`, `env` and
   relative `args` resolve from the project root. Ambient `${NAME}` expands in
   args/env/URL query/header values, including `${NAME:-fallback}`;

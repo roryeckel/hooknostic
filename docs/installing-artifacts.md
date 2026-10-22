@@ -31,7 +31,7 @@ For repository integration, prefer [init, sync, and verify](project-integration.
 | `codex` | `project` | `dist/codex/.codex/` | A repo-level Codex directory: `hooks.json` + `hooknostic/hooknostic.mjs` |
 | `codex` | `package` | `dist/codex/` | A native Codex plugin: `.codex-plugin/plugin.json`, `.mcp.json`, `skills/`, `hooks.json`, runtime |
 | `copilot` | `package` | `dist/copilot/` | An Agent Plugins package: `plugin.json`, `skills/`, `mcp.json`, `com.github.copilot/hooks/hooks.json`, `runtime/hooknostic.mjs` |
-| `copilot` | `project` | `dist/copilot/` | The runtime and compiled hooks document; `sync` writes `.github/hooks/hooknostic.json`, `.agents/skills/`, and `.github/mcp.json` |
+| `copilot` | `project` | `dist/copilot/` | The runtime and compiled hooks document; `sync` writes `.github/hooks/hooknostic.json`, `.agents/skills/`, and the root `.mcp.json` |
 | `opencode` | `project` | `dist/opencode/.opencode/` | Project plugin modules under `plugins/`, plus a copied `skills/` |
 | `pi` | `project` | `dist/pi/.pi/` | Project extension under `extensions/`, plus copied `skills/` |
 | `pi` | `package` | `dist/pi/` | npm package with a `pi` manifest declaring its bundled extension and skills |
@@ -66,23 +66,29 @@ get `PLUGIN_ROOT` and `PLUGIN_DATA` in their environment; its hooks get
 `PLUGIN_ROOT` only.
 
 Project delivery writes `.github/hooks/hooknostic.json`, copies selected skills
-to `.agents/skills/`, and declares MCP servers in `.github/mcp.json` (Copilot
-reads either that file or a root `.mcp.json`; the project-scoped path avoids
-colliding with another harness targeting the same checkout). Two harness
-requirements are not optional:
+to `.agents/skills/`, and declares MCP servers in the root `.mcp.json`. Copilot
+reads one workspace MCP file: a root `.mcp.json` whenever one exists, even
+empty, and `.github/mcp.json` only without it. Claude Code reads the root
+file too, so when a project targets both, each server has one entry that
+serves both harnesses. A server whose per-target overrides would define it
+differently for the two fails `sync`, because the file holds one definition
+per name (ADR-0033). Two harness requirements are not optional:
 
-- **Claude Code hooks do not run under Copilot.** Copilot also reads
-  `.claude/settings.json` hooks, and Hooknostic's Claude entries cannot run
-  there. Each one carries a non-numeric `timeoutSec`, which makes Copilot drop
-  that file's hooks; Claude ignores the key. Copilot runs the project's
-  Copilot target from `.github/hooks` instead. A hand-written hook in the same
-  `.claude/settings.json` is dropped for Copilot too.
 - **Start Copilot at the project root.** Repository hooks are read from the
   session's working directory, not the git root: a session started in a
   subdirectory loads only that subdirectory's `.github/hooks`.
 - **Trust the folder.** Run with `--trust-folder` (for one prompt session) or
   set `COPILOT_ALLOW_ALL=true`; without trust the generated hooks are skipped
   silently. Restart the CLI after `hooknostic sync` — hook files load at startup.
+
+Claude Code hooks do not run under Copilot. Copilot also reads
+`.claude/settings.json` hooks, and Hooknostic's Claude entries cannot run there.
+Each one carries a non-numeric `timeoutSec`, which makes Copilot drop that
+file's hooks; Claude ignores the key. Copilot runs the project's Copilot target
+from `.github/hooks` instead. A hand-written hook in the same
+`.claude/settings.json` is dropped for Copilot too. Skills are different:
+Copilot also lists `.claude/skills`, but a skill in both that directory and
+`.agents/skills` resolves to Copilot's own `.agents/skills` copy.
 
 `hooknostic doctor` reports the locally installed `copilot` version. Run
 `hooknostic inspect copilot --delivery package` to see which MCP transports,

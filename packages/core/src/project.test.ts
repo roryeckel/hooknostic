@@ -1059,6 +1059,56 @@ describe("complete project integration", () => {
     );
     expect((await runProject({ ...options, command: "sync" })).errors.join()).toContain(message);
   });
+  // Claude Code and GitHub Copilot CLI both read the root .mcp.json, and Copilot
+  // reads nothing else beside it, so one entry per server serves both (ADR-0033).
+  async function sharedMcpFixture(mcpOverrides?: Record<string, unknown>) {
+    const targets = Object.fromEntries(
+      ["claude", "copilot"].map((name) => [
+        name,
+        {
+          adapter: name,
+          version: registry[name]!.harness.recommendedRange,
+          delivery: "project",
+          output: `.hooknostic/artifacts/${name}`,
+        },
+      ]),
+    );
+    const { root, options } = await fixture({
+      targets,
+      components: { mcp: "./mcp.json", ...(mcpOverrides === undefined ? {} : { mcpOverrides }) },
+    });
+    await writeFile(
+      join(root, "mcp.json"),
+      JSON.stringify({
+        $schema: AGENT_PLUGIN_MCP_SCHEMA,
+        mcpServers: {
+          local: { type: "stdio", command: "node", args: ["server.mjs"] },
+          remote: { type: "streamable-http", url: "https://example.invalid/mcp" },
+        },
+      }),
+    );
+    return { root, options };
+  }
+  it("composes one root .mcp.json entry per server for Claude and Copilot", async () => {
+    const { root, options } = await sharedMcpFixture();
+    const synced = await runProject({ ...options, command: "sync" });
+    expect(synced.errors).toEqual([]);
+    const document = JSON.parse(await readFile(join(root, ".mcp.json"), "utf8"));
+    expect(Object.keys(document.mcpServers).sort()).toEqual(["local", "remote"]);
+    expect(document.mcpServers.local).toEqual({
+      command: "node",
+      args: ["./.hooknostic/artifacts/claude/mcp-launcher.mjs", "0"],
+      cwd: ".",
+    });
+    await expect(readFile(join(root, ".github/mcp.json"), "utf8")).rejects.toMatchObject({ code: "ENOENT" });
+    expect((await runProject({ ...options, command: "verify" })).ok).toBe(true);
+  });
+  it("refuses a server that Claude and Copilot would define differently", async () => {
+    const { options } = await sharedMcpFixture({ copilot: { servers: { local: { args: ["copilot.mjs"] } } } });
+    expect((await runProject({ ...options, command: "sync" })).errors.join()).toContain(
+      "conflicting shared entry: .mcp.json:mcpServers.local",
+    );
+  });
   it("rejects a direct MCP cwd override whose symlink escapes the project", async () => {
     const codex = registry.codex!;
     const { root, options } = await fixture({
