@@ -75,7 +75,8 @@ differently for the two fails `sync`, because the file holds one definition
 per name. When `components.targets` selects only one of the two, `sync` lists
 the root servers in the other harness's own disable setting
 (`.github/copilot/settings.json` `disabledMcpServers`, or `.claude/settings.json`
-`disabledMcpjsonServers`), so it starts none of them (ADR-0033). Two harness requirements are not optional:
+`disabledMcpjsonServers`), so it starts none of them. Names you list there
+yourself are kept; `sync` removes only the ones it added (ADR-0033). Two harness requirements are not optional:
 
 - **Start Copilot at the project root.** Repository hooks are read from the
   session's working directory, not the git root: a session started in a

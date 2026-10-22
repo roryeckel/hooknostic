@@ -1129,6 +1129,18 @@ describe("complete project integration", () => {
       expect((await runProject({ ...options, command: "verify" })).ok).toBe(true);
     },
   );
+  it("keeps an author's disabled servers beside the fence", async () => {
+    const { root, options } = await sharedMcpFixture(undefined, ["claude"]);
+    await mkdir(join(root, ".github/copilot"), { recursive: true });
+    await writeFile(join(root, ".github/copilot/settings.json"), '{"disabledMcpServers":["authored"]}');
+    expect((await runProject({ ...options, command: "sync" })).errors).toEqual([]);
+    expect(JSON.parse(await readFile(join(root, ".github/copilot/settings.json"), "utf8")).disabledMcpServers).toEqual([
+      "authored",
+      "local",
+      "remote",
+    ]);
+    expect((await runProject({ ...options, command: "verify" })).ok).toBe(true);
+  });
   it("refuses a server that Claude and Copilot would define differently", async () => {
     const { options } = await sharedMcpFixture({ copilot: { servers: { local: { args: ["copilot.mjs"] } } } });
     expect((await runProject({ ...options, command: "sync" })).errors.join()).toContain(

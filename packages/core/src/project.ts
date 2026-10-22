@@ -122,7 +122,9 @@ export async function runProject(
         integration.entries.push({
           path: reader.disable.path,
           key: [...reader.disable.key],
-          kind: "property",
+          // Only these names are Hooknostic's; an author's own disabled
+          // servers in the same list stay as written.
+          kind: "members",
           value: disabled,
         });
     }

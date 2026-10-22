@@ -87,6 +87,28 @@ describe("project reconciliation", () => {
       }),
     ).rejects.toThrow("duplicate integration destination: .mcp.json");
   });
+  // A disable list an author may already keep: Hooknostic owns only the names
+  // it adds.
+  const members = (value: string[]): ProjectIntegration => ({
+    files: [],
+    entries: [{ path: "settings.json", key: ["disabledMcpServers"], kind: "members", value }],
+    guidance: [],
+  });
+  it("adds members beside an author's own and removes only its own", async () => {
+    await writeFile(join(root, "settings.json"), '{"disabledMcpServers":["mine","shared"]}');
+    await sync(members(["shared", "ours"]));
+    const listed = async () => JSON.parse(await readFile(join(root, "settings.json"), "utf8")).disabledMcpServers;
+    expect(await listed()).toEqual(["mine", "shared", "ours"]);
+    expect((await reconcileProject(root, config, members(["shared", "ours"]))).changes).toEqual([]);
+    await sync(members([]));
+    // "shared" was the author's before Hooknostic needed it, so it stays.
+    expect(await listed()).toEqual(["mine", "shared"]);
+  });
+  it("removes a members list it created once nothing needs it", async () => {
+    await sync(members(["ours"]));
+    await sync(members([]));
+    expect(JSON.parse(await readFile(join(root, "settings.json"), "utf8"))).toEqual({});
+  });
   it("rejects duplicate JSONC properties before editing", async () => {
     await writeFile(join(root, "settings.json"), '{"hooks":{"Stop":[]},"hooks":{}}');
     await expect(reconcileProject(root, config, integration())).rejects.toThrow("duplicate JSONC property");

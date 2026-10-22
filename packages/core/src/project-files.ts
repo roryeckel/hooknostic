@@ -17,7 +17,13 @@ export interface ProjectEntry {
   format?: "jsonc" | "toml";
   path: string;
   key: string[];
-  kind: "array" | "property";
+  /**
+   * `property` owns the value at `key`; `array` owns one element of the array
+   * there. `members` owns string members of the array there and leaves every
+   * other member alone: `value` is the list of names Hooknostic needs present,
+   * and only the ones it added are removed again.
+   */
+  kind: "array" | "property" | "members";
   value: unknown;
   /**
    * Marks an entry in a file several harnesses read natively, such as a root
@@ -86,7 +92,7 @@ interface Owned {
   path: string;
   hash: string;
   key?: string[];
-  kind?: "array" | "property";
+  kind?: "array" | "property" | "members";
   context?: string[];
   mode?: number;
 }
@@ -289,7 +295,7 @@ function readManifest(raw: Buffer | null, config: string): Manifest {
         (!Array.isArray(entry.key) || entry.key.length === 0 || entry.key.some((k) => typeof k !== "string")))
     )
       throw new Error("invalid integration ownership entry");
-    if (entry.key !== undefined && entry.kind !== "array" && entry.kind !== "property")
+    if (entry.key !== undefined && entry.kind !== "array" && entry.kind !== "property" && entry.kind !== "members")
       throw new Error("invalid integration entry kind");
     if (
       entry.context !== undefined &&
@@ -463,7 +469,21 @@ export async function reconcileProject(
         const current = get(document(text, path, format), key);
         let context: string[] | undefined;
         if (format === "toml" && kind !== "property") throw new Error("TOML supports property ownership only");
-        if (kind === "array") {
+        if (kind === "members") {
+          if (current !== undefined && (!Array.isArray(current) || current.some((v) => typeof v !== "string")))
+            throw new Error(`expected an array of strings at ${path}:${key.join(".")}`);
+          const values = (current as string[] | undefined) ?? [];
+          // Members recorded (by hash) as added last time are Hooknostic's; every
+          // other member belongs to the author and is kept as written.
+          const previous = new Set(old?.context ?? []);
+          const kept = values.filter((member) => !previous.has(valueHash(member)));
+          const wanted = next === undefined ? [] : (next.value as string[]);
+          const added = wanted.filter((member, index) => !kept.includes(member) && wanted.indexOf(member) === index);
+          const result = [...kept, ...added];
+          context = added.map(valueHash);
+          if (JSON.stringify(result) !== JSON.stringify(values))
+            text = update(text, key, result.length === 0 && kept.length === 0 ? undefined : result);
+        } else if (kind === "array") {
           if (current !== undefined && !Array.isArray(current))
             throw new Error(`expected array at ${path}:${key.join(".")}`);
           const values: unknown[] = (current as unknown[]) ?? [];
