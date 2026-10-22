@@ -9,11 +9,11 @@
 
 <p align="center">
   <strong>Portable hooks, skills, and MCP servers for coding agents. Build native plugins for
-  Claude Code and Codex marketplaces, or maintain integrations directly in your repository.</strong>
+  Claude Code, Codex, and GitHub Copilot CLI, or maintain integrations directly in your repository.</strong>
 </p>
 
 Keep one portable source and let Hooknostic translate it for **Claude Code**, **OpenAI
-Codex CLI**, **OpenCode**, and **Pi**. Adapters handle native packaging, component configuration,
+Codex CLI**, **GitHub Copilot CLI**, **OpenCode**, and **Pi**. Adapters handle native packaging, component configuration,
 project discovery, and lifecycle behavior. Before writing output, Hooknostic checks what
 each target can deliver and reports every compatibility shortfall.
 
@@ -28,7 +28,8 @@ hooks are outside the standard's v1 portable component set.
 ```text
 Agent Plugins 1.0 package ─┐                 ┌─ Claude Code plugin → marketplace
 TypeScript hooks ──────────┼─ check / build ─├─ Codex plugin       → marketplace
-Direct skills / MCP ───────┘                 ├─ OpenCode package or project artifact
+Direct skills / MCP ───────┘                 ├─ Copilot plugin     → marketplace or --plugin-dir
+                                             ├─ OpenCode package or project artifact
                                              └─ Pi package or project artifact
                                   sync ──────── native repository wiring
 ```
@@ -75,6 +76,7 @@ export default defineConfig({
   targets: {
     claude: { version: ">=2.1 <3", delivery: "package", output: "./dist/claude" },
     codex: { version: ">=0.153 <1", delivery: "package", output: "./dist/codex" },
+    copilot: { version: ">=1.0.101 <2", delivery: "package", output: "./dist/copilot" },
     opencode: { version: ">=2.0.17 <3", delivery: "package", output: "./dist/opencode" },
     pi: { version: ">=1 <2", delivery: "package", output: "./dist/pi" },
   },
@@ -134,7 +136,7 @@ export default definePlugin({
 });
 ```
 
-That one file blocks a destructive command on all four harnesses, and rewrites
+That one file blocks a destructive command on every supported harness, and rewrites
 `npm` to `pnpm` on the ones that support input rewriting — falling back gracefully
 (and visibly) where they don't. Capability keys are relative to the hook's event
 (`block` means `tool.before.block`), and a hook can return several effects at once
@@ -181,7 +183,7 @@ plain-language tour of the concepts, two delivery workflows, and step-by-step
 tutorials built on the [examples](examples/).
 
 - [Configuration and commands](docs/configuration.md) — sources, delivery, policies, dependencies, and reports
-- [Marketplace packages](docs/tutorials/04-packaging-with-agent-plugins.md) — install the combined example in Claude and Codex
+- [Marketplace packages](docs/tutorials/04-packaging-with-agent-plugins.md) — install the combined example in Claude, Codex, and Copilot
 - [Repository integration](docs/project-integration.md) — sync, verify, ownership, and recovery
 - [Core concepts](docs/concepts.md) — events, effects, capabilities, and the build
   pipeline, in plain language
@@ -214,7 +216,7 @@ Node.js `^22.22.2 || ^24.15.0 || >=26.0.0` / pnpm 12 + TypeScript monorepo. Use 
 | `@hooknostic/core` | Compiler: config loading, plugin model, capability analysis, diagnostics |
 | `@hooknostic/runtime` | Dispatcher: decode events → run your handlers → apply effects |
 | `hooknostic` | CLI: compile, reconcile projects, inspect support, and test hooks |
-| `@hooknostic/adapter-{claude,codex,opencode,pi}` | Per-harness adapters (internal) |
+| `@hooknostic/adapter-{claude,codex,copilot,opencode,pi}` | Per-harness adapters (internal) |
 | `@hooknostic/testkit` | Fixtures, fake adapters, and the adapter contract suite |
 
 ```
@@ -238,6 +240,13 @@ read [OpenCode families](docs/opencode-families.md) before relying on those capa
 Pi supports project and package hooks and skills; its native MCP and permission
 channels are unsupported. See the [support table](docs/harness-support.md) and
 [installation guide](docs/installing-artifacts.md#pi).
+
+GitHub Copilot CLI supports package and project delivery of hooks, skills, and MCP from
+`>=1.0.101`. Repository hooks load only in a trusted folder and from the directory the
+session starts in. Copilot also reads Claude Code's `.claude/settings.json` hooks and root
+`.mcp.json`, so Hooknostic keeps each harness on its own generated output when a project
+targets both ([ADR-0033](docs/decisions/0033-no-cross-harness-compatibility-reads.md)). See the
+[Copilot installation guide](docs/installing-artifacts.md#github-copilot-cli).
 
 The default compatibility minimum is `emulated`. Unsupported components and degraded
 items fail by default; known standard deviations warn and remain visible in the report.

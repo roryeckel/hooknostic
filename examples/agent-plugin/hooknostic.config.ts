@@ -28,6 +28,7 @@ export default defineConfig({
     claude: { version: ">=2.1 <3", delivery: "package", output: "./dist/claude" },
     // Package hook delivery is established from Codex 0.153.
     codex: { version: ">=0.153 <1", delivery: "package", output: "./dist/codex" },
+    copilot: { version: ">=1.0.101 <2", delivery: "package", output: "./dist/copilot" },
     // Each family emits its own native package loader; never interchange them.
     opencode: { version: ">=2.0.17 <3", delivery: "package", output: "./dist/opencode" },
     legacy: { adapter: "opencode", version: ">=1.18 <2", delivery: "package", output: "./dist/opencode-v1" },
@@ -36,8 +37,8 @@ export default defineConfig({
 
   components: {
     root: ".",
-    targets: ["claude", "codex", "opencode", "legacy", "pi"],
-    exclude: ["build/**", "runtime/**", ".claude-plugin/**", ".agents/plugins/**"],
+    targets: ["claude", "codex", "copilot", "opencode", "legacy", "pi"],
+    exclude: ["build/**", "runtime/**", ".claude-plugin/**", ".agents/plugins/**", ".github/**"],
     materialize: [{ provider: bundledMcp, inputs: { server: "src/greet-mcp.mjs" }, into: "bundled" }],
   },
 });

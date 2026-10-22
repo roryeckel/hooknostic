@@ -15,7 +15,7 @@
       },
       "projection": {
         "status": "success",
-        "contentDigest": "sha256:47ce0695d5676b33edfebc4a3964ad9a11db864cf50f02d7cf6d47640fd945d1",
+        "contentDigest": "sha256:0a5f651866e0d1b0a1b64798200059a820d97fd8c3c0a4cfd75948d88bfce481",
         "copiedFileCount": 3,
         "components": {
           "agent-plugin.manifest": {
@@ -63,7 +63,7 @@
       },
       "projection": {
         "status": "success",
-        "contentDigest": "sha256:ca5f41c2d328995da9dcd20c9c110edb22bd09fe243559d6f1799c151aa202ed",
+        "contentDigest": "sha256:a7d1448efe68bc9794e4834a11551c77207b270ddfdcfb4239a51d20376b0f72",
         "copiedFileCount": 3,
         "directories": [
           ".agents",
@@ -105,6 +105,59 @@
         "runtime/mcp-servers.json"
       ]
     },
+    "copilot": {
+      "status": "success",
+      "adapter": "copilot@0.8.0",
+      "requestedVersion": ">=1.0.101 <2",
+      "output": "./dist/copilot",
+      "capabilities": {
+        "exact": 4,
+        "emulated": 0,
+        "approximate": 0,
+        "unsupported": 0
+      },
+      "projection": {
+        "status": "success",
+        "contentDigest": "sha256:fd1914aca413678ffa6e2dadfa9e6692909f49883baea48516d8a73814656d80",
+        "copiedFileCount": 4,
+        "directories": [
+          ".agents",
+          "skills",
+          "skills/greet",
+          "src"
+        ],
+        "components": {
+          "agent-plugin.manifest": {
+            "support": "exact",
+            "discovered": 1,
+            "emitted": 1,
+            "skipped": 0
+          },
+          "agent-plugin.skills": {
+            "support": "exact",
+            "discovered": 1,
+            "emitted": 1,
+            "skipped": 0
+          },
+          "agent-plugin.mcp.stdio": {
+            "support": "exact",
+            "discovered": 1,
+            "emitted": 1,
+            "skipped": 0
+          }
+        },
+        "omissions": [],
+        "deviations": []
+      },
+      "artifacts": [
+        "bundled/THIRD_PARTY_NOTICES.txt",
+        "bundled/greet-mcp.mjs",
+        "plugin.json",
+        "mcp.json",
+        "com.github.copilot/hooks/hooks.json",
+        "runtime/hooknostic.mjs"
+      ]
+    },
     "opencode": {
       "status": "success",
       "adapter": "opencode@0.8.0",
@@ -118,7 +171,7 @@
       },
       "projection": {
         "status": "success",
-        "contentDigest": "sha256:8958ba784e288d50e4d4bb6d3b6cd9d457fb4ae1fd1cb75b0d76f00dcd83c766",
+        "contentDigest": "sha256:d9b64ef80874962434b15e97594cf795d8309ff96669f25227e236712c7803c5",
         "copiedFileCount": 6,
         "directories": [
           "package/.agents",
@@ -173,7 +226,7 @@
       },
       "projection": {
         "status": "success",
-        "contentDigest": "sha256:fd6f61cd676f2c3cc76f3f90d52ea5ab08a2010378abfd7f3de23bbe8dd6fe7b",
+        "contentDigest": "sha256:9bddd41e37ba17022ca468253bec7a28f43f733161beb2ca118cc528d16b9fa8",
         "copiedFileCount": 5,
         "directories": [
           "package/.agents",
@@ -229,7 +282,7 @@
       },
       "projection": {
         "status": "success",
-        "contentDigest": "sha256:e8aa1b4e95be69b2b94c32383a543f26c5ef88a5b0f225475811e61257d7ca2c",
+        "contentDigest": "sha256:024f9c0c9c28e9869c07316ede5d18c3a01d57e2405dc57f539fb970cb4027bd",
         "copiedFileCount": 6,
         "directories": [
           "package/.agents",
@@ -278,6 +331,7 @@
     "targets": [
       "claude",
       "codex",
+      "copilot",
       "opencode",
       "legacy",
       "pi"
@@ -291,7 +345,7 @@
       "skills/greet/SKILL.md",
       "src/greet-mcp.mjs"
     ],
-    "contentDigest": "sha256:a462ef1d40f9ce35f2a1eca3e0e7a32323e3607134084001a42a5e9abb9db9c6"
+    "contentDigest": "sha256:498342720536b7523a5690c1a85a1924b79ff268b979bd968841f3359778f1d7"
   },
   "mcpServers": [
     {
