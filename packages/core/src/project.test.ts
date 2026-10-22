@@ -1061,9 +1061,13 @@ describe("complete project integration", () => {
   });
   // Claude Code and GitHub Copilot CLI both read the root .mcp.json, and Copilot
   // reads nothing else beside it, so one entry per server serves both (ADR-0033).
-  async function sharedMcpFixture(mcpOverrides?: Record<string, unknown>, componentTargets?: string[]) {
+  async function sharedMcpFixture(
+    mcpOverrides?: Record<string, unknown>,
+    componentTargets?: string[],
+    adapters = ["claude", "copilot"],
+  ) {
     const targets = Object.fromEntries(
-      ["claude", "copilot"].map((name) => [
+      adapters.map((name) => [
         name,
         {
           adapter: name,
@@ -1114,6 +1118,38 @@ describe("complete project integration", () => {
     ).toBeUndefined();
     expect((await runProject({ ...options, command: "verify" })).ok).toBe(true);
   });
+  it.each([
+    { componentTargets: undefined, adapters: ["claude", "copilot"] },
+    { componentTargets: ["claude"], adapters: ["claude", "copilot"] },
+    { componentTargets: ["copilot"], adapters: ["claude", "copilot"] },
+    { componentTargets: undefined, adapters: ["claude"] },
+  ])(
+    "refuses to hide existing fallback MCP servers with adapters $adapters and component targets $componentTargets",
+    async ({ componentTargets, adapters }) => {
+      const { root, options } = await sharedMcpFixture(undefined, componentTargets, adapters);
+      await mkdir(join(root, ".github"), { recursive: true });
+      const fallback = join(root, ".github/mcp.json");
+      const authored = JSON.stringify({
+        mcpServers: { authored: { type: "http", url: "https://example.invalid/authored" } },
+      });
+      await writeFile(fallback, authored);
+      for (const command of ["sync", "verify"] as const) {
+        const result = await runProject({ ...options, command });
+        expect(result.ok).toBe(false);
+        expect(result.errors.join()).toMatch(/conflict.*creating \.mcp\.json.*\.github\/mcp\.json/);
+        expect(result.errors.join()).toMatch(/migrate/i);
+        await expect(readFile(join(root, ".mcp.json"))).rejects.toMatchObject({ code: "ENOENT" });
+        await expect(readFile(join(root, ".hooknostic/integration.json"))).rejects.toMatchObject({ code: "ENOENT" });
+        expect(await readFile(fallback, "utf8")).toBe(authored);
+      }
+      // An empty fallback has no servers to hide, so it does not prevent creation.
+      await writeFile(fallback, '{"mcpServers":{}}');
+      expect((await runProject({ ...options, command: "sync" })).ok).toBe(true);
+      // Once the root file exists, sync is not changing discovery precedence.
+      await writeFile(fallback, authored);
+      expect((await runProject({ ...options, command: "verify" })).ok).toBe(true);
+    },
+  );
   it.each([
     ["claude", ".github/copilot/settings.json", "disabledMcpServers"],
     ["copilot", ".claude/settings.json", "disabledMcpjsonServers"],

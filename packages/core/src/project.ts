@@ -91,6 +91,7 @@ export async function runProject(
         });
       const native = target.integration ?? adapter.projectIntegration(target.artifacts, output, owner);
       (integration.absent ??= []).push(...(native.absent ?? []));
+      (integration.discoveryFallbacks ??= []).push(...(native.discoveryFallbacks ?? []));
       integration.omittedFiles = [...(integration.omittedFiles ?? []), ...(native.omittedFiles ?? [])];
       (integration.relinquishFiles ??= []).push(...(native.relinquishFiles ?? []));
       (integration.relinquishPrefixes ??= []).push(...(native.relinquishPrefixes ?? []));

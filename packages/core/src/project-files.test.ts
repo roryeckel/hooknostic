@@ -40,6 +40,17 @@ describe("project reconciliation", () => {
     expect(manifest).not.toContain(root);
     expect(manifest).not.toContain("command");
   });
+  it("rechecks a discovery fallback before creating the file that would hide it", async () => {
+    const input: ProjectIntegration = {
+      ...integration(),
+      discoveryFallbacks: [{ path: "settings.json", fallback: "fallback.json", key: ["services"] }],
+    };
+    const plan = await reconcileProject(root, config, input);
+    await writeFile(join(root, "fallback.json"), '{"services":{"authored":{}}}');
+    await expect(applyProject(root, config, plan)).rejects.toThrow("fallback.json");
+    await expect(readFile(join(root, "settings.json"))).rejects.toMatchObject({ code: "ENOENT" });
+    await expect(readFile(join(root, "generated/runtime.mjs"))).rejects.toMatchObject({ code: "ENOENT" });
+  });
   it("preserves unrelated JSONC bytes and array ordering", async () => {
     const prefix = '{\n // user configuration\n "theme": "dark",\n "hooks": { "Stop": [{ "custom": true }] }\n}\n';
     await writeFile(join(root, "settings.json"), prefix);

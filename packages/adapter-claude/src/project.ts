@@ -55,6 +55,9 @@ export function projectIntegration(artifacts: readonly GeneratedArtifact[], outp
   return {
     files: [],
     entries,
+    // A root MCP file also hides Copilot's fallback, even without a Copilot
+    // target (.capture/copilot/README.md, foreign-components-probe.sh).
+    discoveryFallbacks: [{ path: ".mcp.json", fallback: ".github/mcp.json", key: ["mcpServers"] }],
     guidance: [
       "Restart Claude Code after synchronization; project hook execution has not been observed by this command.",
     ],

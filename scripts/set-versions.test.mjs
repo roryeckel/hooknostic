@@ -32,26 +32,33 @@ function fixture() {
   return { root, current, next, run };
 }
 
-it("bumps both OpenCode implementations and checks the resulting release", () => {
+it("bumps every adapter implementation and checks the resulting release", () => {
   const { root, next, run } = fixture();
   const bump = run(next);
   expect(bump.status, bump.stderr).toBe(0);
-  for (const family of ["index.ts", "v2/index.ts"]) {
-    const source = readFileSync(join(root, "packages/adapter-opencode/src", family), "utf8");
-    expect(source, family).toContain(`adapterVersion: "${next}"`);
+  const implementations = readdirSync(join(root, "packages"))
+    .filter((name) => name.startsWith("adapter-"))
+    .map((name) => `packages/${name}/src/index.ts`);
+  implementations.push("packages/adapter-opencode/src/v2/index.ts");
+  for (const path of implementations) {
+    const source = readFileSync(join(root, path), "utf8");
+    expect(source, path).toContain(`adapterVersion: "${next}"`);
   }
   const check = run("--check", next);
   expect(check.status, check.stderr).toBe(0);
 });
 
-it("rejects a stale v2 version without rewriting it in check mode", () => {
-  const { root, current, next, run } = fixture();
-  expect(run(next).status).toBe(0);
-  const path = join(root, "packages/adapter-opencode/src/v2/index.ts");
-  const stale = readFileSync(path, "utf8").replace(/adapterVersion: "[^"]+"/, `adapterVersion: "${current}"`);
-  writeFileSync(path, stale);
-  const check = run("--check", next);
-  expect(check.status).toBe(1);
-  expect(check.stderr).toContain("packages/adapter-opencode/src/v2/index.ts");
-  expect(readFileSync(path, "utf8")).toBe(stale);
-});
+it.each(["adapter-opencode/src/v2/index.ts", "adapter-copilot/src/index.ts"])(
+  "rejects a stale %s version without rewriting it in check mode",
+  (implementation) => {
+    const { root, current, next, run } = fixture();
+    expect(run(next).status).toBe(0);
+    const path = join(root, "packages", implementation);
+    const stale = readFileSync(path, "utf8").replace(/adapterVersion: "[^"]+"/, `adapterVersion: "${current}"`);
+    writeFileSync(path, stale);
+    const check = run("--check", next);
+    expect(check.status).toBe(1);
+    expect(check.stderr).toContain(`packages/${implementation}`);
+    expect(readFileSync(path, "utf8")).toBe(stale);
+  },
+);

@@ -37,6 +37,9 @@ const CAPTURE = ".capture/copilot/README.md";
  * too, so its entries are shared and compose with a Claude target's (ADR-0033).
  */
 const COPILOT_MCP_FILE = ".mcp.json";
+const COPILOT_DISCOVERY_FALLBACKS: NonNullable<ProjectIntegration["discoveryFallbacks"]> = [
+  { path: COPILOT_MCP_FILE, fallback: ".github/mcp.json", key: ["mcpServers"] },
+];
 
 const SKILL_REFERENCE_DEGRADATION = {
   id: SKILL_REFERENCE_UNEXPANDED,
@@ -73,7 +76,12 @@ export function projectIntegration(artifacts: readonly GeneratedArtifact[], outp
   // no hooks document. Integration still has work to do, so return no hook
   // file rather than failing the target.
   if (manifest === undefined) {
-    return { files: [], entries: [], guidance: COPILOT_PROJECT_GUIDANCE };
+    return {
+      files: [],
+      entries: [],
+      guidance: COPILOT_PROJECT_GUIDANCE,
+      discoveryFallbacks: COPILOT_DISCOVERY_FALLBACKS,
+    };
   }
   const document = JSON.parse(contentsText(manifest.contents)) as {
     version: number;
@@ -97,6 +105,7 @@ export function projectIntegration(artifacts: readonly GeneratedArtifact[], outp
     ],
     entries: [],
     guidance: COPILOT_PROJECT_GUIDANCE,
+    discoveryFallbacks: COPILOT_DISCOVERY_FALLBACKS,
   };
 }
 

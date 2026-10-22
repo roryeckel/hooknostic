@@ -69,7 +69,10 @@ Project delivery writes `.github/hooks/hooknostic.json`, copies selected skills
 to `.agents/skills/`, and declares MCP servers in the root `.mcp.json`. Copilot
 reads one workspace MCP file: a root `.mcp.json` whenever one exists, even
 empty, and `.github/mcp.json` only without it. Claude Code reads the root
-file too, so when a project targets both, each server has one entry that
+file too. If `sync` would create the root file and `.github/mcp.json` already
+contains servers, it reports a conflict before writing anything. Migrate those
+servers to the root file first. An existing root file or an empty fallback
+does not trigger this conflict. When a project targets both, each server has one entry that
 serves both harnesses. A server whose per-target overrides would define it
 differently for the two fails `sync`, because the file holds one definition
 per name. When `components.targets` selects only one of the two, `sync` lists

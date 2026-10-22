@@ -64,6 +64,7 @@ const sourceCarriers = [
   ["packages/core/src/build.ts", /(export const HOOKNOSTIC_VERSION = ")[^"]+(")/],
   ["packages/adapter-claude/src/index.ts", /(adapterVersion: ")[^"]+(")/],
   ["packages/adapter-codex/src/index.ts", /(adapterVersion: ")[^"]+(")/],
+  ["packages/adapter-copilot/src/index.ts", /(adapterVersion: ")[^"]+(")/],
   ["packages/adapter-opencode/src/index.ts", /(adapterVersion: ")[^"]+(")/],
   ["packages/adapter-opencode/src/v2/index.ts", /(adapterVersion: ")[^"]+(")/],
   ["packages/adapter-pi/src/index.ts", /(adapterVersion: ")[^"]+(")/],

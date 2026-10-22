@@ -56,6 +56,12 @@ export interface ProjectIntegration {
   entries: ProjectEntry[];
   guidance: string[];
   absent?: AbsentKey[];
+  /**
+   * Creating `path` changes discovery from `fallback` to that file. Refuse
+   * creation if the fallback's object at `key` contains authored entries;
+   * an existing primary file or an empty fallback needs no migration.
+   */
+  discoveryFallbacks?: { path: string; fallback: string; key: string[] }[];
   /** An omitted copy must not leave an unowned native skill discoverable. */
   omittedFiles?: readonly string[];
   omissions?: ProjectComponentOmission[];
@@ -388,6 +394,23 @@ export async function reconcileProject(
       throw new Error(`duplicate integration destination: ${entry.path}`);
     }
     desired.set(id, entry);
+  }
+  for (const check of integration.discoveryFallbacks ?? []) {
+    if (![...desired.values()].some((entry) => entry.path === check.path)) continue;
+    const primary = await bytes(await projectPath(root, check.path));
+    observedAbsentFiles.set(check.path, primary);
+    if (primary !== null) continue;
+    const fallback = await bytes(await projectPath(root, check.fallback));
+    // Preserve the observation through applyProject: a fallback added or
+    // populated after planning must not be hidden by this transaction either.
+    observedAbsentFiles.set(check.fallback, fallback);
+    if (fallback === null) continue;
+    const entries = get(document(fallback.toString(), check.fallback), check.key);
+    if (entries && typeof entries === "object" && !Array.isArray(entries) && Object.keys(entries).length > 0)
+      throw new Error(
+        `configuration conflict: creating ${check.path} would hide existing entries in ` +
+          `${check.fallback}:${check.key.join(".")}; migrate those entries to ${check.path} before synchronizing`,
+      );
   }
   for (const path of relinquished) {
     if ([...desired.values()].some((entry) => entry.path.toLowerCase() === path.toLowerCase()))
