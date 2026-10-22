@@ -1,89 +1,90 @@
-# Pi 1.x with native MCP, and a stated MCP identity
+# GitHub Copilot CLI, and harnesses that read each other's files
 
-0.8.0 adds pi 1.x as a second supported pi line. Project and package delivery
-now hand stdio and streamable-HTTP MCP servers to pi's own MCP client through a
-generated extension, where 0.7.0 could only omit them. Because pi's MCP tool
-names are lossy, the server and tool split for those calls comes from what pi
-states beside the call, not from the name. See the versioned
-[harness support table](harness-support.md) for support levels and their
-evidence.
+0.9.0 adds GitHub Copilot CLI as the fifth target. Package delivery emits an
+Agent Plugins 1.0 package that Copilot loads natively, and project delivery
+writes `.github/hooks`, `.agents/skills` and the root `.mcp.json`. Copilot also
+reads Claude Code's hooks, skills and MCP file. This release makes each harness
+run only the output generated for it, and records that rule as
+[ADR-0033](decisions/0033-no-cross-harness-compatibility-reads.md). See the
+versioned [harness support table](harness-support.md) for support levels and
+their evidence.
 
 ## What is included
 
-- A `>=1 <2` pi profile referencing 1.3.0, beside the retained `>=0.84 <1`
-  line. A target pinned to either line gets that line's support; a range
-  spanning both keeps resolving to the least capable level.
-- Pi 1.x package and project delivery project stdio and streamable-HTTP MCP
-  servers into pi's native client. stdio runs through the shared launcher,
-  which binds the package root and a Hooknostic-managed data directory; header
-  values are escaped for pi's `$` and `$!` expansion. pi rejects the legacy SSE
-  transport, so that single omission is named `pi:mcp-sse-omitted`.
-- `tool.mcp` on pi 1.x carries the server and tool pi registered, on
-  `tool.after` and on a server-reported `tool.error`. The shim reads the
-  registration source so only tools pi's own MCP extension registered supply
-  it; another extension's `mcp__` tool, a JSON-RPC failure and a `tool.before`
-  call keep the split absent. [ADR-0032](decisions/0032-stated-mcp-identity.md)
-  records the model.
-- An adapter now declares where its `tool.mcp` split comes from, and
-  `inspect`, `hooknostic dispatch` and the contract suite hold a test or a
-  fixture to that declaration, so none of them can claim an identity the
-  harness never states.
-- `${SKILL_DIR}` in a Codex SKILL.md body becomes
-  `<absolute path of the directory containing this SKILL.md>` instead of `.`.
-  In a controlled package-delivery comparison the explicit placeholder
-  succeeded on 10 of 10 first launcher attempts against 1 of 10, so the build
-  now treats the remaining substitution as a model dependency rather than a
-  solved path.
-- Generated launchers and OpenCode project delivery resolve project-relative
-  paths through one shared helper, which fixes a stdio server started with a
-  missing `cwd` when the project was reached through a junction, symlink or
-  another Windows drive or UNC share.
-- Harness evidence was refreshed by the scheduled model-free playback lanes:
-  Claude Code 2.1.303, Codex CLI 0.163.0, OpenCode v1 1.19.3 and OpenCode v2
-  2.0.32. Automatic harness-watch merges are now guarded and serialized.
+- A `copilot` adapter for `>=1.0.101 <2`, referencing 1.0.101. Its hook
+  payloads, tool argument shapes and effect channels were captured on Windows
+  and Linux, and its shell dialect on macOS as well. It covers all of these
+  events: session start and end, prompts, tools, tool errors, permission
+  requests, compaction notices, subagents, and turn stops.
+  - **Exact:** blocking and approval requests before a tool, input and output
+    replacement, and tool-time context.
+  - **Approximate:** blocking continuation after a tool, and preventing a
+    subagent stop.
+  - **Emulated:** prompt context, which reaches the model as prompt text.
+- Package delivery: `copilot --plugin-dir ./dist/copilot`, or a local or
+  git-hosted marketplace. Skills and stdio, streamable-HTTP and SSE MCP
+  servers ship in the package, and the hooks go under
+  `com.github.copilot/hooks/hooks.json`. The combined example now builds a
+  Copilot package and includes a `.github/plugin/marketplace.json` for it.
+- Project delivery for `sync`, `verify` and `recover`. It writes
+  `.github/hooks/hooknostic.json`, copies skills to `.agents/skills`, and
+  declares MCP servers in the root `.mcp.json`. `doctor` reports the installed
+  version without triggering Copilot's self-update.
+- **Claude and Copilot in one project.** Copilot runs `.claude/settings.json`
+  hooks, so Hooknostic's Claude entries carry a non-numeric `timeoutSec`. That
+  key makes Copilot drop the file's hooks; Claude ignores it. Both harnesses
+  read the root `.mcp.json`, so each server has one entry that serves both.
+  When `components.targets` selects only one of them, `sync` lists the shared
+  servers in the other harness's native disable setting. Names you added to
+  that setting yourself are kept.
+- `tool.mcp` is never set on Copilot. It names an MCP tool
+  `<server>-<tool>` on tool events and `<server>/<tool>` on a permission
+  request. Either part may contain hyphens, and no hook payload states the
+  split. Guard MCP calls on `kind: "mcp"` and `nativeName`
+  ([ADR-0032](decisions/0032-stated-mcp-identity.md)).
+- The harness playback suite drives Copilot against a loopback model server
+  on Windows and Linux, with no credentials and no spend. Claude Code's
+  deferred MCP tools are now found through ToolSearch during playback.
 
-## Upgrading from 0.7.0
+## Upgrading from 0.8.0
 
-- **Node.** The supported range is now `^22.22.2 || ^24.15.0 || >=26.0.0`, in
-  all three published packages. Node 22 before 22.22.2, Node 24 before
-  24.15.0, and the odd 23 and 25 lines are no longer supported; see
-  [dependencies](dependencies.md).
-- **Codex skills.** A rewritten Codex skill body now fails the build as
-  `codex:skill-directory-model-substitution` (HN101). Review the skill, then
-  add `components.accept: ["codex:skill-directory-model-substitution"]` to ship
-  it with an informational diagnostic. Acceptance records the dependency on
-  the model.
-- **Shared skill paths.** Codex and OpenCode both write project skills to
-  `.agents/skills`. A combined sync whose two projections would differ at the
-  same path is now rejected before anything is written; use package delivery
-  for separate projections, or skill text both targets can share.
-- **Pi MCP omissions.** A `>=1 <2` target no longer needs
-  `pi:mcp-stdio-omitted` or `pi:mcp-streamable-http-omitted`; remove them and
-  accept `pi:mcp-sse-omitted` only if a server uses SSE. A `>=0.84 <1` target
-  keeps the previous omissions and support levels.
-- **Pi MCP guards.** On pi 1.x, guard `tool.before` on `kind: "mcp"`,
-  `nativeName` or `raw`. Use `tool.mcp` on `tool.after` and on a
-  server-reported `tool.error`, and keep a `nativeName` fallback because pi's
-  spelling of a name can be ambiguous.
+- **Re-sync Claude projects.** `sync` rewrites Claude's project hook entries
+  with the `timeoutSec` marker, and adds `cwd: "."` to stdio servers in the
+  root `.mcp.json`. That `cwd` is needed under `GITHUB_WORKSPACE`, and Claude
+  ignores it. Until you run `sync`, `verify` reports the old entries as drift.
+- **`.github/mcp.json`.** If `sync` would create a root `.mcp.json` while
+  `.github/mcp.json` lists servers, it now stops before writing anything. The
+  root file would hide those servers from Copilot. This applies to a
+  Claude-only project too. Move the servers into the root file, then fence
+  any Claude should not start with `disabledMcpjsonServers`.
+- **Conflicting definitions.** A server whose per-target overrides define it
+  differently for Claude and Copilot fails `sync`, because the shared file
+  holds one definition per name.
 
 ## Limits
 
-- Pi's `mcp__` name is never parsed for the split: pi rewrites characters and
-  hashes collisions, so the name alone cannot identify the server. An MCP call
-  whose harness-stated identity is absent stays absent, which is the documented
-  signal to fall back to `nativeName` and the raw form.
-- The pi shim follows the target's version range, settled at build time, and
-  never sees the running harness version. A target spanning `>=0.84 <2` treats
-  `mcp__` tools conservatively; pin a single line to get the 1.x behavior.
-- Codex performs no runtime expansion in skill text. Correct substitution of
-  the explicit placeholder remains the model's job, and project delivery was
-  conservatively treated as having the same limitation rather than separately
-  probed.
-- Pi 1.x still has no native permission or subagent lifecycle channel, turn-stop
-  and session-end mappings remain emulated, and output replacement is
-  approximate. SSE remains unsupported.
-- Harness evidence for pi remains Windows and Linux; no macOS harness captures
-  exist.
+- Copilot reads `.claude/skills` as well as `.agents/skills`. A skill in both
+  resolves to Copilot's own `.agents/skills` copy, but a hand-written skill
+  that only exists in `.claude/skills` still reaches Copilot.
+- A hand-written hook in the same `.claude/settings.json` is dropped for
+  Copilot, along with Hooknostic's entries.
+- Repository hooks load only in a trusted folder, from the directory the
+  session starts in. They load at startup, so restart Copilot after `sync`.
+- `prompt.before.context.add` is emulated by appending to the prompt.
+  Preventing a subagent stop has no observed loop guard. Compaction is a
+  notice only, and there is no `model.request` or `turn.stop.notify` channel.
+- Copilot expands placeholder text that Agent Plugins 1.0 requires to stay
+  literal: ambient `${NAME}`, `${NAME:-fallback}` and bare `$NAME`
+  references, and `${PLUGIN_ROOT}` or `${PLUGIN_DATA}` in a stdio command or
+  in their bare and fallback spellings. Each such use is reported as the
+  `copilot:mcp-environment-expansion` deviation (HN106), which warns by
+  default. The exact aliases in stdio `args`, `env` and `cwd` conform and are
+  not reported.
+- A git-hosted marketplace install is a copy, so a rebuilt package reaches
+  Copilot only after `copilot plugin update`. No install route runs a
+  dependency install, so bundle a package's Node dependencies.
+- The interactive approval scenario has no automated driver on the playback
+  lane. macOS evidence covers the shell dialect only.
 
 Start with the [README](../README.md); the [release runbook](releases.md)
 describes preparation, draft creation, and publication.
