@@ -1061,7 +1061,7 @@ describe("complete project integration", () => {
   });
   // Claude Code and GitHub Copilot CLI both read the root .mcp.json, and Copilot
   // reads nothing else beside it, so one entry per server serves both (ADR-0033).
-  async function sharedMcpFixture(mcpOverrides?: Record<string, unknown>) {
+  async function sharedMcpFixture(mcpOverrides?: Record<string, unknown>, componentTargets?: string[]) {
     const targets = Object.fromEntries(
       ["claude", "copilot"].map((name) => [
         name,
@@ -1075,7 +1075,11 @@ describe("complete project integration", () => {
     );
     const { root, options } = await fixture({
       targets,
-      components: { mcp: "./mcp.json", ...(mcpOverrides === undefined ? {} : { mcpOverrides }) },
+      components: {
+        mcp: "./mcp.json",
+        ...(mcpOverrides === undefined ? {} : { mcpOverrides }),
+        ...(componentTargets === undefined ? {} : { targets: componentTargets }),
+      },
     });
     await writeFile(
       join(root, "mcp.json"),
@@ -1101,8 +1105,30 @@ describe("complete project integration", () => {
       cwd: ".",
     });
     await expect(readFile(join(root, ".github/mcp.json"), "utf8")).rejects.toMatchObject({ code: "ENOENT" });
+    // Both targets wrote every server, so neither harness is fenced.
+    await expect(readFile(join(root, ".github/copilot/settings.json"), "utf8")).rejects.toMatchObject({
+      code: "ENOENT",
+    });
+    expect(
+      JSON.parse(await readFile(join(root, ".claude/settings.json"), "utf8")).disabledMcpjsonServers,
+    ).toBeUndefined();
     expect((await runProject({ ...options, command: "verify" })).ok).toBe(true);
   });
+  it.each([
+    ["claude", ".github/copilot/settings.json", "disabledMcpServers"],
+    ["copilot", ".claude/settings.json", "disabledMcpjsonServers"],
+  ])(
+    "fences the shared servers from the reader components.targets leaves out: only %s selected",
+    async (selected, fenceFile, fenceKey) => {
+      const { root, options } = await sharedMcpFixture(undefined, [selected]);
+      const synced = await runProject({ ...options, command: "sync" });
+      expect(synced.errors).toEqual([]);
+      const document = JSON.parse(await readFile(join(root, ".mcp.json"), "utf8"));
+      expect(Object.keys(document.mcpServers).sort()).toEqual(["local", "remote"]);
+      expect(JSON.parse(await readFile(join(root, fenceFile), "utf8"))[fenceKey]).toEqual(["local", "remote"]);
+      expect((await runProject({ ...options, command: "verify" })).ok).toBe(true);
+    },
+  );
   it("refuses a server that Claude and Copilot would define differently", async () => {
     const { options } = await sharedMcpFixture({ copilot: { servers: { local: { args: ["copilot.mjs"] } } } });
     expect((await runProject({ ...options, command: "sync" })).errors.join()).toContain(

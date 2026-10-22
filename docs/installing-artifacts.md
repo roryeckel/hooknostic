@@ -72,7 +72,10 @@ empty, and `.github/mcp.json` only without it. Claude Code reads the root
 file too, so when a project targets both, each server has one entry that
 serves both harnesses. A server whose per-target overrides would define it
 differently for the two fails `sync`, because the file holds one definition
-per name (ADR-0033). Two harness requirements are not optional:
+per name. When `components.targets` selects only one of the two, `sync` lists
+the root servers in the other harness's own disable setting
+(`.github/copilot/settings.json` `disabledMcpServers`, or `.claude/settings.json`
+`disabledMcpjsonServers`), so it starts none of them (ADR-0033). Two harness requirements are not optional:
 
 - **Start Copilot at the project root.** Repository hooks are read from the
   session's working directory, not the git root: a session started in a

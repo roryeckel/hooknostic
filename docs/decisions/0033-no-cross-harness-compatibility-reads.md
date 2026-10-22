@@ -77,9 +77,10 @@ standard has one meaning for every reader, and a foreign file has its owner's.
     composes one entry per server when every target defines it the same way,
     and refuses `sync` when per-target overrides would define it differently.
     Entries carry `cwd: "."`, which Copilot needs under `GITHUB_WORKSPACE` and
-    Claude ignores. The two per-server fences, Copilot's `disabledMcpServers`
-    and Claude's `disabledMcpjsonServers`, are captured but unused: every
-    project target receives the same servers.
+    Claude ignores. When `components.targets` selects only one of the two, core
+    fences the other: each adapter declares its native setting
+    (`sharedProjectMcp`), Copilot's `disabledMcpServers` and Claude's
+    `disabledMcpjsonServers`, and each harness ignores the other's.
   - `.claude/skills` holds Agent Skills `SKILL.md` files. A skill in both it
     and `.agents/skills` resolves to Copilot's own copy, and a Claude-only copy
     is accepted as a shared standard format, with `${CLAUDE_SKILL_DIR}` left

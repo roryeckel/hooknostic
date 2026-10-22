@@ -111,7 +111,15 @@ export function copilotAdapter(): HarnessAdapter {
     id: "copilot",
     adapterVersion: "0.8.0", // kept equal to package.json by versions.test.ts
     harness: copilotHarness,
-    projectPaths: [".github/hooks", ".mcp.json", ".github/mcp.json", ".agents/skills"],
+    projectPaths: [".github/hooks", ".mcp.json", ".github/mcp.json", ".github/copilot/settings.json", ".agents/skills"],
+    // Copilot reads only the root .mcp.json when it exists, and a repository's
+    // .github/copilot/settings.json disabledMcpServers keeps a named server in
+    // it from starting while Claude ignores that file (1.0.101,
+    // foreign-components-probe.sh).
+    sharedProjectMcp: {
+      file: ".mcp.json",
+      disable: { path: ".github/copilot/settings.json", key: ["disabledMcpServers"] },
+    },
     projectIntegration,
     projectComponents,
     projectComponentProfiles,

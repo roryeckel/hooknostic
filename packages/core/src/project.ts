@@ -71,6 +71,9 @@ export async function runProject(
       guidance: [],
     };
     const rootCheckoutWrites: { target: string; harness: string; path: string }[] = [];
+    // Shared native MCP files: who reads each, and which names each target wrote.
+    const sharedReaders: { target: string; file: string; disable: { path: string; key: readonly string[] } }[] = [];
+    const sharedNames = new Map<string, Map<string, Set<string>>>();
     for (const target of built?.plan ?? []) {
       const configured = config.targets[target.target]!;
       if (configured.delivery !== "project") continue;
@@ -98,6 +101,30 @@ export async function runProject(
       for (const path of adapter.rootCheckoutProjectPaths ?? [])
         if (written.has(path))
           rootCheckoutWrites.push({ target: target.target, harness: adapter.harness.displayName, path });
+      if (adapter.sharedProjectMcp) sharedReaders.push({ target: target.target, ...adapter.sharedProjectMcp });
+      for (const entry of native.entries) {
+        if (entry.share === undefined) continue;
+        const names = sharedNames.get(entry.path) ?? new Map<string, Set<string>>();
+        sharedNames.set(entry.path, names);
+        const name = entry.key.at(-1)!;
+        names.set(name, (names.get(name) ?? new Set()).add(target.target));
+      }
+    }
+    // A configured reader of a shared file that did not write a server there,
+    // because components.targets left it out, must not start the server
+    // another target wrote: disable it by name in that harness's own setting.
+    for (const reader of sharedReaders) {
+      const disabled = [...(sharedNames.get(reader.file) ?? new Map<string, Set<string>>())]
+        .filter(([, writers]) => !writers.has(reader.target))
+        .map(([name]) => name)
+        .sort();
+      if (disabled.length > 0)
+        integration.entries.push({
+          path: reader.disable.path,
+          key: [...reader.disable.key],
+          kind: "property",
+          value: disabled,
+        });
     }
     const linked = rootCheckoutWrites.length === 0 ? undefined : await linkedWorktree(root);
     if (linked !== undefined) {

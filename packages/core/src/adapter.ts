@@ -361,6 +361,15 @@ export interface HarnessAdapter {
   ): ProjectIntegration;
   /** Project MCP options this adapter can encode without dropping policy. */
   projectMcpOptions?: { startupTimeoutMs?: true };
+  /**
+   * A project MCP file this harness reads natively and shares with other
+   * harnesses, and the list setting that keeps a named server in it from
+   * starting under this harness. When another configured target writes a
+   * server there that this target did not, because `components.targets`
+   * left it out, core writes those names to `disable` (ADR-0033). Declared
+   * only from captured evidence on both the file and the setting.
+   */
+  sharedProjectMcp?: { file: string; disable: { path: string; key: readonly string[] } };
 
   /** Per-harness version metadata; see {@link HarnessMetadata}. */
   readonly harness: HarnessMetadata;
