@@ -1,7 +1,7 @@
 # Combined Agent Plugins example
 
 One Agent Plugins 1.0 package supplies a skill, a bundled stdio MCP server, and
-portable hooks to Claude Code, Codex, both OpenCode families, and Pi 1.x, where a
+portable hooks to Claude Code, Codex, GitHub Copilot CLI, both OpenCode families, and Pi 1.x, where a
 generated extension registers the MCP server with Pi's native MCP client.
 
 From the repository root:
@@ -21,6 +21,10 @@ Follow the [packaging tutorial](../../docs/tutorials/04-packaging-with-agent-plu
 for both marketplace manifests, installation, updates, verification, hookless packages,
 and the optional Claude runtime-package variation. OpenCode v2 is `opencode`;
 the explicit `legacy` target produces v1 output in `dist/opencode-v1`.
+
+For Copilot, load the built package for one session with
+`copilot --plugin-dir ./dist/copilot`, or install it through a marketplace; see
+[Copilot installation](../../docs/installing-artifacts.md#github-copilot-cli).
 
 For Pi, run `pi install -l` with the absolute path to the built `dist/pi`
 package from the project where you want to use it, then follow Pi's activation prompts. The package

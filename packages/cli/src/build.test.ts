@@ -1166,8 +1166,8 @@ ${run.stderr}`,
       expect(code, out()).toBe(0);
 
       const report = JSON.parse(out());
-      expect(report.components.targets).toEqual(["claude", "codex", "opencode", "legacy", "pi"]);
-      for (const id of ["claude", "codex", "opencode", "legacy", "pi"]) {
+      expect(report.components.targets).toEqual(["claude", "codex", "copilot", "opencode", "legacy", "pi"]);
+      for (const id of ["claude", "codex", "copilot", "opencode", "legacy", "pi"]) {
         expect(report.targets[id].projection, id).toMatchObject({ status: "success" });
       }
 
@@ -1232,8 +1232,19 @@ ${run.stderr}`,
       // ${PLUGIN_ROOT}: shipping the argv without the file is a server that
       // cannot start, reported emitted.
       expect(existsSync(join(dir, "dist/opencode/package/src/greet-mcp.mjs"))).toBe(true);
+      // Copilot reads Agent Plugins 1.0 natively: the portable manifest, skills
+      // and mcp.json ship as authored, with hooks under its client extension.
+      for (const path of ["plugin.json", "mcp.json", "skills/greet/SKILL.md", "bundled/greet-mcp.mjs"]) {
+        expect(existsSync(join(dir, "dist/copilot", path)), path).toBe(true);
+      }
+      expect(await readFile(join(dir, "dist/copilot/com.github.copilot/hooks/hooks.json"), "utf8")).toContain(
+        "runtime/hooknostic.mjs",
+      );
+      expect(await readFile(join(dir, "dist/copilot/runtime/hooknostic.mjs"), "utf8")).toContain(
+        "Hooknostic marketplace probe blocked.",
+      );
 
-      for (const id of ["claude", "codex", "opencode", "legacy"]) {
+      for (const id of ["claude", "codex", "copilot", "opencode", "legacy"]) {
         expect(report.targets[id].projection.omissions, id).toEqual([]);
       }
     },

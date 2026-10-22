@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "hooks": {
+    "preToolUse": [
+      {
+        "type": "command",
+        "exec": "node",
+        "args": [
+          "${PLUGIN_ROOT}/runtime/hooknostic.mjs",
+          "preToolUse"
+        ],
+        "timeoutSec": 11
+      }
+    ]
+  }
+}

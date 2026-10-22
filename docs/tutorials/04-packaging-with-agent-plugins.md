@@ -2,7 +2,7 @@
 
 **Example:** [`examples/agent-plugin`](../../examples/agent-plugin/) ·
 **You'll learn:** one Agent Plugins 1.0 package with hooks, skills, and a bundled MCP
-server, installed through Claude and Codex marketplaces or loaded by OpenCode.
+server, installed through Claude, Codex, and Copilot marketplaces or loaded by OpenCode.
 The same default configuration delivers hooks and skills to Pi with a named MCP omission.
 
 [Agent Plugins 1.0](https://agent-plugins.org/specification) standardizes the manifest,
@@ -33,6 +33,7 @@ examples/agent-plugin/
 └── dist/
     ├── claude/          # native Claude plugin
     ├── codex/           # native Codex plugin
+    ├── copilot/         # Agent Plugins package for GitHub Copilot CLI
     ├── opencode/        # OpenCode v2 package
     ├── opencode-v1/     # explicit legacy family
     └── pi/              # Pi hooks and skills; MCP omission accepted
@@ -145,7 +146,23 @@ The qualified name is required. The native Codex artifact combines its manifest,
 hook delivery uses `>=0.153 <1`; the older project reference alone does not verify
 marketplace behavior. Review normal harness trust prompts and restart the session.
 
-Both marketplace installations use cached copies. Building again does not update an
+### GitHub Copilot CLI
+
+Copilot reads Agent Plugins 1.0 natively, so `dist/copilot` keeps the portable
+`plugin.json`, `skills/` and `mcp.json`, and adds its hooks under
+`com.github.copilot/hooks/hooks.json`. Load it for one session:
+
+```sh
+copilot --plugin-dir ./dist/copilot
+```
+
+A local-path marketplace (`copilot plugin marketplace add`, then
+`copilot plugin install`) loads the package live from its directory; a
+git-hosted marketplace copies it. See
+[Copilot installation](../installing-artifacts.md#github-copilot-cli) for both
+routes and `copilot plugin update`.
+
+The Claude and Codex marketplace installations use cached copies. Building again does not update an
 installed copy automatically. These instructions register a local marketplace; publishing
 or submitting a listing to someone else's marketplace remains a separate author step.
 
