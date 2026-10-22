@@ -29,6 +29,7 @@ See [OpenCode families](opencode-families.md) for selecting v1 or v2 and keeping
 
 | Version | Date | Method | Evidence | Established |
 | --- | --- | --- | --- | --- |
+| 2.1.306 | 2026-10-21 | live-probe | `.capture/harness-playback/claude-tool-search-306.json` | Windows loopback playback initially advertises ToolSearch without the fixture MCP schema. Searching by the scripted tool's suffix exposes its full name and schema in the next model request; the projected-plugin and fixture MCP calls then execute. Processed model-request evidence only, not a hook-payload shape change. |
 | 2.1.238 | 2026-10-21 | live-probe | `.capture/copilot/README.md` | A root .mcp.json shared with GitHub Copilot CLI: an entry with cwd ran in the project with the key ignored, disabledMcpjsonServers in .claude/settings.json kept the named server from starting, and .github/copilot/settings.json was ignored (claude-mcp-fence-probe.mjs). |
 | 2.1.306 | 2026-10-21 | live-probe | `.capture/copilot/README.md` | The same shared root .mcp.json behavior on the current build: cwd accepted and ignored, disabledMcpjsonServers honoured, Copilot's settings file ignored (claude-mcp-fence-probe.mjs). |
 | 2.1.238 | 2026-10-21 | live-probe | `.capture/copilot/README.md` | Project hook entries with a non-numeric timeoutSec (the key that makes GitHub Copilot CLI drop the file's hooks): Claude ignored the key, ran the SessionStart entry, and applied the same settings file's env (claude-tolerance-probe.mjs). |

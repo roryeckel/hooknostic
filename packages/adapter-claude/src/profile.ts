@@ -13,6 +13,13 @@ export const claudeCapabilityProfiles: CapabilityProfile[] = [
       date: "2026-08-29",
       validatedOn: [
         {
+          version: "2.1.306",
+          date: "2026-10-21",
+          method: "live-probe",
+          artifact: ".capture/harness-playback/claude-tool-search-306.json",
+          what: "Windows loopback playback initially advertises ToolSearch without the fixture MCP schema. Searching by the scripted tool's suffix exposes its full name and schema in the next model request; the projected-plugin and fixture MCP calls then execute. Processed model-request evidence only, not a hook-payload shape change.",
+        },
+        {
           version: "2.1.238",
           date: "2026-10-21",
           method: "live-probe",

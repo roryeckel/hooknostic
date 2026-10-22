@@ -1,4 +1,5 @@
 import { execSync, spawn } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { access, mkdir, mkdtemp, readdir, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { createServer, type ServerResponse } from "node:http";
 import { createRequire } from "node:module";
@@ -272,15 +273,28 @@ describe("model playback auxiliary requests", () => {
   });
 });
 
-describe("model playback pending MCP servers", () => {
+// ToolSearch's schema and the post-search deferred tool come from the processed
+// request capture in .capture/harness-playback/claude-tool-search-306.json.
+const TOOL_SEARCH = (
+  JSON.parse(
+    readFileSync(new URL("../../../.capture/harness-playback/claude-tool-search-306.json", import.meta.url), "utf8"),
+  ) as { discoveryTool: { name: string; input_schema: unknown } }
+).discoveryTool;
+const WAIT_FOR_MCP = {
+  name: "WaitForMcpServers",
+  input_schema: { type: "object", properties: { servers: { type: "array", items: { type: "string" } } } },
+};
+
+describe.each([WAIT_FOR_MCP, TOOL_SEARCH])("model playback tool discovery: $name", (discoveryTool) => {
   const BUILT_IN = [
     { name: "Bash", input_schema: { type: "object", properties: { command: { type: "string" } } } },
-    {
-      name: "WaitForMcpServers",
-      input_schema: { type: "object", properties: { servers: { type: "array", items: { type: "string" } } } },
-    },
+    discoveryTool,
   ];
-  const ECHO = { name: "mcp__plugin_probe_projection__projection_echo", input_schema: { type: "object" } };
+  const ECHO = {
+    name: "mcp__plugin_probe_projection__projection_echo",
+    input_schema: { type: "object" },
+    ...(discoveryTool.name === "ToolSearch" ? { defer_loading: true } : {}),
+  };
   const SCRIPT = [
     { kind: "tool", toolName: "projection_echo" },
     { kind: "text", text: "projection complete" },
@@ -293,15 +307,16 @@ describe("model playback pending MCP servers", () => {
     }).then(async (response) => ({ status: response.status, text: await response.text() }));
   const toolUse = (text: string) => /"type":"tool_use","id":"([^"]+)","name":"([^"]+)"/.exec(text)?.slice(1, 3);
 
-  it("waits for a connecting server without spending the step that names its tool", async () => {
+  it("discovers a missing tool without spending the step that names it", async () => {
     const server = await startModelPlayback("anthropic-messages", "rewrite", [...SCRIPT]);
     try {
-      // The stdio server has not connected: its tool is absent, the wait tool is offered.
+      // The tool is absent, but the harness offers a discovery mechanism.
       const early = await post(server, BUILT_IN);
       expect(early.status).toBe(200);
       const wait = toolUse(early.text);
-      expect(wait?.[1]).toBe("WaitForMcpServers");
-      expect(early.text).toContain('"partial_json":"{}"');
+      expect(wait?.[1]).toBe(discoveryTool.name);
+      const args = discoveryTool.name === "ToolSearch" ? { query: "projection_echo", max_results: 5 } : {};
+      expect(early.text).toContain(`"partial_json":${JSON.stringify(JSON.stringify(args))}`);
       expect(server.turnCount).toBe(0);
 
       const ready = await post(server, [...BUILT_IN, ECHO]);
@@ -322,8 +337,8 @@ describe("model playback pending MCP servers", () => {
   it("reports the tool missing once the waits for one step are spent", async () => {
     const server = await startModelPlayback("anthropic-messages", "rewrite", [...SCRIPT]);
     try {
-      expect(toolUse((await post(server, BUILT_IN)).text)?.[1]).toBe("WaitForMcpServers");
-      expect(toolUse((await post(server, BUILT_IN)).text)?.[1]).toBe("WaitForMcpServers");
+      expect(toolUse((await post(server, BUILT_IN)).text)?.[1]).toBe(discoveryTool.name);
+      expect(toolUse((await post(server, BUILT_IN)).text)?.[1]).toBe(discoveryTool.name);
       expect(server.errors).toEqual([]);
       const spent = await post(server, BUILT_IN);
       expect(spent.status).toBe(500);
@@ -361,12 +376,41 @@ describe("model playback pending MCP servers", () => {
         calls.push(toolUse((await post(server, tools)).text));
       }
       calls.push(toolUse((await post(server, [...BUILT_IN, ECHO, LATE])).text));
-      const WAIT = "WaitForMcpServers";
+      const WAIT = discoveryTool.name;
       expect(calls.map((call) => call?.[1])).toEqual([WAIT, WAIT, ECHO.name, WAIT, WAIT, LATE.name]);
       // The harness pairs each result with its call by id, so none may repeat.
       expect(new Set(calls.map((call) => call?.[0])).size).toBe(calls.length);
       expect(server.turnCount).toBe(2);
       expect(server.errors).toEqual([]);
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("calls an already advertised tool without discovery", async () => {
+    const server = await startModelPlayback("anthropic-messages", "rewrite", [...SCRIPT]);
+    try {
+      expect(toolUse((await post(server, [...BUILT_IN, ECHO])).text)?.[1]).toBe(ECHO.name);
+      expect(server.turnCount).toBe(1);
+      expect((await post(server, BUILT_IN)).text).toContain("projection complete");
+      expect(server.errors).toEqual([]);
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("shares the discovery budget across mechanisms and auxiliary requests", async () => {
+    const server = await startModelPlayback("anthropic-messages", "rewrite", [...SCRIPT]);
+    try {
+      expect(toolUse((await post(server, [WAIT_FOR_MCP])).text)?.[1]).toBe(WAIT_FOR_MCP.name);
+      expect((await post(server, [])).text).toContain("projection complete");
+      expect(server.turnCount).toBe(0);
+      // Search is preferred when both mechanisms are advertised.
+      expect(toolUse((await post(server, [WAIT_FOR_MCP, TOOL_SEARCH])).text)?.[1]).toBe(TOOL_SEARCH.name);
+      expect((await post(server, [])).status).toBe(200);
+      expect((await post(server, BUILT_IN)).status).toBe(500);
+      expect(server.errors).toHaveLength(1);
+      expect(server.turnCount).toBe(1);
     } finally {
       await server.close();
     }

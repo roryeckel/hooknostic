@@ -53,7 +53,7 @@ export interface ModelPlayback {
   urls: string[];
   /**
    * How many agent turns (model requests carrying tools) have been served. A
-   * request answered by waiting for a connecting MCP server is not one.
+   * request answered by discovering a tool or waiting for its server is not one.
    */
   readonly turnCount: number;
   close(): Promise<void>;
@@ -734,21 +734,24 @@ function namedTool(tools: Record<string, unknown>[], name: string): Record<strin
  * their tools (.capture/harness-playback).
  */
 const PENDING_SERVERS_TOOL = "WaitForMcpServers";
-/** Waits one script step gets before its missing tool is reported as missing. */
-const PENDING_SERVER_WAITS = 2;
+/** Discovery calls one script step gets before its tool is reported missing. */
+const TOOL_DISCOVERY_ATTEMPTS = 2;
 
 /**
- * True when a step names a tool the request does not list yet, and the request
- * offers the harness's own way to wait for it. A model would wait, so the
- * playback does: failing here would report a slow server as a missing tool.
+ * Use only a discovery tool the request actually offers. Claude 2.1.306's
+ * ToolSearch both waits for connecting servers and loads deferred schemas;
+ * the next request lists the requested tool (.capture/harness-playback).
+ * Older requests offer WaitForMcpServers instead. Both share one step budget.
  */
-function awaitsPendingServers(request: Record<string, unknown>, action: TurnAction): boolean {
-  if (action.kind !== "tool" || action.toolName === undefined) return false;
+function discoverMissingTool(request: Record<string, unknown>, action: TurnAction): TurnAction | undefined {
+  if (action.kind !== "tool" || action.toolName === undefined) return undefined;
   const tools = requestTools(request);
-  return (
-    namedTool(tools, action.toolName) === undefined &&
-    tools.some((candidate) => toolName(candidate) === PENDING_SERVERS_TOOL)
-  );
+  if (namedTool(tools, action.toolName) !== undefined) return undefined;
+  if (tools.some((candidate) => toolName(candidate) === "ToolSearch"))
+    return { kind: "tool", toolName: "ToolSearch", arguments: { query: action.toolName, max_results: 5 } };
+  if (tools.some((candidate) => toolName(candidate) === PENDING_SERVERS_TOOL))
+    return { kind: "tool", toolName: PENDING_SERVERS_TOOL, arguments: {} };
+  return undefined;
 }
 
 export function scriptedTool(
@@ -1241,8 +1244,8 @@ export async function startModelPlayback(
   const errors: string[] = [];
   const urls: string[] = [];
   let turn = 0;
-  let waits = 0;
-  let stepWaits = 0;
+  let discoveries = 0;
+  let stepDiscoveries = 0;
   const sockets = new Set<Socket>();
   const server = createServer((request, response) => {
     const chunks: Buffer[] = [];
@@ -1284,23 +1287,24 @@ export async function startModelPlayback(
         // a harness that re-prompts (stop prevention) or retries gets a
         // defined response, never a 500.
         const scripted = isAgentTurn ? (turns[Math.min(turn, turns.length) - 1] ?? auxiliaryAction) : auxiliaryAction;
-        // A step whose tool belongs to a server still connecting waits for it
-        // and stays the next step: the wait is a turn to the harness, not to
-        // the script. Bounded, so a server that never connects is reported.
-        const waiting = isAgentTurn && stepWaits < PENDING_SERVER_WAITS && awaitsPendingServers(parsed, scripted);
-        if (waiting) {
+        // Discovery is a turn to the harness, not to the script. Keep the
+        // named call pending, with a bounded budget even if discovery tools
+        // change between requests. Auxiliary requests do not reset the budget.
+        const discovery =
+          isAgentTurn && stepDiscoveries < TOOL_DISCOVERY_ATTEMPTS ? discoverMissingTool(parsed, scripted) : undefined;
+        if (discovery !== undefined) {
           turn -= 1;
-          stepWaits += 1;
-          waits += 1;
+          stepDiscoveries += 1;
+          discoveries += 1;
         } else if (isAgentTurn) {
-          stepWaits = 0;
+          stepDiscoveries = 0;
         }
-        const action: TurnAction = waiting ? { kind: "tool", toolName: PENDING_SERVERS_TOOL, arguments: {} } : scripted;
+        const action = discovery ?? scripted;
         if (action.kind === "code" && protocol !== "openai-responses") {
           throw new Error(`Code Mode turns are only scripted for openai-responses, not ${protocol}`);
         }
-        // Counts the waits too, so no two calls of a session share an id.
-        const ordinal = turn + waits;
+        // Counts discovery too, so no two calls of a session share an id.
+        const ordinal = turn + discoveries;
         if (protocol === "anthropic-messages") {
           anthropicTurn(response, parsed, ordinal, action);
         } else if (protocol === "openai-responses") {
