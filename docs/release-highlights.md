@@ -1,6 +1,6 @@
 # GitHub Copilot CLI, and harnesses that read each other's files
 
-0.9.0 adds GitHub Copilot CLI as the sixth target. Package delivery emits an
+0.9.0 adds GitHub Copilot CLI as the fifth target. Package delivery emits an
 Agent Plugins 1.0 package that Copilot loads natively, and project delivery
 writes `.github/hooks`, `.agents/skills` and the root `.mcp.json`. Copilot also
 reads Claude Code's hooks, skills and MCP file. This release makes each harness
@@ -38,8 +38,9 @@ their evidence.
   servers in the other harness's native disable setting. Names you added to
   that setting yourself are kept.
 - `tool.mcp` is never set on Copilot. It names an MCP tool
-  `<server>-<tool>`, either part may contain hyphens, and no hook payload
-  states the split. Guard MCP calls on `kind: "mcp"` and `nativeName`
+  `<server>-<tool>` on tool events and `<server>/<tool>` on a permission
+  request. Either part may contain hyphens, and no hook payload states the
+  split. Guard MCP calls on `kind: "mcp"` and `nativeName`
   ([ADR-0032](decisions/0032-stated-mcp-identity.md)).
 - The harness playback suite drives Copilot against a loopback model server
   on Windows and Linux, with no credentials and no spend. Claude Code's
@@ -72,10 +73,13 @@ their evidence.
 - `prompt.before.context.add` is emulated by appending to the prompt.
   Preventing a subagent stop has no observed loop guard. Compaction is a
   notice only, and there is no `model.request` or `turn.stop.notify` channel.
-- Copilot expands `${PLUGIN_ROOT}`, `${PLUGIN_DATA}` and ambient `${NAME}`
-  references in MCP declarations that Agent Plugins 1.0 keeps literal. This
-  is reported as the `copilot:mcp-environment-expansion` deviation (HN106),
-  which warns by default.
+- Copilot expands placeholder text that Agent Plugins 1.0 requires to stay
+  literal: ambient `${NAME}`, `${NAME:-fallback}` and bare `$NAME`
+  references, and `${PLUGIN_ROOT}` or `${PLUGIN_DATA}` in a stdio command or
+  in their bare and fallback spellings. Each such use is reported as the
+  `copilot:mcp-environment-expansion` deviation (HN106), which warns by
+  default. The exact aliases in stdio `args`, `env` and `cwd` conform and are
+  not reported.
 - A git-hosted marketplace install is a copy, so a rebuilt package reaches
   Copilot only after `copilot plugin update`. No install route runs a
   dependency install, so bundle a package's Node dependencies.
