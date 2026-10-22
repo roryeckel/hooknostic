@@ -5834,8 +5834,8 @@ await runCopilotCommandShim(() => Promise.resolve().then(() => (init_hooks(), ho
 /*!
 Bundled package notices
 
-@hooknostic/adapter-copilot@0.8.0
-@hooknostic/runtime@0.8.0
+@hooknostic/adapter-copilot@0.9.0
+@hooknostic/runtime@0.9.0
 LICENSE
 Apache License
                            Version 2.0, January 2004
@@ -6043,8 +6043,8 @@ Apache License
 /*!
 Bundled package notices
 
-@hooknostic/sdk@0.8.0
-hooknostic@0.8.0
+@hooknostic/sdk@0.9.0
+hooknostic@0.9.0
 LICENSE
 Apache License
                            Version 2.0, January 2004

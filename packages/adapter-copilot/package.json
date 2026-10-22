@@ -1,6 +1,6 @@
 {
   "name": "@hooknostic/adapter-copilot",
-  "version": "0.8.0",
+  "version": "0.9.0",
   "private": true,
   "description": "Hooknostic adapter for the GitHub Copilot CLI",
   "type": "module",
