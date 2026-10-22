@@ -109,7 +109,7 @@ export function copilotShimEntrySource(options: {
 export function copilotAdapter(): HarnessAdapter {
   return {
     id: "copilot",
-    adapterVersion: "0.8.0", // kept equal to package.json by versions.test.ts
+    adapterVersion: "0.9.0", // kept equal to package.json by versions.test.ts
     harness: copilotHarness,
     projectPaths: [".github/hooks", ".mcp.json", ".github/mcp.json", ".github/copilot/settings.json", ".agents/skills"],
     // Copilot reads only the root .mcp.json when it exists, and a repository's
