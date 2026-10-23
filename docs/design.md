@@ -203,6 +203,7 @@ interface BaseHookEvent {
     turnId?: string;
     toolCallId?: string;
     agentId?: string;
+    agentType?: string; // the agent the event ran in, as the harness names it (ADR-0035)
     parentAgentId?: string;
   };
 
@@ -414,6 +415,25 @@ hook("session.start", {
 ```
 
 Intentional scoping is not a portability failure and emits no warnings.
+
+A hook on a tool event, `agent.start` or `agent.stop` can also be scoped to the agents
+it runs in ([ADR-0035](decisions/0035-agent-scoped-hooks.md), proposed):
+
+```ts
+hook("tool.before", {
+  id: "reviewer-read-only",
+  agents: { include: ["reviewer"] },
+  match: { kind: ["shell", "file.write", "file.edit"] },
+  capabilities: { block: "required" },
+  run: () => block("the reviewer does not change files"),
+});
+```
+
+Names compare against `event.correlation.agentType` as the harness reports it. An
+agent scope is a dispatch-time filter like `targets`. Unlike a target scope, it relies
+on the harness: the hook requires its event's `agent.identity` capability, and a target
+that cannot say which agent an event ran in fails the build rather than silently
+never running the hook.
 
 ### 7.7 Capability analysis algorithm
 
@@ -898,6 +918,33 @@ the model as written (ADR-0028), is an HN101 degradation: fatal by default, and 
 under `onDegraded: "warn"`. Any deviation or degradation id listed in `components.accept`
 ships whatever the policy says, and is still reported, as information (ADR-0022).
 
+Agent definitions ([ADR-0034](decisions/0034-portable-agents.md), proposed) are
+Hooknostic input beside the package, as hook source is, not package content: Agent
+Plugins 1.0 has no agents component. `components.agents` names directories of
+[Hooknostic Agent Definition 0.1](spec/agents/0.1.md) files, parsed into one
+`AgentDefinition` model that each projector translates into its native package: a
+Claude or Copilot plugin's `agents/`, or an agent registered by the generated
+OpenCode module. A Codex plugin has no route. Their component ids share the
+profiles, levels and shortfall classes above: `agents.definition` for every
+definition, `agents.primary` for each one whose `mode` lets a session run as it
+(unsupported on Codex, which has no such agents; exact on Claude and Copilot,
+which also offer a `primary` definition for delegation), `agents.native` for
+native-field translation, and `agents.default` for `components.defaultAgent`, the
+agent every session of a project starts as, which no package target takes. A target's `agents: { include?, exclude? }`
+selects which definitions it receives; a deselected one is never counted there. A
+definitions directory inside the package root is excluded from its inventory.
+An adapter may validate native agent input before projection through
+`agents.validateNative`; native schema errors are HN503 authoring errors even
+under warning policies. Effective-field checks are separate: a loader may parse
+a field without applying it. Such requests retain their authored data and report
+declared conditional degradations. The profile states live, schema-derived and
+source-derived coverage separately; emitting a field alone proves no behavior.
+The fixed-default route resolves independently of named definitions. Pi project
+delivery emulates only a selected default's instructions through owned
+`.pi/APPEND_SYSTEM.md`; a `primary` default counts only as `agents.default`, while
+an `all` default still reports unsupported delegation through `agents.definition`.
+Every other selected definition remains a named omission. Pi's named agents,
+native agent fields, delegation and agent-scoped hooks remain unsupported.
 A skill's optional `metadata["hooknostic/allow-implicit-invocation"]` accepts only
 the strings `"true"` and `"false"`. It normalizes to `SkillPolicy.allowImplicitInvocation`
 on both source records and introduces the separate component capability

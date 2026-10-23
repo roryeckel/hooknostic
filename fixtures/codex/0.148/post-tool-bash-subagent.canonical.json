@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 1,
+  "harness": {
+    "id": "codex",
+    "nativeEvent": "PostToolUse"
+  },
+  "session": {
+    "id": "01a0eea8-de61-7c23-897f-1595fcddfe96",
+    "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-agents-74z6Ku\\codex"
+  },
+  "correlation": {
+    "turnId": "01a0eea8-e197-7610-8381-502ebc730e40",
+    "toolCallId": "call_playback",
+    "agentId": "01a0eea8-e146-7193-b947-5065e533d9f0",
+    "agentType": "hn-probe"
+  },
+  "event": "tool.after",
+  "tool": {
+    "kind": "shell",
+    "nativeName": "Bash",
+    "input": {
+      "command": "node -e \"require('node:fs').writeFileSync('hn-child-write.txt','hooknostic-original')\""
+    },
+    "shell": {
+      "command": "node -e \"require('node:fs').writeFileSync('hn-child-write.txt','hooknostic-original')\"",
+      "commandKey": "command"
+    }
+  },
+  "output": ""
+}

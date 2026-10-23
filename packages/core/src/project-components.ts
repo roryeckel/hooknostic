@@ -3,6 +3,7 @@ import { realpath } from "node:fs/promises";
 import { resolve } from "node:path";
 
 import {
+  type AgentDefinition,
   type AgentPluginDegradation,
   type AgentPluginMcpServer,
   type ProjectComponents,
@@ -15,6 +16,29 @@ import {
 import { bundleMcpLauncher, MCP_LAUNCHER_FILE, MCP_SERVERS_FILE, type McpLauncherServer } from "./mcp-launcher.js";
 import { portableRelative } from "./portable-path.js";
 import type { ProjectIntegration } from "./project-files.js";
+
+/**
+ * One owned file per agent definition under `destination`, plus a `.gitattributes`
+ * naming exactly those files. Ownership compares bytes, so git must never
+ * rewrite their line endings. Naming files rather than `**` leaves an author's
+ * own agents in the same directory alone. Rendering is the adapter's; this only
+ * places what it returns.
+ */
+export function projectAgentFiles(
+  agents: readonly AgentDefinition[],
+  destination: string,
+  render: (agent: AgentDefinition) => { file: string; contents: string },
+): ProjectIntegration {
+  if (agents.length === 0) return { files: [], entries: [], guidance: [] };
+  const rendered = agents.map(render);
+  const files = rendered.map(({ file, contents }) => ({ path: `${destination}/${file}`, contents, mode: 0o644 }));
+  files.push({
+    path: `${destination}/.gitattributes`,
+    contents: [".gitattributes", ...rendered.map(({ file }) => file)].map((file) => `${file} -text\n`).join(""),
+    mode: 0o644,
+  });
+  return { files, entries: [], guidance: [] };
+}
 /**
  * Copy each skill into the project's `destination` tree, writing the target's
  * form of `${SKILL_DIR}` into its SKILL.md body (ADR-0028). A skill that

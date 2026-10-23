@@ -10,7 +10,8 @@
     "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\tmp.Ug84NfF0Hn\\project"
   },
   "correlation": {
-    "toolCallId": "call_probe_1"
+    "toolCallId": "call_probe_1",
+    "agentType": "build"
   },
   "event": "tool.after",
   "tool": {

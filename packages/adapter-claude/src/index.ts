@@ -19,7 +19,7 @@ import { decodeClaude } from "./decode.js";
 import { claudeHookRuntimePath, generateClaudeArtifacts } from "./generate.js";
 import { claudeHarness } from "./harness.js";
 import { claudeCapabilityProfiles } from "./profile.js";
-import { projectComponentProfiles, projectComponents, projectIntegration } from "./project.js";
+import { claudeAgents, projectComponentProfiles, projectComponents, projectIntegration } from "./project.js";
 import { claudeAgentPluginProjector } from "./project-agent-plugin.js";
 import { claudeSkillPolicy } from "./skill-policy.js";
 import {
@@ -98,7 +98,7 @@ export function claudeAdapter(): HarnessAdapter {
     id: "claude",
     adapterVersion: "0.9.0", // kept equal to package.json by versions.test.ts
     harness: claudeHarness,
-    projectPaths: [".claude/settings.json", ".claude/skills", ".mcp.json"],
+    projectPaths: [".claude/settings.json", ".claude/skills", ".claude/agents", ".mcp.json"],
     // disabledMcpjsonServers in .claude/settings.json keeps a named root
     // .mcp.json server from starting, and GitHub Copilot CLI ignores the key
     // although it reads the file (2.1.238 and 2.1.306,
@@ -110,6 +110,7 @@ export function claudeAdapter(): HarnessAdapter {
     projectIntegration,
     projectComponents,
     projectComponentProfiles,
+    agents: claudeAgents,
     skillInvocationPolicy: { destination: ".claude/skills", projectFiles: claudeSkillPolicy },
     agentPluginProjector: claudeAgentPluginProjector,
     // Claude spawns `node <artifact>` per hook event.

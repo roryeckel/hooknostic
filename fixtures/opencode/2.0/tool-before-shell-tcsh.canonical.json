@@ -10,7 +10,8 @@
     "cwd": "/tmp/hkn-shell-dialect-j1GSaz/project"
   },
   "correlation": {
-    "toolCallId": "call_playback"
+    "toolCallId": "call_playback",
+    "agentType": "build"
   },
   "event": "tool.before",
   "tool": {

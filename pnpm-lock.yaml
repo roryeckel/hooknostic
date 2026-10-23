@@ -188,6 +188,9 @@ catalogs:
     '@xterm/headless':
       specifier: ^6.0.0
       version: 6.0.0
+    ajv:
+      specifier: ^6.15.0
+      version: 6.15.0
     cross-spawn:
       specifier: ^7.0.6
       version: 7.0.6
@@ -360,10 +363,19 @@ importers:
       '@hooknostic/sdk':
         specifier: workspace:*
         version: link:../sdk
+      ajv:
+        specifier: 'catalog:'
+        version: 6.15.0
+      semver:
+        specifier: catalog:semver-runtime
+        version: 7.8.5
     devDependencies:
       '@hooknostic/testkit':
         specifier: workspace:*
         version: link:../testkit
+      '@types/semver':
+        specifier: 'catalog:'
+        version: 7.8.0
 
   packages/adapter-copilot:
     dependencies:
@@ -553,6 +565,9 @@ importers:
 
   packages/testkit:
     dependencies:
+      '@hooknostic/agent-plugin':
+        specifier: workspace:*
+        version: link:../agent-plugin
       '@hooknostic/core':
         specifier: workspace:*
         version: link:../core

@@ -1,0 +1,11 @@
+{
+  "session_id": "01a0eea8-de61-7c23-897f-1595fcddfe96",
+  "turn_id": "01a0eea8-e197-7610-8381-502ebc730e40",
+  "transcript_path": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-agents-74z6Ku\\codex-home\\sessions\\2026\\09\\29\\rollout-2026-09-29T14-34-00-01a0eea8-e146-7193-b947-5065e533d9f0.jsonl",
+  "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-agents-74z6Ku\\codex",
+  "hook_event_name": "SubagentStart",
+  "model": "hooknostic-playback-alt",
+  "permission_mode": "bypassPermissions",
+  "agent_id": "01a0eea8-e146-7193-b947-5065e533d9f0",
+  "agent_type": "hn-probe"
+}

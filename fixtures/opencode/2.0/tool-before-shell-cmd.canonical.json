@@ -10,7 +10,8 @@
     "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-shell-dialect-x8sB6Y\\project"
   },
   "correlation": {
-    "toolCallId": "call_playback"
+    "toolCallId": "call_playback",
+    "agentType": "build"
   },
   "event": "tool.before",
   "tool": {

@@ -1,11 +1,27 @@
 import { realpath } from "node:fs/promises";
 
-import type { AgentPluginProjectionProfile } from "@hooknostic/agent-plugin";
+import type {
+  AgentDefinition,
+  AgentPluginComponentSupport,
+  AgentPluginDegradation,
+  AgentPluginProjectionProfile,
+} from "@hooknostic/agent-plugin";
 import type { ProjectComponents } from "@hooknostic/agent-plugin";
-import { RELATIVE_SKILL_TEXT, skillInvocationPolicyProfiles } from "@hooknostic/agent-plugin";
-import type { GeneratedArtifact, ProjectComponentOptions, ProjectIntegration } from "@hooknostic/core";
-import { portableRelative, projectMcpLauncher, projectSkillFiles, REMOTE_ENVIRONMENT_SOURCE } from "@hooknostic/core";
+import {
+  RELATIVE_SKILL_TEXT,
+  renderMarkdownFrontmatter,
+  skillInvocationPolicyProfiles,
+} from "@hooknostic/agent-plugin";
+import type { GeneratedArtifact, HarnessAdapter, ProjectComponentOptions, ProjectIntegration } from "@hooknostic/core";
+import {
+  portableRelative,
+  projectAgentFiles,
+  projectMcpLauncher,
+  projectSkillFiles,
+  REMOTE_ENVIRONMENT_SOURCE,
+} from "@hooknostic/core";
 
+import { AGENT_STEP_LIMIT_IGNORED, stepLimitDegradations } from "./agent-native.js";
 import { opencodeHarness } from "./harness.js";
 import { RUNTIME_LAUNCHER, RUNTIME_PLUGIN_ROOT, translateMcp } from "./project-agent-plugin.js";
 import {
@@ -47,13 +63,70 @@ export const projectIntegration = projectIntegrationWith(
   (importPath) => `export { default } from ${JSON.stringify(importPath)};\n`,
 );
 
+export const opencodeAgents: NonNullable<HarnessAdapter["agents"]> = {
+  projectDirectory: ".opencode/agents",
+  // The file name is the identity, so `name` has nothing to say and v1 would
+  // pass it to the provider as a model option. `prompt` (v1) and `system` (v2)
+  // are the instructions, and `mode` is the portable field's (ADR-0034).
+  reservedNativeKeys: ["name", "description", "mode", "prompt", "system"],
+};
+
+/**
+ * `.opencode/agents/<name>.md` for both families: the file name is the agent,
+ * the definition's `mode` is always written -- OpenCode's own default is not
+ * `subagent`: v2 makes an agent primary, which its subagent tool cannot select
+ * -- and the instructions are the body, which replaces the provider's base
+ * prompt (`.capture/agents`).
+ */
+export function renderOpenCodeAgent(agent: AgentDefinition): { file: string; contents: string } {
+  const native = Object.entries(agent.native["opencode"] ?? {}).filter(
+    ([key]) => !opencodeAgents.reservedNativeKeys.includes(key),
+  );
+  return {
+    file: `${agent.name}.md`,
+    contents: renderMarkdownFrontmatter(
+      { description: agent.description, mode: agent.mode, ...Object.fromEntries(native) },
+      agent.instructions,
+    ),
+  };
+}
+
+/**
+ * OpenCode 2.0.17 runs a session started as the agent on the configured
+ * `model`, not on the agent's own, which applies only when it runs as a
+ * subagent (`.capture/agents`). Only the v2 project cell declares this.
+ */
+export const PRIMARY_AGENT_MODEL_IGNORED = "primary-agent-model-ignored";
+
+/** The degradation for each primary-capable definition with a native model, where the cell declares it. */
+export function primaryModelDegradations(
+  agents: readonly AgentDefinition[],
+  cell: AgentPluginComponentSupport | undefined,
+): AgentPluginDegradation[] {
+  if (!(cell?.degradations ?? []).some((item) => item.id === PRIMARY_AGENT_MODEL_IGNORED)) return [];
+  return agents
+    .filter(
+      (agent) =>
+        agent.mode !== "subagent" &&
+        agent.native["opencode"]?.["model"] !== undefined &&
+        agent.native["opencode"]?.["disabled"] !== true,
+    )
+    .map((agent) => ({
+      id: PRIMARY_AGENT_MODEL_IGNORED,
+      component: "agents.native",
+      name: agent.name,
+      path: agent.source,
+      reason: `agent ${JSON.stringify(agent.name)} sets native.opencode.model, which OpenCode ignores for a session run as the agent; it applies when the agent runs as a subagent.`,
+    }));
+}
+
 export async function projectComponents(
   source: ProjectComponents,
   root: string,
   output: string,
   _config: string,
   options: ProjectComponentOptions,
-  emitMcp?: (body: string) => string,
+  emitMcp?: (body: string, options: { defaultAgent?: string }) => string,
 ): Promise<ProjectIntegration> {
   // OpenCode discovers .agents/skills natively. Copy the loader's filtered
   // inventory there instead of naming its unfiltered source directory through
@@ -62,6 +135,18 @@ export async function projectComponents(
     target: RELATIVE_SKILL_TEXT,
     harness: "OpenCode",
   });
+  const agents = projectAgentFiles(source.agents ?? [], opencodeAgents.projectDirectory, renderOpenCodeAgent);
+  result.files.push(...agents.files);
+  if (agents.files.length > 0)
+    result.guidance.push("OpenCode reads project agents from .opencode/agents; restart it after synchronization.");
+  const ignoredModels = primaryModelDegradations(source.agents ?? [], options.support?.["agents.native"]);
+  if (ignoredModels.length > 0) (result.degradations ??= []).push(...ignoredModels);
+  const ignoredSteps = stepLimitDegradations(source.agents ?? [], options.support?.["agents.native"]);
+  if (ignoredSteps.length > 0) (result.degradations ??= []).push(...ignoredSteps);
+  // The components module also carries the default agent: OpenCode's own
+  // default_agent, set from the project's plugin rather than written into a
+  // configuration file that may be spelled either way (`.capture/agents`
+  // inject-default, both families).
   const skillPolicies =
     options.invocationPolicies ??
     Object.fromEntries(
@@ -69,15 +154,17 @@ export async function projectComponents(
         skill.policy?.allowImplicitInvocation === undefined ? [] : [[skill.name, skill.policy.allowImplicitInvocation]],
       ),
     );
-  if (source.mcp || (!emitMcp && Object.keys(skillPolicies).length > 0)) {
+  if (source.mcp || source.defaultAgent !== undefined || (!emitMcp && Object.keys(skillPolicies).length > 0)) {
     // Between real paths, as the launcher's own offsets are: the module runs
     // from its physical location and the loaded source root is canonical, so a
     // project reached through a junction or symlink would otherwise anchor the
     // stdio cwd on a directory that does not exist. Across Windows drives or
     // UNC shares it is absolute, which the module's resolve() accepts as is.
-    const projectRoot = await realpath(root);
-    const launcher = await projectMcpLauncher(source, projectRoot, output);
-    result.files.push(...launcher.files);
+    const projectRoot = source.mcp === undefined ? root : await realpath(root);
+    if (source.mcp) {
+      const launcher = await projectMcpLauncher(source, projectRoot, output);
+      result.files.push(...launcher.files);
+    }
     const sourceRoot = portableRelative(projectRoot, source.mcp?.root ?? projectRoot);
     const translated = translateMcp(
       source.mcp ? { mcp: source.mcp.config } : {},
@@ -90,7 +177,7 @@ export async function projectComponents(
       return [name, { ...server, ...(timeout === undefined ? {} : { timeout }) }] as const;
     });
     const directEnvironmentResolution =
-      source.origin === "direct"
+      source.mcp && source.origin === "direct"
         ? `
 ${REMOTE_ENVIRONMENT_SOURCE}
 const resolveRemote = (name, server) => {
@@ -121,16 +208,27 @@ ${emitMcp ? "const configure = (config) => {" : "export default async () => ({ c
     Object.defineProperty(mcp, name, { value, enumerable: true, configurable: true, writable: true });
   }
   config.mcp = mcp;
+${source.defaultAgent === undefined ? "" : `  config.default_agent = ${JSON.stringify(source.defaultAgent)};\n`}
 ${emitMcp ? "" : skillPermissionSource(skillPolicies)}
 ${emitMcp ? "};" : "} });"}
 `;
     result.files.push({
       path: ".opencode/plugins/hooknostic-components.js",
-      contents: emitMcp ? emitMcp(module) : module,
+      contents: emitMcp
+        ? emitMcp(module, source.defaultAgent === undefined ? {} : { defaultAgent: source.defaultAgent })
+        : module,
     });
-    result.absent = declarations.flatMap(([name]) =>
-      ["opencode.json", "opencode.jsonc"].map((path) => ({ path, key: ["mcp", name] })),
-    );
+    // A project that names its own default keeps it: sync refuses instead.
+    result.absent = [
+      ...declarations.flatMap(([name]) =>
+        ["opencode.json", "opencode.jsonc"].map((path) => ({ path, key: ["mcp", name] })),
+      ),
+      ...(source.defaultAgent === undefined
+        ? []
+        : ["opencode.json", "opencode.jsonc"].map((path) => ({ path, key: ["default_agent"] }))),
+    ];
+    if (source.defaultAgent !== undefined)
+      result.guidance.push(`OpenCode sessions in this project now start as the ${source.defaultAgent} agent.`);
   }
   return result;
 }
@@ -164,10 +262,51 @@ const nativeProjectComponentProfiles: readonly AgentPluginProjectionProfile[] = 
         rationale:
           "Of OpenCode's three measured routes only a registry-installed package resolves a dependency closure, and it does so from its own npm manifest rather than from this component's. A project plugin is read from .opencode/plugins/ with no install step at all, so a manifest and lockfile written beside it would leave no node_modules. Bundle a Node component's dependencies, which works on every route.",
       },
+      "agents.definition": {
+        level: "exact",
+        rationale:
+          "Written to .opencode/agents/<name>.md with the definition's mode. As a subagent or all, the task tool's description offers it to the parent with its description, and the instructions replace the provider's base prompt; environment details are appended.",
+      },
+      "agents.default": {
+        level: "exact",
+        rationale:
+          "The project's components plugin sets default_agent from its config hook, and OpenCode starts every session in the project as that agent; sync refuses a project whose opencode.json or opencode.jsonc already names one.",
+      },
+      "agents.primary": {
+        level: "exact",
+        rationale:
+          "With mode: primary or all, opencode run --agent <name> and default_agent run the session as the agent, on its instructions in place of the provider prompt, its model and its permission rules; a primary agent is absent from the task tool, and OpenCode falls back to its default agent when told to run a subagent.",
+      },
+      "agents.native": {
+        level: "exact",
+        rationale:
+          "Native fields are written into frontmatter; model and permission have live behavioral coverage. The validated v1 task route ignores steps and maxSteps on project and package delivery; each requested cap is reported as a conditional degradation. Unknown provider-option fields retain v1's native passthrough semantics; carrying a field alone does not establish its effect.",
+        degradations: [
+          {
+            id: AGENT_STEP_LIMIT_IGNORED,
+            summary: "The validated OpenCode v1 task route does not enforce native steps or maxSteps on child agents.",
+            evidence: ".capture/agents",
+          },
+        ],
+      },
     },
     source: {
       date: "2026-09-11",
       validatedOn: [
+        {
+          version: opencodeHarness.referenceVersion,
+          date: "2026-10-17",
+          method: "live-probe",
+          artifact: ".capture/agents",
+          what: "Isolated-home generated project and package agents declaring steps:2 or maxSteps:2 each made four child model requests and returned the scripted result, matching uncapped controls. Both native spellings are ineffective on the v1 task route (.capture/agents/drive.mjs, evidence/opencode-v1-step-limits.json).",
+        },
+        {
+          version: "1.18.31",
+          date: "2026-10-17",
+          method: "live-probe",
+          artifact: ".capture/agents",
+          what: "Repeated both ignored step-cap spellings on generated project/package agents and uncapped controls: all six cases made four child requests and returned the scripted completion. No ambient personal settings or skills were loaded.",
+        },
         {
           version: "1.18.34",
           date: "2026-10-04",
@@ -181,6 +320,34 @@ const nativeProjectComponentProfiles: readonly AgentPluginProjectionProfile[] = 
           method: "live-probe",
           artifact: ".capture/skill-directory",
           what: 'Over the loopback model with isolated state, the skill tool loaded a project skill from .agents/skills and handed the model its body with every ${...} as written (${CLAUDE_SKILL_DIR}, ${CLAUDE_PLUGIN_ROOT}, ${CLAUDE_PLUGIN_DATA}, ${CLAUDE_SESSION_ID}, ${SKILL_DIR}, ${PLUGIN_ROOT}, ${PLUGIN_DATA}, ${HOME}), followed by "Base directory for this skill: <absolute path>" and "Relative paths in this skill (e.g., scripts/, reference/) are relative to this base directory."',
+        },
+        {
+          version: "1.18.31",
+          date: "2026-09-29",
+          method: "live-probe",
+          artifact: ".capture/agents",
+          what: "A project .opencode/agents file (and the legacy .opencode/agent directory) was offered to the parent through the task tool with its description; its body replaced the provider prompt, its model reached the child request, permission deny removed edit and bash from the child's tools, steps and maxSteps did not cap the child, and neither .claude/agents nor .agents/agents was read.",
+        },
+        {
+          version: "1.18.31",
+          date: "2026-09-29",
+          method: "live-probe",
+          artifact: ".capture/agents",
+          what: "With mode: primary or all, a project agent ran as the session through run --agent and through default_agent, on its body in place of the provider prompt, its model and its permission denies; primary agents were absent from the task tool and all agents present, and run --agent on a mode: subagent agent fell back to the default agent with a warning. A mode: primary definition synchronized by Hooknostic's project delivery ran as the session through run --agent, on its instructions and native model (packages/cli/test/agent-definition-playback.test.ts). With components.defaultAgent naming a synchronized mode: primary definition, a session started with no --agent ran as it (packages/cli/test/agent-definition-playback.test.ts, generated-default).",
+        },
+        {
+          version: "1.18.18",
+          date: "2026-09-29",
+          method: "live-probe",
+          artifact: ".capture/agents",
+          what: "At the reference build every mode behaved as on 1.18.31: primary and all agents ran as the session, only subagent and all agents were offered for delegation, a subagent fell back, and a synchronized mode: primary definition ran as the session.",
+        },
+        {
+          version: "1.18.18",
+          date: "2026-09-29",
+          method: "live-probe",
+          artifact: ".capture/agents",
+          what: "At the reference build, a project agent and a config-hook-injected one behaved as on 1.18.31, and a definition synchronized by Hooknostic's project delivery was offered through the task tool, delegated to, and ran on its instructions and native model (packages/cli/test/agent-definition-playback.test.ts).",
         },
         {
           version: "1.18.29",

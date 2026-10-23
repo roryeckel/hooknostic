@@ -30,6 +30,7 @@ import { codeModeReferenceVersion } from "../../../scripts/verify-code-mode.mjs"
 // @ts-expect-error Repository release tooling is plain JavaScript.
 import { requirePackageSupport } from "../../../scripts/verify-marketplaces.mjs";
 import { defaultAdapterRegistry } from "../src/registry.js";
+import { expectAgentScope } from "./agent-scope.js";
 import {
   buildPlaybackArtifact,
   expectOpenCodeShellDialect,
@@ -4327,6 +4328,18 @@ scenarioDrive(
     }
     return false;
   },
+);
+
+// --- agent-scope (subagent) ------------------------------------------------
+// ADR-0035, asserted in ./agent-scope.ts. The .capture/agents drive routes the
+// parent and the child to scripts of their own, which the single-script drives
+// above cannot, and builds the scoped hooks for the build it finds installed.
+scenarioDrive(
+  "agent-scope",
+  () => expectAgentScope(selected === "opencode" ? "opencode-v1" : selected),
+  // A lane with no agent identity claims has no scoped-agent contract to drive.
+  () =>
+    !SCENARIOS.find((scenario) => scenario.id === "agent-scope")!.covers.some((cell) => cellLevel(cell) !== undefined),
 );
 
 it("requestsWithoutMarker demands a system message, not merely a string in the body", () => {

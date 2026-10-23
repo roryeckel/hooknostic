@@ -47,6 +47,31 @@ const project = (pkg: AgentPluginPackage, hooks: { path: string; contents: strin
   piAgentPluginProjector.project(pkg, { target, hookArtifacts: hooks, support, onUnsupported: "warn" });
 
 describe("Agent Plugin to pi package projection", () => {
+  it("reports every unsupported agent component when warning policy permits the package", async () => {
+    const plan = await piAgentPluginProjector.project(source(), {
+      target,
+      hookArtifacts: [],
+      support,
+      onUnsupported: "warn",
+      agents: [
+        {
+          name: "reviewer",
+          description: "Reviews code",
+          instructions: "Review it.",
+          mode: "all",
+          native: { pi: {} },
+          source: "/portable/agents/reviewer.md",
+        },
+      ],
+      defaultAgent: "reviewer",
+    });
+    for (const component of ["agents.definition", "agents.primary", "agents.native", "agents.default"] as const) {
+      expect(support[component]?.level, component).toBe("unsupported");
+      expect(plan.summary.components[component], component).toEqual({ discovered: 1, emitted: 0, skipped: 1 });
+      expect(plan.summary.omissions).toContainEqual(expect.objectContaining({ component, reason: expect.any(String) }));
+    }
+  });
+
   it("declares accepted skills and hooks in one native manifest, preserving their files", async () => {
     const plan = await project(source(), [
       { path: "hooknostic.js", contents: "export default function () {}" },

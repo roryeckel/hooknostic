@@ -14,6 +14,12 @@ import { fileCodec, shellCodec } from "@hooknostic/sdk";
  * configurations and never serializes as a payload's `tool_name`
  * (codex-rs `hook_names.rs`); they stay here as defensive entries, like `Read`,
  * which has no observation at all.
+ *
+ * Only the tool that starts a subagent is "agent". Waiting on one is
+ * coordination, and reaches hooks under its namespace fused onto the name --
+ * `multi_agent_v1wait_agent` -- while `spawn_agent` is unprefixed (0.156.1,
+ * fixture pre-tool-wait-agent). It is listed so that name is on record: a
+ * native matcher written for `wait_agent` would never see it.
  */
 export const CODEX_TOOL_KINDS: Record<string, ToolKind> = {
   Bash: "shell",
@@ -28,6 +34,7 @@ export const CODEX_TOOL_KINDS: Record<string, ToolKind> = {
   WebSearch: "web.search",
   spawn_agent: "agent",
   Agent: "agent",
+  multi_agent_v1wait_agent: "other",
   update_plan: "other",
 };
 

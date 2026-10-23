@@ -7,7 +7,7 @@ import { basename, dirname, isAbsolute, join, posix, relative, resolve } from "n
 import { minimatch } from "minimatch";
 
 import {
-  type AgentPluginComponentId,
+  type AgentDefinition,
   type AgentPluginDegradation,
   type AgentPluginDeviation,
   type AgentPluginFile,
@@ -15,7 +15,10 @@ import {
   type AgentPluginPackage,
   type AgentPluginProjectionSummary,
   classifyStdioCwd,
+  type ComponentId,
+  discoverComponents,
   hasUnportableCommandPath,
+  loadAgentDefinitions,
   loadAgentPlugin,
   loadProjectComponents,
   type McpServerCommand,
@@ -23,11 +26,14 @@ import {
   npmManifestCoordinate,
   packageComponents,
   type ProjectComponents,
+  servesAsPrimary,
   SKILL_INVOCATION_POLICY,
   skillPolicyCount,
   validateContainedCommands,
+  withoutPrimary,
 } from "@hooknostic/agent-plugin";
 import {
+  type AgentSelection,
   type HooknosticConfig,
   meetsMinimum,
   type PackageMaterializationConfig,
@@ -96,7 +102,7 @@ export interface AgentPluginTargetReport {
   /** Package directories explicitly retained by the projection. */
   directories?: readonly string[];
   components: Partial<
-    Record<AgentPluginComponentId, { support: SupportLevel; discovered: number; emitted: number; skipped: number }>
+    Record<ComponentId, { support: SupportLevel; discovered: number; emitted: number; skipped: number }>
   >;
   omissions: AgentPluginProjectionSummary["omissions"];
   /**
@@ -408,8 +414,9 @@ async function canonical(path: string): Promise<string> {
 /**
  * Hooknostic-project paths that must never ship inside a projected package:
  * transaction directories, native project wiring, the build report, every
- * target output, the config file itself, and the hook source entry (its
- * compiled runtime ships instead).
+ * target output, the config file itself, the hook source entry (its compiled
+ * runtime ships instead), and agent definition directories (their native
+ * translations ship instead, ADR-0034).
  * Package-level junk (`node_modules`, `.env`, …) is excluded by the loader.
  *
  * The loader inventories the root's realpath, so every pattern is derived from
@@ -423,6 +430,7 @@ async function projectionExcludes(
   outputs: readonly string[],
   nativeProjectPaths: readonly string[],
   configured: readonly string[],
+  compiledSources: readonly string[] = [],
 ): Promise<string[]> {
   const root = await canonical(lexicalRoot);
   const configDir = await canonical(dirname(lexicalConfigPath));
@@ -432,6 +440,7 @@ async function projectionExcludes(
   const spellings = async (path: string): Promise<string[]> => [path, await canonical(path)];
   const configPaths = await spellings(join(configDir, basename(lexicalConfigPath)));
   const entryPaths = entry === undefined ? [] : await spellings(resolve(configDir, entry));
+  const sourcePaths = (await Promise.all(compiledSources.map((p) => spellings(resolve(configDir, p))))).flat();
   const exclusions = new Set<string>([".hooknostic-*", ".hooknostic-*/**", "**/.hooknostic-*", "**/.hooknostic-*/**"]);
   const configRelative = relative(root, configDir).replaceAll("\\", "/");
   if (
@@ -447,6 +456,7 @@ async function projectionExcludes(
     ...configPaths,
     ...(await spellings(join(configDir, "hooknostic-build.json"))),
     ...entryPaths,
+    ...sourcePaths,
     // Outputs get both spellings too: canonical, or an output spelled through
     // the root's alias falls outside the canonical root and the next build
     // inventories its own previous output; lexical, or an output spelled
@@ -469,6 +479,60 @@ async function projectionExcludes(
   }
   for (const pattern of configured) exclusions.add(pattern);
   return [...exclusions];
+}
+
+/**
+ * A `native.<harness>` field the adapter reserves -- for the portable
+ * definition, or for another component -- refused for one target. Every route
+ * that delivers native fields checks this, so a package build cannot drop a
+ * field that a project build rejects.
+ */
+function nativeAgentDiagnostics(
+  agents: readonly AgentDefinition[],
+  adapter: HarnessAdapter,
+  target: TargetSpec,
+  onInvalid: "error" | "warn" = "error",
+): Diagnostic[] {
+  const reserved = adapter.agents?.reservedNativeKeys ?? [];
+  return agents.flatMap((agent) => [
+    ...Object.keys(agent.native[adapter.id] ?? {})
+      .filter((key) => reserved.includes(key))
+      .map((key): Diagnostic => ({
+        code: "HN503",
+        severity: onInvalid,
+        target: target.id,
+        component: "agents.native",
+        location: { file: agent.source },
+        message: `agent ${JSON.stringify(agent.name)} sets native.${adapter.id}.${key}, which ${adapter.id} reserves for the portable definition or another component`,
+      })),
+    ...(adapter.agents?.validateNative?.(agent, target) ?? []).map((message): Diagnostic => ({
+      code: "HN503",
+      severity: "error",
+      target: target.id,
+      component: "agents.native",
+      location: { file: agent.source },
+      message: `agent ${JSON.stringify(agent.name)}: ${message}`,
+    })),
+  ]);
+}
+
+/**
+ * The definitions one target receives, and the default agent it can still
+ * take (ADR-0034, decision 11). A deselected agent leaves before anything is
+ * counted, so it is never a shortfall; a deselected default is no default
+ * there.
+ */
+function agentsForTarget(
+  source: Pick<ProjectComponents, "agents" | "defaultAgent"> | undefined,
+  selection: AgentSelection | undefined,
+): { agents: AgentDefinition[] | undefined; defaultAgent: string | undefined } {
+  const agents = source?.agents?.filter(
+    (agent) =>
+      (selection?.include === undefined || selection.include.includes(agent.name)) &&
+      !(selection?.exclude ?? []).includes(agent.name),
+  );
+  const defaultAgent = agents?.some((agent) => agent.name === source?.defaultAgent) ? source?.defaultAgent : undefined;
+  return { agents, defaultAgent };
 }
 
 function artifactDigest(artifacts: readonly GeneratedArtifact[], directories: readonly string[]): string {
@@ -534,7 +598,7 @@ function projectionReport(
 ): AgentPluginTargetReport {
   const components: AgentPluginTargetReport["components"] = {};
   for (const [id, counts] of Object.entries(summary.components)) {
-    const component = id as AgentPluginComponentId;
+    const component = id as ComponentId;
     if (counts !== undefined) {
       components[component] = {
         support: resolution.matrix?.[component]?.level ?? "unsupported",
@@ -559,22 +623,19 @@ function analyzedProjectionReport(
   resolution: AgentPluginProjectionResolution,
   namespace: string | undefined,
   hasRuntimePackage: boolean,
+  agents: readonly AgentDefinition[] | undefined,
+  harness: string,
+  defaultAgent: string | undefined,
 ): AgentPluginTargetReport {
-  const discovered = new Map<AgentPluginComponentId, number>([["agent-plugin.manifest", 1]]);
-  if (source.skills.length > 0) discovered.set("agent-plugin.skills", source.skills.length);
-  const declaredPolicies = skillPolicyCount(source.skills);
-  if (declaredPolicies) discovered.set(SKILL_INVOCATION_POLICY, declaredPolicies);
-  for (const type of ["stdio", "streamable-http", "sse"] as const) {
-    const count = Object.values(source.mcp?.mcpServers ?? {}).filter((server) => server.type === type).length;
-    if (count > 0) discovered.set(`agent-plugin.mcp.${type}`, count);
-  }
-  if (namespace !== undefined) {
-    const extensionFiles = source.files.filter((file) => file.path.startsWith(`${namespace}/`)).length;
-    const manifestExtension = source.manifest.extensions?.[namespace] === undefined ? 0 : 1;
-    const extensions = extensionFiles + manifestExtension;
-    if (extensions > 0) discovered.set("agent-plugin.client-extension.files", extensions);
-  }
-  if (hasRuntimePackage) discovered.set("agent-plugin.runtime-package", 1);
+  // The projector's own discovery, so the analyzed counts and the counts a
+  // successful projection replaces them with cannot disagree.
+  const discovered = discoverComponents(source, {
+    ...(namespace === undefined ? {} : { namespace }),
+    hasRuntimePackage,
+    ...(agents === undefined ? {} : { agents }),
+    harness,
+    ...(defaultAgent === undefined ? {} : { defaultAgent }),
+  });
   const unsupported = new Set(
     resolution.diagnostics.flatMap((diagnostic) =>
       diagnostic.code === "HN205" && diagnostic.component !== undefined ? [diagnostic.component] : [],
@@ -697,6 +758,7 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
         Object.values(config.targets).map((target) => target.output),
         nativeProjectPaths,
         config.components.exclude ?? [],
+        config.components.agents ?? [],
       ),
     });
     diagnostics.push(
@@ -743,13 +805,30 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
   }
 
   let componentSource: ProjectComponents | undefined;
-  if (components) componentSource = packageComponents(components);
-  else if (config.components && (selectedPackageProjection || selectedProjectProjection)) {
+  if (components) {
+    componentSource = packageComponents(components);
+    // Definitions beside a package are Hooknostic input, like hook source:
+    // projectors translate them into each native package, and project targets
+    // receive them as they would from a direct source (ADR-0034).
+    if (config.components?.agents !== undefined) {
+      const loaded = await loadAgentDefinitions({
+        directories: config.components.agents.map((path) => resolve(configDir, path)),
+        ...(config.components.exclude === undefined ? {} : { exclude: config.components.exclude }),
+      });
+      diagnostics.push(
+        ...diagnosticsFromAgentPluginIssues(loaded.issues, { onInvalid: config.components.onInvalid ?? "error" }),
+      );
+      componentSource.agents = loaded.agents;
+    }
+  } else if (config.components && (selectedPackageProjection || selectedProjectProjection)) {
     const loaded = await loadProjectComponents({
       ...(config.components.skills === undefined
         ? {}
         : { skills: config.components.skills.map((p) => resolve(configDir, p)) }),
       ...(config.components.mcp === undefined ? {} : { mcp: resolve(configDir, config.components.mcp) }),
+      ...(config.components.agents === undefined
+        ? {}
+        : { agents: config.components.agents.map((p) => resolve(configDir, p)) }),
       ...(config.components.exclude === undefined ? {} : { exclude: config.components.exclude }),
       ...(config.components.executableFiles === undefined
         ? {}
@@ -759,9 +838,61 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
     diagnostics.push(
       ...diagnosticsFromAgentPluginIssues(loaded.issues, { onInvalid: config.components.onInvalid ?? "error" }),
     );
-    if (hasFatal(diagnostics)) return fail();
     componentSource = loaded.source;
   }
+  // The specification requires rejecting a harness key the consumer does not
+  // know: a misspelt `native.cluade` must fail rather than quietly emit
+  // nothing for Claude. Any registered adapter counts, targeted or not.
+  for (const agent of componentSource?.agents ?? []) {
+    for (const harness of Object.keys(agent.native)) {
+      if (Object.hasOwn(options.registry, harness)) continue;
+      diagnostics.push({
+        code: "HN503",
+        severity: config.components?.onInvalid ?? "error",
+        component: "agents.native",
+        location: { file: agent.source },
+        message: `agent ${JSON.stringify(agent.name)} has native fields for unknown harness ${JSON.stringify(harness)}; known: ${Object.keys(options.registry).join(", ")}`,
+      });
+    }
+  }
+  // The default must be a definition that can be a session's agent at all; a
+  // subagent-only one would start sessions no harness should start as it.
+  const defaultAgent = config.components?.defaultAgent;
+  if (defaultAgent !== undefined && componentSource !== undefined) {
+    const named = componentSource.agents?.find((agent) => agent.name === defaultAgent);
+    if (named === undefined || !servesAsPrimary(named.mode)) {
+      diagnostics.push({
+        code: "HN503",
+        severity: "error",
+        component: "agents.default",
+        ...(named === undefined ? {} : { location: { file: named.source } }),
+        message:
+          named === undefined
+            ? `components.defaultAgent names ${JSON.stringify(defaultAgent)}, which is not a loaded agent definition`
+            : `components.defaultAgent names ${JSON.stringify(defaultAgent)}, whose mode is subagent; make it primary or all`,
+      });
+    } else componentSource.defaultAgent = defaultAgent;
+  }
+  // A selection names authored definitions; one that names none loaded is a
+  // typo, which must not quietly deliver every agent or none.
+  if (componentSource !== undefined) {
+    const loaded = new Set((componentSource.agents ?? []).map((agent) => agent.name));
+    for (const [id, target] of Object.entries(config.targets)) {
+      for (const list of ["include", "exclude"] as const) {
+        for (const name of target.agents?.[list] ?? []) {
+          if (loaded.has(name)) continue;
+          diagnostics.push({
+            code: "HN503",
+            severity: "error",
+            target: id,
+            component: "agents.definition",
+            message: `targets.${id}.agents.${list} names ${JSON.stringify(name)}, which is not a loaded agent definition`,
+          });
+        }
+      }
+    }
+  }
+  if (hasFatal(diagnostics)) return fail();
   if (componentSource !== undefined && (selectedPackageProjection || selectedProjectProjection))
     report.mcpServers = mcpServerCommands(componentSource.mcp?.config, componentSource.origin);
   if (config.components?.root === undefined && componentSource && selectedPackageProjection) {
@@ -842,6 +973,7 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
       (config.components!.targets ?? Object.keys(config.targets)).includes(id)
     ) {
       const spec = targetSpecFromConfig(id, config.targets[id]!);
+      const targetAgents = agentsForTarget(componentSource, config.targets[id]!.agents);
       const resolution = analyzeAgentPluginProjection(
         components,
         adapterFor(id)!,
@@ -850,6 +982,11 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
         effectiveRuntimePackage(config.components!),
         effectiveCompatibility(config, id),
         config.components!.accept,
+        targetAgents.agents,
+        targetAgents.defaultAgent,
+      );
+      resolution.diagnostics.push(
+        ...nativeAgentDiagnostics(targetAgents.agents ?? [], adapterFor(id)!, spec, config.components!.onInvalid),
       );
       projectionResolutions.set(id, resolution);
       report.targets[id]!.projection = analyzedProjectionReport(
@@ -857,6 +994,9 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
         resolution,
         adapterFor(id)!.agentPluginProjector?.namespace,
         effectiveRuntimePackage(config.components!) !== undefined,
+        targetAgents.agents,
+        adapterFor(id)!.id,
+        targetAgents.defaultAgent,
       );
       if (hasFatal(resolution.diagnostics)) {
         diagnostics.push(...resolution.diagnostics);
@@ -873,6 +1013,7 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
     protectedPaths: [
       ...(config.components?.skills ?? []).map((path) => resolve(configDir, path)),
       ...(config.components?.mcp ? [resolve(configDir, config.components.mcp)] : []),
+      ...(config.components?.agents ?? []).map((path) => resolve(configDir, path)),
       ...(config.project
         ? [
             ...["integration.json", "transaction.json", "sync.lock", "recovery.lock", "staging", "data"].map((path) =>
@@ -991,6 +1132,7 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
         continue;
       }
       const spec = targetSpecFromConfig(id, config.targets[id]!);
+      const targetAgents = agentsForTarget(componentSource, config.targets[id]!.agents);
       const resolution = analyzeAgentPluginProjection(
         components,
         adapterFor(id)!,
@@ -999,6 +1141,11 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
         effectiveRuntimePackage(config.components!),
         effectiveCompatibility(config, id),
         config.components!.accept,
+        targetAgents.agents,
+        targetAgents.defaultAgent,
+      );
+      resolution.diagnostics.push(
+        ...nativeAgentDiagnostics(targetAgents.agents ?? [], adapterFor(id)!, spec, config.components!.onInvalid),
       );
       projectionResolutions.set(id, resolution);
       diagnostics.push(...resolution.diagnostics);
@@ -1007,6 +1154,9 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
         resolution,
         adapterFor(id)!.agentPluginProjector?.namespace,
         effectiveRuntimePackage(config.components!) !== undefined,
+        targetAgents.agents,
+        adapterFor(id)!.id,
+        targetAgents.defaultAgent,
       );
       if (hasFatal(resolution.diagnostics)) report.targets[id]!.status = "failed";
     }
@@ -1149,6 +1299,7 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
           if (projector === undefined)
             throw new Error(`adapter ${JSON.stringify(adapter.id)} has no Agent Plugin projector`);
           const runtimePackage = effectiveRuntimePackage(config.components!);
+          const targetAgents = agentsForTarget(componentSource, config.targets[id]!.agents);
           const plan = await projector.project(components, {
             target: spec,
             hookArtifacts,
@@ -1160,6 +1311,8 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
             ...(config.components!.mcpEnvironment === undefined
               ? {}
               : { mcpEnvironment: config.components!.mcpEnvironment }),
+            ...(targetAgents.agents === undefined ? {} : { agents: targetAgents.agents }),
+            ...(targetAgents.defaultAgent === undefined ? {} : { defaultAgent: targetAgents.defaultAgent }),
           });
           const projectedDiagnostics = [
             ...diagnosticsFromAgentPluginIssues(plan.issues, id),
@@ -1284,10 +1437,15 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
               continue;
             }
             const selectedSource = selected.source;
+            const targetAgents = agentsForTarget(selectedSource, targetConfig.agents);
+            if (targetAgents.agents === undefined) delete selectedSource.agents;
+            else selectedSource.agents = targetAgents.agents;
+            if (targetAgents.defaultAgent === undefined) delete selectedSource.defaultAgent;
+            else selectedSource.defaultAgent = targetAgents.defaultAgent;
             const counts: AgentPluginTargetReport["components"] = {};
             const omissions: AgentPluginTargetReport["omissions"] = [...(policyPlan?.selection.omissions ?? [])];
             diagnostics.push(...diagnosticsFromAgentPluginIssues(policyPlan?.selection.issues ?? [], id));
-            const count = (component: AgentPluginComponentId, discovered: number): boolean => {
+            const count = (component: ComponentId, discovered: number, names?: readonly string[]): boolean => {
               if (!discovered) return true;
               const cell = support.matrix![component];
               const supported = cell !== undefined && cell.level !== "unsupported";
@@ -1299,7 +1457,11 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
               };
               if (!supported) {
                 const reason = cell?.rationale ?? "component has no project delivery representation";
-                omissions.push({ component, reason });
+                omissions.push(
+                  ...(names === undefined
+                    ? [{ component, reason }]
+                    : names.map((name) => ({ component, name, reason }))),
+                );
                 diagnostics.push(
                   unsupportedComponentDiagnostic({
                     adapter: adapter.id,
@@ -1394,6 +1556,96 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
               counted.emitted--;
               counted.skipped++;
             }
+            // A portable definition inside the harness's own agents directory
+            // would be read natively as it stands, and its generated
+            // translation would claim the same path. Folded, because the
+            // directory is the same one on a case-insensitive filesystem.
+            if (adapter.agents !== undefined) {
+              const native = resolve(root, adapter.agents.projectDirectory).toLowerCase();
+              for (const configured of config.components?.agents ?? []) {
+                const source = resolve(configDir, configured).toLowerCase();
+                if (source !== native && !isStrictDescendant(native, source)) continue;
+                diagnostics.push({
+                  code: "HN501",
+                  severity: "error",
+                  target: id,
+                  component: "agents.definition",
+                  message: `components.agents ${JSON.stringify(configured)} is inside ${adapter.agents.projectDirectory}, where ${adapter.id} reads its own agent files; keep portable definitions in a directory of their own`,
+                });
+              }
+            }
+            // A native block reaches the harness only through a delivered
+            // definition, so it is counted after the definitions are settled.
+            // Fields the adapter reserves are refused before anything counts.
+            diagnostics.push(
+              ...nativeAgentDiagnostics(
+                selectedSource.agents ?? [],
+                adapter,
+                targetSpecFromConfig(id, config.targets[id]!),
+                config.components?.onInvalid,
+              ),
+            );
+            // Resolve the fixed default independently of named definitions:
+            // an adapter can deliver its instructions without offering agents
+            // for selection or delegation (ADR-0034, decision 10).
+            const defaultName = selectedSource.defaultAgent;
+            const deliversDefault = count("agents.default", defaultName === undefined ? 0 : 1);
+            if (!deliversDefault) delete selectedSource.defaultAgent;
+            const isDeliveredDefault = (agent: AgentDefinition) => deliversDefault && agent.name === defaultName;
+            const definitionCell = support.matrix["agents.definition"];
+            const definitionRoute = definitionCell !== undefined && definitionCell.level !== "unsupported";
+            // A primary-only default needs only the default route. An `all`
+            // default also requests delegation, so its missing definition
+            // remains a shortfall even when the default can be delivered.
+            const definitions = (selectedSource.agents ?? []).filter(
+              (agent) => definitionRoute || !isDeliveredDefault(agent) || agent.mode !== "primary",
+            );
+            if (
+              !count(
+                "agents.definition",
+                definitions.length,
+                definitions.map((agent) => agent.name),
+              )
+            ) {
+              selectedSource.agents = (selectedSource.agents ?? [])
+                .filter(isDeliveredDefault)
+                .map((agent) => ({ ...agent, mode: "primary" }));
+            }
+            // A target that cannot run a session as an agent still takes an
+            // `all` definition as a subagent; a `primary` one has nothing left
+            // to deliver, so it leaves the definitions too (ADR-0034,
+            // decision 9). The component-level shortfall is reported above.
+            // The delivered default is exempt: it already runs as the session.
+            const primaryCell = support.matrix?.["agents.primary"];
+            const primaryRoute = primaryCell !== undefined && primaryCell.level !== "unsupported";
+            const primary = (selectedSource.agents ?? []).filter(
+              (agent) => servesAsPrimary(agent.mode) && (primaryRoute || !isDeliveredDefault(agent)),
+            );
+            if (!count("agents.primary", primary.length)) {
+              selectedSource.agents = (selectedSource.agents ?? []).flatMap((agent) => {
+                if (isDeliveredDefault(agent)) return [agent];
+                const mode = withoutPrimary(agent.mode);
+                if (mode !== undefined) return [{ ...agent, mode }];
+                omissions.push({
+                  component: "agents.definition",
+                  name: agent.name,
+                  reason: `agent ${JSON.stringify(agent.name)} is primary only, and ${adapter.id} cannot run a session as an agent`,
+                });
+                const counted = counts["agents.definition"]!;
+                counted.emitted--;
+                counted.skipped++;
+                return [];
+              });
+            }
+            const nativeBlocks = (selectedSource.agents ?? []).filter((agent) =>
+              Object.hasOwn(agent.native, adapter.id),
+            );
+            if (!count("agents.native", nativeBlocks.length)) {
+              selectedSource.agents = (selectedSource.agents ?? []).map((agent) => ({
+                ...agent,
+                native: Object.fromEntries(Object.entries(agent.native).filter(([harness]) => harness !== adapter.id)),
+              }));
+            }
             count(
               "agent-plugin.runtime-package",
               !componentsSelected ||
@@ -1424,6 +1676,7 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
               ]),
             ];
             const projected = await adapter.projectComponents(selectedSource, root, output, configFromRoot, {
+              harnessVersion: config.targets[id]!.version,
               ...(Object.keys(selected.startupTimeoutMs).length === 0
                 ? {}
                 : { mcpStartupTimeoutMs: selected.startupTimeoutMs }),

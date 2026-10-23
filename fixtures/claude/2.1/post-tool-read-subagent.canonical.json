@@ -1,0 +1,41 @@
+{
+  "schemaVersion": 1,
+  "harness": {
+    "id": "claude",
+    "nativeEvent": "PostToolUse"
+  },
+  "session": {
+    "id": "b1ecac89-df16-48f8-a47b-9ec1cd635cec",
+    "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-agents-7fJTGp\\claude"
+  },
+  "correlation": {
+    "turnId": "e1f85ea7-b428-4b41-940e-47716627a3d5",
+    "toolCallId": "toolu_playback_1",
+    "agentId": "a4fc130c1dd24337f",
+    "agentType": "hn-probe"
+  },
+  "event": "tool.after",
+  "tool": {
+    "kind": "file.read",
+    "nativeName": "Read",
+    "input": {
+      "file_path": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-agents-7fJTGp\\claude\\seed.txt"
+    },
+    "file": {
+      "paths": [
+        "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-agents-7fJTGp\\claude\\seed.txt"
+      ],
+      "pathKey": "file_path"
+    }
+  },
+  "output": {
+    "type": "text",
+    "file": {
+      "filePath": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-agents-7fJTGp\\claude\\seed.txt",
+      "content": "alpha\n",
+      "numLines": 2,
+      "startLine": 1,
+      "totalLines": 2
+    }
+  }
+}

@@ -18,6 +18,16 @@
       "mode": 420
     },
     {
+      "path": ".claude/agents/.gitattributes",
+      "hash": "06c1e78531bb7fb522924845d20f4296ad1949ac2495d1499c869c342ef99502",
+      "mode": 420
+    },
+    {
+      "path": ".claude/agents/reviewer.md",
+      "hash": "03a72e4967bd9b805f7be4a55bbab450abb123efb13dcd339c1f15b849f16051",
+      "mode": 420
+    },
+    {
       "path": ".claude/settings.json",
       "key": [
         "hooks",
@@ -43,6 +53,16 @@
       "mode": 420
     },
     {
+      "path": ".codex/agents/.gitattributes",
+      "hash": "aa67040d6b55f2e950b439f979a5a5554884afe9ebe2b43aac9b7654885ca50c",
+      "mode": 420
+    },
+    {
+      "path": ".codex/agents/reviewer.toml",
+      "hash": "8a0d1b0e507ebef2255a560edf762aebe20d90be82db4ef41e74831ff369e9d6",
+      "mode": 420
+    },
+    {
       "path": ".codex/config.toml",
       "key": [
         "mcp_servers",
@@ -61,6 +81,16 @@
       "kind": "array",
       "hash": "ebf61b0f7070e0f05dc068dc420ea7793dcd0129f12243077b963fea4bf405e8",
       "context": []
+    },
+    {
+      "path": ".github/agents/.gitattributes",
+      "hash": "6583b7e9506cb6832dcf9e8785e673fb0c562ce86dcec2973e6b0f556cb4efd2",
+      "mode": 420
+    },
+    {
+      "path": ".github/agents/reviewer.agent.md",
+      "hash": "d32d004f342f689f1b35f32820110612c79e35392c566405c7d6fde998050742",
+      "mode": 420
     },
     {
       "path": ".github/hooks/hooknostic.json",
@@ -99,12 +129,12 @@
     },
     {
       "path": ".hooknostic/artifacts/claude/runtime/hooknostic.mjs",
-      "hash": "b247a59f18a3781ea73ad334b3608cd82504eda8baed75602239afe5d5ee0d50",
+      "hash": "a173fd5d5e15a7f984e4a5b258f988154c55e82c346c08624d93445c5a1de770",
       "mode": 420
     },
     {
       "path": ".hooknostic/artifacts/codex/.codex/hooknostic/hooknostic.mjs",
-      "hash": "e3069e2c87f63017e486f9a394026fc889f89ef9bac62a473aef30b5259b8592",
+      "hash": "6b45ac3cc0821fccb0691513284820b78dc61e090bdc0bcc283d6741169c302e",
       "mode": 420
     },
     {
@@ -149,7 +179,7 @@
     },
     {
       "path": ".hooknostic/artifacts/copilot/runtime/hooknostic.mjs",
-      "hash": "b5dc341460fe44be2bfde96b24678b4935d12ec700a163747fb6848f2c717d52",
+      "hash": "257e257e2c79d653961ab40d605c65b9d1abd83edfbf9b20fa9474a03e5035b7",
       "mode": 420
     },
     {
@@ -159,7 +189,7 @@
     },
     {
       "path": ".hooknostic/artifacts/opencode/.opencode/plugins/hooknostic.js",
-      "hash": "54cf2c0a7edfce70c970d28d741308753b3b312897cfecdbf2cd7f06907d0d51",
+      "hash": "85da43b0309ca90af828d3af1bdfc5781415d7a23e3472c8146659f96a9e8087",
       "mode": 420
     },
     {
@@ -179,7 +209,7 @@
     },
     {
       "path": ".hooknostic/artifacts/pi/.pi/extensions/hooknostic.js",
-      "hash": "3dd801fd00ee4afad63d49761af700b6cf55dbda09ffdb4e09eca6214839d213",
+      "hash": "3c081d0e9a30d95810ead0945a1253daa81df67840a4a4e085637913005f5d01",
       "mode": 420
     },
     {
@@ -202,13 +232,23 @@
       "hash": "31da5544e89615d34b4c180903aca1474c5274a312a1e62fce254f44629df725"
     },
     {
+      "path": ".opencode/agents/.gitattributes",
+      "hash": "06c1e78531bb7fb522924845d20f4296ad1949ac2495d1499c869c342ef99502",
+      "mode": 420
+    },
+    {
+      "path": ".opencode/agents/reviewer.md",
+      "hash": "f1765c76aa9e8191ede26d779d98d2d55987586ef5e41a59c0d5a17346bcd0d2",
+      "mode": 420
+    },
+    {
       "path": ".opencode/plugins/.gitattributes",
       "hash": "aa1f2084aa098e379453e60cce56b53a8439bcfed8108beccaeafc8b324f2d09",
       "mode": 420
     },
     {
       "path": ".opencode/plugins/hooknostic-components.js",
-      "hash": "34828f784d2b9382b0a30991a04d7bf1316fd9e3969fb9c79256d30a21de3c52",
+      "hash": "ea980249caf120bf6f5003aef1a0b90299ca1598a71996f808466756dab0dd8b",
       "mode": 420
     },
     {

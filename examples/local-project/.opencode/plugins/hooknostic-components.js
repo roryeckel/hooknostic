@@ -36,4 +36,5 @@ export default async () => ({ config(config) {
   }
   config.mcp = mcp;
 
+
 } });

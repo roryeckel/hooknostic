@@ -9,7 +9,7 @@ node packages/cli/bin/hooknostic.mjs sync --config examples/local-project/hookno
 node packages/cli/bin/hooknostic.mjs verify --config examples/local-project/hooknostic.config.ts
 ```
 
-Edit `hooks.ts`, `skills/`, or `mcp.json`, sync, review generated changes, then verify. The
+Edit `hooks.ts`, `skills/`, `mcp.json`, or `agents/`, sync, review generated changes, then verify. The
 example commits native wiring, runtime artifacts, copied skill resources, and
 `.hooknostic/integration.json`. It has no Agent Plugins manifest. Dependencies
 and harness activation are explicit human steps; sync does neither.
@@ -18,6 +18,14 @@ All five harnesses receive hooks, skills, and the synthetic stdio MCP server.
 Pi's is registered by the generated `.pi/extensions/hooknostic-mcp.js` with its
 native MCP client. Claude Code and GitHub Copilot CLI both read the root
 `.mcp.json`, so its one `sample` entry serves both (ADR-0033).
+
+Claude Code, Codex, and OpenCode also receive a
+`reviewer` subagent written once in `agents/reviewer.md` as a
+[portable agent definition](../../docs/spec/agents/0.1.md). Its `native` block
+limits it to read-only tools on Claude and Copilot and denies edits and shell on
+OpenCode. Codex has no per-agent tool list, so there it keeps the session's tools
+and sandbox. The Pi target deselects `reviewer` because its adapter offers only a
+fixed default role, not named agent projection.
 The server has no dependencies beyond Node and starts only when the harness
 activates it. Additional transport and source-path behavior is exercised by
 credential-free local playback fixtures. See the

@@ -1,0 +1,1080 @@
+{
+  "version": "1.3.0",
+  "platform": "win32",
+  "runtime": "v24.20.0",
+  "date": "2026-10-23T00:10:24.297Z",
+  "nativePrefix": "You are an expert coding assistant operating inside pi, a coding agent harness. You help users by reading files, executing commands, editing code, and writing new files.",
+  "observations": [
+    {
+      "label": "control",
+      "exit": 0,
+      "requestCount": 1,
+      "model": "base",
+      "thinking": "low",
+      "requestThinking": "low",
+      "tools": [
+        "read",
+        "bash",
+        "edit",
+        "write"
+      ],
+      "promptRoles": [
+        "developer"
+      ],
+      "nativePrompt": true,
+      "markers": {
+        "projectSystem": false,
+        "projectAppend": false,
+        "globalSystem": false,
+        "globalAppend": false,
+        "context": false,
+        "skill": false,
+        "cliSystem": false,
+        "cliAppend": false,
+        "injectedRole": false,
+        "generatedRole": false
+      },
+      "markerOrder": [],
+      "toolEvents": [],
+      "eventTypes": [
+        "session_start",
+        "before_agent_start",
+        "agent_settled"
+      ],
+      "stderr": ""
+    },
+    {
+      "label": "project-system",
+      "exit": 0,
+      "requestCount": 2,
+      "model": "base",
+      "thinking": "low",
+      "requestThinking": "low",
+      "tools": [
+        "read",
+        "bash",
+        "edit",
+        "write"
+      ],
+      "promptRoles": [
+        "developer"
+      ],
+      "nativePrompt": false,
+      "markers": {
+        "projectSystem": true,
+        "projectAppend": false,
+        "globalSystem": false,
+        "globalAppend": false,
+        "context": true,
+        "skill": true,
+        "cliSystem": false,
+        "cliAppend": false,
+        "injectedRole": false,
+        "generatedRole": false
+      },
+      "markerOrder": [
+        "projectSystem",
+        "context",
+        "skill"
+      ],
+      "toolEvents": [
+        {
+          "type": "tool_call",
+          "toolName": "read",
+          "toolCallId": "call_playback",
+          "input": {
+            "path": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-pi-default-bYf6Ng\\project\\seed.txt"
+          }
+        },
+        {
+          "type": "tool_result",
+          "toolName": "read",
+          "toolCallId": "call_playback",
+          "input": {
+            "path": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-pi-default-bYf6Ng\\project\\seed.txt"
+          },
+          "content": [
+            {
+              "type": "text",
+              "text": "harmless seed\n"
+            }
+          ],
+          "structuredContent": "harmless seed\n",
+          "isError": false
+        }
+      ],
+      "eventTypes": [
+        "session_start",
+        "before_agent_start",
+        "tool_call",
+        "tool_result",
+        "agent_settled"
+      ],
+      "stderr": ""
+    },
+    {
+      "label": "project-append",
+      "exit": 0,
+      "requestCount": 2,
+      "model": "base",
+      "thinking": "low",
+      "requestThinking": "low",
+      "tools": [
+        "read",
+        "bash",
+        "edit",
+        "write"
+      ],
+      "promptRoles": [
+        "developer"
+      ],
+      "nativePrompt": true,
+      "markers": {
+        "projectSystem": false,
+        "projectAppend": true,
+        "globalSystem": false,
+        "globalAppend": false,
+        "context": true,
+        "skill": false,
+        "cliSystem": false,
+        "cliAppend": false,
+        "injectedRole": false,
+        "generatedRole": false
+      },
+      "markerOrder": [
+        "projectAppend",
+        "context"
+      ],
+      "toolEvents": [
+        {
+          "type": "tool_call",
+          "toolName": "read",
+          "toolCallId": "call_playback",
+          "input": {
+            "path": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-pi-default-IVphjG\\project\\seed.txt"
+          }
+        },
+        {
+          "type": "tool_result",
+          "toolName": "read",
+          "toolCallId": "call_playback",
+          "input": {
+            "path": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-pi-default-IVphjG\\project\\seed.txt"
+          },
+          "content": [
+            {
+              "type": "text",
+              "text": "harmless seed\n"
+            }
+          ],
+          "structuredContent": "harmless seed\n",
+          "isError": false
+        }
+      ],
+      "eventTypes": [
+        "session_start",
+        "before_agent_start",
+        "tool_call",
+        "tool_result",
+        "agent_settled"
+      ],
+      "stderr": ""
+    },
+    {
+      "label": "project-both",
+      "exit": 0,
+      "requestCount": 1,
+      "model": "base",
+      "thinking": "low",
+      "requestThinking": "low",
+      "tools": [
+        "read",
+        "bash",
+        "edit",
+        "write"
+      ],
+      "promptRoles": [
+        "developer"
+      ],
+      "nativePrompt": false,
+      "markers": {
+        "projectSystem": true,
+        "projectAppend": true,
+        "globalSystem": false,
+        "globalAppend": false,
+        "context": false,
+        "skill": false,
+        "cliSystem": false,
+        "cliAppend": false,
+        "injectedRole": false,
+        "generatedRole": false
+      },
+      "markerOrder": [
+        "projectSystem",
+        "projectAppend"
+      ],
+      "toolEvents": [],
+      "eventTypes": [
+        "session_start",
+        "before_agent_start",
+        "agent_settled"
+      ],
+      "stderr": ""
+    },
+    {
+      "label": "global-both",
+      "exit": 0,
+      "requestCount": 1,
+      "model": "base",
+      "thinking": "low",
+      "requestThinking": "low",
+      "tools": [
+        "read",
+        "bash",
+        "edit",
+        "write"
+      ],
+      "promptRoles": [
+        "developer"
+      ],
+      "nativePrompt": false,
+      "markers": {
+        "projectSystem": false,
+        "projectAppend": false,
+        "globalSystem": true,
+        "globalAppend": true,
+        "context": false,
+        "skill": false,
+        "cliSystem": false,
+        "cliAppend": false,
+        "injectedRole": false,
+        "generatedRole": false
+      },
+      "markerOrder": [
+        "globalSystem",
+        "globalAppend"
+      ],
+      "toolEvents": [],
+      "eventTypes": [
+        "session_start",
+        "before_agent_start",
+        "agent_settled"
+      ],
+      "stderr": ""
+    },
+    {
+      "label": "project-over-global",
+      "exit": 0,
+      "requestCount": 1,
+      "model": "base",
+      "thinking": "low",
+      "requestThinking": "low",
+      "tools": [
+        "read",
+        "bash",
+        "edit",
+        "write"
+      ],
+      "promptRoles": [
+        "developer"
+      ],
+      "nativePrompt": false,
+      "markers": {
+        "projectSystem": true,
+        "projectAppend": true,
+        "globalSystem": false,
+        "globalAppend": false,
+        "context": false,
+        "skill": false,
+        "cliSystem": false,
+        "cliAppend": false,
+        "injectedRole": false,
+        "generatedRole": false
+      },
+      "markerOrder": [
+        "projectSystem",
+        "projectAppend"
+      ],
+      "toolEvents": [],
+      "eventTypes": [
+        "session_start",
+        "before_agent_start",
+        "agent_settled"
+      ],
+      "stderr": ""
+    },
+    {
+      "label": "project-system-global-append",
+      "exit": 0,
+      "requestCount": 1,
+      "model": "base",
+      "thinking": "low",
+      "requestThinking": "low",
+      "tools": [
+        "read",
+        "bash",
+        "edit",
+        "write"
+      ],
+      "promptRoles": [
+        "developer"
+      ],
+      "nativePrompt": false,
+      "markers": {
+        "projectSystem": true,
+        "projectAppend": false,
+        "globalSystem": false,
+        "globalAppend": true,
+        "context": false,
+        "skill": false,
+        "cliSystem": false,
+        "cliAppend": false,
+        "injectedRole": false,
+        "generatedRole": false
+      },
+      "markerOrder": [
+        "projectSystem",
+        "globalAppend"
+      ],
+      "toolEvents": [],
+      "eventTypes": [
+        "session_start",
+        "before_agent_start",
+        "agent_settled"
+      ],
+      "stderr": ""
+    },
+    {
+      "label": "project-append-global-system",
+      "exit": 0,
+      "requestCount": 1,
+      "model": "base",
+      "thinking": "low",
+      "requestThinking": "low",
+      "tools": [
+        "read",
+        "bash",
+        "edit",
+        "write"
+      ],
+      "promptRoles": [
+        "developer"
+      ],
+      "nativePrompt": false,
+      "markers": {
+        "projectSystem": false,
+        "projectAppend": true,
+        "globalSystem": true,
+        "globalAppend": false,
+        "context": false,
+        "skill": false,
+        "cliSystem": false,
+        "cliAppend": false,
+        "injectedRole": false,
+        "generatedRole": false
+      },
+      "markerOrder": [
+        "globalSystem",
+        "projectAppend"
+      ],
+      "toolEvents": [],
+      "eventTypes": [
+        "session_start",
+        "before_agent_start",
+        "agent_settled"
+      ],
+      "stderr": ""
+    },
+    {
+      "label": "untrusted",
+      "exit": 0,
+      "requestCount": 1,
+      "model": "base",
+      "thinking": "low",
+      "requestThinking": "low",
+      "tools": [
+        "read",
+        "bash",
+        "edit",
+        "write"
+      ],
+      "promptRoles": [
+        "developer"
+      ],
+      "nativePrompt": false,
+      "markers": {
+        "projectSystem": false,
+        "projectAppend": false,
+        "globalSystem": true,
+        "globalAppend": true,
+        "context": true,
+        "skill": false,
+        "cliSystem": false,
+        "cliAppend": false,
+        "injectedRole": false,
+        "generatedRole": false
+      },
+      "markerOrder": [
+        "globalSystem",
+        "globalAppend",
+        "context"
+      ],
+      "toolEvents": [],
+      "eventTypes": [
+        "session_start",
+        "before_agent_start",
+        "agent_settled"
+      ],
+      "stderr": ""
+    },
+    {
+      "label": "project-settings",
+      "exit": 0,
+      "requestCount": 1,
+      "model": "role",
+      "thinking": "high",
+      "requestThinking": "high",
+      "tools": [
+        "read",
+        "grep"
+      ],
+      "promptRoles": [
+        "developer"
+      ],
+      "nativePrompt": true,
+      "markers": {
+        "projectSystem": false,
+        "projectAppend": true,
+        "globalSystem": false,
+        "globalAppend": false,
+        "context": false,
+        "skill": false,
+        "cliSystem": false,
+        "cliAppend": false,
+        "injectedRole": false,
+        "generatedRole": false
+      },
+      "markerOrder": [
+        "projectAppend"
+      ],
+      "toolEvents": [],
+      "eventTypes": [
+        "session_start",
+        "before_agent_start",
+        "agent_settled"
+      ],
+      "stderr": ""
+    },
+    {
+      "label": "settings-with-extension-tool",
+      "exit": 0,
+      "requestCount": 1,
+      "model": "base",
+      "thinking": "low",
+      "requestThinking": "low",
+      "tools": [
+        "read",
+        "grep",
+        "probe_extra"
+      ],
+      "promptRoles": [
+        "developer"
+      ],
+      "nativePrompt": true,
+      "markers": {
+        "projectSystem": false,
+        "projectAppend": true,
+        "globalSystem": false,
+        "globalAppend": false,
+        "context": false,
+        "skill": false,
+        "cliSystem": false,
+        "cliAppend": false,
+        "injectedRole": false,
+        "generatedRole": false
+      },
+      "markerOrder": [
+        "projectAppend"
+      ],
+      "toolEvents": [],
+      "eventTypes": [
+        "session_start",
+        "before_agent_start",
+        "agent_settled"
+      ],
+      "stderr": ""
+    },
+    {
+      "label": "cli-overrides",
+      "exit": 0,
+      "requestCount": 1,
+      "model": "override",
+      "thinking": "minimal",
+      "requestThinking": "minimal",
+      "tools": [
+        "read",
+        "ls"
+      ],
+      "promptRoles": [
+        "developer"
+      ],
+      "nativePrompt": false,
+      "markers": {
+        "projectSystem": false,
+        "projectAppend": false,
+        "globalSystem": false,
+        "globalAppend": false,
+        "context": false,
+        "skill": false,
+        "cliSystem": true,
+        "cliAppend": true,
+        "injectedRole": false,
+        "generatedRole": false
+      },
+      "markerOrder": [
+        "cliSystem",
+        "cliAppend"
+      ],
+      "toolEvents": [],
+      "eventTypes": [
+        "session_start",
+        "before_agent_start",
+        "agent_settled"
+      ],
+      "stderr": ""
+    },
+    {
+      "label": "cli-append",
+      "exit": 0,
+      "requestCount": 1,
+      "model": "base",
+      "thinking": "low",
+      "requestThinking": "low",
+      "tools": [
+        "read",
+        "bash",
+        "edit",
+        "write"
+      ],
+      "promptRoles": [
+        "developer"
+      ],
+      "nativePrompt": true,
+      "markers": {
+        "projectSystem": false,
+        "projectAppend": false,
+        "globalSystem": false,
+        "globalAppend": false,
+        "context": false,
+        "skill": false,
+        "cliSystem": false,
+        "cliAppend": true,
+        "injectedRole": false,
+        "generatedRole": false
+      },
+      "markerOrder": [
+        "cliAppend"
+      ],
+      "toolEvents": [],
+      "eventTypes": [
+        "session_start",
+        "before_agent_start",
+        "agent_settled"
+      ],
+      "stderr": ""
+    },
+    {
+      "label": "nested-directory",
+      "exit": 0,
+      "requestCount": 1,
+      "model": "base",
+      "thinking": "low",
+      "requestThinking": "low",
+      "tools": [
+        "read",
+        "bash",
+        "edit",
+        "write"
+      ],
+      "promptRoles": [
+        "developer"
+      ],
+      "nativePrompt": true,
+      "markers": {
+        "projectSystem": false,
+        "projectAppend": false,
+        "globalSystem": false,
+        "globalAppend": false,
+        "context": true,
+        "skill": false,
+        "cliSystem": false,
+        "cliAppend": false,
+        "injectedRole": false,
+        "generatedRole": false
+      },
+      "markerOrder": [
+        "context"
+      ],
+      "toolEvents": [],
+      "eventTypes": [
+        "session_start",
+        "before_agent_start",
+        "agent_settled"
+      ],
+      "stderr": ""
+    },
+    {
+      "label": "empty-project-append",
+      "exit": 0,
+      "requestCount": 1,
+      "model": "base",
+      "thinking": "low",
+      "requestThinking": "low",
+      "tools": [
+        "read",
+        "bash",
+        "edit",
+        "write"
+      ],
+      "promptRoles": [
+        "developer"
+      ],
+      "nativePrompt": true,
+      "markers": {
+        "projectSystem": false,
+        "projectAppend": false,
+        "globalSystem": false,
+        "globalAppend": false,
+        "context": false,
+        "skill": false,
+        "cliSystem": false,
+        "cliAppend": false,
+        "injectedRole": false,
+        "generatedRole": false
+      },
+      "markerOrder": [],
+      "toolEvents": [],
+      "eventTypes": [
+        "session_start",
+        "before_agent_start",
+        "agent_settled"
+      ],
+      "stderr": ""
+    },
+    {
+      "label": "named-definition-only",
+      "exit": 0,
+      "requestCount": 1,
+      "model": "base",
+      "thinking": "low",
+      "requestThinking": "low",
+      "tools": [
+        "read",
+        "bash",
+        "edit",
+        "write"
+      ],
+      "promptRoles": [
+        "developer"
+      ],
+      "nativePrompt": true,
+      "markers": {
+        "projectSystem": false,
+        "projectAppend": false,
+        "globalSystem": false,
+        "globalAppend": false,
+        "context": false,
+        "skill": false,
+        "cliSystem": false,
+        "cliAppend": false,
+        "injectedRole": false,
+        "generatedRole": false
+      },
+      "markerOrder": [],
+      "toolEvents": [],
+      "eventTypes": [
+        "session_start",
+        "before_agent_start",
+        "agent_settled"
+      ],
+      "stderr": ""
+    },
+    {
+      "label": "generated-style-role",
+      "exit": 0,
+      "requestCount": 1,
+      "model": "base",
+      "thinking": "low",
+      "requestThinking": "low",
+      "tools": [
+        "read",
+        "bash",
+        "edit",
+        "write"
+      ],
+      "promptRoles": [
+        "developer"
+      ],
+      "nativePrompt": true,
+      "markers": {
+        "projectSystem": false,
+        "projectAppend": false,
+        "globalSystem": false,
+        "globalAppend": true,
+        "context": false,
+        "skill": false,
+        "cliSystem": false,
+        "cliAppend": false,
+        "injectedRole": true,
+        "generatedRole": false
+      },
+      "markerOrder": [
+        "globalAppend",
+        "injectedRole"
+      ],
+      "toolEvents": [],
+      "eventTypes": [
+        "session_start",
+        "before_agent_start",
+        "agent_settled"
+      ],
+      "stderr": ""
+    },
+    {
+      "label": "generated-style-custom-system",
+      "exit": 0,
+      "requestCount": 1,
+      "model": "base",
+      "thinking": "low",
+      "requestThinking": "low",
+      "tools": [
+        "read",
+        "bash",
+        "edit",
+        "write"
+      ],
+      "promptRoles": [
+        "developer"
+      ],
+      "nativePrompt": false,
+      "markers": {
+        "projectSystem": true,
+        "projectAppend": false,
+        "globalSystem": false,
+        "globalAppend": true,
+        "context": false,
+        "skill": false,
+        "cliSystem": false,
+        "cliAppend": false,
+        "injectedRole": true,
+        "generatedRole": false
+      },
+      "markerOrder": [
+        "projectSystem",
+        "globalAppend",
+        "injectedRole"
+      ],
+      "toolEvents": [],
+      "eventTypes": [
+        "session_start",
+        "before_agent_start",
+        "agent_settled"
+      ],
+      "stderr": ""
+    },
+    {
+      "label": "generated-style-cli",
+      "exit": 0,
+      "requestCount": 1,
+      "model": "base",
+      "thinking": "low",
+      "requestThinking": "low",
+      "tools": [
+        "read",
+        "bash",
+        "edit",
+        "write"
+      ],
+      "promptRoles": [
+        "developer"
+      ],
+      "nativePrompt": false,
+      "markers": {
+        "projectSystem": false,
+        "projectAppend": false,
+        "globalSystem": false,
+        "globalAppend": false,
+        "context": false,
+        "skill": false,
+        "cliSystem": true,
+        "cliAppend": true,
+        "injectedRole": true,
+        "generatedRole": false
+      },
+      "markerOrder": [
+        "cliSystem",
+        "cliAppend",
+        "injectedRole"
+      ],
+      "toolEvents": [],
+      "eventTypes": [
+        "session_start",
+        "before_agent_start",
+        "agent_settled"
+      ],
+      "stderr": ""
+    },
+    {
+      "label": "generated-style-untrusted",
+      "exit": 0,
+      "requestCount": 1,
+      "model": "base",
+      "requestThinking": "low",
+      "tools": [
+        "read",
+        "bash",
+        "edit",
+        "write"
+      ],
+      "promptRoles": [
+        "developer"
+      ],
+      "nativePrompt": true,
+      "markers": {
+        "projectSystem": false,
+        "projectAppend": false,
+        "globalSystem": false,
+        "globalAppend": true,
+        "context": false,
+        "skill": false,
+        "cliSystem": false,
+        "cliAppend": false,
+        "injectedRole": false,
+        "generatedRole": false
+      },
+      "markerOrder": [
+        "globalAppend"
+      ],
+      "toolEvents": [],
+      "eventTypes": [],
+      "stderr": ""
+    },
+    {
+      "label": "generated-default",
+      "exit": 0,
+      "requestCount": 2,
+      "model": "base",
+      "thinking": "low",
+      "requestThinking": "low",
+      "tools": [
+        "read",
+        "bash",
+        "edit",
+        "write"
+      ],
+      "promptRoles": [
+        "developer"
+      ],
+      "nativePrompt": true,
+      "markers": {
+        "projectSystem": false,
+        "projectAppend": false,
+        "globalSystem": false,
+        "globalAppend": false,
+        "context": true,
+        "skill": true,
+        "cliSystem": false,
+        "cliAppend": false,
+        "injectedRole": false,
+        "generatedRole": true
+      },
+      "markerOrder": [
+        "generatedRole",
+        "context",
+        "skill"
+      ],
+      "toolEvents": [
+        {
+          "type": "tool_call",
+          "toolName": "read",
+          "toolCallId": "call_playback",
+          "input": {
+            "path": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-pi-default-gGjdSP\\project\\seed.txt"
+          }
+        },
+        {
+          "type": "tool_result",
+          "toolName": "read",
+          "toolCallId": "call_playback",
+          "input": {
+            "path": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-pi-default-gGjdSP\\project\\seed.txt"
+          },
+          "content": [
+            {
+              "type": "text",
+              "text": "harmless seed\n"
+            }
+          ],
+          "structuredContent": "harmless seed\n",
+          "isError": false
+        }
+      ],
+      "eventTypes": [
+        "session_start",
+        "before_agent_start",
+        "tool_call",
+        "tool_result",
+        "agent_settled"
+      ],
+      "stderr": ""
+    },
+    {
+      "label": "generated-custom-system",
+      "exit": 0,
+      "requestCount": 2,
+      "model": "base",
+      "thinking": "low",
+      "requestThinking": "low",
+      "tools": [
+        "read",
+        "bash",
+        "edit",
+        "write"
+      ],
+      "promptRoles": [
+        "developer"
+      ],
+      "nativePrompt": false,
+      "markers": {
+        "projectSystem": true,
+        "projectAppend": false,
+        "globalSystem": false,
+        "globalAppend": false,
+        "context": false,
+        "skill": false,
+        "cliSystem": false,
+        "cliAppend": false,
+        "injectedRole": false,
+        "generatedRole": true
+      },
+      "markerOrder": [
+        "projectSystem",
+        "generatedRole"
+      ],
+      "toolEvents": [
+        {
+          "type": "tool_call",
+          "toolName": "read",
+          "toolCallId": "call_playback",
+          "input": {
+            "path": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-pi-default-Q3jvi4\\project\\seed.txt"
+          }
+        },
+        {
+          "type": "tool_result",
+          "toolName": "read",
+          "toolCallId": "call_playback",
+          "input": {
+            "path": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-pi-default-Q3jvi4\\project\\seed.txt"
+          },
+          "content": [
+            {
+              "type": "text",
+              "text": "harmless seed\n"
+            }
+          ],
+          "structuredContent": "harmless seed\n",
+          "isError": false
+        }
+      ],
+      "eventTypes": [
+        "session_start",
+        "before_agent_start",
+        "tool_call",
+        "tool_result",
+        "agent_settled"
+      ],
+      "stderr": ""
+    },
+    {
+      "label": "generated-cli-override",
+      "exit": 0,
+      "requestCount": 1,
+      "model": "base",
+      "thinking": "low",
+      "requestThinking": "low",
+      "tools": [
+        "read",
+        "bash",
+        "edit",
+        "write"
+      ],
+      "promptRoles": [
+        "developer"
+      ],
+      "nativePrompt": true,
+      "markers": {
+        "projectSystem": false,
+        "projectAppend": false,
+        "globalSystem": false,
+        "globalAppend": false,
+        "context": false,
+        "skill": false,
+        "cliSystem": false,
+        "cliAppend": true,
+        "injectedRole": false,
+        "generatedRole": false
+      },
+      "markerOrder": [
+        "cliAppend"
+      ],
+      "toolEvents": [],
+      "eventTypes": [
+        "session_start",
+        "before_agent_start",
+        "agent_settled"
+      ],
+      "stderr": ""
+    },
+    {
+      "label": "generated-untrusted",
+      "exit": 0,
+      "requestCount": 1,
+      "model": "base",
+      "thinking": "low",
+      "requestThinking": "low",
+      "tools": [
+        "read",
+        "bash",
+        "edit",
+        "write"
+      ],
+      "promptRoles": [
+        "developer"
+      ],
+      "nativePrompt": true,
+      "markers": {
+        "projectSystem": false,
+        "projectAppend": false,
+        "globalSystem": false,
+        "globalAppend": true,
+        "context": false,
+        "skill": false,
+        "cliSystem": false,
+        "cliAppend": false,
+        "injectedRole": false,
+        "generatedRole": false
+      },
+      "markerOrder": [
+        "globalAppend"
+      ],
+      "toolEvents": [],
+      "eventTypes": [
+        "session_start",
+        "before_agent_start",
+        "agent_settled"
+      ],
+      "stderr": ""
+    }
+  ]
+}

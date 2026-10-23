@@ -23,7 +23,9 @@ each target can deliver and reports every compatibility shortfall.
 a manifest, Agent Skills, MCP servers, and namespaced client extensions. Hooknostic
 validates that format and projects it into native harness artifacts. The source package
 stays unchanged. Portable TypeScript hooks can accompany it, or be used on their own;
-hooks are outside the standard's v1 portable component set.
+hooks are outside the standard's v1 portable component set. So are agents: Hooknostic's
+provisional [agent definition format](docs/spec/agents/0.1.md) compiles one
+Markdown file into each harness's own agent file (ADR-0034, proposed).
 
 ```text
 Agent Plugins 1.0 package ─┐                 ┌─ Claude Code plugin → marketplace
@@ -85,6 +87,7 @@ export default defineConfig({
 
 Omit `entry` for a hookless package. For direct repository sources, use
 `components.skills` / `components.mcp` and project delivery instead of a package root.
+`components.agents` adds a directory of agent definitions to either form.
 
 Pi 1.x receives the hooks, skills, and stdio and streamable-HTTP MCP servers,
 which a generated extension registers with pi's native MCP client. pi rejects

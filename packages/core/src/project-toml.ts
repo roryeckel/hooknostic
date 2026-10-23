@@ -68,6 +68,66 @@ function literal(value: unknown): string {
       .join(", ")} }`;
   throw new Error("unsupported TOML generated value");
 }
+// TOML forbids raw control characters in basic strings, DEL included -- which
+// JSON.stringify leaves literal -- so every one is escaped here.
+// eslint-disable-next-line no-control-regex -- matching control characters is the point
+const CONTROL = /[\u0000-\u0008\u000b-\u001f\u007f]/g;
+const escapeControl = (character: string): string =>
+  `\\u${character.charCodeAt(0).toString(16).padStart(4, "0").toUpperCase()}`;
+function basicString(value: string): string {
+  return `"${value
+    .replaceAll("\\", "\\\\")
+    .replaceAll('"', '\\"')
+    .replaceAll("\n", "\\n")
+    .replaceAll("\t", "\\t")
+    .replace(CONTROL, escapeControl)}"`;
+}
+/** A multi-line basic string: readable prose, with only what TOML requires escaped. */
+function multilineString(value: string): string {
+  return `"""\n${value.replaceAll("\\", "\\\\").replaceAll('"', '\\"').replace(CONTROL, escapeControl)}"""`;
+}
+const bareKey = (key: string): string => (/^[A-Za-z0-9_-]+$/.test(key) ? key : basicString(key));
+function documentValue(value: unknown, path: string, topLevel: boolean): string {
+  if (typeof value === "string") return topLevel && value.includes("\n") ? multilineString(value) : basicString(value);
+  if (typeof value === "boolean") return String(value);
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) throw new Error(`${path} is not a finite number, which TOML cannot represent`);
+    return String(value);
+  }
+  if (Array.isArray(value))
+    return `[${value.map((item, index) => documentValue(item, `${path}[${index}]`, false)).join(", ")}]`;
+  if (value !== null && typeof value === "object")
+    return `{ ${Object.entries(value)
+      .map(([key, item]) => `${bareKey(key)} = ${documentValue(item, `${path}.${key}`, false)}`)
+      .join(", ")} }`.replace("{  }", "{}");
+  throw new Error(`${path} is ${value === null ? "null" : typeof value}, which TOML cannot represent`);
+}
+function canonicalValue(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(canonicalValue);
+  if (value !== null && typeof value === "object")
+    return Object.fromEntries(
+      Object.entries(value)
+        .map(([key, item]) => [key, canonicalValue(item)] as const)
+        .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)),
+    );
+  return typeof value === "bigint" ? Number(value) : value;
+}
+
+/**
+ * A whole TOML document from top-level `fields`, in their order: multi-line
+ * strings stay readable, nested values are inline tables. The text is parsed
+ * back and must equal the input, so a value TOML cannot hold fails here rather
+ * than as a file the harness rejects.
+ */
+export function renderTomlDocument(fields: Readonly<Record<string, unknown>>): string {
+  const text = Object.entries(fields)
+    .map(([key, value]) => `${bareKey(key)} = ${documentValue(value, key, true)}\n`)
+    .join("");
+  if (JSON.stringify(canonicalValue(readProjectToml(text))) !== JSON.stringify(canonicalValue(fields)))
+    throw new Error("generated TOML does not round-trip to its input");
+  return text;
+}
+
 const prefix = (parent: readonly (string | number)[], child: readonly (string | number)[]) =>
   parent.length <= child.length && parent.every((part, i) => child[i] === part);
 

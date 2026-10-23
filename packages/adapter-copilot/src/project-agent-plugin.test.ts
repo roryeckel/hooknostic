@@ -4,7 +4,13 @@ import { dirname, join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { AGENT_PLUGIN_MANIFEST_SCHEMA, AGENT_PLUGIN_MCP_SCHEMA, loadAgentPlugin } from "@hooknostic/agent-plugin";
+import {
+  AGENT_PLUGIN_MANIFEST_SCHEMA,
+  AGENT_PLUGIN_MCP_SCHEMA,
+  type AgentDefinition,
+  loadAgentPlugin,
+  parseMarkdownFrontmatter,
+} from "@hooknostic/agent-plugin";
 import { buildPluginIR, resolveAgentPluginProjection } from "@hooknostic/core";
 import { block, definePlugin, hook } from "@hooknostic/sdk";
 
@@ -542,5 +548,69 @@ describe("Copilot Agent Plugin projector", () => {
     for (const artifact of artifacts) {
       expect(plan.files.map((file) => file.path)).toContain(artifact.path);
     }
+  });
+
+  const agent = (name: string, mode: AgentDefinition["mode"] = "subagent", native = {}): AgentDefinition => ({
+    name,
+    description: `${name} description`,
+    mode,
+    instructions: `${name} instructions\n`,
+    native: { copilot: native },
+    source: `/project/agents/${name}.md`,
+  });
+
+  const project = (portable: Awaited<ReturnType<typeof loadAgentPlugin>>["package"], agents: AgentDefinition[]) =>
+    copilotAgentPluginProjector.project(portable!, {
+      target: { id: "copilot", version: COPILOT_SKILL_POLICY_VALIDATION.version, delivery: "package" },
+      hookArtifacts: [],
+      support: packageSupport,
+      onUnsupported: "warn",
+      agents,
+    });
+
+  it("writes each definition to the plugin's agents directory as <name>.agent.md", async () => {
+    const loaded = await loadAgentPlugin({ root: await packageRoot() });
+    const plan = await project(loaded.package, [agent("reviewer", "subagent", { tools: ["read"], model: "glm53" })]);
+    expect(plan.issues).toEqual([]);
+    const file = plan.files.find((candidate) => candidate.path === "agents/reviewer.agent.md");
+    expect(file).toBeDefined();
+    const text = typeof file!.contents === "string" ? file!.contents : new TextDecoder().decode(file!.contents);
+    expect(parseMarkdownFrontmatter(text, "agents/reviewer.agent.md")).toEqual({
+      data: { name: "reviewer", description: "reviewer description", tools: ["read"], model: "glm53" },
+      body: "reviewer instructions\n",
+    });
+    expect(plan.summary.components["agents.definition"]).toEqual({ discovered: 1, emitted: 1, skipped: 0 });
+    expect(plan.summary.components["agents.native"]).toEqual({ discovered: 1, emitted: 1, skipped: 0 });
+    expect(plan.summary.copiedPaths).not.toContain("agents/reviewer.agent.md");
+  });
+
+  it("reports a primary-only definition as also delegable and omits a package default", async () => {
+    const loaded = await loadAgentPlugin({ root: await packageRoot() });
+    const plan = await copilotAgentPluginProjector.project(loaded.package!, {
+      target: { id: "copilot", version: COPILOT_SKILL_POLICY_VALIDATION.version, delivery: "package" },
+      hookArtifacts: [],
+      support: packageSupport,
+      onUnsupported: "warn",
+      agents: [agent("planner", "primary")],
+      defaultAgent: "planner",
+    });
+    expect(plan.summary.deviations).toContainEqual(
+      expect.objectContaining({ id: "primary-agent-delegable", component: "agents.primary", name: "planner" }),
+    );
+    expect(plan.summary.omissions).toContainEqual(
+      expect.objectContaining({ component: "agents.default", name: "planner" }),
+    );
+    expect(plan.summary.components["agents.default"]).toEqual({ discovered: 1, emitted: 0, skipped: 1 });
+  });
+
+  it("refuses an agent path the package already provides", async () => {
+    const root = await packageRoot();
+    await mkdir(join(root, "agents"), { recursive: true });
+    await writeFile(join(root, "agents/reviewer.agent.md"), "authored");
+    const loaded = await loadAgentPlugin({ root });
+    const plan = await project(loaded.package, [agent("reviewer")]);
+    expect(plan.issues).toContainEqual(
+      expect.objectContaining({ severity: "error", component: "agents.definition", path: "agents/reviewer.agent.md" }),
+    );
   });
 });

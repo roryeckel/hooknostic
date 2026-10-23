@@ -5,11 +5,13 @@ import type {
   AgentPluginProjectionPlan,
   AgentPluginProjector,
 } from "@hooknostic/agent-plugin";
+import type { AgentPluginDeviation } from "@hooknostic/agent-plugin";
 import {
   AGENT_PLUGIN_MANIFEST_SCHEMA,
   assertPackageDelivery,
   componentSummary,
   contentsText,
+  DEFAULT_AGENT_NOT_PACKAGED,
   isJsonObject,
   isRejectedSkillPath,
   materializedPackageFiles,
@@ -21,12 +23,15 @@ import { copilotHarness } from "./harness.js";
 import { copilotHookEntryProblem } from "./hook-entries.js";
 import { copilotEnvironmentReferences, ENVIRONMENT_EXPANSION_DEVIATION } from "./mcp-expansion.js";
 import { copilotValidationRecords } from "./profile.js";
+import { primaryDelegableDeviations, renderCopilotAgent } from "./project.js";
 import { copilotSkillPolicy, copilotSkillPolicyProfiles } from "./skill-policy.js";
 import { COPILOT_SKILL_TEXT, copilotSkillDirectoryDegradation } from "./skill-text.js";
 
 const CAPTURE = ".capture/copilot/README.md";
+const AGENTS_CAPTURE = ".capture/copilot/evidence/agents-1.0.102.json";
 const HOOK_RUNTIME = "runtime/hooknostic.mjs";
 const HOOKS_PATH = "com.github.copilot/hooks/hooks.json";
+const AGENTS_DIRECTORY = "agents";
 
 const SKILL_REFERENCE_DEGRADATION = {
   id: "skill-reference-unexpanded",
@@ -82,19 +87,57 @@ const nativeCopilotAgentPluginProjector: AgentPluginProjector = {
         "agent-plugin.client-extension.files": {
           level: "exact",
           rationale:
-            "Files under com.github.copilot are read by Copilot from a plugin root; its agents/, commands/, rules/, hooks/ and lsp.json components and the manifest's extensions.com.github.copilot object all live there.",
+            "Files under com.github.copilot are read by Copilot from a plugin root; its commands/, rules/, hooks/ and lsp.json components and the manifest's extensions.com.github.copilot object all live there. Agents are not one of them: a package's portable agents go to the plugin root's agents/ directory, and a com.github.copilot/agents file was not listed by --agent on 1.0.102.",
         },
         "agent-plugin.runtime-package": {
           level: "unsupported",
           rationale:
             "No captured install route runs a dependency install: --plugin-dir and a local-path marketplace load the plugin live and copy nothing, while a git-URL install and plugin@marketplace from a git-hosted marketplace copy the package without running npm. A locked dependency install is unavailable on this harness; bundle Node component dependencies instead.",
         },
+        "agents.definition": {
+          level: "exact",
+          rationale:
+            "Written to the plugin's agents/<name>.agent.md. Copilot loaded a --plugin-dir package's agents/<name>.md as <plugin>:<name> and ran the session on that definition; Copilot documents delegation to the same agent, though a model-initiated delegation was not driven in the capture.",
+        },
+        "agents.default": {
+          level: "unsupported",
+          rationale:
+            "A package cannot set the agent a Copilot session starts as; there is no captured plugin or project setting for one. Deliver the default to a project target, where the user selects it with --agent, or select the package agent explicitly.",
+        },
+        "agents.primary": {
+          level: "exact",
+          rationale:
+            "A package agent is selected as the session's agent with --agent <plugin>:<name>. Copilot has no primary-only mode, so it also offers the agent for delegation.",
+          deviations: [
+            {
+              id: "primary-agent-delegable",
+              summary:
+                "Copilot has no primary-only agent mode, so it also offers a primary-only definition for delegation.",
+              evidence: AGENTS_CAPTURE,
+            },
+          ],
+        },
+        "agents.native": {
+          level: "exact",
+          rationale:
+            "native.copilot fields are written verbatim into the agent frontmatter. tools was observed limiting the agent's tool set; name, description and mode are reserved for the portable core, and mcp-servers is refused because it embeds another component Hooknostic validates on its own route.",
+        },
       },
       source: {
-        date: "2026-10-20",
-        validatedOn: copilotValidationRecords,
+        date: "2026-10-22",
+        validatedOn: [
+          ...copilotValidationRecords,
+          {
+            version: "1.0.102",
+            date: "2026-10-22",
+            method: "live-probe",
+            artifact: AGENTS_CAPTURE,
+            what: "A --plugin-dir package's agents/<name>.md loaded as <plugin>:<name>, and --agent <plugin>:<name> ran the session on that definition's instructions; the same package's com.github.copilot/agents tree was not listed.",
+          },
+        ],
         notes: [
           "https://docs.github.com/en/copilot/concepts/agents/copilot-cli/about-cli-plugins (fetched 2026-10-20)",
+          "https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/create-custom-agents-for-cli (fetched 2026-10-22)",
           "https://agent-plugins.org/specification (fetched 2026-10-20)",
         ],
       },
@@ -264,6 +307,27 @@ const nativeCopilotAgentPluginProjector: AgentPluginProjector = {
       });
     }
 
+    // Agent definitions configured beside the package (ADR-0034). Copilot loads
+    // a plugin's agents/<name>.agent.md under <plugin>:<name>. A package file
+    // already at the same path would be replaced silently, so that is fatal,
+    // case-folded like every other generated-path check.
+    for (const agent of context.agents ?? []) {
+      const rendered = renderCopilotAgent(agent);
+      const path = `${AGENTS_DIRECTORY}/${rendered.file}`;
+      const claimed = files.find((file) => file.path.toLowerCase() === path.toLowerCase());
+      if (claimed !== undefined) {
+        issues.push({
+          severity: "error",
+          scope: "projection",
+          component: "agents.definition",
+          path: claimed.path,
+          message: `agent ${JSON.stringify(agent.name)} is emitted at ${JSON.stringify(path)}, which the package already provides as ${JSON.stringify(claimed.path)}; rename the agent or remove the file.`,
+        });
+        continue;
+      }
+      files.push({ path, contents: rendered.contents });
+    }
+
     if (context.runtimePackage !== undefined) {
       omissions.push({
         component: "agent-plugin.runtime-package",
@@ -271,12 +335,26 @@ const nativeCopilotAgentPluginProjector: AgentPluginProjector = {
           "no captured Copilot install route runs a dependency install, live or copied, so the manifest and lockfile were dropped; bundle Node component dependencies instead",
       });
     }
+    if (context.defaultAgent !== undefined) {
+      omissions.push({
+        component: "agents.default",
+        name: context.defaultAgent,
+        reason: DEFAULT_AGENT_NOT_PACKAGED,
+      });
+    }
     const counts = componentSummary(source, {
       namespace: this.namespace,
       hasRuntimePackage: context.runtimePackage !== undefined,
-      skipped: (component, discovered) => (component === "agent-plugin.runtime-package" ? discovered : 0),
+      ...(context.agents === undefined ? {} : { agents: context.agents }),
+      harness: "copilot",
+      ...(context.defaultAgent === undefined ? {} : { defaultAgent: context.defaultAgent }),
+      skipped: (component, discovered) =>
+        component === "agents.default" || component === "agent-plugin.runtime-package" ? discovered : 0,
     });
-    const deviations = copilotProjectionDeviations(source, context.support) ?? [];
+    const deviations: AgentPluginDeviation[] = [
+      ...(copilotProjectionDeviations(source, context.support) ?? []),
+      ...primaryDelegableDeviations(context.agents ?? [], context.support["agents.primary"]),
+    ];
 
     return {
       files,

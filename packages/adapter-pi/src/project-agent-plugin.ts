@@ -6,6 +6,7 @@ import type {
   AgentPluginProjector,
 } from "@hooknostic/agent-plugin";
 import {
+  AGENT_COMPONENT_IDS,
   assertPackageDelivery,
   componentSummary,
   isRejectedSkillPath,
@@ -46,8 +47,28 @@ const LAUNCHER_DIR = "hooknostic-runtime";
 const LAUNCHER_PATH = `${LAUNCHER_DIR}/${MCP_LAUNCHER_FILE}`;
 const LAUNCHER_SERVERS_PATH = `${LAUNCHER_DIR}/${MCP_SERVERS_FILE}`;
 
+/**
+ * Pi has no captured named-agent or delegation route, and its package manifest
+ * names extensions and skills only. A portable agent definition cannot reach a
+ * Pi package, so each agent component is explicitly unsupported rather than
+ * silently absent (ADR-0034).
+ */
+const piPackageAgentComponents: AgentPluginProjectionProfile["components"] = {
+  "agents.definition": {
+    level: "unsupported",
+    rationale: "This adapter does not implement portable agent definition projection.",
+  },
+  "agents.primary": {
+    level: "unsupported",
+    rationale: "This adapter does not implement portable primary agent projection.",
+  },
+  "agents.native": { level: "unsupported", rationale: "This adapter does not project native agent fields." },
+  "agents.default": { level: "unsupported", rationale: "This adapter does not project a default agent." },
+};
+
 /** Both lines rate the same package components; only the MCP rationale differs. */
 const piPackageComponents = (mcp: PiMcpCells): AgentPluginProjectionProfile["components"] => ({
+  ...piPackageAgentComponents,
   "agent-plugin.manifest": {
     level: "exact",
     rationale:
@@ -285,14 +306,23 @@ const nativePiAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
       });
     }
     const counts = componentSummary(source, {
+      ...(context.agents === undefined ? {} : { agents: context.agents }),
+      ...(context.defaultAgent === undefined ? {} : { defaultAgent: context.defaultAgent }),
+      harness: "pi",
       hasRuntimePackage: context.runtimePackage !== undefined,
       skipped: (component, discovered) =>
-        component.startsWith("agent-plugin.mcp.")
-          ? mcp.omitted.filter((omission) => omission.component === component).length
-          : component === "agent-plugin.runtime-package"
-            ? discovered
-            : 0,
+        component.startsWith("agents.")
+          ? discovered
+          : component.startsWith("agent-plugin.mcp.")
+            ? mcp.omitted.filter((omission) => omission.component === component).length
+            : component === "agent-plugin.runtime-package"
+              ? discovered
+              : 0,
     });
+    for (const component of AGENT_COMPONENT_IDS) {
+      if (counts[component] !== undefined)
+        omissions.push({ component, reason: "This adapter does not implement portable agent projection." });
+    }
     return {
       files: files.sort((a, b) => a.path.localeCompare(b.path)),
       directories: (source.directories ?? [])

@@ -1,21 +1,35 @@
 import { realpathSync } from "node:fs";
 import { isAbsolute, relative, resolve, sep } from "node:path";
 
-import type { AgentPluginProjectionProfile, ProjectComponents } from "@hooknostic/agent-plugin";
+import type {
+  AgentDefinition,
+  AgentPluginComponentSupport,
+  AgentPluginDeviation,
+  AgentPluginProjectionProfile,
+  ProjectComponents,
+} from "@hooknostic/agent-plugin";
 import {
   contentsText,
   projectSkillText,
+  renderMarkdownFrontmatter,
   SKILL_REFERENCE_UNEXPANDED,
   unexpandedSkillReferenceReason,
 } from "@hooknostic/agent-plugin";
 import type {
   GeneratedArtifact,
+  HarnessAdapter,
   McpLauncherServer,
   ProjectComponentOptions,
   ProjectEntry,
   ProjectIntegration,
 } from "@hooknostic/core";
-import { MCP_LAUNCHER_FILE, projectMcpLauncher, projectSkillFiles, sharedMcpServerKey } from "@hooknostic/core";
+import {
+  MCP_LAUNCHER_FILE,
+  projectAgentFiles,
+  projectMcpLauncher,
+  projectSkillFiles,
+  sharedMcpServerKey,
+} from "@hooknostic/core";
 
 import { copilotHarness } from "./harness.js";
 import {
@@ -29,6 +43,7 @@ import { copilotSkillPolicy, copilotSkillPolicyProfiles } from "./skill-policy.j
 import { COPILOT_SKILL_TEXT, copilotSkillDirectoryDegradation } from "./skill-text.js";
 
 const CAPTURE = ".capture/copilot/README.md";
+const AGENTS_CAPTURE = ".capture/copilot/evidence/agents-1.0.102.json";
 
 /**
  * Copilot reads one workspace MCP file: a root `.mcp.json` whenever it exists,
@@ -109,6 +124,57 @@ export function projectIntegration(artifacts: readonly GeneratedArtifact[], outp
   };
 }
 
+/** Copilot's project custom-agent directory. */
+export const COPILOT_AGENTS_DIRECTORY = ".github/agents";
+
+export const copilotAgents: NonNullable<HarnessAdapter["agents"]> = {
+  projectDirectory: COPILOT_AGENTS_DIRECTORY,
+  // `name` and `description` are the portable core's identity. `mcp-servers`
+  // would embed another component Hooknostic validates and delivers through
+  // its own launcher; it is refused like Claude's `mcpServers` (ADR-0034).
+  reservedNativeKeys: ["name", "description", "mode", "mcp-servers"],
+};
+
+/**
+ * Every Copilot custom agent is a Markdown file in `.github/agents` (project)
+ * or `agents/` (plugin), with a frontmatter block and the instructions as the
+ * body. There is no native `mode`: the file can be selected as the session's
+ * agent with `--agent`/`/agent` and delegated to as a subagent, so a `primary`
+ * definition is also delegable (`.capture/copilot`, ADR-0034).
+ */
+export function renderCopilotAgent(agent: AgentDefinition): { file: string; contents: string } {
+  const native = Object.entries(agent.native["copilot"] ?? {}).filter(
+    ([key]) => !copilotAgents.reservedNativeKeys.includes(key),
+  );
+  return {
+    file: `${agent.name}.agent.md`,
+    contents: renderMarkdownFrontmatter(
+      { name: agent.name, description: agent.description, ...Object.fromEntries(native) },
+      agent.instructions,
+    ),
+  };
+}
+
+/** A Copilot definition is delegated to even when it is primary only. */
+export const PRIMARY_AGENT_DELEGABLE = "primary-agent-delegable";
+
+/** The deviation for each `primary` definition, where the cell declares it. */
+export function primaryDelegableDeviations(
+  agents: readonly AgentDefinition[],
+  cell: AgentPluginComponentSupport | undefined,
+): AgentPluginDeviation[] {
+  if (!(cell?.deviations ?? []).some((item) => item.id === PRIMARY_AGENT_DELEGABLE)) return [];
+  return agents
+    .filter((agent) => agent.mode === "primary")
+    .map((agent) => ({
+      id: PRIMARY_AGENT_DELEGABLE,
+      component: "agents.primary",
+      name: agent.name,
+      path: agent.source,
+      reason: `agent ${JSON.stringify(agent.name)} is primary only, but Copilot also offers it for delegation.`,
+    }));
+}
+
 /**
  * Project components. Copilot discovers skills in `.agents/skills` (as well as
  * `.github/skills` and `.claude/skills`), reads project MCP servers from
@@ -175,6 +241,21 @@ export async function projectComponents(
     target: COPILOT_SKILL_TEXT,
     harness: "GitHub Copilot CLI",
   });
+  const agents = projectAgentFiles(source.agents ?? [], COPILOT_AGENTS_DIRECTORY, renderCopilotAgent);
+  result.files.push(...agents.files);
+  if (agents.files.length > 0) {
+    result.guidance.push(
+      "Copilot reads project custom agents from .github/agents; restart the CLI, then select one with --agent <id> or /agent.",
+    );
+    // Copilot also loads Claude's .claude/agents, but a same-ID file in its own
+    // directory wins (captured). Saying so keeps a project targeting both from
+    // mistaking the Claude copy for the one Copilot will run.
+    result.guidance.push(
+      "Copilot also lists agents from .claude/agents; a .github/agents file with the same ID takes precedence.",
+    );
+  }
+  const delegable = primaryDelegableDeviations(source.agents ?? [], options.support?.["agents.primary"]);
+  if (delegable.length > 0) (result.deviations ??= []).push(...delegable);
   if (nativeSkills.size > 0 && result.degradations !== undefined) {
     // The helper reports the degradation at the destination path it was given;
     // the file is really at the native discovery path, reported below.
@@ -308,10 +389,47 @@ const nativeProjectComponentProfiles: readonly AgentPluginProjectionProfile[] = 
         rationale:
           "Project delivery installs nothing. The captured local marketplace and --plugin-dir routes load a plugin live and copy no directory, so a package.json and lockfile written beside the projected files would be read by nothing and no node_modules would appear. Bundle a Node component's dependencies instead.",
       },
+      "agents.definition": {
+        level: "exact",
+        rationale:
+          "Written to .github/agents/<name>.agent.md. Copilot lists it by its file-stem ID and its frontmatter name, and both are selectable with --agent; the session event recorded the selected agent and its tools. Copilot documents delegation to a custom agent through its agent/Task tool; a model-initiated delegation was not driven in the capture. A package writes agents/<name>.agent.md and Copilot loads it under <plugin>:<name>. Copilot also lists .claude/agents; a same-ID file in its own directory wins, so a project targeting both runs the Copilot copy.",
+      },
+      "agents.default": {
+        level: "unsupported",
+        rationale:
+          "Copilot CLI has no captured project or user setting that starts every session as a custom agent. --agent and /agent select one for a session, so Hooknostic cannot deliver components.defaultAgent to this harness. Start Copilot with --agent <id>.",
+      },
+      "agents.primary": {
+        level: "exact",
+        rationale:
+          "Every custom agent can be selected as the session's agent with --agent <id or name> or /agent, and its instructions become the session's custom-agent instructions. There is no native primary-only mode, so Copilot also offers the same agent for delegation.",
+        deviations: [
+          {
+            id: PRIMARY_AGENT_DELEGABLE,
+            summary:
+              "Copilot has no primary-only agent mode, so it also offers a primary-only definition for delegation.",
+            evidence: AGENTS_CAPTURE,
+          },
+        ],
+      },
+      "agents.native": {
+        level: "exact",
+        rationale:
+          'native.copilot fields are written verbatim into the agent frontmatter. tools was observed limiting the agent\'s tool set (tools: ["read"] selected the agent with only that tool), while name, description and mode are reserved for the portable core. mcp-servers is refused because it embeds another component Hooknostic validates on its own route.',
+      },
     },
     source: {
       date: "2026-10-20",
-      validatedOn: copilotValidationRecords,
+      validatedOn: [
+        ...copilotValidationRecords,
+        {
+          version: "1.0.102",
+          date: "2026-10-22",
+          method: "live-probe",
+          artifact: AGENTS_CAPTURE,
+          what: "Project and --plugin-dir custom agents: .github/agents/<id>.agent.md and <id>.md loaded, --agent accepted the file-stem ID or the frontmatter name, the body became the selected session agent's instructions, tools: [\"read\"] limited the selected agent to that tool, a package's agents/<name>.md loaded as <plugin>:<name>, .claude/agents was also listed but a same-ID .github/agents file won, and a file without frontmatter failed to load.",
+        },
+      ],
       notes: [
         "https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/add-mcp-servers (fetched 2026-10-20)",
         "https://agent-plugins.org/specification (fetched 2026-10-20)",
