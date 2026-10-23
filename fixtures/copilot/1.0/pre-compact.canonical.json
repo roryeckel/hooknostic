@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "harness": {
+    "id": "copilot",
+    "version": "1.0.101",
+    "nativeEvent": "preCompact"
+  },
+  "session": {
+    "id": "e7127f51-c660-4b67-88d0-7d8e2d19d79d",
+    "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-copilot-compact-manual\\project"
+  },
+  "correlation": {},
+  "event": "context.compact.before",
+  "trigger": "manual"
+}

@@ -40,8 +40,10 @@ Read these when you want to know *why* something works the way it does, not just
 | [0029 — The shell view names its grammar family, where a harness lets it](0029-shell-dialect.md) | How does a hook know whether a command is bash, PowerShell or cmd, and what does it do when nothing says? |
 | [0030 — A skill declares whether it permits implicit invocation](0030-skill-invocation-policy.md) | How does a skill require explicit user invocation across harnesses, and what happens when its gate cannot be applied? |
 | [0031 — Unsupported components can have named, accepted omissions](0031-named-component-omissions.md) | How does a package deliberately omit one unsupported component without relaxing every target's policy? |
-| [0032 — Portable agent definitions (proposed)](0032-portable-agents.md) | Can one definition become a Claude subagent, a Codex custom agent and an OpenCode agent, or the agent a session runs as, and what survives the translation? |
-| [0033 — Agent-scoped hooks (proposed)](0033-agent-scoped-hooks.md) | How does a hook run only inside one agent, and on which harnesses can it tell? |
+| [0032 — An MCP tool's server and tool may come from what the harness states](0032-stated-mcp-identity.md) | Why does a pi `tool.before` hook see an MCP call without its server, and where does the server come from? |
+| [0033 — Each harness runs only the output generated for it](0033-no-cross-harness-compatibility-reads.md) | Why does Copilot ignore my `.claude/settings.json` hooks, and what happens when one harness reads another's files? |
+| [0034 — Portable agent definitions (proposed)](0034-portable-agents.md) | Can one definition become a Claude subagent, a Codex custom agent and an OpenCode agent, or the agent a session runs as, and what survives the translation? |
+| [0035 — Agent-scoped hooks (proposed)](0035-agent-scoped-hooks.md) | How does a hook run only inside one agent, and on which harnesses can it tell? |
 
 Each record is immutable once accepted; a change of course gets a new record that
 supersedes the old one rather than a silent edit.

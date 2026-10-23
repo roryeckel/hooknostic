@@ -34,7 +34,7 @@
         "PreToolUse"
       ],
       "kind": "array",
-      "hash": "5c04db9b81653d53d99e19c1c71a8e07b1a355d55ce1d9f7f4d6a922538e74e7",
+      "hash": "e7cc53cb779c83ba184658db1fd11daa4f62466a376ec626b7fe9a9e7c1d60f1",
       "context": []
     },
     {
@@ -83,6 +83,21 @@
       "context": []
     },
     {
+      "path": ".github/agents/.gitattributes",
+      "hash": "6583b7e9506cb6832dcf9e8785e673fb0c562ce86dcec2973e6b0f556cb4efd2",
+      "mode": 420
+    },
+    {
+      "path": ".github/agents/reviewer.agent.md",
+      "hash": "d32d004f342f689f1b35f32820110612c79e35392c566405c7d6fde998050742",
+      "mode": 420
+    },
+    {
+      "path": ".github/hooks/hooknostic.json",
+      "hash": "8b7603a787b2d689e2b061b5e470297ef690630c9ddb253818add65ef29fb404",
+      "mode": 420
+    },
+    {
       "path": ".hooknostic/.gitattributes",
       "hash": "48747480eddba024928d03be9bf83dc579e5515768647507a767e8187a85c9ab",
       "mode": 420
@@ -104,7 +119,7 @@
     },
     {
       "path": ".hooknostic/artifacts/claude/mcp-launcher.mjs",
-      "hash": "be306ae5ce651123a3169cf6d25e09a2d710688cbd0a55129bd2617046d407a0",
+      "hash": "d61bc37704d354f053ca226916e08cf1ea5d4a451001ab86db7f7418e47c2926",
       "mode": 420
     },
     {
@@ -114,12 +129,12 @@
     },
     {
       "path": ".hooknostic/artifacts/claude/runtime/hooknostic.mjs",
-      "hash": "ac917d7058557c4a34abee7fdfadf7efc74f17be8407333cf22db783ad5d9e3d",
+      "hash": "a173fd5d5e15a7f984e4a5b258f988154c55e82c346c08624d93445c5a1de770",
       "mode": 420
     },
     {
       "path": ".hooknostic/artifacts/codex/.codex/hooknostic/hooknostic.mjs",
-      "hash": "3da1fcf4d84a3958d9ed6d67d102bfb2ccd6581f78b0ad71d2c257b680ff0f38",
+      "hash": "6b45ac3cc0821fccb0691513284820b78dc61e090bdc0bcc283d6741169c302e",
       "mode": 420
     },
     {
@@ -134,12 +149,37 @@
     },
     {
       "path": ".hooknostic/artifacts/codex/mcp-launcher.mjs",
-      "hash": "be306ae5ce651123a3169cf6d25e09a2d710688cbd0a55129bd2617046d407a0",
+      "hash": "d61bc37704d354f053ca226916e08cf1ea5d4a451001ab86db7f7418e47c2926",
       "mode": 420
     },
     {
       "path": ".hooknostic/artifacts/codex/mcp-servers.json",
       "hash": "837cd0aa242d3bcdfa576758b4ad8c64b26255954a7dd33483917a4ff7954022",
+      "mode": 420
+    },
+    {
+      "path": ".hooknostic/artifacts/copilot/.gitattributes",
+      "hash": "705fd4d6451a31d36b3df7de96f83f30ac976c9b4a6d1e51671d8e2f33e2d0da",
+      "mode": 420
+    },
+    {
+      "path": ".hooknostic/artifacts/copilot/hooks/hooknostic.json",
+      "hash": "dedc2f1e716829b2c72467b9d9e91720fc971febdb67467566c2fef825b0b7cf",
+      "mode": 420
+    },
+    {
+      "path": ".hooknostic/artifacts/copilot/mcp-launcher.mjs",
+      "hash": "d61bc37704d354f053ca226916e08cf1ea5d4a451001ab86db7f7418e47c2926",
+      "mode": 420
+    },
+    {
+      "path": ".hooknostic/artifacts/copilot/mcp-servers.json",
+      "hash": "837cd0aa242d3bcdfa576758b4ad8c64b26255954a7dd33483917a4ff7954022",
+      "mode": 420
+    },
+    {
+      "path": ".hooknostic/artifacts/copilot/runtime/hooknostic.mjs",
+      "hash": "257e257e2c79d653961ab40d605c65b9d1abd83edfbf9b20fa9474a03e5035b7",
       "mode": 420
     },
     {
@@ -149,12 +189,12 @@
     },
     {
       "path": ".hooknostic/artifacts/opencode/.opencode/plugins/hooknostic.js",
-      "hash": "a9c576d2b61a8b42142ced76b614302f29e85d694674da0978f97f8f4f134ad7",
+      "hash": "85da43b0309ca90af828d3af1bdfc5781415d7a23e3472c8146659f96a9e8087",
       "mode": 420
     },
     {
       "path": ".hooknostic/artifacts/opencode/mcp-launcher.mjs",
-      "hash": "be306ae5ce651123a3169cf6d25e09a2d710688cbd0a55129bd2617046d407a0",
+      "hash": "d61bc37704d354f053ca226916e08cf1ea5d4a451001ab86db7f7418e47c2926",
       "mode": 420
     },
     {
@@ -163,8 +203,23 @@
       "mode": 420
     },
     {
+      "path": ".hooknostic/artifacts/pi/.gitattributes",
+      "hash": "705fd4d6451a31d36b3df7de96f83f30ac976c9b4a6d1e51671d8e2f33e2d0da",
+      "mode": 420
+    },
+    {
       "path": ".hooknostic/artifacts/pi/.pi/extensions/hooknostic.js",
-      "hash": "28e8bc9f19306e81d8fd30e305832acc405175e78974f915d485ac42e4e64284",
+      "hash": "3c081d0e9a30d95810ead0945a1253daa81df67840a4a4e085637913005f5d01",
+      "mode": 420
+    },
+    {
+      "path": ".hooknostic/artifacts/pi/mcp-launcher.mjs",
+      "hash": "d61bc37704d354f053ca226916e08cf1ea5d4a451001ab86db7f7418e47c2926",
+      "mode": 420
+    },
+    {
+      "path": ".hooknostic/artifacts/pi/mcp-servers.json",
+      "hash": "837cd0aa242d3bcdfa576758b4ad8c64b26255954a7dd33483917a4ff7954022",
       "mode": 420
     },
     {
@@ -174,7 +229,7 @@
         "sample"
       ],
       "kind": "property",
-      "hash": "312a022c478ac049e3b6a5d9dcb4fa8437b34a5e4d120202b81bb5948ab49d7b"
+      "hash": "31da5544e89615d34b4c180903aca1474c5274a312a1e62fce254f44629df725"
     },
     {
       "path": ".opencode/agents/.gitattributes",
@@ -193,7 +248,7 @@
     },
     {
       "path": ".opencode/plugins/hooknostic-components.js",
-      "hash": "7ac2079fea158d1e009c27e14f6f31b5d461e9dbb5d84b341604c432883fbe67",
+      "hash": "ea980249caf120bf6f5003aef1a0b90299ca1598a71996f808466756dab0dd8b",
       "mode": 420
     },
     {
@@ -203,7 +258,12 @@
     },
     {
       "path": ".pi/extensions/.gitattributes",
-      "hash": "2657c649826aee3818b66cb4f1bff3b718a4fd4d417f290579e1d0226fdfb337",
+      "hash": "b890dad119a67eaf4177a4b6cac7e16bd6ace9627e03d8502772cc8441563e3f",
+      "mode": 420
+    },
+    {
+      "path": ".pi/extensions/hooknostic-mcp.js",
+      "hash": "4c164d1ca79171fcf88f4d71eeb7056c0a3efcd14a12f594a9a56b146be66f5d",
       "mode": 420
     },
     {

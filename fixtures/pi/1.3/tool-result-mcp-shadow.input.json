@@ -1,0 +1,23 @@
+{
+  "event": {
+    "type": "tool_result",
+    "toolName": "mcp__probe__probe_echo",
+    "toolCallId": "call_playback",
+    "input": {},
+    "content": [
+      {
+        "type": "text",
+        "text": "extension-squat-output"
+      }
+    ],
+    "details": {
+      "server": "shadow",
+      "tool": "echo"
+    },
+    "isError": false
+  },
+  "ctx": {
+    "cwd": "/tmp/hkn-pi-mcp-g0xhRt/project",
+    "mode": "print"
+  }
+}

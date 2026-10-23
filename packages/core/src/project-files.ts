@@ -17,19 +17,51 @@ export interface ProjectEntry {
   format?: "jsonc" | "toml";
   path: string;
   key: string[];
-  kind: "array" | "property";
+  /**
+   * `property` owns the value at `key`; `array` owns one element of the array
+   * there. `members` owns string members of the array there and leaves every
+   * other member alone: `value` is the list of names Hooknostic needs present,
+   * and only the ones it added are removed again.
+   */
+  kind: "array" | "property" | "members";
   value: unknown;
+  /**
+   * Marks an entry in a file several harnesses read natively, such as a root
+   * `.mcp.json` that Claude Code and GitHub Copilot CLI both load. Targets that
+   * emit the same path and key compose into one entry, the first target's,
+   * when every emitter shares it with the same string: each value is then
+   * correct for every reader. Different strings, or a duplicate that does not
+   * share, are a conflict, because the file can hold one value per key
+   * (ADR-0033).
+   */
+  share?: string;
 }
 export interface ProjectComponentOmission {
   component: ComponentId;
   name: string;
   reason: string;
 }
+/**
+ * A key an unowned document must not hold. With `fold`, the last segment also
+ * matches any sibling key that folds to the same string, for a harness that
+ * treats such names as one entry.
+ */
+export interface AbsentKey {
+  path: string;
+  key: string[];
+  fold?: (segment: string) => string;
+}
 export interface ProjectIntegration {
   files: ProjectFile[];
   entries: ProjectEntry[];
   guidance: string[];
-  absent?: { path: string; key: string[] }[];
+  absent?: AbsentKey[];
+  /**
+   * Creating `path` changes discovery from `fallback` to that file. Refuse
+   * creation if the fallback's object at `key` contains authored entries;
+   * an existing primary file or an empty fallback needs no migration.
+   */
+  discoveryFallbacks?: { path: string; fallback: string; key: string[] }[];
   /** An omitted copy must not leave an unowned native skill discoverable. */
   omittedFiles?: readonly string[];
   omissions?: ProjectComponentOmission[];
@@ -67,7 +99,7 @@ interface Owned {
   path: string;
   hash: string;
   key?: string[];
-  kind?: "array" | "property";
+  kind?: "array" | "property" | "members";
   context?: string[];
   mode?: number;
 }
@@ -235,6 +267,18 @@ function get(value: unknown, key: string[]): unknown {
   }
   return value;
 }
+/** The key an absent check finds present, under its fold when it has one. */
+function presentKey(value: unknown, check: AbsentKey): string[] | undefined {
+  const { key, fold } = check;
+  if (fold === undefined || key.length === 0) return get(value, key) === undefined ? undefined : key;
+  const parent = get(value, key.slice(0, -1));
+  if (!parent || typeof parent !== "object" || Array.isArray(parent)) return undefined;
+  const wanted = fold(key.at(-1)!);
+  const found = Object.keys(parent).find(
+    (name) => fold(name) === wanted && (parent as Record<string, unknown>)[name] !== undefined,
+  );
+  return found === undefined ? undefined : [...key.slice(0, -1), found];
+}
 function edit(text: string, key: (string | number)[], value: unknown): string {
   return applyEdits(
     text,
@@ -258,7 +302,7 @@ function readManifest(raw: Buffer | null, config: string): Manifest {
         (!Array.isArray(entry.key) || entry.key.length === 0 || entry.key.some((k) => typeof k !== "string")))
     )
       throw new Error("invalid integration ownership entry");
-    if (entry.key !== undefined && entry.kind !== "array" && entry.kind !== "property")
+    if (entry.key !== undefined && entry.kind !== "array" && entry.kind !== "property" && entry.kind !== "members")
       throw new Error("invalid integration entry kind");
     if (
       entry.context !== undefined &&
@@ -281,14 +325,21 @@ export async function reconcileProject(
 ): Promise<Reconciliation> {
   validatePath(config);
   const observedAbsentFiles = new Map<string, Buffer | null>();
+  const absentDocuments = new Map<string, Record<string, unknown>>();
   for (const check of integration.absent ?? []) {
     let raw = observedAbsentFiles.get(check.path);
     if (raw === undefined && !observedAbsentFiles.has(check.path)) {
       raw = await bytes(await projectPath(root, check.path));
       observedAbsentFiles.set(check.path, raw);
     }
-    if (raw && get(document(raw.toString(), check.path), check.key) !== undefined)
-      throw new Error(`unowned component collision: ${check.path}:${check.key.join(".")}`);
+    if (!raw) continue;
+    let parsed = absentDocuments.get(check.path);
+    if (parsed === undefined) {
+      parsed = document(raw.toString(), check.path);
+      absentDocuments.set(check.path, parsed);
+    }
+    const collision = presentKey(parsed, check);
+    if (collision !== undefined) throw new Error(`unowned component collision: ${check.path}:${collision.join(".")}`);
   }
   if (await bytes(await projectPath(root, JOURNAL)))
     throw new Error("unfinished integration transaction; run hooknostic recover");
@@ -332,9 +383,35 @@ export async function reconcileProject(
         (sameDestination.mode ?? 0o644) === (entry.mode ?? 0o644)
       )
         continue;
+      const existingShare = "share" in sameDestination ? sameDestination.share : undefined;
+      const share = "share" in entry ? entry.share : undefined;
+      if (existingShare !== undefined && share !== undefined && "key" in entry) {
+        if (existingShare === share) continue;
+        throw new Error(
+          `conflicting shared entry: ${entry.path}:${entry.key.join(".")} is read by more than one harness, ` +
+            "and the targets that write it define it differently",
+        );
+      }
       throw new Error(`duplicate integration destination: ${entry.path}`);
     }
     desired.set(id, entry);
+  }
+  for (const check of integration.discoveryFallbacks ?? []) {
+    if (![...desired.values()].some((entry) => entry.path === check.path)) continue;
+    const primary = await bytes(await projectPath(root, check.path));
+    observedAbsentFiles.set(check.path, primary);
+    if (primary !== null) continue;
+    const fallback = await bytes(await projectPath(root, check.fallback));
+    // Preserve the observation through applyProject: a fallback added or
+    // populated after planning must not be hidden by this transaction either.
+    observedAbsentFiles.set(check.fallback, fallback);
+    if (fallback === null) continue;
+    const entries = get(document(fallback.toString(), check.fallback), check.key);
+    if (entries && typeof entries === "object" && !Array.isArray(entries) && Object.keys(entries).length > 0)
+      throw new Error(
+        `configuration conflict: creating ${check.path} would hide existing entries in ` +
+          `${check.fallback}:${check.key.join(".")}; migrate those entries to ${check.path} before synchronizing`,
+      );
   }
   for (const path of relinquished) {
     if ([...desired.values()].some((entry) => entry.path.toLowerCase() === path.toLowerCase()))
@@ -416,7 +493,21 @@ export async function reconcileProject(
         const current = get(document(text, path, format), key);
         let context: string[] | undefined;
         if (format === "toml" && kind !== "property") throw new Error("TOML supports property ownership only");
-        if (kind === "array") {
+        if (kind === "members") {
+          if (current !== undefined && (!Array.isArray(current) || current.some((v) => typeof v !== "string")))
+            throw new Error(`expected an array of strings at ${path}:${key.join(".")}`);
+          const values = (current as string[] | undefined) ?? [];
+          // Members recorded (by hash) as added last time are Hooknostic's; every
+          // other member belongs to the author and is kept as written.
+          const previous = new Set(old?.context ?? []);
+          const kept = values.filter((member) => !previous.has(valueHash(member)));
+          const wanted = next === undefined ? [] : (next.value as string[]);
+          const added = wanted.filter((member, index) => !kept.includes(member) && wanted.indexOf(member) === index);
+          const result = [...kept, ...added];
+          context = added.map(valueHash);
+          if (JSON.stringify(result) !== JSON.stringify(values))
+            text = update(text, key, result.length === 0 && kept.length === 0 ? undefined : result);
+        } else if (kind === "array") {
           if (current !== undefined && !Array.isArray(current))
             throw new Error(`expected array at ${path}:${key.join(".")}`);
           const values: unknown[] = (current as unknown[]) ?? [];

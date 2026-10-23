@@ -1,0 +1,134 @@
+{
+  "harness": "GitHub Copilot CLI",
+  "version": "GitHub Copilot CLI 1.0.102.\nRun 'copilot update' to check for updates.",
+  "method": "live-probe",
+  "date": "2026-10-23",
+  "questions": {
+    "projectPath": ".github/agents/<id>.agent.md and <id>.md both load; ID is the file stem, and --agent also accepts the frontmatter name",
+    "frontmatter": "name, description and tools were accepted; tools: [\"read\"] limited the selected agent to read",
+    "sessionSelection": "--agent <id> selected the file as the session's agent; subagent.selected recorded its name and tools",
+    "packagePath": "a --plugin-dir package's agents/<name>.agent.md loaded as <plugin>:<name>",
+    "defaultAgent": "no project or user setting starts a session as a custom agent; --agent and /agent are per session"
+  },
+  "observations": [
+    {
+      "label": "project-by-id",
+      "exit": 0,
+      "reply": [
+        "TOKEN-PROJECT-ID"
+      ],
+      "selected": [
+        {
+          "agentName": "probe-agent",
+          "agentDisplayName": "probe-agent",
+          "tools": [
+            "read"
+          ]
+        }
+      ]
+    },
+    {
+      "label": "project-by-name",
+      "exit": 0,
+      "reply": [
+        "TOKEN-PROJECT-ID"
+      ],
+      "selected": [
+        {
+          "agentName": "probe-agent",
+          "agentDisplayName": "probe-agent",
+          "tools": [
+            "read"
+          ]
+        }
+      ]
+    },
+    {
+      "label": "legacy-md-extension",
+      "exit": 0,
+      "reply": [
+        "TOKEN-LEGACY"
+      ],
+      "selected": [
+        {
+          "agentName": "legacy",
+          "agentDisplayName": "legacy",
+          "tools": [
+            "read"
+          ]
+        }
+      ]
+    },
+    {
+      "label": "package-qualified",
+      "exit": 0,
+      "reply": [
+        "TOKEN-PACKAGE"
+      ],
+      "selected": [
+        {
+          "agentName": "hooknostic-agents-probe:pkg",
+          "agentDisplayName": "pkg",
+          "tools": [
+            "read"
+          ]
+        }
+      ]
+    },
+    {
+      "label": "foreign-claude-agent-is-loaded",
+      "exit": 0,
+      "reply": [
+        "TOKEN-FOREIGN"
+      ],
+      "selected": [
+        {
+          "agentName": "foreign",
+          "agentDisplayName": "foreign",
+          "tools": [
+            "read"
+          ]
+        }
+      ]
+    },
+    {
+      "label": "project-copy-wins-over-claude",
+      "exit": 0,
+      "reply": [
+        "TOKEN-COPILOT"
+      ],
+      "selected": [
+        {
+          "agentName": "shared",
+          "agentDisplayName": "shared",
+          "tools": [
+            "read"
+          ]
+        }
+      ]
+    },
+    {
+      "label": "missing-agent",
+      "exit": 1,
+      "reply": [],
+      "selected": []
+    },
+    {
+      "label": "malformed-file",
+      "exit": 1,
+      "reply": [],
+      "selected": []
+    },
+    {
+      "label": "namespace-agents-tree-not-loaded",
+      "exit": 1,
+      "reply": [],
+      "selected": []
+    }
+  ],
+  "limits": [
+    "Windows only.",
+    "No default-agent route was found in `copilot help config`; a setting outside that help was not searched.",
+    "Delegation was established from the documented agent behaviour and the subagent.selected event, not from a model-initiated delegation."
+  ]
+}

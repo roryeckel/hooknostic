@@ -30,6 +30,7 @@ import {
   claudeShellCodec,
 } from "./toolmap.js";
 export { claudeHarness } from "./harness.js";
+export { COPILOT_EXCLUSION } from "./project.js";
 
 export { applyClaude } from "./apply.js";
 export { ClaudeDecodeError, decodeClaude } from "./decode.js";
@@ -95,9 +96,17 @@ export function claudeShimEntrySource(options: {
 export function claudeAdapter(): HarnessAdapter {
   return {
     id: "claude",
-    adapterVersion: "0.7.0", // kept equal to package.json by versions.test.ts
+    adapterVersion: "0.9.0", // kept equal to package.json by versions.test.ts
     harness: claudeHarness,
     projectPaths: [".claude/settings.json", ".claude/skills", ".claude/agents", ".mcp.json"],
+    // disabledMcpjsonServers in .claude/settings.json keeps a named root
+    // .mcp.json server from starting, and GitHub Copilot CLI ignores the key
+    // although it reads the file (2.1.238 and 2.1.306,
+    // claude-mcp-fence-probe.mjs; Copilot 1.0.101, foreign-components-probe.sh).
+    sharedProjectMcp: {
+      file: ".mcp.json",
+      disable: { path: ".claude/settings.json", key: ["disabledMcpjsonServers"] },
+    },
     projectIntegration,
     projectComponents,
     projectComponentProfiles,

@@ -1,0 +1,7 @@
+{
+  "sessionId": "21bdef4b-4a57-4c93-a8d8-923aa52a006d",
+  "timestamp": 1792542444406,
+  "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-copilot-capture\\camel-lifecycle",
+  "prompt": "Run the shell command: echo camel-lifecycle. Then reply DONE.",
+  "transformedPrompt": "<current_datetime>2026-10-20T19:27:24.406-05:00</current_datetime>\n\nRun the shell command: echo camel-lifecycle. Then reply DONE."
+}

@@ -1,10 +1,10 @@
 {
   "schemaVersion": 2,
-  "hooknosticVersion": "0.7.0",
+  "hooknosticVersion": "0.9.0",
   "targets": {
     "claude": {
       "status": "success",
-      "adapter": "claude@0.7.0",
+      "adapter": "claude@0.9.0",
       "requestedVersion": ">=2.1 <3",
       "output": "./dist/claude",
       "capabilities": {
@@ -15,7 +15,7 @@
       },
       "projection": {
         "status": "success",
-        "contentDigest": "sha256:efdecb36a7002d8b7e449159dbf2644ad8409922643c91e4c355b4abdec27a55",
+        "contentDigest": "sha256:80509058679071eda74a38e5c21cd2394fcad664b374d4249455cdbb4fd5727a",
         "copiedFileCount": 3,
         "components": {
           "agent-plugin.manifest": {
@@ -52,7 +52,7 @@
     },
     "codex": {
       "status": "success",
-      "adapter": "codex@0.7.0",
+      "adapter": "codex@0.9.0",
       "requestedVersion": ">=0.153 <1",
       "output": "./dist/codex",
       "capabilities": {
@@ -63,7 +63,7 @@
       },
       "projection": {
         "status": "success",
-        "contentDigest": "sha256:8a9eed1addd5ad6b8d0307ba493e7574b61359ed16d6eb5d7397471f1f50843d",
+        "contentDigest": "sha256:ff28a0eb5d51412752c2fde023867d3813dfad70e79998c9b1a1974c1b368acd",
         "copiedFileCount": 3,
         "directories": [
           ".agents",
@@ -105,9 +105,62 @@
         "runtime/mcp-servers.json"
       ]
     },
+    "copilot": {
+      "status": "success",
+      "adapter": "copilot@0.9.0",
+      "requestedVersion": ">=1.0.101 <2",
+      "output": "./dist/copilot",
+      "capabilities": {
+        "exact": 4,
+        "emulated": 0,
+        "approximate": 0,
+        "unsupported": 0
+      },
+      "projection": {
+        "status": "success",
+        "contentDigest": "sha256:f0dbaab0ba8c99fa6bfc0d119c7aa682949881641e85578390d678590d7d842c",
+        "copiedFileCount": 4,
+        "directories": [
+          ".agents",
+          "skills",
+          "skills/greet",
+          "src"
+        ],
+        "components": {
+          "agent-plugin.manifest": {
+            "support": "exact",
+            "discovered": 1,
+            "emitted": 1,
+            "skipped": 0
+          },
+          "agent-plugin.skills": {
+            "support": "exact",
+            "discovered": 1,
+            "emitted": 1,
+            "skipped": 0
+          },
+          "agent-plugin.mcp.stdio": {
+            "support": "exact",
+            "discovered": 1,
+            "emitted": 1,
+            "skipped": 0
+          }
+        },
+        "omissions": [],
+        "deviations": []
+      },
+      "artifacts": [
+        "bundled/THIRD_PARTY_NOTICES.txt",
+        "bundled/greet-mcp.mjs",
+        "plugin.json",
+        "mcp.json",
+        "com.github.copilot/hooks/hooks.json",
+        "runtime/hooknostic.mjs"
+      ]
+    },
     "opencode": {
       "status": "success",
-      "adapter": "opencode@0.7.0",
+      "adapter": "opencode@0.9.0",
       "requestedVersion": ">=2.0.17 <3",
       "output": "./dist/opencode",
       "capabilities": {
@@ -118,7 +171,7 @@
       },
       "projection": {
         "status": "success",
-        "contentDigest": "sha256:a1ae0663dd822b2142486c1c051e6ffd9b01ce934ef52dcd3adc83f953bd341b",
+        "contentDigest": "sha256:120e0d6c7634c387b8d116e1a85f5bdd625cd47011b720d2127026fb7c706134",
         "copiedFileCount": 6,
         "directories": [
           "package/.agents",
@@ -162,7 +215,7 @@
     },
     "legacy": {
       "status": "success",
-      "adapter": "opencode@0.7.0",
+      "adapter": "opencode@0.9.0",
       "requestedVersion": ">=1.18 <2",
       "output": "./dist/opencode-v1",
       "capabilities": {
@@ -173,7 +226,7 @@
       },
       "projection": {
         "status": "success",
-        "contentDigest": "sha256:b0181c166fff22877b463781a1a2aee977cae444f7e7acfb8d415fb675265e7f",
+        "contentDigest": "sha256:d7ba14ac301e1d13e34d4011330c6fc8b94a420edfe3943c3b164cde34f6a7fa",
         "copiedFileCount": 5,
         "directories": [
           "package/.agents",
@@ -218,8 +271,8 @@
     },
     "pi": {
       "status": "success",
-      "adapter": "pi@0.7.0",
-      "requestedVersion": ">=0.84 <1",
+      "adapter": "pi@0.9.0",
+      "requestedVersion": ">=1 <2",
       "output": "./dist/pi",
       "capabilities": {
         "exact": 4,
@@ -229,7 +282,7 @@
       },
       "projection": {
         "status": "success",
-        "contentDigest": "sha256:5c3fc5acd163ea5bf8b666feaeabf56156e15e03e0d917f884f10c1644174db9",
+        "contentDigest": "sha256:c246c6f135c72106448916d4a8144b93cb6f3b4548c5494cebc39f079f0d804e",
         "copiedFileCount": 6,
         "directories": [
           "package/.agents",
@@ -251,22 +304,19 @@
             "skipped": 0
           },
           "agent-plugin.mcp.stdio": {
-            "support": "unsupported",
+            "support": "emulated",
             "discovered": 1,
-            "emitted": 0,
-            "skipped": 1
+            "emitted": 1,
+            "skipped": 0
           }
         },
-        "omissions": [
-          {
-            "component": "agent-plugin.mcp.stdio",
-            "name": "greeter",
-            "reason": "pi has no native MCP channel"
-          }
-        ],
+        "omissions": [],
         "deviations": []
       },
       "artifacts": [
+        "hooknostic-mcp.js",
+        "hooknostic-runtime/mcp-launcher.mjs",
+        "hooknostic-runtime/mcp-servers.json",
         "hooknostic.js",
         "package.json",
         "package/bundled/greet-mcp.mjs",
@@ -274,25 +324,14 @@
       ]
     }
   },
-  "diagnostics": [
-    {
-      "code": "HN205",
-      "severity": "info",
-      "target": "pi",
-      "component": "agent-plugin.mcp.stdio",
-      "support": "unsupported",
-      "rationale": "pi has no native MCP channel in 0.84.4; third-party extensions cannot establish a portable MCP package contract.",
-      "omission": "pi:mcp-stdio-omitted",
-      "remediation": "Omission accepted by components.accept; support remains unsupported. Remove \"pi:mcp-stdio-omitted\" to apply components.onUnsupported again.",
-      "message": "Agent Plugin component \"agent-plugin.mcp.stdio\" is unsupported on \"pi\"."
-    }
-  ],
+  "diagnostics": [],
   "components": {
     "root": ".",
     "specVersion": "1.0.0",
     "targets": [
       "claude",
       "codex",
+      "copilot",
       "opencode",
       "legacy",
       "pi"
@@ -306,7 +345,7 @@
       "skills/greet/SKILL.md",
       "src/greet-mcp.mjs"
     ],
-    "contentDigest": "sha256:d6134350181bc3daddbc1f046a1dbb3d8050fe0592c918b0d96176ac28d42f00"
+    "contentDigest": "sha256:498342720536b7523a5690c1a85a1924b79ff268b979bd968841f3359778f1d7"
   },
   "mcpServers": [
     {

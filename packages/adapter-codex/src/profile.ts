@@ -9,7 +9,7 @@ const NOTIFY_ACCEPTED_AND_DISCARDED =
 
 /**
  * Every Codex capability cell except agent identity, which splits the data
- * by version (ADR-0033): below 0.156.1 no hook was observed inside a
+ * by version (ADR-0035): below 0.156.1 no hook was observed inside a
  * subagent at all.
  */
 const codexMatrix: CapabilityMatrix = {
@@ -147,7 +147,7 @@ const codexFields: FieldMatrix = {
   "turn.stop.correlation.turnId": { level: "exact" },
 };
 
-/** What a hook scoped to agents relies on, per ADR-0033. */
+/** What a hook scoped to agents relies on, per ADR-0035. */
 const AGENT_IDENTITY_EVENTS = ["tool.before", "tool.after", "agent.start", "agent.stop"] as const;
 
 const NO_HOOK_INSIDE_A_SUBAGENT =
@@ -357,8 +357,8 @@ export const codexCapabilityProfiles: CapabilityProfile[] = [
         // .capture/harness-playback/README.md. Keep field order stable.
         // scheduled-playback:begin
         {
-          version: "0.162.1",
-          date: "2026-10-11",
+          version: "0.163.0",
+          date: "2026-10-19",
           method: "live-probe",
           artifact: ".capture/harness-playback",
           what: "scheduled model-free playback vs a newer build: artifact discovery, rewrite/block markers, and lifecycle events verified",

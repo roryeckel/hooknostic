@@ -1,0 +1,32 @@
+{
+  "event": {
+    "type": "tool_result",
+    "toolName": "mcp__probe__probe_fail",
+    "toolCallId": "call_playback",
+    "input": {},
+    "content": [
+      {
+        "type": "text",
+        "text": "pi-mcp-probe-failure"
+      }
+    ],
+    "details": {
+      "server": "probe",
+      "tool": "probe_fail"
+    },
+    "structuredContent": {
+      "content": [
+        {
+          "type": "text",
+          "text": "pi-mcp-probe-failure"
+        }
+      ],
+      "isError": true
+    },
+    "isError": true
+  },
+  "ctx": {
+    "cwd": "/tmp/hkn-pi-mcp-q1fuXm/project",
+    "mode": "print"
+  }
+}

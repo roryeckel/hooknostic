@@ -103,7 +103,7 @@ export interface TargetConfig {
   skillNames?: "qualified" | "authored";
   /**
    * Which of `components.agents`' definitions this target receives, by their
-   * authored `name` (ADR-0032, decision 11). Without it the target receives
+   * authored `name` (ADR-0034, decision 11). Without it the target receives
    * every definition. An agent a target does not select is not delivered
    * there and is not a shortfall: it is neither counted nor reported as
    * unsupported, and a deselected `components.defaultAgent` is not that
@@ -116,7 +116,7 @@ export interface TargetConfig {
   compatibility?: CompatibilityPolicy;
 }
 
-/** The definitions a target receives (ADR-0032, decision 11); the same shape as a hook's `targets`. */
+/** The definitions a target receives (ADR-0034, decision 11); the same shape as a hook's `targets`. */
 export interface AgentSelection {
   /** Deliver only these definitions. */
   include?: string[];
@@ -281,7 +281,7 @@ interface ComponentPolicy<TTarget extends string> {
   accept?: string[];
   /**
    * The agent every session of the project starts as: the name of a definition
-   * in `agents` whose `mode` is `primary` or `all` (ADR-0032). Project delivery
+   * in `agents` whose `mode` is `primary` or `all` (ADR-0034). Project delivery
    * writes each harness's own default -- Claude's `agent` setting, OpenCode's
    * default agent -- and on Codex, which has no agent a session runs as, the
    * agent's instructions into the project configuration. Package targets do
@@ -304,7 +304,7 @@ export type ComponentConfig<TTarget extends string = string> = ComponentPolicy<T
         mcp?: never;
         mcpOverrides?: never;
         // Hooknostic input beside the package, like hook source: projectors
-        // translate them into each native package (ADR-0032).
+        // translate them into each native package (ADR-0034).
         agents?: AgentSources;
         /** Exact, case-sensitive POSIX package paths to emit as 0755; others use 0644. */
         executableFiles?: string[];
@@ -369,7 +369,7 @@ export type ComponentConfig<TTarget extends string = string> = ComponentPolicy<T
 /**
  * Directories of Hooknostic Agent Definition files: flat `<name>.md` files,
  * YAML frontmatter plus the instructions as the body
- * (`docs/spec/agents/0.1.md`, ADR-0032). Project delivery writes each
+ * (`docs/spec/agents/0.1.md`, ADR-0034). Project delivery writes each
  * harness's own agent file; beside `root`, package delivery carries them in the
  * projected package where the harness supports it.
  */

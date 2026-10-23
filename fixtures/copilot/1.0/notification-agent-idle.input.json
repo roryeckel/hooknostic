@@ -1,0 +1,9 @@
+{
+  "sessionId": "5a21c2f4-170e-4c40-a8ad-36519c0b4ab2",
+  "timestamp": 1792616688027,
+  "cwd": "/tmp/hooknostic-copilot-capture/notification-background-agent",
+  "message": "Agent \"pong-agent\" (explore) has finished processing and is now idle.",
+  "title": "Agent pong-agent idle",
+  "hook_event_name": "Notification",
+  "notification_type": "agent_idle"
+}

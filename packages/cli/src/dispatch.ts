@@ -19,6 +19,7 @@ import {
   loadConfig,
   resolveTargetAdapter,
   stageUserModule,
+  statedMcpEvents,
   targetSpecFromConfig,
 } from "@hooknostic/core";
 import { dispatch } from "@hooknostic/runtime";
@@ -118,6 +119,16 @@ const EVENT_FIELDS: Record<HookEventName, Readonly<Record<string, FieldCheck>>> 
  */
 const DERIVED_TOOL_FIELDS = ["kind", "mcp", "shell"];
 
+/** Whether a test's tool.mcp is a stated identity: server and tool, both strings, nothing else (ADR-0032). */
+function statesMcpIdentity(value: unknown): value is { server: string; tool: string } {
+  return (
+    isRecord(value) &&
+    Object.keys(value).length === 2 &&
+    typeof value["server"] === "string" &&
+    typeof value["tool"] === "string"
+  );
+}
+
 /**
  * The one part of `tool.shell` a test may supply is its `dialect`, for a
  * target whose harness states the shell at run time rather than in the tool
@@ -139,6 +150,7 @@ function completeEvent(
   value: unknown,
   adapter: HarnessAdapter,
   fieldMatrix: FieldMatrix,
+  version: string,
 ): { event: HookEvent; shellDialect?: ShellDialect } | { problem: string } {
   if (!isRecord(value)) return { problem: "an event must be a JSON object" };
   for (const key of ["harness", "session", "correlation", "tool"]) {
@@ -196,19 +208,39 @@ function completeEvent(
   }
   if (tool === undefined) return { event: event as unknown as HookEvent };
 
+  // A harness that states an MCP tool's server and tool outside its name does
+  // so on the events its adapter declares (ADR-0032); there a test may state it.
+  // Only within the versions whose evidence establishes the statement.
+  const identity = adapter.mcpIdentity;
+  const mcpEvents = statedMcpEvents(identity, version);
+  const mcpStatable = mcpEvents.includes(name as (typeof mcpEvents)[number]);
+  const statedMcp = mcpStatable && statesMcpIdentity(tool["mcp"]) ? tool["mcp"] : undefined;
   const derived = DERIVED_TOOL_FIELDS.filter(
-    (key) => key in tool && !(key === "shell" && statesOnlyDialect(tool[key])),
+    (key) =>
+      key in tool && !(key === "shell" && statesOnlyDialect(tool[key])) && !(key === "mcp" && statedMcp !== undefined),
   );
   if (derived.length > 0) {
     const [verb, pronoun] = derived.length === 1 ? ["is", "it"] : ["are", "them"];
-    // Someone who tried to state a dialect should learn that it can be stated.
+    // Someone who tried to state a dialect or an identity should learn whether
+    // it can be stated, when that is what was refused.
+    const refusedMcp = derived.includes("mcp");
     const hint =
-      isRecord(tool["shell"]) && "dialect" in tool["shell"] ? " (tool.shell may hold dialect and nothing else)" : "";
+      derived.includes("shell") && isRecord(tool["shell"]) && "dialect" in tool["shell"]
+        ? " (tool.shell may hold dialect and nothing else)"
+        : refusedMcp && mcpStatable
+          ? " (tool.mcp may hold server and tool, both strings, and nothing else)"
+          : refusedMcp && mcpEvents.length > 0
+            ? ` (this target's harness states tool.mcp only on ${mcpEvents.join(", ")})`
+            : refusedMcp && identity?.source === "statement" && identity.range !== undefined
+              ? ` (this target's harness states tool.mcp only for ${identity.range}, which ${JSON.stringify(version)} is not within)`
+              : "";
     return {
       problem: `${derived.map((key) => `tool.${key}`).join(" and ")} ${verb} derived from tool.nativeName and tool.input by the target's classifier; omit ${pronoun}${hint}`,
     };
   }
-  const extra = Object.keys(tool).find((key) => key !== "nativeName" && key !== "input" && key !== "shell");
+  const extra = Object.keys(tool).find(
+    (key) => key !== "nativeName" && key !== "input" && key !== "shell" && !(key === "mcp" && statedMcp !== undefined),
+  );
   if (extra !== undefined) return { problem: `tool has no field ${JSON.stringify(extra)}` };
   const stated = statesOnlyDialect(tool["shell"]) ? tool["shell"].dialect : undefined;
   if (stated !== undefined && !(SHELL_DIALECTS as readonly unknown[]).includes(stated)) {
@@ -221,11 +253,26 @@ function completeEvent(
   if (adapter.classifyTool === undefined) {
     return { problem: `the ${adapter.id} adapter cannot classify tools, so it cannot dispatch ${name}` };
   }
+  const reported = {
+    ...(dialect === undefined ? {} : { shellDialect: dialect }),
+    ...(statedMcp === undefined ? {} : { mcp: { server: statedMcp.server, tool: statedMcp.tool } }),
+  };
+  // For the target's range, as its generated shim decodes (ADR-0032).
   const classified = adapter.classifyTool(
     nativeName,
     tool["input"],
-    dialect === undefined ? undefined : { shellDialect: dialect },
+    Object.keys(reported).length ? reported : undefined,
+    version,
   );
+  // As for a dialect, the classifier decides whether a stated identity applies.
+  if (
+    statedMcp !== undefined &&
+    (classified.mcp?.server !== statedMcp.server || classified.mcp?.tool !== statedMcp.tool)
+  ) {
+    return {
+      problem: `tool.mcp is not what the ${adapter.id} target would give ${nativeName}: ${classified.kind === "mcp" ? "it does not apply a stated identity" : "it is not an MCP tool there"}; omit it`,
+    };
+  }
   // A shell call whose input has no view can still follow a statement: on a
   // target that hears one, the dialect waits for a rewrite to make a view. That
   // holds only for a tool the target's codec has a shape for. A shell-kind tool
@@ -289,7 +336,7 @@ export async function dispatchEvents(options: DispatchEventsOptions): Promise<Di
   const events: { event: HookEvent; shellDialect?: ShellDialect }[] = [];
   const problems: string[] = [];
   options.events.forEach((value, index) => {
-    const completed = completeEvent(value, adapter, resolved.fields ?? {});
+    const completed = completeEvent(value, adapter, resolved.fields ?? {}, spec.version);
     if ("event" in completed) events.push(completed);
     else problems.push(`event ${index + 1}: ${completed.problem}`);
   });

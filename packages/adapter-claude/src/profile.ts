@@ -13,6 +13,41 @@ export const claudeCapabilityProfiles: CapabilityProfile[] = [
       date: "2026-08-29",
       validatedOn: [
         {
+          version: "2.1.306",
+          date: "2026-10-21",
+          method: "live-probe",
+          artifact: ".capture/harness-playback/claude-tool-search-306.json",
+          what: "Windows loopback playback initially advertises ToolSearch without the fixture MCP schema. Searching by the scripted tool's suffix exposes its full name and schema in the next model request; the projected-plugin and fixture MCP calls then execute. Processed model-request evidence only, not a hook-payload shape change.",
+        },
+        {
+          version: "2.1.238",
+          date: "2026-10-21",
+          method: "live-probe",
+          artifact: ".capture/copilot/README.md",
+          what: "A root .mcp.json shared with GitHub Copilot CLI: an entry with cwd ran in the project with the key ignored, disabledMcpjsonServers in .claude/settings.json kept the named server from starting, and .github/copilot/settings.json was ignored (claude-mcp-fence-probe.mjs).",
+        },
+        {
+          version: "2.1.306",
+          date: "2026-10-21",
+          method: "live-probe",
+          artifact: ".capture/copilot/README.md",
+          what: "The same shared root .mcp.json behavior on the current build: cwd accepted and ignored, disabledMcpjsonServers honoured, Copilot's settings file ignored (claude-mcp-fence-probe.mjs).",
+        },
+        {
+          version: "2.1.238",
+          date: "2026-10-21",
+          method: "live-probe",
+          artifact: ".capture/copilot/README.md",
+          what: "Project hook entries with a non-numeric timeoutSec (the key that makes GitHub Copilot CLI drop the file's hooks): Claude ignored the key, ran the SessionStart entry, and applied the same settings file's env (claude-tolerance-probe.mjs).",
+        },
+        {
+          version: "2.1.306",
+          date: "2026-10-21",
+          method: "live-probe",
+          artifact: ".capture/copilot/README.md",
+          what: "The same non-numeric timeoutSec tolerance on the current build: the entry ran and the settings file's env reached it (claude-tolerance-probe.mjs).",
+        },
+        {
           version: "2.1.295",
           date: "2026-10-17",
           method: "live-probe",
@@ -123,8 +158,8 @@ export const claudeCapabilityProfiles: CapabilityProfile[] = [
         // .capture/harness-playback/README.md. Keep field order stable.
         // scheduled-playback:begin
         {
-          version: "2.1.296",
-          date: "2026-10-11",
+          version: "2.1.303",
+          date: "2026-10-19",
           method: "live-probe",
           artifact: ".capture/harness-playback",
           what: "scheduled model-free playback vs a newer build: artifact discovery, rewrite/block markers, and lifecycle events verified",
@@ -251,7 +286,7 @@ export const claudeCapabilityProfiles: CapabilityProfile[] = [
       "tool.before.context.add": { level: "exact" },
       // Inside a subagent the payload carries agent_type, and so does every
       // event of a session started as an agent; a plain session's carry none, so
-      // a named agent is never confused with it (ADR-0033, fixtures
+      // a named agent is never confused with it (ADR-0035, fixtures
       // pre-tool-read-subagent, 2.1.238 and 2.1.283; .capture/agents primary-*).
       "tool.before.agent.identity": { level: "exact" },
 

@@ -1,7 +1,7 @@
 # Hooknostic documentation
 
 Welcome! This is the documentation hub for Hooknostic — portable hooks, skills, and MCP servers, compiled into native packages or project integrations for Claude Code, OpenAI
-Codex CLI, OpenCode, and Pi.
+Codex CLI, GitHub Copilot CLI, OpenCode, and Pi.
 
 Pick your path:
 
@@ -51,6 +51,7 @@ Step-by-step walkthroughs, each built on a runnable project in [`examples/`](../
 | [Glossary](glossary.md) | Every term of art in these docs, defined in a sentence or two |
 | [Design document](design.md) | The complete technical design: contracts, diagnostics, adapter interfaces, test strategy, milestones. The deep end — read the concepts page first |
 | [Native surface baseline](baseline-2026-08-20.md) | The verified snapshot of each harness's real hook behavior (captured 2026-08-20) that the adapters are built against — including where vendor docs turned out to be wrong |
+| [Copilot CLI baseline](baseline-2026-10-20-copilot.md) | The verified GitHub Copilot CLI 1.0.101 hook, plugin, skill, and MCP surface |
 | [Design decisions](decisions/) | The foundational choices, each recorded with its context and consequences |
 
 ## How the pieces fit

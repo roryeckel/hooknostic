@@ -1,10 +1,11 @@
 import { realpathSync } from "node:fs";
 import { realpath } from "node:fs/promises";
-import { relative, resolve } from "node:path";
+import { resolve } from "node:path";
 
 import {
   type AgentDefinition,
   type AgentPluginDegradation,
+  type AgentPluginMcpServer,
   type ProjectComponents,
   projectSkillText,
   SKILL_REFERENCE_UNEXPANDED,
@@ -12,7 +13,8 @@ import {
   unexpandedSkillReferenceReason,
 } from "@hooknostic/agent-plugin";
 
-import { bundleMcpLauncher, type McpLauncherServer } from "./mcp-launcher.js";
+import { bundleMcpLauncher, MCP_LAUNCHER_FILE, MCP_SERVERS_FILE, type McpLauncherServer } from "./mcp-launcher.js";
+import { portableRelative } from "./portable-path.js";
 import type { ProjectIntegration } from "./project-files.js";
 
 /**
@@ -43,6 +45,7 @@ export function projectAgentFiles(
  * already sits at its destination is discovered in place and left alone; its
  * references are only reported. Each skill whose text still holds a reference
  * the target shows as written is a `skill-reference-unexpanded` degradation.
+ * A rewritten body token also reports the target's directory shortfall, if any.
  * An undefined text policy preserves bytes when expansion is not yet captured.
  */
 export function projectSkillFiles(
@@ -82,6 +85,14 @@ export function projectSkillFiles(
         }),
       });
     }
+    if (projected?.directoryDegradation) {
+      degradations.push({
+        ...projected.directoryDegradation,
+        component: "agent-plugin.skills",
+        name: skill.name,
+        path: `${path}/SKILL.md`,
+      });
+    }
     if (inPlace) {
       relinquishPrefixes.push(path);
       // Derived rather than passed in: on both component routes 0755 is only
@@ -117,6 +128,27 @@ export function projectSkillFiles(
     ...(relinquishPrefixes.length ? { relinquishPrefixes } : {}),
   };
 }
+/**
+ * The `share` string for a server entry in a root `.mcp.json`: the server's
+ * portable definition after the target's overrides, with keys in a stable
+ * order. Every project launcher bundles the same front end and reads the same
+ * record, so two targets whose definitions are equal emit entries that each
+ * run correctly for either harness, and one entry serves both (ADR-0033).
+ */
+export function sharedMcpServerKey(server: AgentPluginMcpServer): string {
+  const stable = (value: unknown): unknown =>
+    Array.isArray(value)
+      ? value.map(stable)
+      : value !== null && typeof value === "object"
+        ? Object.fromEntries(
+            Object.keys(value)
+              .sort()
+              .map((key) => [key, stable((value as Record<string, unknown>)[key])]),
+          )
+        : value;
+  return JSON.stringify(stable(server));
+}
+
 export async function projectMcpLauncher(
   source: ProjectComponents,
   root: string,
@@ -133,7 +165,7 @@ export async function projectMcpLauncher(
   // The loaded MCP source and the runtime's import.meta.url are real paths.
   // Keep their relative offsets independent of the caller's project alias.
   root = await realpath(root);
-  const relativeToOutput = (path: string) => relative(resolve(root, output), path).replaceAll("\\", "/") || ".";
+  const relativeToOutput = (path: string) => portableRelative(resolve(root, output), path);
   const launcher = await bundleMcpLauncher({
     frontEnd: "self-resolving",
     rootOffset: relativeToOutput(source.mcp.root),
@@ -144,8 +176,11 @@ export async function projectMcpLauncher(
   return {
     files: [
       { path: `${output}/.gitattributes`, contents: "* -text\n" },
-      { path: `${output}/mcp-launcher.mjs`, contents: launcher },
-      { path: `${output}/mcp-servers.json`, contents: JSON.stringify({ plugin: "project", servers }, null, 2) + "\n" },
+      { path: `${output}/${MCP_LAUNCHER_FILE}`, contents: launcher },
+      {
+        path: `${output}/${MCP_SERVERS_FILE}`,
+        contents: JSON.stringify({ plugin: "project", servers }, null, 2) + "\n",
+      },
     ],
     entries: [],
     guidance: [],

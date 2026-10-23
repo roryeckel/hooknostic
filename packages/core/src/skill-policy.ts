@@ -75,7 +75,16 @@ export function planProjectSkillPolicies(
     }
     const inPlace = new Set(
       inventory
-        .filter((skill) => nativeRoots.some((directory) => contains(directory, skill.source)))
+        .filter((skill) =>
+          nativeRoots.some(
+            (directory) =>
+              contains(directory, skill.source) ||
+              // A discovery directory may hold a junction or symlink to the
+              // skill's real directory, so containment under the root is not
+              // enough; resolve the specific child too.
+              canonical(resolve(directory, skill.name)) === canonical(skill.source),
+          ),
+        )
         .map((skill) => skill.name),
     );
     if (

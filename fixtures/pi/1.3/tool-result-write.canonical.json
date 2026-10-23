@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 1,
+  "harness": {
+    "id": "pi",
+    "version": "1.3.0",
+    "nativeEvent": "tool_result"
+  },
+  "session": {
+    "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-pi-features-UtK886\\project"
+  },
+  "correlation": {
+    "toolCallId": "call_playback"
+  },
+  "event": "tool.after",
+  "tool": {
+    "kind": "file.write",
+    "nativeName": "write",
+    "input": {
+      "path": "created.txt",
+      "content": "written\n"
+    },
+    "file": {
+      "paths": [
+        "created.txt"
+      ],
+      "pathKey": "path"
+    }
+  },
+  "output": [
+    {
+      "type": "text",
+      "text": "Successfully wrote to created.txt"
+    }
+  ]
+}

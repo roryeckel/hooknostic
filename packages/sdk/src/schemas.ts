@@ -159,7 +159,7 @@ export const runtimePolicySchema = z
   })
   .strict();
 
-/** ADR-0032, decision 11: authored definition names, in the shape of a hook's `targets`. */
+/** ADR-0034, decision 11: authored definition names, in the shape of a hook's `targets`. */
 export const agentSelectionSchema = z
   .object({
     include: z.array(z.string().min(1)).optional(),
@@ -470,7 +470,7 @@ export const targetScopeSchema = z
   })
   .strict();
 
-/** ADR-0033: the same shape as targets, naming agents as the harness reports them. */
+/** ADR-0035: the same shape as targets, naming agents as the harness reports them. */
 export const agentScopeSchema = z
   .object({
     include: z.array(z.string().min(1)).optional(),

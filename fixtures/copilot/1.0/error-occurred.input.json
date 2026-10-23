@@ -1,0 +1,12 @@
+{
+  "sessionId": "363508a9-b023-4e7a-b515-61fdaf952be1",
+  "timestamp": 1792542860997,
+  "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-copilot-capture\\error-model",
+  "errorContext": "model_call",
+  "recoverable": true,
+  "error": {
+    "message": "\"Failed native model HTTP request: error sending request for url (http://127.0.0.1:9/v1/chat/completions): client error (Connect): tcp connect error: No connection could be made because the target machine actively refused it. (os error 10061) [ECONNREFUSED]\"",
+    "name": "Error",
+    "stack": "Error: \"Failed native model HTTP request: error sending request for url (http://127.0.0.1:9/v1/chat/completions): client error (Connect): tcp connect error: No connection could be made because the target machine actively refused it. (os error 10061) [ECONNREFUSED]\"\n   0: napi_register_module_v1\n   1: napi_register_module_v1\n   2: copilot_runtime_standalone_startup_environment\n   3: copilot_runtime_standalone_startup_environment\n   4: copilot_runtime_standalone_startup_environment\n   5: copilot_runtime_standalone_startup_environment\n   6: copilot_runtime_standalone_startup_environment\n   7: copilot_runtime_standalone_startup_environment\n   8: copilot_runtime_standalone_startup_environment\n   9: copilot_runtime_standalone_startup_environment\n  10: copilot_runtime_standalone_startup_environment\n  11: copilot_runtime_standalone_startup_environment\n  12: copilot_runtime_standalone_startup_environment\n  13: copilot_runtime_standalone_startup_environment\n  14: copilot_runtime_standalone_startup_environment\n  15: copilot_runtime_standalone_startup_environment\n  16: copilot_runtime_standalone_startup_environment\n  17: napi_register_module_v1\n  18: napi_register_module_v1\n  19: napi_register_module_v1\n  20: napi_register_module_v1\n  21: napi_register_module_v1\n  22: napi_register_module_v1\n  23: napi_register_module_v1\n  24: napi_register_module_v1\n  25: napi_register_module_v1\n  26: napi_register_module_v1\n  27: napi_register_module_v1\n  28: napi_register_module_v1\n  29: BaseThreadInitThunk\n  30: RtlUserThreadStart\n"
+  }
+}

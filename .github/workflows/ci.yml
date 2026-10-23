@@ -211,6 +211,12 @@ jobs:
             os: ubuntu-latest
           - harness: codex
             os: ubuntu-latest
+          # Copilot's shell tool is bash on Linux and powershell on Windows, so
+          # each host exercises a different runtime tool and dialect.
+          - harness: copilot
+            os: ubuntu-latest
+          - harness: copilot
+            os: windows-latest
           - harness: pi
             os: ubuntu-latest
           - harness: pi
@@ -251,7 +257,7 @@ jobs:
 
       - name: Run model-free playback
         id: playback
-        run: pnpm exec vitest run packages/cli/test/harness-playback.test.ts packages/cli/test/opencode-v2-playback.test.ts packages/cli/test/agent-definition-playback.test.ts packages/cli/test/pi-default-agent-playback.test.ts scripts/pi-drift-driver.test.mjs
+        run: pnpm exec vitest run packages/cli/test/harness-playback.test.ts packages/cli/test/opencode-v2-playback.test.ts packages/cli/test/agent-definition-playback.test.ts packages/cli/test/copilot-agent-playback.test.ts packages/cli/test/pi-default-agent-playback.test.ts scripts/pi-drift-driver.test.mjs
         env:
           HOOKNOSTIC_PLAYBACK: ${{ matrix.harness }}
           HKN_PLAYBACK_ARTIFACT_DIR: ${{ runner.temp }}/opencode-v2-playback

@@ -20,6 +20,16 @@ export function listCaptured(dir) {
 }
 
 /**
+ * Clear and recreate a tee capture directory. Tee files are append-only, so a
+ * reused `--scratch` must not let an earlier run's events satisfy a later
+ * verdict.
+ */
+export function resetCaptureDir(dir) {
+  rmSync(dir, { recursive: true, force: true });
+  mkdirSync(dir, { recursive: true });
+}
+
+/**
  * Convert raw per-event JSONL tee output to one payload per JSON file for the
  * comparator. Synthetic tee diagnostics remain in the raw-capture artifact
  * but never become comparator input.
@@ -38,7 +48,14 @@ export function flattenCaptured(dir, harness) {
     for (const [index, line] of lines.entries()) {
       // Pi tees {event: <channel>, payload: {event, ctx}}; its fixtures
       // contain the invocation envelope, not the tee's recording wrapper.
-      const payload = harness === "pi" ? JSON.stringify(JSON.parse(line).payload) : line;
+      // Copilot's tee records {at, input} where input is the native payload as
+      // a JSON string; the comparator expects that payload itself.
+      const payload =
+        harness === "pi"
+          ? JSON.stringify(JSON.parse(line).payload)
+          : harness === "copilot"
+            ? JSON.stringify(JSON.parse(JSON.parse(line).input))
+            : line;
       writeFileSync(join(dst, `${file.replace(".jsonl", "")}-${index}.json`), payload, "utf8");
       count += 1;
     }

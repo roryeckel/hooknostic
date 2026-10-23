@@ -1,0 +1,10 @@
+{
+  "sessionId": "4d3e11d5-7827-4069-b63d-836719d6e68d",
+  "timestamp": 1792545033675,
+  "cwd": "/work",
+  "toolName": "bash",
+  "toolArgs": {
+    "command": "node -e \"const fs=require(\\\"fs\\\"); console.log(fs.readlinkSync(\\\"/proc/\\\"+process.ppid+\\\"/exe\\\"))\" ; echo hooknostic-shell-finished",
+    "description": "Print parent process exe symlink and marker"
+  }
+}

@@ -3,6 +3,7 @@ import { fileURLToPath } from "node:url";
 
 import { claudeAdapter } from "@hooknostic/adapter-claude";
 import { codexAdapter } from "@hooknostic/adapter-codex";
+import { copilotAdapter } from "@hooknostic/adapter-copilot";
 import { opencodeAdapter } from "@hooknostic/adapter-opencode";
 import { piAdapter } from "@hooknostic/adapter-pi";
 import type { AdapterRegistry, HarnessAdapter } from "@hooknostic/core";
@@ -42,6 +43,7 @@ export function defaultAdapterRegistry(): AdapterRegistry {
   return {
     claude: withShippedShim(claudeAdapter()),
     codex: withShippedShim(codexAdapter()),
+    copilot: withShippedShim(copilotAdapter()),
     opencode: withShippedShim(opencodeAdapter()),
     pi: withShippedShim(piAdapter()),
   };

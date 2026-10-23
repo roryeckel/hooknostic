@@ -14,7 +14,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        harness: [claude, codex, opencode-v1, opencode-v2]
+        harness: [claude, codex, copilot, opencode-v1, opencode-v2]
     steps:
       - uses: actions/checkout@v7
         with:
@@ -35,12 +35,23 @@ jobs:
         run: |
           node --experimental-strip-types --input-type=module <<'NODE'
           import { appendFileSync } from "node:fs";
+          import { register } from "node:module";
           import { harnessLanes } from "./scripts/harness-lanes.mjs";
+          // Profiles may import sibling ".js" specifiers from ".ts" sources;
+          // the hook resolves them under strip-types. An import failure must
+          // fail the job, never fall back to another build.
+          register("./scripts/ts-resolve-hook.mjs", import.meta.url);
+          const lanesUrl = new URL("./scripts/harness-lanes.mjs", import.meta.url);
           const lane = harnessLanes[process.env.HKN_HARNESS];
-          const imported = await import(new URL(lane.module, new URL("./scripts/harness-lanes.mjs", import.meta.url)));
-          const record = imported[lane.profileExport].flatMap(profile => profile.source.validatedOn)
+          const imported = await import(new URL(lane.module, lanesUrl));
+          let record = imported[lane.profileExport].flatMap(profile => profile.source.validatedOn)
             .findLast(record => record.artifact === ".capture/shell-dialects");
-          if (!record) throw new Error("No recorded shell comparison build");
+          if (record === undefined) {
+            // A first capture has no recorded comparison yet; use the reference build.
+            const harnessModule = await import(new URL(lane.module.replace(/profile\.ts$/, "harness.ts"), lanesUrl));
+            record = { version: harnessModule[lane.harnessExport].referenceVersion };
+          }
+          if (!record?.version) throw new Error("No recorded build");
           appendFileSync(process.env.GITHUB_OUTPUT,
             `package=${lane.pkg}\nversion=${record.version}\nbootstrap=${lane.bootstrap ?? ""}\n`);
           NODE

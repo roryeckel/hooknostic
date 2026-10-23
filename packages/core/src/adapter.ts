@@ -54,6 +54,40 @@ export interface ProjectComponentOptions {
 export interface ReportedToolFacts {
   /** The grammar family of the shell the harness said it runs (ADR-0029). */
   shellDialect?: ShellDialect;
+  /**
+   * The MCP server and tool the harness named for the call outside its tool
+   * name, as it registered them (ADR-0032). Only an adapter whose
+   * `mcpIdentity` source is `statement` applies it, and only to an MCP tool.
+   */
+  mcp?: { server: string; tool: string };
+}
+
+/** The tool-scoped events a harness can state an MCP identity on. */
+export type McpIdentityEvent = "tool.before" | "tool.after" | "tool.error";
+
+/**
+ * Where an adapter's `tool.mcp` split comes from, or why it is absent
+ * (ADR-0032). Like the shell dialect it varies per call, so it is declared
+ * rather than rated: `inspect` prints it, and the contract suite and
+ * `hooknostic dispatch` hold stated identities to it.
+ */
+export interface McpIdentitySupport {
+  /**
+   * `name`: parsed from the native tool name. `statement`: the harness states
+   * it outside the name, on `events` only. `none`: never set.
+   */
+  readonly source: "name" | "statement" | "none";
+  /** For `statement`: the events whose payload states it. */
+  readonly events?: readonly McpIdentityEvent[];
+  /**
+   * For `statement`: the harness versions whose evidence establishes it. A
+   * target whose range is not within it is treated as stating nothing.
+   */
+  readonly range?: string;
+  /** When a hook gets the split on this target, when it does not, and why. */
+  readonly rationale: string;
+  /** Repo-relative evidence path. */
+  readonly evidence: string;
 }
 
 /**
@@ -244,7 +278,13 @@ export interface NativeHookResult {
 }
 
 export interface RuntimeAdapter {
-  decode(nativeEvent: unknown, invocation: InvocationContext): Promise<HookEvent>;
+  /**
+   * Decode a native payload. `nativeEventName` is the event the harness
+   * registered the entry for; most adapters ignore it, while a harness whose
+   * camelCase payload omits its own event name requires the caller to supply
+   * it. A payload that states its event still wins over the hint.
+   */
+  decode(nativeEvent: unknown, invocation: InvocationContext, nativeEventName?: string): Promise<HookEvent>;
   apply(result: HookResult, nativeEvent: unknown, invocation: InvocationContext): Promise<NativeHookResult>;
   /**
    * Target constraints shared by portable dispatch and the generated shim.
@@ -272,6 +312,12 @@ export interface ShimEntryOptions {
     notifyCharLimit: number;
   };
   harnessVersion?: string;
+  /**
+   * The target's requested harness version range. The shim cannot check a
+   * range at run time without bundling a semver library, so an adapter whose
+   * decoding differs between version lines settles it here, at build time.
+   */
+  targetRange?: string;
   /**
    * POSIX path from the runtime artifact's directory to the Agent Plugin root,
    * when the build has one for this target. The entry resolves it against its
@@ -319,7 +365,7 @@ export interface HarnessAdapter {
   /** Project MCP options this adapter can encode without dropping policy. */
   projectMcpOptions?: { startupTimeoutMs?: true };
   /**
-   * How project delivery places agent definitions (ADR-0032), for the checks
+   * How project delivery places agent definitions (ADR-0034), for the checks
    * core runs before generation so `check` reports them.
    */
   readonly agents?: {
@@ -335,6 +381,16 @@ export interface HarnessAdapter {
     /** Authoring errors in native agent configuration; independent of omission policy. */
     validateNative?(agent: AgentDefinition, target: TargetSpec): readonly string[];
   };
+
+  /**
+   * A project MCP file this harness reads natively and shares with other
+   * harnesses, and the list setting that keeps a named server in it from
+   * starting under this harness. When another configured target writes a
+   * server there that this target did not, because `components.targets`
+   * left it out, core writes those names to `disable` (ADR-0033). Declared
+   * only from captured evidence on both the file and the setting.
+   */
+  sharedProjectMcp?: { file: string; disable: { path: string; key: readonly string[] } };
 
   /** Per-harness version metadata; see {@link HarnessMetadata}. */
   readonly harness: HarnessMetadata;
@@ -432,14 +488,25 @@ export interface HarnessAdapter {
    * `reported` carries what the harness stated beside the call. An adapter
    * that takes its shell dialect from such a statement applies it; one that
    * pins the dialect by tool, or cannot establish one, ignores it (ADR-0029).
+   *
+   * `range` is the target's version range, or one exact build. A classifier
+   * whose evidence differs between version lines classifies for it, as the
+   * target's generated shim does; absent, it classifies for the reference
+   * build (ADR-0032).
    */
-  classifyTool?(nativeName: string, input: unknown, reported?: ReportedToolFacts): ToolInvocation;
+  classifyTool?(nativeName: string, input: unknown, reported?: ReportedToolFacts, range?: string): ToolInvocation;
 
   /**
    * Where this adapter's `tool.shell.dialect` comes from. Required in practice
    * for any adapter with a shell shape table: the contract suite asks for it.
    */
   readonly shellDialect?: ShellDialectSupport;
+
+  /**
+   * Where this adapter's `tool.mcp` split comes from (ADR-0032). Absent: the
+   * classifier alone decides, from the name and input.
+   */
+  readonly mcpIdentity?: McpIdentitySupport;
 
   /**
    * Resolve the capability matrix for a target's requested version range.

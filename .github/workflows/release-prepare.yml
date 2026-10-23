@@ -114,9 +114,10 @@ jobs:
             echo ""
             echo "- [x] Versions bumped in every carrier (automated: scripts/set-versions.mjs)"
             echo "- [x] Lockfile synced; example artifacts rebuilt from the repo root (automated)"
-            echo '- [ ] All three trusted publishers allow direct publishing and `NPM_PUBLICATION_MODE=oidc`'
             echo "- [ ] CI green on this PR (3-OS matrix, artifact byte gate, docs drift gate)"
             echo "- [ ] Merge = decision 1. The draft release then appears; review its notes and publish = decision 2."
+            echo ""
+            echo 'Publication runs in `oidc` mode by default; `NPM_PUBLICATION_MODE` is set only for a bootstrap run.'
             echo ""
             echo "See docs/releases.md for the full runbook and recovery paths."
           } > pr-body.md

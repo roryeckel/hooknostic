@@ -13,6 +13,12 @@ export const harnessLanes = {
     profileExport: "codexCapabilityProfiles",
     harnessExport: "codexHarness",
   },
+  copilot: {
+    pkg: "@github/copilot",
+    module: "../packages/adapter-copilot/src/profile.ts",
+    profileExport: "copilotCapabilityProfiles",
+    harnessExport: "copilotHarness",
+  },
   "opencode-v1": {
     pkg: "opencode-ai",
     bootstrap: "postinstall.mjs",

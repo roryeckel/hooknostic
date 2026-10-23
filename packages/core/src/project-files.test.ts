@@ -40,6 +40,17 @@ describe("project reconciliation", () => {
     expect(manifest).not.toContain(root);
     expect(manifest).not.toContain("command");
   });
+  it("rechecks a discovery fallback before creating the file that would hide it", async () => {
+    const input: ProjectIntegration = {
+      ...integration(),
+      discoveryFallbacks: [{ path: "settings.json", fallback: "fallback.json", key: ["services"] }],
+    };
+    const plan = await reconcileProject(root, config, input);
+    await writeFile(join(root, "fallback.json"), '{"services":{"authored":{}}}');
+    await expect(applyProject(root, config, plan)).rejects.toThrow("fallback.json");
+    await expect(readFile(join(root, "settings.json"))).rejects.toMatchObject({ code: "ENOENT" });
+    await expect(readFile(join(root, "generated/runtime.mjs"))).rejects.toMatchObject({ code: "ENOENT" });
+  });
   it("preserves unrelated JSONC bytes and array ordering", async () => {
     const prefix = '{\n // user configuration\n "theme": "dark",\n "hooks": { "Stop": [{ "custom": true }] }\n}\n';
     await writeFile(join(root, "settings.json"), prefix);
@@ -48,6 +59,66 @@ describe("project reconciliation", () => {
     expect(text).toContain('// user configuration\n "theme": "dark",');
     expect(text.indexOf('"custom"')).toBeLessThan(text.indexOf('"command"'));
     expect((await reconcileProject(root, config, integration())).changes).toEqual([]);
+  });
+  // A root .mcp.json is read by Claude Code and GitHub Copilot CLI alike, so
+  // both targets emit the same server key (ADR-0033).
+  const mcpEntry = (launcher: string, share: string | undefined) => ({
+    path: ".mcp.json",
+    key: ["mcpServers", "probe"],
+    kind: "property" as const,
+    value: { command: "node", args: [`./${launcher}/mcp-launcher.mjs`, "0"], cwd: "." },
+    ...(share === undefined ? {} : { share }),
+  });
+  it("composes one shared entry, the first target's, when every emitter shares the same definition", async () => {
+    await sync({
+      files: [],
+      entries: [mcpEntry("claude", '{"type":"stdio"}'), mcpEntry("copilot", '{"type":"stdio"}')],
+      guidance: [],
+    });
+    const doc = JSON.parse(await readFile(join(root, ".mcp.json"), "utf8"));
+    expect(doc.mcpServers.probe.args[0]).toBe("./claude/mcp-launcher.mjs");
+    const manifest = JSON.parse(await readFile(join(root, ".hooknostic/integration.json"), "utf8"));
+    expect(manifest.owned.filter((owned: { path: string }) => owned.path === ".mcp.json")).toHaveLength(1);
+  });
+  it("rejects shared entries whose targets define them differently", async () => {
+    await expect(
+      reconcileProject(root, config, {
+        files: [],
+        entries: [mcpEntry("claude", '{"args":["a"]}'), mcpEntry("copilot", '{"args":["b"]}')],
+        guidance: [],
+      }),
+    ).rejects.toThrow("conflicting shared entry: .mcp.json:mcpServers.probe");
+  });
+  it("still rejects a duplicate entry that one emitter does not share", async () => {
+    await expect(
+      reconcileProject(root, config, {
+        files: [],
+        entries: [mcpEntry("claude", '{"type":"stdio"}'), mcpEntry("copilot", undefined)],
+        guidance: [],
+      }),
+    ).rejects.toThrow("duplicate integration destination: .mcp.json");
+  });
+  // A disable list an author may already keep: Hooknostic owns only the names
+  // it adds.
+  const members = (value: string[]): ProjectIntegration => ({
+    files: [],
+    entries: [{ path: "settings.json", key: ["disabledMcpServers"], kind: "members", value }],
+    guidance: [],
+  });
+  it("adds members beside an author's own and removes only its own", async () => {
+    await writeFile(join(root, "settings.json"), '{"disabledMcpServers":["mine","shared"]}');
+    await sync(members(["shared", "ours"]));
+    const listed = async () => JSON.parse(await readFile(join(root, "settings.json"), "utf8")).disabledMcpServers;
+    expect(await listed()).toEqual(["mine", "shared", "ours"]);
+    expect((await reconcileProject(root, config, members(["shared", "ours"]))).changes).toEqual([]);
+    await sync(members([]));
+    // "shared" was the author's before Hooknostic needed it, so it stays.
+    expect(await listed()).toEqual(["mine", "shared"]);
+  });
+  it("removes a members list it created once nothing needs it", async () => {
+    await sync(members(["ours"]));
+    await sync(members([]));
+    expect(JSON.parse(await readFile(join(root, "settings.json"), "utf8"))).toEqual({});
   });
   it("rejects duplicate JSONC properties before editing", async () => {
     await writeFile(join(root, "settings.json"), '{"hooks":{"Stop":[]},"hooks":{}}');
@@ -201,6 +272,23 @@ describe("project reconciliation", () => {
         absent: [{ path: "opencode.jsonc", key: ["mcp", "__proto__"] }],
       }),
     ).rejects.toThrow("unowned component collision");
+  });
+  it("detects a collision under a key's fold and names the key it found", async () => {
+    const fold = (name: string) => name.replaceAll("-", "_");
+    const check = (key: string): ProjectIntegration => ({
+      files: [],
+      entries: [],
+      guidance: [],
+      absent: [{ path: "servers.json", key: ["mcpServers", key], fold }],
+    });
+    await writeFile(join(root, "servers.json"), '{"mcpServers":{"a_b-c":{},"--proto--":{}}}');
+    await expect(reconcileProject(root, config, check("a-b_c"))).rejects.toThrow(
+      "unowned component collision: servers.json:mcpServers.a_b-c",
+    );
+    await expect(reconcileProject(root, config, check("__proto__"))).rejects.toThrow(
+      "unowned component collision: servers.json:mcpServers.--proto--",
+    );
+    await expect(reconcileProject(root, config, check("other"))).resolves.toBeDefined();
   });
   it.each(["__proto__", "constructor", "prototype"])("reconciles a JSONC property named %s", async (name) => {
     const desired = (command?: string): ProjectIntegration => ({

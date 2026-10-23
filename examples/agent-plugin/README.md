@@ -1,9 +1,8 @@
 # Combined Agent Plugins example
 
 One Agent Plugins 1.0 package supplies a skill, a bundled stdio MCP server, and
-portable hooks to Claude Code, Codex, and both OpenCode families. The same default
-configuration delivers the hooks and skill to Pi, explicitly accepting only
-`pi:mcp-stdio-omitted` because Pi has no native MCP channel.
+portable hooks to Claude Code, Codex, GitHub Copilot CLI, both OpenCode families, and Pi 1.x, where a
+generated extension registers the MCP server with Pi's native MCP client.
 
 From the repository root:
 
@@ -16,14 +15,18 @@ node packages/cli/bin/hooknostic.mjs build --config examples/agent-plugin/hookno
 
 The author-owned materializer bundles `src/greet-mcp.mjs` and its dependencies into
 `bundled/greet-mcp.mjs` inside each package. Consumers need Node, but no dependency
-installation or workspace checkout. Other unsupported components remain errors;
-Pi's accepted omission remains informational in the build report, with
-`unsupported` support and the server counted as skipped.
+installation or workspace checkout. Unsupported components remain errors.
 
 Follow the [packaging tutorial](../../docs/tutorials/04-packaging-with-agent-plugins.md)
 for both marketplace manifests, installation, updates, verification, hookless packages,
 and the optional Claude runtime-package variation. OpenCode v2 is `opencode`;
 the explicit `legacy` target produces v1 output in `dist/opencode-v1`.
+
+For Copilot, load the built package for one session with
+`copilot --plugin-dir ./dist/copilot`, or install it through the included
+`.github/plugin/marketplace.json` with `copilot plugin marketplace add .` and
+`copilot plugin install combined-example@hooknostic-example`; see
+[Copilot installation](../../docs/installing-artifacts.md#github-copilot-cli).
 
 For Pi, run `pi install -l` with the absolute path to the built `dist/pi`
 package from the project where you want to use it, then follow Pi's activation prompts. The package

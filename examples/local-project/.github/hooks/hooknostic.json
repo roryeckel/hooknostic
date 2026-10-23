@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "hooks": {
+    "preToolUse": [
+      {
+        "type": "command",
+        "exec": "node",
+        "args": [
+          ".hooknostic/artifacts/copilot/runtime/hooknostic.mjs",
+          "preToolUse"
+        ],
+        "timeoutSec": 6
+      }
+    ]
+  }
+}

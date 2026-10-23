@@ -25,10 +25,11 @@ hooks retain their configured target set.
 [Hooknostic Agent Definition 0.1](spec/agents/0.1.md) format: a name, a
 description, harness-only fields under `native`, and the instructions as the body.
 Project delivery writes each harness's own agent file (`.claude/agents/<name>.md`,
-`.codex/agents/<name>.toml`, `.opencode/agents/<name>.md`). Beside a package `root`,
-package delivery translates them into the package instead: a Claude plugin agent, or
-an agent the OpenCode module registers. A Codex plugin has no agents route, so a Codex
-package target reports them as unsupported. `hooknostic inspect <target> --component
+`.codex/agents/<name>.toml`, `.github/agents/<name>.agent.md`,
+`.opencode/agents/<name>.md`). Beside a package `root`, package delivery translates
+them into the package instead: a Claude or Copilot plugin agent, or an agent the
+OpenCode module registers. A Codex plugin has no agents route, so a Codex package
+target reports them as unsupported. `hooknostic inspect <target> --component
 agents.definition` shows a target's level and evidence.
 
 Pi project delivery can emulate a `mode: primary` default by writing only its
@@ -37,7 +38,9 @@ delegation. This route applies at trusted project-root startup, shadows the
 global append and is bypassed by `--append-system-prompt`; it preserves Pi's base
 or custom system prompt. Other selected definitions and `native.pi` blocks remain
 unsupported, including the delegation half of an `all` default. Pi package
-defaults and agent-scoped hooks remain unsupported. See
+defaults and agent-scoped hooks remain unsupported. Copilot has no project
+default-agent setting: `components.defaultAgent` is unsupported there, and
+`--agent <id or name>` or `/agent` selects one for a session. See
 [the default-agent tutorial](tutorials/05-portable-agents.md#making-it-the-default).
 
 Every target receives every definition unless it selects some. A target's
@@ -95,18 +98,20 @@ up, and an id nothing rates below exact is an error. `hooknostic inspect <target
 An accepted instance remains visible as information in diagnostics and the report.
 Unknown ids fail validation. Acceptance does not make unsupported components work.
 An unsupported component can declare a named omission (ADR-0031). Pi declares
+`pi:mcp-sse-omitted` on 1.x, which rejects the legacy SSE transport, and
 `pi:mcp-stdio-omitted`, `pi:mcp-streamable-http-omitted`, and
-`pi:mcp-sse-omitted`. List only the omissions you intend in `components.accept`:
+`pi:mcp-sse-omitted` on a `>=0.84 <1` target, which has no native MCP channel.
+List only the omissions you intend in `components.accept`:
 
 ```ts
 components: {
   root: ".",
-  accept: ["pi:mcp-stdio-omitted"],
+  accept: ["pi:mcp-sse-omitted"],
 }
 ```
 
-This permits Pi's stdio MCP servers to be skipped while keeping HTTP/SSE and
-other unsupported components fatal. HN205 becomes informational for the accepted
+This permits Pi's SSE MCP servers to be skipped while keeping other
+unsupported components fatal. HN205 becomes informational for the accepted
 omission; reports retain `unsupported` support and skipped counts. The same rule
 applies to project delivery. Adapter IDs qualify acceptance even when a target
 uses another name. `inspect` lists the available omission IDs and their evidence.
@@ -125,9 +130,22 @@ Run `node "${SKILL_DIR}/scripts/status.mjs" --project "<the user's project direc
 ```
 
 Projection writes each target's form: `${CLAUDE_SKILL_DIR}` on Claude Code, which it
-expands to the skill's absolute directory, and `.` on Codex, OpenCode, and Pi, whose skill
-instructions resolve relative paths against the skill's directory. Only the body is
-rewritten, on package and project delivery alike. A skill-text reference a target shows
+expands to the skill's absolute directory; `<absolute path of the directory containing this SKILL.md>`
+on Codex; and `.` on OpenCode and Pi, whose skill instructions ask the model to resolve
+relative paths against the skill's directory. Codex's model must fill the explicit
+placeholder from the SKILL.md path supplied by the harness. This improved the measured
+command bodies, but Codex performs no runtime expansion and correct model substitution
+is not guaranteed. Each Codex body rewrite therefore fails the build as
+`codex:skill-directory-model-substitution` (HN101). After reviewing the skill, use
+`components.accept: ["codex:skill-directory-model-substitution"]` to ship it with an
+informational diagnostic. Acceptance records the dependency on the model.
+
+Codex and OpenCode both write project skills to `.agents/skills`. A combined project
+sync with `${SKILL_DIR}` would produce different bytes at the same path, so sync
+rejects the conflict before writing. Use package delivery for separate projections,
+or author skill text that both targets can share.
+
+Only the body is rewritten, on package and project delivery alike. A skill-text reference a target shows
 the model as written, such as `${CLAUDE_PLUGIN_ROOT}` on Codex or `${PLUGIN_ROOT}`
 anywhere, fails the build as the `<adapter>:skill-reference-unexpanded` degradation
 (HN101); a shell parameter like `${HOME}` is left to the shell. The model may still run

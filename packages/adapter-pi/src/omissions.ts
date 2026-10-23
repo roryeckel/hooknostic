@@ -18,3 +18,15 @@ export const piMcpOmissions = {
     evidence: ".capture/pi/README.md",
   },
 } satisfies Record<string, AgentPluginOmissionDeclaration>;
+
+/**
+ * pi 1.x rejects the legacy SSE transport (`.capture/pi-mcp`). The id stays
+ * stable so an accepted omission still matches.
+ */
+export const piNativeMcpOmissions = {
+  sse: {
+    ...piMcpOmissions.sse,
+    summary: "SSE MCP servers are omitted because pi rejects the legacy SSE transport.",
+    evidence: ".capture/pi-mcp/README.md",
+  },
+} satisfies Record<string, AgentPluginOmissionDeclaration>;

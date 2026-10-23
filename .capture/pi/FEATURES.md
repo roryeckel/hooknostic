@@ -1,10 +1,13 @@
 # Pi feature parity probes
 
 Live, credential-free probes of the reference build on Windows and Linux,
-2026-10-14 (America/Chicago; raw timestamps use UTC). The installed build is
-recorded in [Windows evidence](feature-evidence/win32.json) and
-[Linux evidence](feature-evidence/linux.json), with the adapter's validation
-record in `packages/adapter-pi/src/profile.ts`. A scripted loopback provider
+first on 0.84.4 (2026-10-14) and repeated on 1.3.0 (2026-10-19), in
+America/Chicago dates; raw timestamps use UTC. Evidence is kept per build:
+0.84.4 in [Windows](feature-evidence/0.84.4/win32.json) and
+[Linux](feature-evidence/0.84.4/linux.json), 1.3.0 in
+[Windows](feature-evidence/1.3.0/win32.json) and
+[Linux](feature-evidence/1.3.0/linux.json). Each profile's validation records
+in `packages/adapter-pi/src/profile.ts` cite their build. A scripted loopback provider
 selects tools and supplies replies; the payloads, interpreter ancestry, skill
 wrappers, and session entries are produced by real Pi.
 
@@ -23,6 +26,19 @@ analysis, and portable dispatch, already use shared SDK/core/runtime behavior.
 The adapter changes above connect Pi to the new contracts. Existing unsupported
 capabilities (native MCP, permission asking, and subagent lifecycle) remain as
 recorded in the original capture; these probes do not establish them.
+
+## 1.3.0 recheck
+
+Every probe below was repeated on 1.3.0 and compared with the 0.84.4
+observations. Tool lists and argument keys, interpreter ancestry, file-tool
+payload shapes, skill visibility, listings, and explicit bodies on all four
+skill routes, settled-branch reads, and all nine completion edges matched.
+The differences were additive: `tool_result` now carries `structuredContent`
+(an object for shells, a string for `read`), and `agent_settled` carries
+`aborted`, true only after in-flight cancellation. The Windows host had no
+`pwsh` this time, so the `pwsh` variants did not run and `powershell` resolved
+to Windows PowerShell; that is the host, not the harness. No adapter
+consequence above changed.
 
 ## Interpreter evidence
 
@@ -80,7 +96,7 @@ captured harness facts. Live completion-edge captures cover failures and cancell
 
 ## Completion edges
 
-[The Windows RPC record](feature-evidence/completion-win32.json) reuses one
+[The Windows RPC record](feature-evidence/0.84.4/completion-win32.json) ([1.3.0](feature-evidence/1.3.0/completion-win32.json)) reuses one
 persisted session for nine runs: a baseline reply, HTTP 400 failure, recovery,
 in-flight cancellation, recovery, HTTP 503 followed by Pi's successful native
 retry, cancellation during retry backoff, recovery, and a successful reply after
@@ -122,7 +138,8 @@ a repository boundary, and credential stripping; scratch projects are removed
 after recording. Pi's installed version is checked and recorded at runtime.
 
 For Linux, mount the checkout read-only at `/source` and a dedicated evidence
-directory at `/evidence` in a disposable `node:22.13.1-bookworm` Docker container,
+directory at `/evidence` in a disposable `node:24.21.0-bookworm` Docker container
+(1.3.0 needs Node 22.19 or later; the 0.84.4 run used `node:22.13.1-bookworm`),
 then run `bash /source/.capture/pi/linux-features.sh`. It installs the Pi version
 from harness metadata and the repository's pnpm version, plus alternate shells,
 and writes only shell observations to the evidence mount.

@@ -281,13 +281,20 @@ describe("complete project integration", () => {
         component: "agent-plugin.skills",
         message: expect.stringContaining('components.executableFiles "review/bin/tool" names a file this target'),
       }),
+      expect.objectContaining({
+        severity: "warn",
+        target: "copilot",
+        component: "agent-plugin.skills",
+        message: expect.stringContaining('components.executableFiles "review/bin/tool" names a file this target'),
+      }),
     ]);
     // The skill is present, not skipped: an omission would have decremented it.
     expect(built.report.targets["claude"]?.project?.omissions).toEqual([]);
     expect(built.report.targets["claude"]?.project?.components["agent-plugin.skills"]).toMatchObject({ emitted: 1 });
     // And the declaration is honoured where the target does own the tree.
-    // One warning, not three: the other two targets copy the skill to
-    // `.agents/skills`, where they own the tree and the declaration is live.
+    // One warning per target that discovers `.claude/skills` in place; the
+    // others copy the skill to `.agents/skills`, where they own the tree and
+    // the declaration is live.
     for (const target of ["codex", "opencode"]) {
       expect(built.report.targets[target]?.project?.components["agent-plugin.skills"], target).toMatchObject({
         emitted: 1,
@@ -295,21 +302,63 @@ describe("complete project integration", () => {
     }
   }, 60_000);
 
-  it("writes each target's skill directory into a skill's body", async () => {
-    const { root, options } = await fixture({ components: { skills: ["./skills"] } });
-    await mkdir(join(root, "skills/sample/scripts"), { recursive: true });
-    const frontmatter = "---\nname: sample\ndescription: Runs its launcher\n---\n";
-    const body = (dir: string) => `Run \`node "${dir}/scripts/status.mjs"\`, then ${dir}/scripts/again.\r\n`;
-    await writeFile(join(root, "skills/sample/SKILL.md"), frontmatter + body("${SKILL_DIR}"));
-    await writeFile(join(root, "skills/sample/scripts/status.mjs"), "");
+  it.each([
+    { target: "claude", destination: ".claude/skills", replacement: "${CLAUDE_SKILL_DIR}" },
+    {
+      target: "codex",
+      destination: ".agents/skills",
+      replacement: "<absolute path of the directory containing this SKILL.md>",
+    },
+    { target: "opencode", destination: ".agents/skills", replacement: "." },
+    { target: "pi", destination: ".pi/skills", replacement: "." },
+  ])(
+    "writes $target's skill directory into a skill's body",
+    async ({ target, destination, replacement }) => {
+      const { root, options } = await fixture({
+        components: {
+          skills: ["./skills"],
+          accept: target === "codex" ? ["codex:skill-directory-model-substitution"] : [],
+        },
+        targets: {
+          [target]: {
+            version: registry[target]!.harness.recommendedRange,
+            delivery: "project",
+            output: `.hooknostic/artifacts/${target}`,
+          },
+        },
+      });
+      await mkdir(join(root, "skills/sample/scripts"), { recursive: true });
+      const frontmatter = "---\nname: sample\ndescription: Runs its launcher\n---\n";
+      const body = (dir: string) => `Run \`node "${dir}/scripts/status.mjs"\`, then ${dir}/scripts/again.\r\n`;
+      await writeFile(join(root, "skills/sample/SKILL.md"), frontmatter + body("${SKILL_DIR}"));
+      await writeFile(join(root, "skills/sample/scripts/status.mjs"), "");
+
+      const synced = await runProject({ ...options, command: "sync" });
+      expect(synced.errors).toEqual([]);
+      expect(await readFile(join(root, `${destination}/sample/SKILL.md`), "utf8")).toBe(
+        frontmatter + body(replacement),
+      );
+    },
+    60_000,
+  );
+
+  it("rejects conflicting Codex and OpenCode skill text at their shared project destination", async () => {
+    const { root, options } = await fixture({
+      components: {
+        skills: ["./skills"],
+        accept: ["codex:skill-directory-model-substitution", "copilot:skill-directory-model-substitution"],
+      },
+    });
+    await mkdir(join(root, "skills/sample"), { recursive: true });
+    await writeFile(
+      join(root, "skills/sample/SKILL.md"),
+      '---\nname: sample\ndescription: Runs its launcher\n---\nRun node "${SKILL_DIR}/status.mjs".\n',
+    );
 
     const synced = await runProject({ ...options, command: "sync" });
-    expect(synced.errors).toEqual([]);
-    expect(await readFile(join(root, ".claude/skills/sample/SKILL.md"), "utf8")).toBe(
-      frontmatter + body("${CLAUDE_SKILL_DIR}"),
-    );
-    expect(await readFile(join(root, ".agents/skills/sample/SKILL.md"), "utf8")).toBe(frontmatter + body("."));
-    expect(await readFile(join(root, ".pi/skills/sample/SKILL.md"), "utf8")).toBe(frontmatter + body("."));
+    expect(synced.ok).toBe(false);
+    expect(synced.errors).toEqual(["duplicate integration destination: .agents/skills/sample/SKILL.md"]);
+    await expect(readFile(join(root, ".agents/skills/sample/SKILL.md"))).rejects.toMatchObject({ code: "ENOENT" });
   }, 60_000);
 
   it("fails a target whose skill text keeps a reference that target shows as written", async () => {
@@ -329,6 +378,7 @@ describe("complete project integration", () => {
     expect(reported.map((diagnostic) => [diagnostic.target, diagnostic.severity]).sort()).toEqual([
       ["claude", "error"],
       ["codex", "info"],
+      ["copilot", "error"],
       ["opencode", "error"],
       ["pi", "error"],
     ]);
@@ -355,7 +405,13 @@ describe("complete project integration", () => {
 
     const built = await buildProject(options);
     const reported = built.report.diagnostics.filter((diagnostic) => diagnostic.code === "HN101");
-    expect(reported.map((diagnostic) => diagnostic.target).sort()).toEqual(["claude", "codex", "opencode", "pi"]);
+    expect(reported.map((diagnostic) => diagnostic.target).sort()).toEqual([
+      "claude",
+      "codex",
+      "copilot",
+      "opencode",
+      "pi",
+    ]);
     expect(reported[0]?.message).toContain("No harness expands a reference in the frontmatter");
   }, 60_000);
 
@@ -371,6 +427,17 @@ describe("complete project integration", () => {
       expect.objectContaining({
         severity: "error",
         target: "claude",
+        message: expect.stringContaining("discovers this skill where it is"),
+      }),
+      expect.objectContaining({
+        severity: "error",
+        target: "codex",
+        degradation: "codex:skill-directory-model-substitution",
+      }),
+      expect.objectContaining({
+        severity: "error",
+        target: "copilot",
+        degradation: "copilot:skill-reference-unexpanded",
         message: expect.stringContaining("discovers this skill where it is"),
       }),
     ]);
@@ -991,6 +1058,130 @@ describe("complete project integration", () => {
       }),
     );
     expect((await runProject({ ...options, command: "sync" })).errors.join()).toContain(message);
+  });
+  // Claude Code and GitHub Copilot CLI both read the root .mcp.json, and Copilot
+  // reads nothing else beside it, so one entry per server serves both (ADR-0033).
+  async function sharedMcpFixture(
+    mcpOverrides?: Record<string, unknown>,
+    componentTargets?: string[],
+    adapters = ["claude", "copilot"],
+  ) {
+    const targets = Object.fromEntries(
+      adapters.map((name) => [
+        name,
+        {
+          adapter: name,
+          version: registry[name]!.harness.recommendedRange,
+          delivery: "project",
+          output: `.hooknostic/artifacts/${name}`,
+        },
+      ]),
+    );
+    const { root, options } = await fixture({
+      targets,
+      components: {
+        mcp: "./mcp.json",
+        ...(mcpOverrides === undefined ? {} : { mcpOverrides }),
+        ...(componentTargets === undefined ? {} : { targets: componentTargets }),
+      },
+    });
+    await writeFile(
+      join(root, "mcp.json"),
+      JSON.stringify({
+        $schema: AGENT_PLUGIN_MCP_SCHEMA,
+        mcpServers: {
+          local: { type: "stdio", command: "node", args: ["server.mjs"] },
+          remote: { type: "streamable-http", url: "https://example.invalid/mcp" },
+        },
+      }),
+    );
+    return { root, options };
+  }
+  it("composes one root .mcp.json entry per server for Claude and Copilot", async () => {
+    const { root, options } = await sharedMcpFixture();
+    const synced = await runProject({ ...options, command: "sync" });
+    expect(synced.errors).toEqual([]);
+    const document = JSON.parse(await readFile(join(root, ".mcp.json"), "utf8"));
+    expect(Object.keys(document.mcpServers).sort()).toEqual(["local", "remote"]);
+    expect(document.mcpServers.local).toEqual({
+      command: "node",
+      args: ["./.hooknostic/artifacts/claude/mcp-launcher.mjs", "0"],
+      cwd: ".",
+    });
+    await expect(readFile(join(root, ".github/mcp.json"), "utf8")).rejects.toMatchObject({ code: "ENOENT" });
+    // Both targets wrote every server, so neither harness is fenced.
+    await expect(readFile(join(root, ".github/copilot/settings.json"), "utf8")).rejects.toMatchObject({
+      code: "ENOENT",
+    });
+    expect(
+      JSON.parse(await readFile(join(root, ".claude/settings.json"), "utf8")).disabledMcpjsonServers,
+    ).toBeUndefined();
+    expect((await runProject({ ...options, command: "verify" })).ok).toBe(true);
+  });
+  it.each([
+    { componentTargets: undefined, adapters: ["claude", "copilot"] },
+    { componentTargets: ["claude"], adapters: ["claude", "copilot"] },
+    { componentTargets: ["copilot"], adapters: ["claude", "copilot"] },
+    { componentTargets: undefined, adapters: ["claude"] },
+  ])(
+    "refuses to hide existing fallback MCP servers with adapters $adapters and component targets $componentTargets",
+    async ({ componentTargets, adapters }) => {
+      const { root, options } = await sharedMcpFixture(undefined, componentTargets, adapters);
+      await mkdir(join(root, ".github"), { recursive: true });
+      const fallback = join(root, ".github/mcp.json");
+      const authored = JSON.stringify({
+        mcpServers: { authored: { type: "http", url: "https://example.invalid/authored" } },
+      });
+      await writeFile(fallback, authored);
+      for (const command of ["sync", "verify"] as const) {
+        const result = await runProject({ ...options, command });
+        expect(result.ok).toBe(false);
+        expect(result.errors.join()).toMatch(/conflict.*creating \.mcp\.json.*\.github\/mcp\.json/);
+        expect(result.errors.join()).toMatch(/migrate/i);
+        await expect(readFile(join(root, ".mcp.json"))).rejects.toMatchObject({ code: "ENOENT" });
+        await expect(readFile(join(root, ".hooknostic/integration.json"))).rejects.toMatchObject({ code: "ENOENT" });
+        expect(await readFile(fallback, "utf8")).toBe(authored);
+      }
+      // An empty fallback has no servers to hide, so it does not prevent creation.
+      await writeFile(fallback, '{"mcpServers":{}}');
+      expect((await runProject({ ...options, command: "sync" })).ok).toBe(true);
+      // Once the root file exists, sync is not changing discovery precedence.
+      await writeFile(fallback, authored);
+      expect((await runProject({ ...options, command: "verify" })).ok).toBe(true);
+    },
+  );
+  it.each([
+    ["claude", ".github/copilot/settings.json", "disabledMcpServers"],
+    ["copilot", ".claude/settings.json", "disabledMcpjsonServers"],
+  ])(
+    "fences the shared servers from the reader components.targets leaves out: only %s selected",
+    async (selected, fenceFile, fenceKey) => {
+      const { root, options } = await sharedMcpFixture(undefined, [selected]);
+      const synced = await runProject({ ...options, command: "sync" });
+      expect(synced.errors).toEqual([]);
+      const document = JSON.parse(await readFile(join(root, ".mcp.json"), "utf8"));
+      expect(Object.keys(document.mcpServers).sort()).toEqual(["local", "remote"]);
+      expect(JSON.parse(await readFile(join(root, fenceFile), "utf8"))[fenceKey]).toEqual(["local", "remote"]);
+      expect((await runProject({ ...options, command: "verify" })).ok).toBe(true);
+    },
+  );
+  it("keeps an author's disabled servers beside the fence", async () => {
+    const { root, options } = await sharedMcpFixture(undefined, ["claude"]);
+    await mkdir(join(root, ".github/copilot"), { recursive: true });
+    await writeFile(join(root, ".github/copilot/settings.json"), '{"disabledMcpServers":["authored"]}');
+    expect((await runProject({ ...options, command: "sync" })).errors).toEqual([]);
+    expect(JSON.parse(await readFile(join(root, ".github/copilot/settings.json"), "utf8")).disabledMcpServers).toEqual([
+      "authored",
+      "local",
+      "remote",
+    ]);
+    expect((await runProject({ ...options, command: "verify" })).ok).toBe(true);
+  });
+  it("refuses a server that Claude and Copilot would define differently", async () => {
+    const { options } = await sharedMcpFixture({ copilot: { servers: { local: { args: ["copilot.mjs"] } } } });
+    expect((await runProject({ ...options, command: "sync" })).errors.join()).toContain(
+      "conflicting shared entry: .mcp.json:mcpServers.local",
+    );
   });
   it("rejects a direct MCP cwd override whose symlink escapes the project", async () => {
     const codex = registry.codex!;

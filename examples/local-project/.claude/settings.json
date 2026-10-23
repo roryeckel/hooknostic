@@ -10,7 +10,8 @@
             "args": [
               "${CLAUDE_PROJECT_DIR}/.hooknostic/artifacts/claude/runtime/hooknostic.mjs"
             ],
-            "timeout": 6
+            "timeout": 6,
+            "timeoutSec": "hooknostic: Claude Code only; GitHub Copilot CLI must not run this entry"
           }
         ]
       }

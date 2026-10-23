@@ -421,7 +421,15 @@ describe("agent definition project delivery", () => {
   it("does not make a default agent the default of a target that deselects it", async () => {
     const { root, options } = await fixture(
       { "planner.md": PLANNER },
-      { components: { defaultAgent: "planner" }, targets: { codex: { agents: { exclude: ["planner"] } } } },
+      {
+        components: { defaultAgent: "planner" },
+        targets: {
+          codex: { agents: { exclude: ["planner"] } },
+          // Copilot has no project default-agent route; deselecting the
+          // definition there leaves nothing to deliver, as on pi.
+          copilot: { agents: { exclude: ["planner"] } },
+        },
+      },
     );
 
     const synced = await runProject({ ...options, command: "sync" });
@@ -479,7 +487,12 @@ describe("agent definition project delivery", () => {
   it("starts every session as the default agent, emulating it on Codex", async () => {
     const { root, options } = await fixture(
       { "planner.md": PLANNER, "reviewer.md": REVIEWER },
-      { components: { defaultAgent: "planner" } },
+      {
+        components: { defaultAgent: "planner" },
+        // Copilot has no project default-agent route; deselecting the
+        // definition there leaves nothing to deliver, as on pi.
+        targets: { copilot: { agents: { exclude: ["planner"] } } },
+      },
     );
 
     const synced = await runProject({ ...options, command: "sync" });
@@ -521,7 +534,13 @@ describe("agent definition project delivery", () => {
   it("sets the OpenCode v2 default through the agent editor", async () => {
     const { root, options } = await fixture(
       { "planner.md": PLANNER },
-      { v2: true, components: { defaultAgent: "planner", accept: ["opencode:primary-agent-model-ignored"] } },
+      {
+        v2: true,
+        components: { defaultAgent: "planner", accept: ["opencode:primary-agent-model-ignored"] },
+        // Copilot has no project default-agent route; deselecting the
+        // definition there leaves nothing to deliver, as on pi.
+        targets: { copilot: { agents: { exclude: ["planner"] } } },
+      },
     );
 
     const synced = await runProject({ ...options, command: "sync" });

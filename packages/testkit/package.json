@@ -1,6 +1,6 @@
 {
   "name": "@hooknostic/testkit",
-  "version": "0.7.0",
+  "version": "0.9.0",
   "private": true,
   "description": "Hooknostic fixture loaders, fake adapters, and adapter contract-test helpers",
   "type": "module",
@@ -11,6 +11,10 @@
     ".": {
       "types": "./src/index.ts",
       "default": "./src/index.ts"
+    },
+    "./fixtures": {
+      "types": "./src/fixtures.ts",
+      "default": "./src/fixtures.ts"
     }
   },
   "dependencies": {

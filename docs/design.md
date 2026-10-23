@@ -203,7 +203,7 @@ interface BaseHookEvent {
     turnId?: string;
     toolCallId?: string;
     agentId?: string;
-    agentType?: string; // the agent the event ran in, as the harness names it (ADR-0033)
+    agentType?: string; // the agent the event ran in, as the harness names it (ADR-0035)
     parentAgentId?: string;
   };
 
@@ -232,6 +232,10 @@ interface ToolInvocation {
   nativeName: string;
   input: unknown;
 
+  // Present when the harness exposes the split: parsed from a name that keeps
+  // it (Claude, Codex), or stated outside the name (results of pi's own MCP
+  // tools, ADR-0032).
+  // Absent means fall back to `nativeName` and `raw`.
   mcp?: {
     server?: string;
     tool?: string;
@@ -413,7 +417,7 @@ hook("session.start", {
 Intentional scoping is not a portability failure and emits no warnings.
 
 A hook on a tool event, `agent.start` or `agent.stop` can also be scoped to the agents
-it runs in ([ADR-0033](decisions/0033-agent-scoped-hooks.md), proposed):
+it runs in ([ADR-0035](decisions/0035-agent-scoped-hooks.md), proposed):
 
 ```ts
 hook("tool.before", {
@@ -914,18 +918,19 @@ the model as written (ADR-0028), is an HN101 degradation: fatal by default, and 
 under `onDegraded: "warn"`. Any deviation or degradation id listed in `components.accept`
 ships whatever the policy says, and is still reported, as information (ADR-0022).
 
-Agent definitions ([ADR-0032](decisions/0032-portable-agents.md), proposed) are
+Agent definitions ([ADR-0034](decisions/0034-portable-agents.md), proposed) are
 Hooknostic input beside the package, as hook source is, not package content: Agent
 Plugins 1.0 has no agents component. `components.agents` names directories of
 [Hooknostic Agent Definition 0.1](spec/agents/0.1.md) files, parsed into one
 `AgentDefinition` model that each projector translates into its native package: a
-Claude plugin's `agents/`, or an agent registered by the generated OpenCode module. A
-Codex plugin has no route. Their component ids share the profiles, levels and
-shortfall classes above: `agents.definition` for every definition,
-`agents.primary` for each one whose `mode` lets a session run as it (unsupported
-on Codex, which has no such agents), `agents.native` for native-field translation, and
-`agents.default` for `components.defaultAgent`, the agent every session of a project
-starts as, which no package target takes. A target's `agents: { include?, exclude? }`
+Claude or Copilot plugin's `agents/`, or an agent registered by the generated
+OpenCode module. A Codex plugin has no route. Their component ids share the
+profiles, levels and shortfall classes above: `agents.definition` for every
+definition, `agents.primary` for each one whose `mode` lets a session run as it
+(unsupported on Codex, which has no such agents; exact on Claude and Copilot,
+which also offer a `primary` definition for delegation), `agents.native` for
+native-field translation, and `agents.default` for `components.defaultAgent`, the
+agent every session of a project starts as, which no package target takes. A target's `agents: { include?, exclude? }`
 selects which definitions it receives; a deselected one is never counted there. A
 definitions directory inside the package root is excluded from its inventory.
 An adapter may validate native agent input before projection through

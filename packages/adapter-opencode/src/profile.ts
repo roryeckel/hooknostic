@@ -176,8 +176,8 @@ export const opencodeCapabilityProfiles: CapabilityProfile[] = [
         // .capture/harness-playback/README.md. Keep field order stable.
         // scheduled-playback:begin
         {
-          version: "1.19.0",
-          date: "2026-10-11",
+          version: "1.19.3",
+          date: "2026-10-19",
           method: "live-probe",
           artifact: ".capture/harness-playback",
           what: "scheduled model-free playback vs a newer build: artifact discovery, rewrite/block markers, and lifecycle events verified",
@@ -325,14 +325,14 @@ export const opencodeCapabilityProfiles: CapabilityProfile[] = [
       "tool.before.agent.identity": {
         level: "unsupported",
         rationale:
-          "tool.execute.before/after carry only tool, sessionID and callID, in a subagent as elsewhere; the running agent is named only on chat.message (ADR-0033, .capture/agents).",
+          "tool.execute.before/after carry only tool, sessionID and callID, in a subagent as elsewhere; the running agent is named only on chat.message (ADR-0035, .capture/agents).",
       },
 
       "tool.after.observe": { level: "exact" },
       "tool.after.agent.identity": {
         level: "unsupported",
         rationale:
-          "tool.execute.before/after carry only tool, sessionID and callID, in a subagent as elsewhere; the running agent is named only on chat.message (ADR-0033, .capture/agents).",
+          "tool.execute.before/after carry only tool, sessionID and callID, in a subagent as elsewhere; the running agent is named only on chat.message (ADR-0035, .capture/agents).",
       },
       "tool.after.output.replace": {
         level: "approximate",

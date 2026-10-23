@@ -377,6 +377,25 @@ importers:
         specifier: 'catalog:'
         version: 7.8.0
 
+  packages/adapter-copilot:
+    dependencies:
+      '@hooknostic/agent-plugin':
+        specifier: workspace:*
+        version: link:../agent-plugin
+      '@hooknostic/core':
+        specifier: workspace:*
+        version: link:../core
+      '@hooknostic/runtime':
+        specifier: workspace:*
+        version: link:../runtime
+      '@hooknostic/sdk':
+        specifier: workspace:*
+        version: link:../sdk
+    devDependencies:
+      '@hooknostic/testkit':
+        specifier: workspace:*
+        version: link:../testkit
+
   packages/adapter-opencode:
     dependencies:
       '@hooknostic/agent-plugin':
@@ -461,6 +480,9 @@ importers:
       '@hooknostic/adapter-codex':
         specifier: workspace:*
         version: link:../adapter-codex
+      '@hooknostic/adapter-copilot':
+        specifier: workspace:*
+        version: link:../adapter-copilot
       '@hooknostic/adapter-opencode':
         specifier: workspace:*
         version: link:../adapter-opencode

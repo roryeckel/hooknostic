@@ -74,17 +74,34 @@ scripted namespace-pair emission resolves the router's exact
 output, and the replaced marker must surface nowhere. If upstream starts
 honouring the field, the watch fails and the rating is revisited.
 
-The Claude, Codex and OpenCode v1 playback lanes also configure and call the in-repository stdio MCP
-fixture server. The dedicated MCP drive requires its tool to reach both
-`tool.before` and `tool.after` as normalized `mcp` events. Claude loads the
-fixture through `--mcp-config`, Codex through `mcp_servers`, and OpenCode
-through its local `mcp` configuration; the output-replacement drive remains
-separate because it is a capability-specific assertion.
-Pi's MCP cells are unsupported; its playback lane instead checks project
-`sync`, local-path and npm-coordinate package installation, native skill
-discovery, hook execution, and per-request context as a model-visible user
-message. The npm-coordinate test uses `pnpm pack` and a local read-only
-registry. Windows playback additionally exercises the installed Pi binary.
+The Claude, Codex, OpenCode v1, Pi and Copilot playback lanes also configure and
+call the in-repository stdio MCP fixture server. The dedicated MCP drive requires
+its tool to reach both `tool.before` and `tool.after` as normalized `mcp`
+events. Claude loads the fixture through `--mcp-config`, Codex through
+`mcp_servers`, OpenCode through its local `mcp` configuration, Pi through
+a trusted project `.pi/mcp.json`, reaching it from a codemode script, and Copilot
+through `--additional-mcp-config`; the
+output-replacement drive remains separate because it is a capability-specific
+assertion. On Pi the MCP drive also requires `tool.mcp` on `tool.after` only,
+taken from the tool's source, and a Pi-only drive replaces the fixture tool's
+output inside a codemode script and requires the replacement, not the
+original, in the next model request. Pi's lane also checks project `sync`,
+local-path and npm-coordinate package installation, native skill discovery,
+hook execution, per-request context as a model-visible user message, and
+projected MCP servers. The npm-coordinate test uses `pnpm pack` and a local
+read-only registry. Windows playback additionally exercises the installed Pi binary.
+
+Copilot's lane loads the package delivery through `--plugin-dir` and points
+`COPILOT_PROVIDER_*` at the loopback chat-completions server, so no GitHub login
+or provider key is involved. The runtime tool name pins the dialect: `bash` on
+Linux and `powershell` on Windows. `permissionRequest` fires in `-p` sessions, so
+its observe/deny path is driven without a pty. The interactive
+`permissionDecision: "ask"` prompt and both user choices are captured by
+`.capture/copilot/interactive-approval-probe.mjs`; the scheduled suite still has
+no Copilot pty-approval driver, so that scenario remains inconclusive on the
+automated lane. Copilot's MCP fixture call is classified as `mcp` from the
+server-tool separator, while `tool.mcp` stays absent because the payload never
+states the split.
 
 The loopback suite never switches to a paid model. Every declared driver
 limitation is written to the harness-watch workflow summary as an
@@ -134,6 +151,7 @@ version:
 | --- | --- |
 | Claude Code | `@anthropic-ai/claude-code` |
 | Codex CLI | `@openai/codex` |
+| GitHub Copilot CLI (`copilot`) | `@github/copilot` |
 | OpenCode v1 (`opencode-v1`) | `opencode-ai` |
 | OpenCode v2 (`opencode-v2`) | `@opencode/cli` |
 | Pi (`pi`) | `@earendil-works/pi-coding-agent` |
@@ -158,18 +176,24 @@ pnpm run bundle
 HOOKNOSTIC_PLAYBACK=codex pnpm exec vitest run packages/cli/test/harness-playback.test.ts
 ```
 
-Use `claude`, `codex`, `opencode-v1`, `opencode-v2`, or `pi`. The historical
+Use `claude`, `codex`, `copilot`, `opencode-v1`, `opencode-v2`, or `pi`. The historical
 `opencode` lane selector remains a v1 alias. V2 uses
 `packages/cli/test/opencode-v2-playback.test.ts`; see
 [OpenCode families](opencode-families.md) for its independently verified
-capabilities and limits. Agent definitions (ADR-0032) have their own file,
+capabilities and limits. Agent definitions (ADR-0034) have their own file,
 `packages/cli/test/agent-definition-playback.test.ts`, which runs on the Claude,
 Codex, and both OpenCode lanes: it
 synchronizes a portable definition through project delivery, makes the harness
 delegate to it, and asserts the child ran on its instructions and native model
 (`.capture/agents/README.md`). Outside Codex it also starts a session as a
-`mode: primary` definition and asserts the session ran on its instructions. The
-test removes common model credential
+`mode: primary` definition and asserts the session ran on its instructions.
+Copilot's project route has its own
+`packages/cli/test/copilot-agent-playback.test.ts`: it syncs
+`.github/agents/<id>.agent.md`, starts `copilot --agent <id>` against the
+loopback, and asserts the instruction marker reached a model request and the
+session log recorded the agent and its `tools`; a no-`--agent` control must not
+receive the marker. Copilot's package lane is exercised through `--plugin-dir`
+by the main playback file. The tests remove common model credential
 variables from the spawned process and supplies only a dummy credential where
 the harness requires a non-empty value. Model requests are served on
 `127.0.0.1` and never forwarded.

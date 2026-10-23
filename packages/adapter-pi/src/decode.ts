@@ -1,4 +1,4 @@
-import type { InvocationContext } from "@hooknostic/core";
+import type { InvocationContext, ReportedToolFacts } from "@hooknostic/core";
 import type { HookEvent } from "@hooknostic/sdk";
 
 import { classifyPiTool } from "./toolmap.js";
@@ -36,6 +36,12 @@ interface ToolCallShape {
 /** Context read beside a callback, never inserted into event.raw (ADR-0027). */
 export interface PiEnrichment {
   branch?: unknown;
+  /**
+   * The `sourceInfo` that `pi.getAllTools()` reports for a tool_result's tool:
+   * the registration pi runs under that name (.capture/pi-mcp,
+   * extension-mcp-shadow).
+   */
+  toolSource?: unknown;
 }
 
 function record(value: unknown): Record<string, unknown> {
@@ -85,11 +91,42 @@ function snapshotPiRaw(native: PiNativeEvent): PiNativeEvent {
   }
 }
 
+/**
+ * Whether a tool's source is pi's own MCP extension, which registers every
+ * native MCP server tool (`{path: "builtin:mcp", source: "builtin"}`, direct
+ * and codemode-nested alike). Another extension's tool, even under an `mcp__`
+ * name or the native tool's own, reports that extension's file (.capture/pi-mcp,
+ * extension-mcp-name and extension-mcp-shadow).
+ */
+export function piNativeMcpTool(source: unknown): boolean {
+  const { path, source: kind } = record(source);
+  return path === "builtin:mcp" && kind === "builtin";
+}
+
+/** The MCP identity a tool_result's `details` states, when it names both parts as strings. */
+export function piReportedMcp(details: unknown): ReportedToolFacts | undefined {
+  if (typeof details !== "object" || details === null) return undefined;
+  const { server, tool } = details as Record<string, unknown>;
+  return typeof server === "string" && typeof tool === "string" ? { mcp: { server, tool } } : undefined;
+}
+
+/** Build-time facts about the target that decoding depends on. */
+export interface PiDecodeOptions {
+  /**
+   * Whether the target is within the 1.x line, whose native MCP channel makes
+   * an `mcp__` tool an MCP call with a stated identity (ADR-0032). Settled at
+   * build time from the target range; absent, the reference build's line.
+   */
+  nativeMcp?: boolean;
+}
+
 export function decodePi(
   nativeEvent: unknown,
   invocation: InvocationContext,
   enrichment: PiEnrichment = {},
+  options: PiDecodeOptions = {},
 ): HookEvent {
+  const nativeMcp = options.nativeMcp ?? true;
   if (typeof nativeEvent !== "object" || nativeEvent === null) {
     throw new PiDecodeError("native event is not an object");
   }
@@ -145,6 +182,15 @@ export function decodePi(
       };
     }
     case "before_agent_start": {
+      // From pi 1.2 a run started by a custom message -- including the
+      // sendMessage({triggerTurn: true}) continuation turn.stop prevent posts --
+      // also fires before_agent_start, with messageType "custom", the message,
+      // and no prompt (fixtures/pi/1.3/before-agent-start-custom). No user
+      // prompt was submitted, so it is declined rather than mapped to
+      // prompt.before; 0.84 never fired the event for such a run.
+      if (native.event["messageType"] === "custom") {
+        throw new PiDecodeError("before_agent_start for a custom-message run carries no user prompt");
+      }
       const prompt = native.event["prompt"];
       if (typeof prompt !== "string") {
         throw new PiDecodeError("before_agent_start has no prompt");
@@ -166,7 +212,12 @@ export function decodePi(
         ...withToolCallId(base),
         raw: snapshotPiRaw(native),
         event: "tool.before",
-        tool: classifyPiTool(toolCall.toolName, snapshotPiValue(toolCall.input, "tool_call input")),
+        tool: classifyPiTool(
+          toolCall.toolName,
+          snapshotPiValue(toolCall.input, "tool_call input"),
+          undefined,
+          nativeMcp,
+        ),
       };
     }
     case "tool_result": {
@@ -180,20 +231,27 @@ export function decodePi(
       const input = snapshotPiValue(toolCall.input, "tool_result input");
       const isError = native.event["isError"] === true;
       const output = native.event["content"];
+      // An MCP result's `details` names its server and tool as pi registered
+      // them (fixtures/pi/1.3/tool-result-mcp), including a server's error
+      // result (tool-result-mcp-error); a JSON-RPC failure leaves it empty
+      // (tool-result-mcp-rpc-error). The lossy name cannot (toolmap.ts). It
+      // reaches the view as a reported fact, which is how classifyTool
+      // rebuilds the same view (ADR-0023, ADR-0032). Only on the 1.x line, and
+      // only for a tool pi's MCP extension registered: any other extension can
+      // register an `mcp__` name, the native tool's own included, and its
+      // `details` are its own (tool-result-mcp-extension, -shadow). Without
+      // the tool's source, nothing establishes whose `details` they are.
+      const reported =
+        nativeMcp && piNativeMcpTool(enrichment.toolSource) ? piReportedMcp(native.event["details"]) : undefined;
+      const tool = classifyPiTool(toolCall.toolName, input, reported, nativeMcp);
       if (isError) {
-        return {
-          ...withToolCallId(base),
-          raw,
-          event: "tool.error",
-          tool: classifyPiTool(toolCall.toolName, input),
-          error: {},
-        };
+        return { ...withToolCallId(base), raw, event: "tool.error", tool, error: {} };
       }
       return {
         ...withToolCallId(base),
         raw,
         event: "tool.after",
-        tool: classifyPiTool(toolCall.toolName, input),
+        tool,
         output: snapshotPiValue(output, "tool_result content"),
       };
     }

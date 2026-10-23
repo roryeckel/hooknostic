@@ -120,8 +120,8 @@ export const opencodeV2CapabilityProfiles: CapabilityProfile[] = [
         },
         // scheduled-playback:begin
         {
-          version: "2.0.27",
-          date: "2026-10-12",
+          version: "2.0.32",
+          date: "2026-10-19",
           method: "live-probe",
           artifact: ".capture/harness-playback",
           what: "scheduled model-free playback vs a newer build: artifact discovery, rewrite/block markers, and lifecycle events verified",
@@ -229,7 +229,7 @@ export const opencodeV2CapabilityProfiles: CapabilityProfile[] = [
         rationale: "Mutating event.input before execution changes the executed command.",
       },
       // execute.before/after name the running agent: the subagent inside one, the
-      // primary agent otherwise (ADR-0033, fixtures tool-read-in-subagent-*).
+      // primary agent otherwise (ADR-0035, fixtures tool-read-in-subagent-*).
       "tool.before.agent.identity": { level: "exact" },
       "tool.after.observe": { level: "exact" },
       "tool.after.agent.identity": { level: "exact" },

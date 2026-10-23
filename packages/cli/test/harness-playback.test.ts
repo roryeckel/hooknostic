@@ -1,10 +1,11 @@
 import { execSync, spawn } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { access, mkdir, mkdtemp, readdir, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { createServer, type ServerResponse } from "node:http";
 import { createRequire } from "node:module";
 import { connect } from "node:net";
 import { tmpdir } from "node:os";
-import { join, normalize } from "node:path";
+import { basename, isAbsolute, join, normalize } from "node:path";
 import { fileURLToPath } from "node:url";
 import { stripVTControlCharacters } from "node:util";
 
@@ -16,6 +17,7 @@ import { afterAll, describe, expect, it } from "vitest";
 import { claudeAgentPluginProjector } from "@hooknostic/adapter-claude";
 import { codexAgentPluginProjector } from "@hooknostic/adapter-codex";
 import { opencodeAgentPluginProjector, opencodeV1Adapter } from "@hooknostic/adapter-opencode";
+import { piCapabilityProfiles } from "@hooknostic/adapter-pi";
 import { AGENT_PLUGIN_MANIFEST_SCHEMA, AGENT_PLUGIN_MCP_SCHEMA, loadAgentPlugin } from "@hooknostic/agent-plugin";
 import { resolveAgentPluginProjection, runProject } from "@hooknostic/core";
 import type { HookEventName } from "@hooknostic/sdk";
@@ -71,13 +73,14 @@ async function startProjectionMcpTransports(): Promise<{
   httpUrl: string;
   sseUrl: string;
   counts: { http: number; sseGet: number; ssePost: number };
-  received: { httpPaths: string[]; authorizations: (string | undefined)[] };
+  received: { httpPaths: string[]; authorizations: (string | undefined)[]; protoHeaders: string[] };
   close(): Promise<void>;
 }> {
   const counts = { http: 0, sseGet: 0, ssePost: 0 };
-  const received: { httpPaths: string[]; authorizations: (string | undefined)[] } = {
+  const received: { httpPaths: string[]; authorizations: (string | undefined)[]; protoHeaders: string[] } = {
     httpPaths: [],
     authorizations: [],
+    protoHeaders: [],
   };
   let baseUrl = "";
   let sse: ServerResponse | undefined;
@@ -123,6 +126,11 @@ async function startProjectionMcpTransports(): Promise<{
       counts.http += 1;
       received.httpPaths.push(request.url);
       received.authorizations.push(request.headers.authorization);
+      // From the raw list: a parsed headers object cannot be trusted to hold __proto__.
+      for (let index = 0; index < request.rawHeaders.length; index += 2) {
+        if (request.rawHeaders[index]!.toLowerCase() === "__proto__")
+          received.protoHeaders.push(request.rawHeaders[index + 1]!);
+      }
       if (rpc.id === undefined) {
         response.writeHead(202).end();
       } else {
@@ -266,15 +274,28 @@ describe("model playback auxiliary requests", () => {
   });
 });
 
-describe("model playback pending MCP servers", () => {
+// ToolSearch's schema and the post-search deferred tool come from the processed
+// request capture in .capture/harness-playback/claude-tool-search-306.json.
+const TOOL_SEARCH = (
+  JSON.parse(
+    readFileSync(new URL("../../../.capture/harness-playback/claude-tool-search-306.json", import.meta.url), "utf8"),
+  ) as { discoveryTool: { name: string; input_schema: unknown } }
+).discoveryTool;
+const WAIT_FOR_MCP = {
+  name: "WaitForMcpServers",
+  input_schema: { type: "object", properties: { servers: { type: "array", items: { type: "string" } } } },
+};
+
+describe.each([WAIT_FOR_MCP, TOOL_SEARCH])("model playback tool discovery: $name", (discoveryTool) => {
   const BUILT_IN = [
     { name: "Bash", input_schema: { type: "object", properties: { command: { type: "string" } } } },
-    {
-      name: "WaitForMcpServers",
-      input_schema: { type: "object", properties: { servers: { type: "array", items: { type: "string" } } } },
-    },
+    discoveryTool,
   ];
-  const ECHO = { name: "mcp__plugin_probe_projection__projection_echo", input_schema: { type: "object" } };
+  const ECHO = {
+    name: "mcp__plugin_probe_projection__projection_echo",
+    input_schema: { type: "object" },
+    ...(discoveryTool.name === "ToolSearch" ? { defer_loading: true } : {}),
+  };
   const SCRIPT = [
     { kind: "tool", toolName: "projection_echo" },
     { kind: "text", text: "projection complete" },
@@ -287,15 +308,16 @@ describe("model playback pending MCP servers", () => {
     }).then(async (response) => ({ status: response.status, text: await response.text() }));
   const toolUse = (text: string) => /"type":"tool_use","id":"([^"]+)","name":"([^"]+)"/.exec(text)?.slice(1, 3);
 
-  it("waits for a connecting server without spending the step that names its tool", async () => {
+  it("discovers a missing tool without spending the step that names it", async () => {
     const server = await startModelPlayback("anthropic-messages", "rewrite", [...SCRIPT]);
     try {
-      // The stdio server has not connected: its tool is absent, the wait tool is offered.
+      // The tool is absent, but the harness offers a discovery mechanism.
       const early = await post(server, BUILT_IN);
       expect(early.status).toBe(200);
       const wait = toolUse(early.text);
-      expect(wait?.[1]).toBe("WaitForMcpServers");
-      expect(early.text).toContain('"partial_json":"{}"');
+      expect(wait?.[1]).toBe(discoveryTool.name);
+      const args = discoveryTool.name === "ToolSearch" ? { query: "projection_echo", max_results: 5 } : {};
+      expect(early.text).toContain(`"partial_json":${JSON.stringify(JSON.stringify(args))}`);
       expect(server.turnCount).toBe(0);
 
       const ready = await post(server, [...BUILT_IN, ECHO]);
@@ -316,8 +338,8 @@ describe("model playback pending MCP servers", () => {
   it("reports the tool missing once the waits for one step are spent", async () => {
     const server = await startModelPlayback("anthropic-messages", "rewrite", [...SCRIPT]);
     try {
-      expect(toolUse((await post(server, BUILT_IN)).text)?.[1]).toBe("WaitForMcpServers");
-      expect(toolUse((await post(server, BUILT_IN)).text)?.[1]).toBe("WaitForMcpServers");
+      expect(toolUse((await post(server, BUILT_IN)).text)?.[1]).toBe(discoveryTool.name);
+      expect(toolUse((await post(server, BUILT_IN)).text)?.[1]).toBe(discoveryTool.name);
       expect(server.errors).toEqual([]);
       const spent = await post(server, BUILT_IN);
       expect(spent.status).toBe(500);
@@ -355,12 +377,41 @@ describe("model playback pending MCP servers", () => {
         calls.push(toolUse((await post(server, tools)).text));
       }
       calls.push(toolUse((await post(server, [...BUILT_IN, ECHO, LATE])).text));
-      const WAIT = "WaitForMcpServers";
+      const WAIT = discoveryTool.name;
       expect(calls.map((call) => call?.[1])).toEqual([WAIT, WAIT, ECHO.name, WAIT, WAIT, LATE.name]);
       // The harness pairs each result with its call by id, so none may repeat.
       expect(new Set(calls.map((call) => call?.[0])).size).toBe(calls.length);
       expect(server.turnCount).toBe(2);
       expect(server.errors).toEqual([]);
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("calls an already advertised tool without discovery", async () => {
+    const server = await startModelPlayback("anthropic-messages", "rewrite", [...SCRIPT]);
+    try {
+      expect(toolUse((await post(server, [...BUILT_IN, ECHO])).text)?.[1]).toBe(ECHO.name);
+      expect(server.turnCount).toBe(1);
+      expect((await post(server, BUILT_IN)).text).toContain("projection complete");
+      expect(server.errors).toEqual([]);
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("shares the discovery budget across mechanisms and auxiliary requests", async () => {
+    const server = await startModelPlayback("anthropic-messages", "rewrite", [...SCRIPT]);
+    try {
+      expect(toolUse((await post(server, [WAIT_FOR_MCP])).text)?.[1]).toBe(WAIT_FOR_MCP.name);
+      expect((await post(server, [])).text).toContain("projection complete");
+      expect(server.turnCount).toBe(0);
+      // Search is preferred when both mechanisms are advertised.
+      expect(toolUse((await post(server, [WAIT_FOR_MCP, TOOL_SEARCH])).text)?.[1]).toBe(TOOL_SEARCH.name);
+      expect((await post(server, [])).status).toBe(200);
+      expect((await post(server, BUILT_IN)).status).toBe(500);
+      expect(server.errors).toHaveLength(1);
+      expect(server.turnCount).toBe(1);
     } finally {
       await server.close();
     }
@@ -396,6 +447,23 @@ describe("runProcess argument passing", () => {
       expect(JSON.parse(result.stdout)).toEqual(ARGS);
     } finally {
       await rm(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("playback artifact shim", () => {
+  it("settles the target's MCP line as the production build does", async () => {
+    // buildProject hands the shim entry the target's range (ADR-0032); a
+    // playback artifact for the same target must decode what that one does.
+    const pi = defaultAdapterRegistry()["pi"]!;
+    const legacy = piCapabilityProfiles.find((profile) => profile.range !== pi.mcpIdentity!.range)!.range;
+    for (const version of [legacy, pi.harness.referenceVersion]) {
+      const dir = await mkdtemp(join(tmpdir(), "hooknostic-playback-shim-"));
+      tempDirs.push(dir);
+      const build = await buildPlaybackArtifact(pi, dir, { version });
+      expect((await readFile(build.runtimePath, "utf8")).includes("nativeMcp: false"), version).toBe(
+        version === legacy,
+      );
     }
   });
 });
@@ -827,6 +895,7 @@ async function runInstalledHarness(
   if (adapter!.id === "claude") await runClaudePlayback(build, scenario, options);
   else if (adapter!.id === "codex") await runCodexPlayback(build, scenario, options);
   else if (adapter!.id === "pi") await runPiPlayback(build, scenario, options);
+  else if (adapter!.id === "copilot") await runCopilotPlayback(build, scenario, options);
   else await runOpenCodePlayback(build, scenario, options);
 }
 
@@ -864,6 +933,88 @@ async function assertPiExplicitSkill(
   expect(server.errors).toEqual([]);
 }
 
+/**
+ * GitHub Copilot CLI drives the Agent Plugins package generated by package
+ * delivery through `--plugin-dir`. Its BYOK variables point the model traffic at
+ * the same loopback server the other harnesses use; no GitHub login is needed
+ * and no provider credential is read. `--trust-folder` is still passed because
+ * the run may also load repository hooks from the artifact directory.
+ */
+async function runCopilotPlayback(
+  build: Awaited<ReturnType<typeof buildPlaybackArtifact>>,
+  scenario: PlaybackScenario,
+  options: DriveOptions = {},
+): Promise<void> {
+  const server = await startModelPlayback("openai-chat", scenario, options.script);
+  try {
+    const home = join(build.artifactDir, "copilot-playback-home");
+    await mkdir(home, { recursive: true });
+    const result = await runProcess(
+      "copilot",
+      [
+        "--trust-folder",
+        "--allow-all-tools",
+        "--disable-client-telemetry",
+        // A run must not download a newer build into the shared update cache,
+        // which would move every later `copilot` off the pinned version.
+        "--no-auto-update",
+        "--plugin-dir",
+        build.artifactDir,
+        ...(options.mcpServerPath !== undefined
+          ? [
+              "--additional-mcp-config",
+              JSON.stringify({
+                mcpServers: { hooknostic_fixture: { type: "stdio", command: "node", args: [options.mcpServerPath] } },
+              }),
+            ]
+          : []),
+        ...(options.extraArgs ?? []),
+        "-p",
+        options.prompt ?? playbackPrompt(scenario),
+      ],
+      {
+        cwd: options.harnessCwd ?? build.artifactDir,
+        timeoutMs: 120_000,
+        env: {
+          ...withoutCredentials(),
+          COPILOT_HOME: home,
+          // BYOK: OpenAI-compatible chat completions against the loopback.
+          COPILOT_PROVIDER_BASE_URL: `${server.baseUrl}/v1`,
+          COPILOT_PROVIDER_TYPE: "openai",
+          COPILOT_PROVIDER_WIRE_API: "completions",
+          COPILOT_PROVIDER_API_KEY: "hooknostic-playback",
+          COPILOT_MODEL: "hooknostic-playback",
+          // A known catalog id keeps tool support and token limits on the
+          // model-specific path; the wire model is the loopback's own name.
+          COPILOT_PROVIDER_MODEL_ID: "gpt-5.4",
+          COPILOT_PROVIDER_WIRE_MODEL: "hooknostic-playback",
+          COPILOT_PROVIDER_MAX_PROMPT_TOKENS: "128000",
+          COPILOT_PROVIDER_MAX_OUTPUT_TOKENS: "8192",
+          HOOKNOSTIC_PLAYBACK_TRACE: build.tracePath,
+          ...(options.effects ? { HOOKNOSTIC_PLAYBACK_EFFECTS: options.effects.join(",") } : {}),
+        },
+      },
+    );
+    expect(
+      options.expectedExitCodes ?? [0],
+      `copilot exit ${result.code}: ${result.stdout}\n${result.stderr}`,
+    ).toContain(result.code);
+    options.capture?.({ stdout: result.stdout, stderr: result.stderr, code: result.code });
+    expect(server.errors).toEqual([]);
+    if (options.requireAgentRequest === false) {
+      await options.verify?.({ server, dir: build.artifactDir });
+      return;
+    }
+    expect(
+      server.requests.some((request) => request !== null && typeof request === "object" && "tools" in request),
+      JSON.stringify(server.requests, null, 2),
+    ).toBe(true);
+    await options.verify?.({ server, dir: build.artifactDir });
+  } finally {
+    await server.close();
+  }
+}
+
 async function runPiPlayback(
   build: Awaited<ReturnType<typeof buildPlaybackArtifact>>,
   scenario: PlaybackScenario,
@@ -875,6 +1026,14 @@ async function runPiPlayback(
     // Project delivery writes .pi/extensions/ into the artifact dir, which pi
     // discovers on startup; the provider rides in via -e.
     const providerExtension = await writePiProviderExtension(build.artifactDir, server.baseUrl);
+    if (options.mcpServerPath !== undefined) {
+      // pi reads a project .pi/mcp.json once the project is trusted, which
+      // --approve below grants (.capture/pi-mcp, project-file-trusted).
+      await writeFile(
+        join(build.artifactDir, ".pi/mcp.json"),
+        JSON.stringify({ mcpServers: { hooknostic_fixture: { command: "node", args: [options.mcpServerPath] } } }),
+      );
+    }
     let result: Awaited<ReturnType<typeof runProcess>>;
     try {
       result = await runProcess(
@@ -1821,168 +1980,199 @@ describe.skipIf(adapter === undefined)(`offline harness playback: ${selected || 
   });
 
   // The projection drive asserts MCP transports and ${}-expansion end to end.
-  // pi has no native MCP channel (profile cells unsupported, HN205 by
-  // design), so the scenario has no meaning there and the build would fail
-  // before any artifact exists. pi's local integration (skills + extension
-  // discovery) is covered by its own scenarios below.
-  it.skipIf(adapter?.id === "pi")(
-    "runs repository-local integration without installing a plugin",
-    async () => {
-      const dir = await mkdtemp(join(tmpdir(), "hooknostic-local-playback-"));
-      tempDirs.push(dir);
-      const transports = await startProjectionMcpTransports();
-      const source = join(dir, "portable");
-      await mkdir(join(source, "mcp-working-dir"), { recursive: true });
-      await writeFile(join(source, "plugin-mcp-env-fixture.mjs"), await readFile(PluginMcpEnvFixturePath));
-      const skillSource = join(dir, "portable-skills/local-sample");
-      await mkdir(skillSource, { recursive: true });
-      await writeFile(
-        join(skillSource, "SKILL.md"),
-        "---\nname: local-sample\ndescription: local-skill-marker\n---\nSynthetic playback skill.\n",
-      );
-      const projectCwdOverride = adapter!.id === "claude" ? "./mcp-working-dir" : "${PLUGIN_ROOT}/..";
-      const build = await buildPlaybackArtifact(adapter!, dir, {
-        delivery: "project",
-        project: true,
-        componentOptions: {
-          ...(adapter!.id === "claude"
-            ? {}
+  // pi 1.x registers the servers from a generated extension (.capture/pi-mcp);
+  // it has no startup timeout and rejects SSE, so neither is declared there.
+  it("runs repository-local integration without installing a plugin", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "hooknostic-local-playback-"));
+    tempDirs.push(dir);
+    const transports = await startProjectionMcpTransports();
+    const source = join(dir, "portable");
+    await mkdir(join(source, "mcp-working-dir"), { recursive: true });
+    await writeFile(join(source, "plugin-mcp-env-fixture.mjs"), await readFile(PluginMcpEnvFixturePath));
+    const skillSource = join(dir, "portable-skills/local-sample");
+    await mkdir(skillSource, { recursive: true });
+    await writeFile(
+      join(skillSource, "SKILL.md"),
+      "---\nname: local-sample\ndescription: local-skill-marker\n---\nSynthetic playback skill.\n",
+    );
+    const projectCwdOverride = adapter!.id === "claude" ? "./mcp-working-dir" : "${PLUGIN_ROOT}/..";
+    const build = await buildPlaybackArtifact(adapter!, dir, {
+      delivery: "project",
+      project: true,
+      componentOptions: {
+        ...(adapter!.id === "claude"
+          ? {}
+          : adapter!.id === "pi"
+            ? { mcpProjectCwdServers: ["localProbe"] }
             : { mcpProjectCwdServers: ["localProbe"], mcpStartupTimeoutMs: { localProbe: 60_000 } }),
-        },
-        components: {
-          origin: "direct",
-          skills: [
-            {
-              name: "local-sample",
-              source: skillSource,
-              files: [
-                {
-                  path: "SKILL.md",
-                  mode: 0o644,
-                  contents: new TextEncoder().encode(
-                    "---\nname: local-sample\ndescription: local-skill-marker\n---\nSynthetic playback skill.\n",
-                  ),
-                },
-              ],
-            },
-          ],
-          mcp: {
-            root: source,
-            config: {
-              $schema: AGENT_PLUGIN_MCP_SCHEMA,
-              mcpServers: {
-                localProbe: {
-                  type: "stdio" as const,
-                  command: "node",
-                  // A direct source's `${NAME:-default}` resolves through the
-                  // launcher on every harness. On Codex, both names are listed
-                  // in env_vars, including the one its environment lacks.
-                  args: [
-                    "${PLUGIN_ROOT}/plugin-mcp-env-fixture.mjs",
-                    "${PLUGIN_DATA}",
-                    adapter!.id,
-                    "${HOOKNOSTIC_PLAYBACK_STDIO_SET:-unused}",
-                    "${HOOKNOSTIC_PLAYBACK_STDIO_UNSET:-stdio-fallback}",
-                  ],
-                  env: { CAPTURE_PATH: "${PLUGIN_ROOT}/mcp-environment.json" },
-                  cwd: projectCwdOverride,
-                },
-                localHttp: {
-                  type: "streamable-http" as const,
-                  url:
-                    adapter!.id === "claude"
-                      ? transports.httpUrl + "/${HOOKNOSTIC_PLAYBACK_REMOTE_PATH}"
-                      : transports.httpUrl,
-                  ...(adapter!.id === "claude"
-                    ? { headers: { Authorization: "Bearer ${HOOKNOSTIC_PLAYBACK_REMOTE_HEADER}" } }
-                    : {}),
-                },
-                ...(adapter!.id === "opencode"
-                  ? {
-                      missingRemote: {
-                        type: "streamable-http" as const,
-                        url: "https://example.invalid/${HOOKNOSTIC_PLAYBACK_UNSET_REMOTE}/mcp",
-                      },
-                    }
-                  : {}),
-                ...(adapter!.id === "codex" ? {} : { localSse: { type: "sse" as const, url: transports.sseUrl } }),
+      },
+      components: {
+        origin: "direct",
+        skills: [
+          {
+            name: "local-sample",
+            source: skillSource,
+            files: [
+              {
+                path: "SKILL.md",
+                mode: 0o644,
+                contents: new TextEncoder().encode(
+                  "---\nname: local-sample\ndescription: local-skill-marker\n---\nSynthetic playback skill.\n",
+                ),
               },
+            ],
+          },
+        ],
+        mcp: {
+          root: source,
+          config: {
+            $schema: AGENT_PLUGIN_MCP_SCHEMA,
+            mcpServers: {
+              localProbe: {
+                type: "stdio" as const,
+                command: "node",
+                // A direct source's `${NAME:-default}` resolves through the
+                // launcher on every harness. On Codex, both names are listed
+                // in env_vars, including the one its environment lacks.
+                args: [
+                  "${PLUGIN_ROOT}/plugin-mcp-env-fixture.mjs",
+                  "${PLUGIN_DATA}",
+                  adapter!.id,
+                  "${HOOKNOSTIC_PLAYBACK_STDIO_SET:-unused}",
+                  "${HOOKNOSTIC_PLAYBACK_STDIO_UNSET:-stdio-fallback}",
+                ],
+                env: { CAPTURE_PATH: "${PLUGIN_ROOT}/mcp-environment.json" },
+                cwd: projectCwdOverride,
+              },
+              localHttp: {
+                type: "streamable-http" as const,
+                url:
+                  adapter!.id === "claude" || adapter!.id === "pi"
+                    ? transports.httpUrl + "/${HOOKNOSTIC_PLAYBACK_REMOTE_PATH}"
+                    : transports.httpUrl,
+                ...(adapter!.id === "claude"
+                  ? { headers: { Authorization: "Bearer ${HOOKNOSTIC_PLAYBACK_REMOTE_HEADER}" } }
+                  : adapter!.id === "pi"
+                    ? // The trailing $literal must reach the server as written:
+                      // unescaped, pi would read it as a variable it lacks and
+                      // refuse the server.
+                      { headers: { Authorization: "Bearer ${HOOKNOSTIC_PLAYBACK_REMOTE_HEADER}-$literal" } }
+                    : {}),
+              },
+              ...(adapter!.id === "opencode" || adapter!.id === "pi"
+                ? {
+                    missingRemote: {
+                      type: "streamable-http" as const,
+                      url: "https://example.invalid/${HOOKNOSTIC_PLAYBACK_UNSET_REMOTE}/mcp",
+                    },
+                  }
+                : {}),
+              ...(adapter!.id === "codex" || adapter!.id === "pi"
+                ? {}
+                : { localSse: { type: "sse" as const, url: transports.sseUrl } }),
             },
           },
         },
-      });
-      const harnessCwd = adapter!.id === "codex" ? join(dir, "nested/session") : dir;
-      await mkdir(harnessCwd, { recursive: true });
-      let harnessOutput = "";
-      process.env["HOOKNOSTIC_PLAYBACK_STDIO_SET"] = "stdio-set";
-      delete process.env["HOOKNOSTIC_PLAYBACK_STDIO_UNSET"];
-      if (adapter!.id === "claude") {
-        process.env["HOOKNOSTIC_PLAYBACK_REMOTE_PATH"] = "expanded-path";
-        process.env["HOOKNOSTIC_PLAYBACK_REMOTE_HEADER"] = "expanded-header";
-      }
-      try {
-        await runInstalledHarness(build, "rewrite", {
-          harnessCwd,
-          ...(adapter!.id === "claude"
-            ? { extraArgs: ["--strict-mcp-config", "--mcp-config", join(dir, ".mcp.json")] }
-            : {}),
-          ...(adapter!.id === "opencode"
-            ? {
-                opencodeConfig: {
-                  mcp: {
-                    localProbe: { type: "remote", url: "https://inherited.invalid/mcp", enabled: true },
-                    inheritedOnly: { type: "remote", url: "https://example.invalid/inherited", enabled: false },
+      },
+    });
+    const harnessCwd = adapter!.id === "codex" ? join(dir, "nested/session") : dir;
+    await mkdir(harnessCwd, { recursive: true });
+    let harnessOutput = "";
+    process.env["HOOKNOSTIC_PLAYBACK_STDIO_SET"] = "stdio-set";
+    delete process.env["HOOKNOSTIC_PLAYBACK_STDIO_UNSET"];
+    if (adapter!.id === "claude" || adapter!.id === "pi") {
+      process.env["HOOKNOSTIC_PLAYBACK_REMOTE_PATH"] = "expanded-path";
+      process.env["HOOKNOSTIC_PLAYBACK_REMOTE_HEADER"] = "expanded-header";
+    }
+    try {
+      await runInstalledHarness(build, "rewrite", {
+        harnessCwd,
+        // pi's default exposure reaches MCP tools through codemode, and a
+        // script waits for the servers it names, so both connect before the
+        // turn ends.
+        ...(adapter!.id === "pi"
+          ? {
+              script: [
+                {
+                  kind: "tool" as const,
+                  toolName: "codemode",
+                  arguments: {
+                    code: "await tools.mcp__localProbe__projection_echo({});\nreturn await tools.mcp__localHttp__http_probe({});",
                   },
                 },
-              }
-            : {}),
-          capture: ({ stdout, stderr }) => {
-            harnessOutput = stdout + stderr;
-          },
-          verify: async ({ server }) => {
-            expect(requestContents(server.requests).join("\n")).toContain("local-skill-marker");
-            {
-              const environment = JSON.parse(await readFile(join(source, "mcp-environment.json"), "utf8"));
-              expect(normalize(environment.pluginRoot)).toBe(normalize(source));
-              expect(normalize(environment.cwd)).toBe(
-                normalize(adapter!.id === "claude" ? join(source, "mcp-working-dir") : dir),
-              );
-              expect(normalize(environment.pluginData)).toBe(normalize(join(dir, ".hooknostic/data")));
-              expect(environment.argv).toEqual([environment.pluginData, adapter!.id, "stdio-set", "stdio-fallback"]);
-              // The server above started although env_vars names a variable
-              // Codex's environment does not have.
-              if (adapter!.id === "codex") {
-                expect(await readFile(join(dir, ".codex/config.toml"), "utf8")).toContain(
-                  '"HOOKNOSTIC_PLAYBACK_STDIO_UNSET"',
-                );
-              }
-              expect(transports.counts.http).toBeGreaterThan(0);
-              if (adapter!.id === "claude") {
-                expect(transports.received.httpPaths).toContain("/http/expanded-path");
-                expect(transports.received.authorizations).toContain("Bearer expanded-header");
-              }
-              if (adapter!.id !== "codex") {
-                expect(transports.counts.sseGet).toBeGreaterThan(0);
-                expect(transports.counts.ssePost).toBeGreaterThan(0);
-              }
+                { kind: "text" as const, text: "MCP servers reached; standing down now." },
+              ],
             }
-          },
-        });
-      } finally {
-        delete process.env["HOOKNOSTIC_PLAYBACK_REMOTE_PATH"];
-        delete process.env["HOOKNOSTIC_PLAYBACK_REMOTE_HEADER"];
-        delete process.env["HOOKNOSTIC_PLAYBACK_STDIO_SET"];
-        await transports.close();
-      }
-      if (adapter!.id === "opencode") {
-        expect(harnessOutput).toContain("Hooknostic disabled MCP");
-        expect(harnessOutput).toContain("HOOKNOSTIC_PLAYBACK_UNSET_REMOTE");
-      }
-      const events = await traceEvents(build.tracePath);
-      expect(events).toContain("tool.before");
-    },
-    180_000,
-  );
+          : {}),
+        ...(adapter!.id === "claude"
+          ? { extraArgs: ["--strict-mcp-config", "--mcp-config", join(dir, ".mcp.json")] }
+          : {}),
+        ...(adapter!.id === "opencode"
+          ? {
+              opencodeConfig: {
+                mcp: {
+                  localProbe: { type: "remote", url: "https://inherited.invalid/mcp", enabled: true },
+                  inheritedOnly: { type: "remote", url: "https://example.invalid/inherited", enabled: false },
+                },
+              },
+            }
+          : {}),
+        capture: ({ stdout, stderr }) => {
+          harnessOutput = stdout + stderr;
+        },
+        verify: async ({ server }) => {
+          expect(requestContents(server.requests).join("\n")).toContain("local-skill-marker");
+          {
+            const environment = JSON.parse(await readFile(join(source, "mcp-environment.json"), "utf8"));
+            expect(normalize(environment.pluginRoot)).toBe(normalize(source));
+            expect(normalize(environment.cwd)).toBe(
+              normalize(adapter!.id === "claude" ? join(source, "mcp-working-dir") : dir),
+            );
+            expect(normalize(environment.pluginData)).toBe(normalize(join(dir, ".hooknostic/data")));
+            expect(environment.argv).toEqual([environment.pluginData, adapter!.id, "stdio-set", "stdio-fallback"]);
+            // The server above started although env_vars names a variable
+            // Codex's environment does not have.
+            if (adapter!.id === "codex") {
+              expect(await readFile(join(dir, ".codex/config.toml"), "utf8")).toContain(
+                '"HOOKNOSTIC_PLAYBACK_STDIO_UNSET"',
+              );
+            }
+            expect(transports.counts.http).toBeGreaterThan(0);
+            if (adapter!.id === "claude") {
+              expect(transports.received.httpPaths).toContain("/http/expanded-path");
+              expect(transports.received.authorizations).toContain("Bearer expanded-header");
+            }
+            if (adapter!.id === "pi") {
+              expect(transports.received.httpPaths).toContain("/http/expanded-path");
+              expect(transports.received.authorizations).toContain("Bearer expanded-header-$literal");
+            }
+            if (adapter!.id !== "codex" && adapter!.id !== "pi") {
+              expect(transports.counts.sseGet).toBeGreaterThan(0);
+              expect(transports.counts.ssePost).toBeGreaterThan(0);
+            }
+          }
+        },
+      });
+    } finally {
+      delete process.env["HOOKNOSTIC_PLAYBACK_REMOTE_PATH"];
+      delete process.env["HOOKNOSTIC_PLAYBACK_REMOTE_HEADER"];
+      delete process.env["HOOKNOSTIC_PLAYBACK_STDIO_SET"];
+      await transports.close();
+    }
+    if (adapter!.id === "opencode" || adapter!.id === "pi") {
+      expect(harnessOutput).toContain("Hooknostic disabled MCP");
+      expect(harnessOutput).toContain("HOOKNOSTIC_PLAYBACK_UNSET_REMOTE");
+    }
+    const events = await traceEvents(build.tracePath);
+    expect(events).toContain("tool.before");
+    if (adapter!.id === "pi") {
+      // The codemode script's nested MCP calls reach the hooks as mcp tools.
+      const trace = await readFile(build.tracePath, "utf8");
+      expect(trace).toContain('"toolNativeName":"mcp__localProbe__projection_echo"');
+      expect(trace).toContain('"toolNativeName":"mcp__localHttp__http_probe"');
+      expect(trace).toContain('"toolKind":"mcp"');
+    }
+  }, 180_000);
 
   it("replays every captured hook payload through the generated production artifact", async () => {
     const dir = await mkdtemp(join(tmpdir(), `hooknostic-playback-${adapter!.id}-`));
@@ -2849,6 +3039,183 @@ export default definePlugin({ name: "pi-sync-playback", hooks: [
     );
   }
 
+  // A projected package's MCP servers: the generated hooknostic-mcp.js
+  // registers them, stdio through the launcher (.capture/pi-mcp). A package's
+  // text is never expanded, so the arguments and the header must arrive as
+  // written although pi expands $NAME, ${NAME}, !command and ~/ itself.
+  for (const installRoute of ["local-path", "npm-coordinate"] as const) {
+    it.skipIf(adapter?.id !== "pi")(
+      `registers projected package MCP servers and reaches them through codemode (${installRoute})`,
+      async () => {
+        const dir = await mkdtemp(join(tmpdir(), `hooknostic-pi-mcp-${installRoute}-`));
+        tempDirs.push(dir);
+        const packageDir = join(dir, "projected");
+        const sourceDir = join(dir, "source");
+        const projectDir = join(dir, "consumer");
+        const capturePath = join(dir, "mcp-environment.json");
+        const header = "!literal ${HOOKNOSTIC_PLAYBACK_REMOTE_HEADER} $tail";
+        await mkdir(sourceDir, { recursive: true });
+        await mkdir(join(projectDir, ".git"), { recursive: true });
+        await writeFile(join(sourceDir, "plugin-mcp-env-fixture.mjs"), await readFile(PluginMcpEnvFixturePath));
+        await writeFile(
+          join(sourceDir, "plugin.json"),
+          JSON.stringify({ $schema: AGENT_PLUGIN_MANIFEST_SCHEMA, name: "pi-mcp-playback", version: "1.0.0" }),
+        );
+        const transports = await startProjectionMcpTransports();
+        await writeFile(
+          join(sourceDir, "mcp.json"),
+          JSON.stringify({
+            $schema: AGENT_PLUGIN_MCP_SCHEMA,
+            mcpServers: {
+              pkgProbe: {
+                type: "stdio",
+                command: "node",
+                args: [
+                  "${PLUGIN_ROOT}/plugin-mcp-env-fixture.mjs",
+                  "${PLUGIN_DATA}",
+                  "pi",
+                  "$literal-arg",
+                  "~/tilde-arg",
+                ],
+                env: { CAPTURE_PATH: capturePath },
+              },
+              pkgHttp: {
+                type: "streamable-http",
+                url: transports.httpUrl,
+                // pi's resolver drops a header spelled __proto__ (piHeaders).
+                headers: { Authorization: header, ["__proto__"]: "proto-header" },
+              },
+            },
+          }),
+        );
+        const loaded = await loadAgentPlugin({ root: sourceDir });
+        expect(loaded.issues.filter((issue) => issue.severity === "error")).toEqual([]);
+        const build = await buildPlaybackArtifact(adapter!, packageDir, { delivery: "package" });
+        const projector = adapter!.agentPluginProjector!;
+        const target = {
+          id: "pi",
+          delivery: "package" as const,
+          version: adapter!.harness.referenceVersion,
+          output: packageDir,
+        };
+        const plan = await projector.project(loaded.package!, {
+          target,
+          hookArtifacts: [
+            { path: "hooknostic.js", contents: await readFile(build.runtimePath, "utf8") },
+            { path: "package.json", contents: await readFile(join(packageDir, "package.json"), "utf8") },
+          ],
+          support: resolveAgentPluginProjection(target, projector).matrix!,
+          onUnsupported: "error",
+        });
+        expect(plan.issues).toEqual([]);
+        expect(plan.summary.omissions).toEqual([]);
+        for (const file of plan.files) {
+          const dest = join(packageDir, file.path);
+          await mkdir(join(dest, ".."), { recursive: true });
+          await writeFile(dest, file.contents);
+        }
+        const manifest = JSON.parse(await readFile(join(packageDir, "package.json"), "utf8")) as {
+          name: string;
+          version: string;
+        };
+        let registry: Awaited<ReturnType<typeof startRegistry>> | undefined;
+        let installSource = packageDir;
+        if (installRoute === "npm-coordinate") {
+          const packed = await runProcess("pnpm", ["pack", "--pack-destination", dir], {
+            cwd: packageDir,
+            env: process.env,
+            timeoutMs: 60_000,
+          });
+          expect(packed.code, packed.stdout + packed.stderr).toBe(0);
+          const tarball = (await readdir(dir)).find((name) => name.endsWith(".tgz"));
+          registry = await startRegistry(manifest, await readFile(join(dir, tarball!)));
+          installSource = `npm:${manifest.name}@${manifest.version}`;
+        }
+        const env = {
+          ...withoutCredentials(),
+          HOME: dir,
+          USERPROFILE: dir,
+          PI_CODING_AGENT_DIR: join(dir, "pi-home"),
+          // Set, so a client that expanded the package's header would change it.
+          HOOKNOSTIC_PLAYBACK_REMOTE_HEADER: "expanded-header",
+          ...(registry === undefined
+            ? {}
+            : {
+                npm_config_cache: join(dir, "npm-cache"),
+                npm_config_registry: `${registry.baseUrl}/`,
+                npm_config_audit: "false",
+                npm_config_fund: "false",
+                npm_config_update_notifier: "false",
+              }),
+        };
+        const server = await startModelPlayback("openai-chat", "rewrite", [
+          {
+            kind: "tool",
+            toolName: "codemode",
+            arguments: {
+              code: "await tools.mcp__pkgProbe__projection_echo({});\nreturn await tools.mcp__pkgHttp__http_probe({});",
+            },
+          },
+          { kind: "text", text: "MCP servers reached; standing down now." },
+        ]);
+        try {
+          const install = await runProcess("pi", ["install", "-l", "--approve", installSource], {
+            cwd: projectDir,
+            timeoutMs: 90_000,
+            env,
+          });
+          expect(install.code, install.stdout + install.stderr).toBe(0);
+          const provider = await writePiProviderExtension(projectDir, server.baseUrl);
+          const run = await runProcess(
+            "pi",
+            [
+              "--provider",
+              "hooknostic-playback",
+              "--model",
+              "hooknostic-playback",
+              "-e",
+              provider,
+              "--approve",
+              "--no-session",
+              "-p",
+              "Reach the package's MCP servers through codemode, then reply.",
+            ],
+            { cwd: projectDir, timeoutMs: 90_000, env: { ...env, HOOKNOSTIC_PLAYBACK_TRACE: build.tracePath } },
+          );
+          expect(run.code, run.stdout + run.stderr).toBe(0);
+          expect(server.errors).toEqual([]);
+          const environment = JSON.parse(await readFile(capturePath, "utf8")) as {
+            pluginRoot: string;
+            pluginData: string;
+            argv: string[];
+          };
+          // PLUGIN_ROOT is the copied author package, wherever pi installed it.
+          expect(basename(environment.pluginRoot)).toBe("package");
+          expect(await readFile(join(environment.pluginRoot, "plugin-mcp-env-fixture.mjs"), "utf8")).toBe(
+            await readFile(PluginMcpEnvFixturePath, "utf8"),
+          );
+          expect(isAbsolute(environment.pluginData)).toBe(true);
+          expect(normalize(environment.pluginData).startsWith(normalize(environment.pluginRoot))).toBe(false);
+          expect(environment.argv).toEqual([environment.pluginData, "pi", "$literal-arg", "~/tilde-arg"]);
+          expect(transports.received.authorizations).toContain(header);
+          // Every request carried the declared text, none an expansion of it.
+          expect(new Set(transports.received.authorizations)).toEqual(new Set([header]));
+          expect(transports.received.protoHeaders.length).toBeGreaterThan(0);
+          expect(new Set(transports.received.protoHeaders)).toEqual(new Set(["proto-header"]));
+          const trace = await readFile(build.tracePath, "utf8");
+          expect(trace).toContain('"toolNativeName":"mcp__pkgProbe__projection_echo"');
+          expect(trace).toContain('"toolNativeName":"mcp__pkgHttp__http_probe"');
+          expect(trace).toContain('"toolKind":"mcp"');
+        } finally {
+          await server.close();
+          await transports.close();
+          await registry?.close();
+        }
+      },
+      180_000,
+    );
+  }
+
   // Code Mode. gpt-5.6-luna and most current catalog models advertise
   // tool_mode "code_mode_only": the model's only shell path is one `exec`
   // custom tool whose JavaScript calls `tools.exec_command`. The outer `exec`
@@ -2923,9 +3290,7 @@ export default definePlugin({ name: "pi-sync-playback", hooks: [
     },
   );
 
-  // pi has no native MCP channel (profile cells unsupported by design), so
-  // there is no fixture MCP tool to drive on it.
-  it.skipIf(adapter?.id === "pi")("drives the fixture MCP tool through the generated production artifact", async () => {
+  it("drives the fixture MCP tool through the generated production artifact", async () => {
     const dir = await mkdtemp(join(tmpdir(), `hooknostic-mcp-${adapter!.id}-`));
     tempDirs.push(dir);
     const build = await buildPlaybackArtifact(adapter!, dir);
@@ -2936,22 +3301,91 @@ export default definePlugin({ name: "pi-sync-playback", hooks: [
       // hook drives a second turn; Claude and OpenCode have the fixture tool
       // before the first response.
       script:
-        adapter!.id === "codex"
-          ? [
-              { kind: "text", text: "I will call the echo tool on the next step." },
-              { kind: "tool", toolName: "hooknostic_echo" },
+        adapter!.id === "pi"
+          ? // pi's default exposure: the model reaches the tool through codemode,
+            // whose nested call reaches tool hooks (.capture/pi-mcp).
+            [
+              {
+                kind: "tool",
+                toolName: "codemode",
+                arguments: { code: "return await tools.mcp__hooknostic_fixture__hooknostic_echo({});" },
+              },
               { kind: "text", text: "MCP output received; standing down now." },
             ]
-          : [
-              { kind: "tool", toolName: "hooknostic_echo" },
-              { kind: "text", text: "MCP output received; standing down now." },
-            ],
+          : adapter!.id === "codex"
+            ? [
+                { kind: "text", text: "I will call the echo tool on the next step." },
+                { kind: "tool", toolName: "hooknostic_echo" },
+                { kind: "text", text: "MCP output received; standing down now." },
+              ]
+            : [
+                { kind: "tool", toolName: "hooknostic_echo" },
+                { kind: "text", text: "MCP output received; standing down now." },
+              ],
     });
     const trace = await readFile(build.tracePath, "utf8");
     expect(trace, `fixture MCP tool did not reach the artifact: ${trace}`).toContain('"toolKind":"mcp"');
     expect(trace).toContain('"event":"tool.before"');
     expect(trace).toContain('"event":"tool.after"');
+    if (adapter!.id === "pi") {
+      // pi states the split on the result of a tool its MCP extension
+      // registered, which the generated extension reads from pi.getAllTools();
+      // a tool_call states nothing (.capture/pi-mcp).
+      const mcpEntries = trace
+        .split("\n")
+        .filter(Boolean)
+        .map((line) => JSON.parse(line) as { event: string; toolKind?: string; toolMcp?: unknown })
+        .filter((entry) => entry.toolKind === "mcp")
+        .map(({ event, toolMcp }) => ({ event, toolMcp }));
+      expect(mcpEntries).toEqual([
+        { event: "tool.before", toolMcp: undefined },
+        { event: "tool.after", toolMcp: { server: "hooknostic_fixture", tool: "hooknostic_echo" } },
+      ]);
+    }
   });
+
+  it.skipIf(adapter?.id !== "pi")(
+    "replaces a codemode-nested MCP tool's output, structured content included",
+    async () => {
+      // A codemode script receives an MCP tool's structuredContent, which pi
+      // fills with the server's whole result; a {content} replacement drops
+      // it, so the script returns the replacement (.capture/pi-mcp,
+      // codemode-replace). Only the MCP tool's output is replaced, not the
+      // codemode tool's own.
+      const dir = await mkdtemp(join(tmpdir(), "hooknostic-mcpreplace-pi-"));
+      tempDirs.push(dir);
+      const build = await buildPlaybackArtifact(adapter!, dir);
+      let recordedRequests: readonly unknown[] = [];
+      await runInstalledHarness(build, "rewrite", {
+        effects: ["replace-mcp-outputs"],
+        mcpServerPath: McpFixtureServerPath,
+        script: [
+          {
+            kind: "tool",
+            toolName: "codemode",
+            arguments: { code: "return await tools.mcp__hooknostic_fixture__hooknostic_echo({});" },
+          },
+          { kind: "text", text: "MCP output received; standing down now." },
+        ],
+        verify: async ({ server }) => {
+          recordedRequests = server.requests;
+        },
+      });
+      const trace = await readFile(build.tracePath, "utf8");
+      expect(trace, `fixture MCP tool did not reach tool.after: ${trace}`).toMatch(
+        /"event":"tool\.after"[^\n]*"toolKind":"mcp"/,
+      );
+      const contents = requestContents(recordedRequests);
+      expect(
+        contents.some((text) => text.includes("hooknostic-replaced-tool-output")),
+        `replaced MCP output missing from model requests: ${JSON.stringify(contents.slice(0, 20), null, 2)}`,
+      ).toBe(true);
+      expect(
+        contents.some((text) => text.includes("hooknostic-mcp-tool-output")),
+        `the fixture's original MCP output reached the model: ${JSON.stringify(contents.slice(0, 20), null, 2)}`,
+      ).toBe(false);
+    },
+  );
 });
 
 // --- registry gate (ADR-0010) ---------------------------------------------
@@ -3056,6 +3490,32 @@ scenarioDrive("shell-tool-variants", async () => {
 scenarioDrive(
   "tool-error",
   async () => {
+    if (adapter!.id === "copilot") {
+      // A nonzero shell exit is a successful tool result on Copilot (captured:
+      // exit 7 produced no postToolUseFailure). A failing `view` does, so the
+      // drive scripts that call and then checks the injected error context.
+      const dir = await mkdtemp(join(tmpdir(), "hooknostic-failure-copilot-"));
+      tempDirs.push(dir);
+      const build = await buildPlaybackArtifact(adapter!, dir);
+      let recordedRequests: readonly unknown[] = [];
+      await runInstalledHarness(build, "fail", {
+        effects: ["context-add"],
+        script: [
+          { kind: "tool", toolName: "view", arguments: { path: join(dir, "missing-file.txt") } },
+          { kind: "text" },
+        ],
+        verify: async ({ server }) => {
+          recordedRequests = server.requests;
+        },
+      });
+      expect(await traceEvents(build.tracePath)).toContain("tool.error");
+      const contents = requestContents(recordedRequests);
+      expect(
+        contents.some((text) => text.includes("hooknostic-context [tool.error]")),
+        `injected tool.error context missing from model requests: ${JSON.stringify(contents.slice(0, 20), null, 2)}`,
+      ).toBe(true);
+      return;
+    }
     const dir = await mkdtemp(join(tmpdir(), `hooknostic-failure-${adapter!.id}-`));
     tempDirs.push(dir);
     const build = await buildPlaybackArtifact(adapter!, dir);
@@ -3078,7 +3538,7 @@ scenarioDrive(
       `injected tool.error context missing from model requests: ${JSON.stringify(contents.slice(0, 20), null, 2)}`,
     ).toBe(true);
   },
-  () => adapter?.id !== "claude" || cellLevel("tool.error.context.add") === undefined,
+  () => (adapter?.id !== "claude" && adapter?.id !== "copilot") || cellLevel("tool.error.context.add") === undefined,
 );
 
 scenarioDrive(
@@ -3297,7 +3757,7 @@ scenarioDrive(
     // What counts as "another turn" is per-harness, because the scripts differ
     // in how many turns they produce on their own. On the opencode-serve lane
     // the script produces two by itself, so only a third evidences prevention.
-    const requiredTurns = adapter!.id === "opencode" ? 3 : 2;
+    const requiredTurns = adapter!.id === "opencode" || adapter!.id === "copilot" ? 3 : 2;
     expect(
       servedTurns,
       `stop prevention did not produce an extra model turn (turns served: ${servedTurns}, required: ${requiredTurns})`,
@@ -3503,6 +3963,32 @@ scenarioDrive(
 scenarioDrive(
   "permission-request",
   async () => {
+    if (adapter!.id === "copilot") {
+      // Copilot fires permissionRequest before the permission service even in a
+      // headless -p session with --allow-all-tools (captured), so the deny path
+      // is drivable without a pty. The shell call must never run.
+      const dir = await mkdtemp(join(tmpdir(), "hooknostic-perm-copilot-"));
+      tempDirs.push(dir);
+      const build = await buildPlaybackArtifact(adapter!, dir);
+      let permissionObserved = false;
+      await runInstalledHarness(build, "rewrite", {
+        effects: ["permission-deny"],
+        script: [{ kind: "tool", disposition: "rewrite", marker: "hooknostic-perm-marker.txt" }, { kind: "text" }],
+        verify: async ({ server }) => {
+          permissionObserved = server.turnCount >= 1;
+        },
+      });
+      const events = await traceEvents(build.tracePath);
+      expect(events, `permission.request never fired (observed flag: ${permissionObserved})`).toContain(
+        "permission.request",
+      );
+      expect(permissionObserved).toBe(true);
+      expect(
+        await readFile(join(dir, "hooknostic-perm-marker.txt"), "utf8").catch(() => null),
+        "denied command executed anyway",
+      ).toBeNull();
+      return;
+    }
     if (adapter!.id === "opencode") {
       // Captured live on 1.18.25 (.capture/opencode-permission): the
       // permission.ask callback never fires (upstream #9229); the ask
@@ -3638,7 +4124,7 @@ scenarioDrive(
   // opens with, silently, on every run.
   () => {
     if (cellLevel("permission.request.block") === undefined) return true;
-    if (adapter?.id === "opencode") return false;
+    if (adapter?.id === "opencode" || adapter?.id === "copilot") return false;
     return adapter?.id !== "claude" || !ptyApprovable();
   },
 );
@@ -3814,7 +4300,7 @@ scenarioDrive(
     const build = await buildPlaybackArtifact(adapter!, dir);
     // The subagent tool name is per-harness: Claude 2.1.250 exposes `Agent`
     // (the toolmap's EXACT table), Codex `spawn_agent`.
-    const subagentTool = adapter!.id === "codex" ? "spawn_agent" : "Agent";
+    const subagentTool = adapter!.id === "codex" ? "spawn_agent" : adapter!.id === "copilot" ? "task" : "Agent";
     let recordedRequests: readonly unknown[] = [];
     let driveStdout = "";
     let driveStderr = "";
@@ -3845,7 +4331,7 @@ scenarioDrive(
 );
 
 // --- agent-scope (subagent) ------------------------------------------------
-// ADR-0033, asserted in ./agent-scope.ts. The .capture/agents drive routes the
+// ADR-0035, asserted in ./agent-scope.ts. The .capture/agents drive routes the
 // parent and the child to scripts of their own, which the single-script drives
 // above cannot, and builds the scoped hooks for the build it finds installed.
 scenarioDrive(
@@ -3927,7 +4413,11 @@ describe.skipIf(adapter === undefined)(`offline harness playback scenarios: ${se
       if ("skip" in expectation) return context.skip(expectation.skip);
       return expectOpenCodeShellDialect(dialects, expectation.dialect);
     }
-    // Claude's shell tool here is Bash, which pins POSIX; Codex withholds the interpreter.
+    // Claude's shell tool here is Bash, which pins POSIX; Codex withholds the
+    // interpreter; Copilot's runtime tool name pins its family per platform.
+    if (adapter!.id === "copilot") {
+      return expect(dialects).toEqual(dialects.map(() => (process.platform === "win32" ? "powershell" : "posix")));
+    }
     expect(dialects).toEqual(dialects.map(() => (adapter!.id === "claude" ? "posix" : undefined)));
   });
 });

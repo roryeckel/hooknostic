@@ -14,7 +14,7 @@ agents in `mode: primary`. Codex has no primary agents. Each harness has its own
 format, and OpenCode has two. No standard covers them: Agent Plugins 1.0 leaves agents
 out on purpose. So Hooknostic defines a small, provisional
 [format](../spec/agents/0.1.md) and compiles it into each harness's own
-([ADR-0032](../decisions/0032-portable-agents.md), proposed).
+([ADR-0034](../decisions/0034-portable-agents.md), proposed).
 
 ## The definition
 
@@ -48,7 +48,7 @@ You review the change you are given. You do not edit files.
 
 The format has no other keys. It does not accept `tools`, `model` or `maxTurns` at
 the top level, although every harness has something like them. The captures behind
-ADR-0032 show that they behave differently on each harness. A model id only means
+ADR-0034 show that they behave differently on each harness. A model id only means
 something to one provider. A turn cap stops a Claude child partway and lets it resume,
 stops an OpenCode v2 child hard, and is ignored by OpenCode v1. Codex has no per-agent
 tool list at all. A portable field that behaves differently everywhere would promise
@@ -66,9 +66,10 @@ components: { skills: ["./skills"], mcp: "./mcp.json", agents: ["./agents"] },
 `sync` writes one owned file per harness:
 
 ```text
-.claude/agents/reviewer.md       # frontmatter + body, native.claude merged in
-.codex/agents/reviewer.toml      # developer_instructions holds the body
-.opencode/agents/reviewer.md     # the agent's mode; native.opencode merged in
+.claude/agents/reviewer.md          # frontmatter + body, native.claude merged in
+.codex/agents/reviewer.toml         # developer_instructions holds the body
+.github/agents/reviewer.agent.md    # frontmatter + body, native.copilot merged in
+.opencode/agents/reviewer.md        # the agent's mode; native.opencode merged in
 ```
 
 The OpenCode file serves both families. It always states the definition's mode,
@@ -158,6 +159,7 @@ After `sync`, start a session as the planner:
 | | Start a session as the agent | A `primary` agent is offered for delegation |
 | --- | --- | --- |
 | Claude Code | `claude --agent planner`, or `"agent": "planner"` in your settings | yes, see below |
+| GitHub Copilot CLI | `copilot --agent planner`, or `/agent` | yes, see below |
 | OpenCode v1 and v2 | `opencode run --agent planner`, or `default_agent` in `opencode.json` | no |
 | Codex | not possible | — |
 
@@ -169,6 +171,11 @@ A few differences are worth knowing:
   `claude:primary-agent-delegable` (HN106). To withhold the agent, add
   `"Agent(planner)"` to `permissions.deny` in your own `.claude/settings.json`;
   `claude --agent planner` still works.
+- **Copilot has no mode either.** `--agent` and `/agent` select any custom agent, and
+  Copilot also offers a `primary` definition for delegation; the build reports
+  `copilot:primary-agent-delegable` (HN106). It has no project default-agent setting:
+  pass `--agent <id>` per session. Copilot also lists Claude's `.claude/agents`; a
+  same-ID `.github/agents` copy wins.
 - **OpenCode enforces the mode.** A `primary` agent is absent from the delegation tool.
   OpenCode v1 refuses to run a `subagent` as a session and falls back to its default
   agent; v2 runs any agent it is named.
@@ -205,6 +212,7 @@ components: { skills: ["./skills"], mcp: "./mcp.json", agents: ["./agents"], def
 | Claude Code | `"agent": "planner"` in `.claude/settings.json` | every session's agent; `claude --agent <name>` starts another |
 | OpenCode v1 and v2 | the default agent, set by the generated components plugin | every session's agent |
 | Codex | its instructions, and its native model and effort, in `.codex/config.toml` | an emulation, below |
+| GitHub Copilot CLI | nothing | unsupported: `--agent <id>` or `/agent` selects one for a session |
 | Pi | only its instructions in `.pi/APPEND_SYSTEM.md` | an emulated fixed role at trusted project-root startup |
 
 Codex has no agent a session runs as, but a trusted project's configuration applies
@@ -247,7 +255,7 @@ session of every user who enables it as that agent, so package targets report
 
 ## Guarding the subagent with a hook
 
-A hook can run only inside named agents ([ADR-0033](../decisions/0033-agent-scoped-hooks.md),
+A hook can run only inside named agents ([ADR-0035](../decisions/0035-agent-scoped-hooks.md),
 proposed). This is how the reviewer becomes read-only on Codex, where no agent setting
 does it:
 

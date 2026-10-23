@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -106,6 +106,40 @@ describe("OpenCode project components", () => {
       path: ".opencode/plugins/.gitattributes",
       contents: ".gitattributes -text\nhooknostic.js -text\nhooknostic-components.js -text\n",
     });
+  });
+
+  it("anchors a stdio server's working directory on the real source root when the project is reached through a link", async () => {
+    // The loader hands over a canonical MCP root; the project root may keep a
+    // junction's spelling. The module itself runs from its physical location.
+    const real = await realpath(await mkdtemp(join(tmpdir(), "hooknostic-opencode-real-")));
+    roots.push(real);
+    const project = join(real, "work", "project");
+    await mkdir(join(project, "tools"), { recursive: true });
+    const alias = join(await realpath(tmpdir()), `hooknostic-opencode-alias-${process.pid}-${Date.now()}`);
+    await symlink(project, alias, "junction");
+    roots.push(alias);
+    const integration = await projectComponents(
+      {
+        origin: "direct",
+        skills: [],
+        mcp: {
+          root: join(project, "tools"),
+          config: { $schema: AGENT_PLUGIN_MCP_SCHEMA, mcpServers: { local: { type: "stdio", command: "node" } } },
+        },
+      },
+      alias,
+      ".hooknostic/artifacts/opencode",
+      "hooknostic.config.ts",
+      {},
+    );
+    const artifact = integration.files.find((file) => file.path === ".opencode/plugins/hooknostic-components.js")!;
+    const path = join(project, artifact.path);
+    await mkdir(join(project, ".opencode/plugins"), { recursive: true });
+    await writeFile(path, artifact.contents);
+    const plugin = await (await import(pathToFileURL(path).href)).default();
+    const config: { mcp?: Record<string, { cwd: string }> } = {};
+    plugin.config(config);
+    expect(config.mcp?.["local"]?.cwd).toBe(join(project, "tools"));
   });
 
   it("resolves direct MCP environment references at module load without writing secrets", async () => {

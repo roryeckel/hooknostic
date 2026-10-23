@@ -1,13 +1,16 @@
 # Pi default-role investigation
 
-Question: can the default-agent part of [ADR-0032](../../docs/decisions/0032-portable-agents.md)
+Question: can the default-agent part of [ADR-0034](../../docs/decisions/0034-portable-agents.md)
 be delivered on Pi without depending on a third-party subagent extension?
 
-Twenty-four credential-free probes of the installed reference build on Windows,
-2026-10-17 (America/Chicago). The exact harness and Node builds are recorded in
-[the curated evidence](evidence/win32.json). The native append-file route is
-implemented as an instruction-only project-default prototype (ADR-0032).
-Named agents, delegation and agent-scoped hooks remain unsupported.
+Twenty-four credential-free probes of the then-reference build 0.84.4 on
+Windows, 2026-10-17 (America/Chicago), recorded in
+[the 0.84.4 evidence](evidence/win32.json). The full set was repeated on the
+current reference build 1.3.0 on 2026-10-22 and is recorded in
+[the 1.3.0 evidence](evidence/win32-1.3.0.json); the generated-default subset
+also passed in the Pi playback lane. The native append-file route is implemented
+as an instruction-only project-default prototype (ADR-0034). Named agents,
+delegation and agent-scoped hooks remain unsupported.
 
 ## Method and provenance
 

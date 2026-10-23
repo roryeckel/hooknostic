@@ -174,7 +174,8 @@ The narrow exception below is for the owner with interactive 2FA, never agents.
    environment `npm`, and **Allow publish** enabled (CLI: `--allow-publish`).
    Staging-only permission does not allow our direct OIDC flow. Select
    package access requiring 2FA and disallowing token publishing.
-8. Set the environment variable to `NPM_PUBLICATION_MODE=oidc`. Future
+8. Leave `NPM_PUBLICATION_MODE` unset, which is the documented `oidc`
+   default, or set it explicitly to `oidc`. Future
    GitHub Release publications use OIDC with automatic provenance. No npm
    token secret is created or needed. Verify the published versions,
    prerelease dist-tags where applicable, and subsequent OIDC provenance.

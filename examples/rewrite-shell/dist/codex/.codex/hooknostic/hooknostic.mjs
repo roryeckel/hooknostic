@@ -5723,7 +5723,7 @@ function decodeCodex(nativeEvent, invocation) {
       ...typeof payload.turn_id === "string" ? { turnId: payload.turn_id } : {},
       ...typeof payload.tool_use_id === "string" ? { toolCallId: payload.tool_use_id } : {},
       ...typeof payload.agent_id === "string" ? { agentId: payload.agent_id } : {},
-      // Inside a subagent only; the main agent's events carry none (ADR-0033,
+      // Inside a subagent only; the main agent's events carry none (ADR-0035,
       // fixtures pre-tool-bash-subagent and subagent-start-live).
       ...typeof payload.agent_type === "string" ? { agentType: payload.agent_type } : {}
     },
@@ -5860,7 +5860,7 @@ await runCodexCommandShim(() => Promise.resolve().then(() => (init_hooks(), hook
 /*!
 Bundled package notices
 
-@hooknostic/adapter-codex@0.7.0
+@hooknostic/adapter-codex@0.9.0
 NOTICE
 Codex ConfigToml schema snapshots
 Copyright OpenAI. Licensed under Apache-2.0.
@@ -6071,7 +6071,7 @@ limitations under the License.
 
 ---
 
-@hooknostic/runtime@0.7.0
+@hooknostic/runtime@0.9.0
 LICENSE
 Apache License
                            Version 2.0, January 2004
@@ -6279,8 +6279,8 @@ Apache License
 /*!
 Bundled package notices
 
-@hooknostic/sdk@0.7.0
-hooknostic@0.7.0
+@hooknostic/sdk@0.9.0
+hooknostic@0.9.0
 LICENSE
 Apache License
                            Version 2.0, January 2004

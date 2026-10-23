@@ -1,0 +1,10 @@
+{
+  "event": {
+    "type": "agent_settled",
+    "aborted": false
+  },
+  "ctx": {
+    "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-pi-sessions-VcyewW\\project",
+    "mode": "print"
+  }
+}

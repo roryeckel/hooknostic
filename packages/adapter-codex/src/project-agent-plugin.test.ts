@@ -101,10 +101,29 @@ describe("Agent Plugin to Codex projection", () => {
       return typeof contents === "string" ? contents : new TextDecoder().decode(contents);
     };
 
-    it("writes `.` for ${SKILL_DIR}, a path Codex's models resolve against the skill's directory", async () => {
+    it("writes the tested absolute-path placeholder and reports model-dependent substitution", async () => {
       const plan = await project(withSkill('Run `node "${SKILL_DIR}/scripts/status.mjs"`.\n'));
-      expect(text(plan)).toBe('---\nname: status\ndescription: Status\n---\nRun `node "./scripts/status.mjs"`.\n');
+      expect(text(plan)).toBe(
+        '---\nname: status\ndescription: Status\n---\nRun `node "<absolute path of the directory containing this SKILL.md>/scripts/status.mjs"`.\n',
+      );
       expect(plan.summary.copiedPaths).not.toContain("skills/status/SKILL.md");
+      expect(plan.summary.degradations).toEqual([
+        expect.objectContaining({
+          id: "skill-directory-model-substitution",
+          component: "agent-plugin.skills",
+          name: "status",
+          path: "skills/status/SKILL.md",
+          reason: expect.stringContaining("model must substitute"),
+        }),
+      ]);
+      expect(support["agent-plugin.skills"]?.degradations).toContainEqual(
+        expect.objectContaining({ id: "skill-directory-model-substitution" }),
+      );
+    });
+
+    it("preserves ordinary relative paths without a token degradation", async () => {
+      const plan = await project(withSkill('Run `node "./scripts/status.mjs"`.\n'));
+      expect(plan.summary.copiedPaths).toContain("skills/status/SKILL.md");
       expect(plan.summary.degradations).toBeUndefined();
     });
 
@@ -124,6 +143,7 @@ describe("Agent Plugin to Codex projection", () => {
       ]);
       expect(support["agent-plugin.skills"]?.degradations?.map((item) => item.id)).toEqual([
         "skill-reference-unexpanded",
+        "skill-directory-model-substitution",
       ]);
     });
   });

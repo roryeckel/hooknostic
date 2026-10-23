@@ -77,6 +77,19 @@ describe("projectSkillText", () => {
       unexpanded: ["${SKILL_DIR}"],
     });
   });
+
+  it("reports a directory shortfall only for a rewritten body token", () => {
+    const directoryDegradation = { id: "directory-shortfall", reason: "Resolution needs review." };
+    const target = { ...RELATIVE_SKILL_TEXT, directoryDegradation };
+    const body = "---\nname: a\ndescription: b\n---\nRun ${SKILL_DIR}/x and ${SKILL_DIR}/y.\n";
+    expect(projectSkillText(encode(body), target).directoryDegradation).toEqual(directoryDegradation);
+    expect(projectSkillText(encode(body), target, { rewrite: false }).directoryDegradation).toBeUndefined();
+    expect(
+      projectSkillText(encode("---\nname: a\ndescription: ${SKILL_DIR}\n---\nNo body token.\n"), target)
+        .directoryDegradation,
+    ).toBeUndefined();
+    expect(projectSkillText(encode("Run ./scripts/x with ${HOME}.\n"), target).directoryDegradation).toBeUndefined();
+  });
 });
 
 describe("projectPackageSkillTexts", () => {

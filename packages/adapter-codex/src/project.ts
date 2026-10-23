@@ -1,11 +1,6 @@
 import type { AgentDefinition, AgentPluginProjectionProfile } from "@hooknostic/agent-plugin";
 import type { ProjectComponents } from "@hooknostic/agent-plugin";
-import {
-  contentsText,
-  RELATIVE_SKILL_TEXT,
-  servesAsSubagent,
-  SKILL_REFERENCE_UNEXPANDED,
-} from "@hooknostic/agent-plugin";
+import { contentsText, servesAsSubagent, SKILL_REFERENCE_UNEXPANDED } from "@hooknostic/agent-plugin";
 import type {
   GeneratedArtifact,
   HarnessAdapter,
@@ -38,6 +33,12 @@ import {
 } from "./agent-native-source.js";
 import { codexHarness } from "./harness.js";
 import { translateMcp } from "./project-agent-plugin.js";
+import {
+  CODEX_SKILL_TEXT,
+  codexSkillDirectoryComparisonValidation,
+  codexSkillDirectoryDegradation,
+  codexSkillDirectoryValidation,
+} from "./skill-text.js";
 
 // Both forms a direct source may write. Codex's native fields carry only a
 // plain `${NAME}`, so any other reference is refused rather than sent on as
@@ -185,7 +186,7 @@ export async function projectComponents(
   config: string,
   options: ProjectComponentOptions,
 ): Promise<ProjectIntegration> {
-  const result = projectSkillFiles(source, root, ".agents/skills", { target: RELATIVE_SKILL_TEXT, harness: "Codex" });
+  const result = projectSkillFiles(source, root, ".agents/skills", { target: CODEX_SKILL_TEXT, harness: "Codex" });
   // A primary-only definition reaches Codex only as the project's default.
   const subagents = (source.agents ?? []).filter((agent) => servesAsSubagent(agent.mode));
   const agents = projectAgentFiles(subagents, codexAgents.projectDirectory, renderCodexAgent);
@@ -279,7 +280,7 @@ const nativeProjectComponentProfiles: readonly AgentPluginProjectionProfile[] = 
       "agent-plugin.skills": {
         level: "exact",
         rationale:
-          "Copied into .agents/skills as authored, except that ${SKILL_DIR} in a SKILL.md body becomes `.`: Codex expands nothing in skill text, and the base instructions of the models it bundles tell the model to resolve a skill's relative paths against the directory containing its SKILL.md (ADR-0028). A skill already at its destination is discovered in place and not rewritten.",
+          "Copied into .agents/skills as authored, except that ${SKILL_DIR} in a SKILL.md body becomes `<absolute path of the directory containing this SKILL.md>`. The model must substitute the installed skill directory from the supplied SKILL.md path; Codex expands nothing in skill text. Rewritten skills report skill-directory-model-substitution (ADR-0028, issue #113). A skill already at its destination is discovered in place and not rewritten.",
         degradations: [
           {
             id: SKILL_REFERENCE_UNEXPANDED,
@@ -287,6 +288,7 @@ const nativeProjectComponentProfiles: readonly AgentPluginProjectionProfile[] = 
               "A SKILL.md that holds a Claude Code variable such as ${CLAUDE_PLUGIN_ROOT}, ${PLUGIN_ROOT} or ${PLUGIN_DATA} anywhere, ${SKILL_DIR} in its frontmatter, or ${SKILL_DIR} at all in a skill discovered in place, reaches the model with that text as written: Codex expands nothing in skill text.",
             evidence: ".capture/skill-directory",
           },
+          codexSkillDirectoryDegradation,
         ],
       },
       "agent-plugin.mcp.stdio": {
@@ -354,6 +356,8 @@ const nativeProjectComponentProfiles: readonly AgentPluginProjectionProfile[] = 
     source: {
       date: "2026-09-11",
       validatedOn: [
+        codexSkillDirectoryValidation,
+        codexSkillDirectoryComparisonValidation,
         ...codexAgentSchemaValidation,
         codexAgentLoaderValidation,
         codexAgentPolicyValidation,

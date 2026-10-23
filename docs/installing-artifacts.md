@@ -15,8 +15,9 @@ Paths below assume the example configuration:
 targets: {
   claude:   { version: ">=2.1 <3",   delivery: "package", output: "./dist/claude" },
   codex:    { version: ">=0.148 <1", delivery: "project",  output: "./dist/codex" },
+  copilot:  { version: ">=1.0.101 <2", delivery: "package", output: "./dist/copilot" },
   opencode: { version: ">=1.18 <2",  delivery: "project",  output: "./dist/opencode" },
-  pi:       { version: ">=0.84 <1",  delivery: "project",  output: "./dist/pi" },
+  pi:       { version: ">=1 <2",     delivery: "project",  output: "./dist/pi" },
 }
 ```
 
@@ -29,6 +30,8 @@ For repository integration, prefer [init, sync, and verify](project-integration.
 | `claude` | `package` | `dist/claude/` | A Claude Code plugin: `.claude-plugin/plugin.json`, `hooks/hooks.json`, `runtime/hooknostic.mjs` |
 | `codex` | `project` | `dist/codex/.codex/` | A repo-level Codex directory: `hooks.json` + `hooknostic/hooknostic.mjs` |
 | `codex` | `package` | `dist/codex/` | A native Codex plugin: `.codex-plugin/plugin.json`, `.mcp.json`, `skills/`, `hooks.json`, runtime |
+| `copilot` | `package` | `dist/copilot/` | An Agent Plugins package: `plugin.json`, `skills/`, `agents/` when configured, `mcp.json`, `com.github.copilot/hooks/hooks.json`, `runtime/hooknostic.mjs` |
+| `copilot` | `project` | `dist/copilot/` | The runtime and compiled hooks document; `sync` writes `.github/hooks/hooknostic.json`, `.agents/skills/`, `.github/agents/<name>.agent.md`, and the root `.mcp.json` |
 | `opencode` | `project` | `dist/opencode/.opencode/` | Project plugin modules under `plugins/`, plus a copied `skills/` |
 | `pi` | `project` | `dist/pi/.pi/` | Project extension under `extensions/`, plus copied `skills/` |
 | `pi` | `package` | `dist/pi/` | npm package with a `pi` manifest declaring its bundled extension and skills |
@@ -39,6 +42,69 @@ commands and loader paths resolve against the session's project directory. The
 install cache.
 
 OpenCode also supports package delivery for both families; the v2 entry differs from v1. See [OpenCode families](opencode-families.md).
+
+## GitHub Copilot CLI
+
+Package delivery emits an Agent Plugins 1.0 package. Load it for one run with
+`copilot --plugin-dir ./dist/copilot`, or install it through a local
+marketplace:
+
+```
+copilot plugin marketplace add /path/to/market
+copilot plugin install <plugin>@<marketplace>
+```
+
+A local-path marketplace install loads the plugin **live from its source
+directory**: 1.0.101 copies nothing, so keep the built output where it is. A
+marketplace hosted in a git repository (`.github/plugin/marketplace.json`) is
+different: `plugin@marketplace` **copies** the package into
+`$COPILOT_HOME/installed-plugins/<marketplace>/<plugin>/`, so a rebuilt package
+reaches Copilot only after `copilot plugin update`. No route runs a dependency
+install; bundle a package's Node dependencies. A plugin's
+`com.github.copilot/hooks/hooks.json` runs even in `-p` sessions. Its MCP servers
+get `PLUGIN_ROOT` and `PLUGIN_DATA` in their environment; its hooks get
+`PLUGIN_ROOT` only.
+
+Project delivery writes `.github/hooks/hooknostic.json`, copies selected skills
+to `.agents/skills/`, writes custom agents to `.github/agents/`, and declares
+MCP servers in the root `.mcp.json`. Select a custom agent with
+`copilot --agent <id or frontmatter name>` or `/agent`; a package agent is
+`<plugin>:<name>`. Copilot has no project default-agent setting, so
+`components.defaultAgent` is unsupported there. Copilot also lists Claude's
+`.claude/agents`; a same-ID `.github/agents` copy wins. Copilot
+reads one workspace MCP file: a root `.mcp.json` whenever one exists, even
+empty, and `.github/mcp.json` only without it. Claude Code reads the root
+file too. If `sync` would create the root file and `.github/mcp.json` already
+contains servers, it reports a conflict before writing anything. Migrate those
+servers to the root file first. An existing root file or an empty fallback
+does not trigger this conflict. When a project targets both, each server has one entry that
+serves both harnesses. A server whose per-target overrides would define it
+differently for the two fails `sync`, because the file holds one definition
+per name. When `components.targets` selects only one of the two, `sync` lists
+the root servers in the other harness's own disable setting
+(`.github/copilot/settings.json` `disabledMcpServers`, or `.claude/settings.json`
+`disabledMcpjsonServers`), so it starts none of them. Names you list there
+yourself are kept; `sync` removes only the ones it added (ADR-0033). Two harness requirements are not optional:
+
+- **Start Copilot at the project root.** Repository hooks are read from the
+  session's working directory, not the git root: a session started in a
+  subdirectory loads only that subdirectory's `.github/hooks`.
+- **Trust the folder.** Run with `--trust-folder` (for one prompt session) or
+  set `COPILOT_ALLOW_ALL=true`; without trust the generated hooks are skipped
+  silently. Restart the CLI after `hooknostic sync` — hook files load at startup.
+
+Claude Code hooks do not run under Copilot. Copilot also reads
+`.claude/settings.json` hooks, and Hooknostic's Claude entries cannot run there.
+Each one carries a non-numeric `timeoutSec`, which makes Copilot drop that
+file's hooks; Claude ignores the key. Copilot runs the project's Copilot target
+from `.github/hooks` instead. A hand-written hook in the same
+`.claude/settings.json` is dropped for Copilot too. Skills are different:
+Copilot also lists `.claude/skills`, but a skill in both that directory and
+`.agents/skills` resolves to Copilot's own `.agents/skills` copy.
+
+`hooknostic doctor` reports the locally installed `copilot` version. Run
+`hooknostic inspect copilot --delivery package` to see which MCP transports,
+skill policies, and hook effects this build will carry.
 
 ## Pi
 
@@ -57,7 +123,13 @@ playback lane checks both `pi install -l <local-path>` and an npm-coordinate
 install served by a local read-only registry; both routes load the skill and
 honor the compiled hook. This local registry test makes no publication claim.
 
-Pi 0.84.x has no native MCP channel, so Pi targets report MCP components as
+On Pi 1.x the package also carries `hooknostic-mcp.js`, a second manifest
+extension that registers the package's stdio and streamable-HTTP MCP servers
+with Pi's native MCP client; stdio servers run through the generated
+`hooknostic-runtime/` launcher. Pi rejects SSE, so SSE servers are reported as
+unsupported. Pi's default exposure applies: the model reaches the tools through
+`codemode` scripts, whose calls still reach tool hooks. Pi 0.84.x has no native
+MCP channel, so a `>=0.84 <1` target reports every MCP component as
 unsupported. The capability report also marks permission requests unsupported
 and non-string tool-output replacement approximate.
 

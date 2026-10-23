@@ -10,7 +10,8 @@ register(new URL("../../scripts/ts-resolve-hook.mjs", import.meta.url).href);
 const { piHarness } = await import("../../packages/adapter-pi/src/harness.ts");
 const here = fileURLToPath(new URL("./", import.meta.url));
 const fixtures = fileURLToPath(new URL(`../../fixtures/pi/${piHarness.fixtureDir}/`, import.meta.url));
-const evidence = join(here, "feature-evidence");
+// Evidence is kept per reference build: profiles for earlier ranges cite theirs.
+const evidence = join(here, "feature-evidence", piHarness.referenceVersion);
 mkdirSync(evidence, { recursive: true });
 for (const platform of ["win32", "linux"]) {
   const base = join(here, "captured-features", platform);
@@ -60,7 +61,7 @@ for (const platform of ["win32", "linux"]) {
           }
         : { before: observed.before, after: observed.after }),
     });
-    if (platform === "win32" && ["file-read", "file-edit", "bash-configured-powershell"].includes(label)) {
+    if (platform === "win32" && ["file-read", "file-write", "file-edit", "bash-configured-powershell"].includes(label)) {
       const suffix = label === "bash-configured-powershell" ? label : label.slice(5);
       for (const [prefix, rows] of [
         ["tool-call", observed.before],

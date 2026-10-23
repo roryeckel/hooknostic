@@ -96,7 +96,7 @@ export function decodeOpenCodeV2(
       shellDialect !== undefined ? { shellDialect } : undefined,
     );
     // v2 names the running agent on every tool event: the subagent inside one,
-    // the primary agent otherwise (ADR-0033, fixtures tool-read-in-subagent-*).
+    // the primary agent otherwise (ADR-0035, fixtures tool-read-in-subagent-*).
     const scoped =
       typeof event.agent === "string"
         ? { ...base, correlation: { ...base.correlation, agentType: event.agent } }

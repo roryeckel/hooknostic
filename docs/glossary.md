@@ -149,12 +149,12 @@ agents, OpenCode's agents with `mode: subagent`), as the agent a session runs as
 (`mode: primary`, which Codex does not support), or both (`mode: all`). No standard
 covers them, so Hooknostic defines a provisional
 [format](spec/agents/0.1.md) and compiles it into each harness's own
-([ADR-0032](decisions/0032-portable-agents.md), proposed). Not to be confused with
+([ADR-0034](decisions/0034-portable-agents.md), proposed). Not to be confused with
 the `agent.*` hook events, which report on whatever agent is running.
 
 **Agent scope** — a hook's `agents: { include, exclude }`, which runs it only for events
 the harness attributes to the named agents, by the name in `correlation.agentType`
-([ADR-0033](decisions/0033-agent-scoped-hooks.md), proposed). It needs the event's
+([ADR-0035](decisions/0035-agent-scoped-hooks.md), proposed). It needs the event's
 `agent.identity` capability, so a target that cannot tell fails the build.
 
 **Decision record** — a short document capturing one significant design choice with

@@ -1,0 +1,16 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "combined-example",
+  "version": "1.0.0",
+  "description": "Agent Plugins package with a skill, MCP server, and hooknostic-compiled lifecycle hooks",
+  "license": "MIT",
+  "author": {
+    "name": "Hooknostic contributors"
+  },
+  "keywords": [
+    "hooks",
+    "mcp",
+    "skills",
+    "example"
+  ]
+}

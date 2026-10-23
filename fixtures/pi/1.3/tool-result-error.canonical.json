@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "harness": {
+    "id": "pi",
+    "version": "1.3.0",
+    "nativeEvent": "tool_result"
+  },
+  "session": {
+    "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-pi-sessions-18dFHR\\project"
+  },
+  "correlation": {
+    "toolCallId": "call_playback"
+  },
+  "event": "tool.error",
+  "tool": {
+    "kind": "shell",
+    "nativeName": "bash",
+    "input": {
+      "command": "echo hooknostic-error; exit 7"
+    },
+    "shell": {
+      "command": "echo hooknostic-error; exit 7",
+      "commandKey": "command"
+    }
+  },
+  "error": {}
+}

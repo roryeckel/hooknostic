@@ -2,7 +2,7 @@
 
 **Example:** [`examples/agent-plugin`](../../examples/agent-plugin/) ·
 **You'll learn:** one Agent Plugins 1.0 package with hooks, skills, and a bundled MCP
-server, installed through Claude and Codex marketplaces or loaded by OpenCode.
+server, installed through Claude, Codex, and Copilot marketplaces or loaded by OpenCode.
 The same default configuration delivers hooks and skills to Pi with a named MCP omission.
 
 [Agent Plugins 1.0](https://agent-plugins.org/specification) standardizes the manifest,
@@ -33,6 +33,7 @@ examples/agent-plugin/
 └── dist/
     ├── claude/          # native Claude plugin
     ├── codex/           # native Codex plugin
+    ├── copilot/         # Agent Plugins package for GitHub Copilot CLI
     ├── opencode/        # OpenCode v2 package
     ├── opencode-v1/     # explicit legacy family
     └── pi/              # Pi hooks and skills; MCP omission accepted
@@ -53,12 +54,13 @@ The default `opencode` target uses v2; `legacy` names an explicit v1 target with
 `adapter: "opencode"`. Both outputs are packages, with distinct native loaders.
 Install only the output matching your harness family. See [OpenCode families](../opencode-families.md).
 
-### Pi hooks and skills
+### Pi hooks, skills, and MCP servers
 
-Pi has no native MCP channel. The default configuration includes it and accepts
-only `pi:mcp-stdio-omitted`. Pi receives the same portable hooks and skill, while
-its stdio MCP registration is omitted and reported as unsupported. Other
-unsupported components remain errors:
+Pi 1.x receives the same portable hooks and skill, and its package carries a
+second extension, `hooknostic-mcp.js`, that registers the stdio MCP server with
+Pi's native MCP client through a generated launcher. Pi reaches MCP tools
+through `codemode` scripts by default, and their calls still reach the tool
+hooks. Pi rejects SSE, so an SSE server would be reported as unsupported:
 
 ```sh
 node packages/cli/bin/hooknostic.mjs check --config examples/agent-plugin/hooknostic.config.ts
@@ -69,8 +71,8 @@ pi install -l ./examples/agent-plugin/dist/pi
 Run the install command from the project where you want to use the package,
 with an absolute package path if needed. Follow Pi's activation prompts, then
 ask it to run `echo HOOKNOSTIC_BLOCK_PROBE` and use the `greet` skill. The
-blocking hook and skill are present; the MCP greeting check below applies to
-the other outputs. `pnpm build:examples` also regenerates the Pi package and
+blocking hook, skill, and MCP server are present; in Pi the greeting tool is
+reached through `codemode` rather than called directly. `pnpm build:examples` also regenerates the Pi package and
 includes Pi in `examples/agent-plugin/dist/hooknostic-build.json`.
 
 ## Install through a marketplace
@@ -144,7 +146,38 @@ The qualified name is required. The native Codex artifact combines its manifest,
 hook delivery uses `>=0.153 <1`; the older project reference alone does not verify
 marketplace behavior. Review normal harness trust prompts and restart the session.
 
-Both marketplace installations use cached copies. Building again does not update an
+### GitHub Copilot CLI
+
+Copilot reads Agent Plugins 1.0 natively, so `dist/copilot` keeps the portable
+`plugin.json`, `skills/` and `mcp.json`, and adds its hooks under
+`com.github.copilot/hooks/hooks.json`. Load it for one session:
+
+```sh
+copilot --plugin-dir ./dist/copilot
+```
+
+The included `.github/plugin/marketplace.json`:
+
+```json
+{
+  "name": "hooknostic-example",
+  "owner": { "name": "Hooknostic contributors" },
+  "plugins": [{ "name": "combined-example", "source": "./dist/copilot", "version": "1.0.0" }]
+}
+```
+
+```sh
+copilot plugin marketplace add .
+copilot plugin install combined-example@hooknostic-example
+```
+
+A local-path marketplace loads the package live from `dist/copilot`, so a
+rebuild reaches the next session without reinstalling. The same index in a
+git-hosted marketplace copies the package instead, and a rebuild then needs
+`copilot plugin update`. See
+[Copilot installation](../installing-artifacts.md#github-copilot-cli).
+
+The Claude and Codex marketplace installations use cached copies. Building again does not update an
 installed copy automatically. These instructions register a local marketplace; publishing
 or submitting a listing to someone else's marketplace remains a separate author step.
 
@@ -326,8 +359,15 @@ plugin's skill of the same name can hide it, set `skillNames: "authored"` on the
 
 A skill that runs a script it ships names it with `${SKILL_DIR}` in its body, as in
 `node "${SKILL_DIR}/scripts/status.mjs"`. Claude's projection writes
-`${CLAUDE_SKILL_DIR}` there and the others write `.`, the form each harness resolves
-([ADR-0028](../decisions/0028-skill-directory-token.md)). A `${CLAUDE_PLUGIN_ROOT}` in a
+`${CLAUDE_SKILL_DIR}` there; Codex writes
+`<absolute path of the directory containing this SKILL.md>`; OpenCode and Pi write `.`,
+which the model must resolve against the skill's folder
+([ADR-0028](../decisions/0028-skill-directory-token.md)). Codex's model must substitute
+the explicit placeholder from the supplied SKILL.md path. The measured command bodies
+improved, but Codex itself does not expand the placeholder, so each rewrite reports
+`codex:skill-directory-model-substitution` (HN101, an error by default). Review the
+skill before adding that id to `components.accept`; acceptance records the dependency
+on the model and keeps an informational diagnostic. A `${CLAUDE_PLUGIN_ROOT}` in a
 skill reaches Codex and OpenCode as written, so it fails the build there as the
 `skill-reference-unexpanded` degradation.
 

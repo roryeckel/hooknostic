@@ -1,6 +1,6 @@
 ---
 name: harness-capture
-description: Capture real harness behavior before implementing against it. Use when adding or changing any claim about Claude Code, Codex, or OpenCode — hook payload fields, tool argument shapes (ShellShapes, FileShapes, toolmap, tool.shell, tool.file), which tools a harness advertises, whether a wire channel (updatedInput, systemMessage) is honoured, which interpreter or shell dialect a shell tool runs (.capture/shell-dialects) — or when adding fixtures under fixtures/<harness>/, editing a provenance README, working in .capture/ (including .capture/file-tools), or verifying an adapter claim live.
+description: Capture real harness behavior before implementing against it. Use when adding or changing any claim about Claude Code, Codex, or OpenCode — hook payload fields, tool argument shapes (ShellShapes, FileShapes, toolmap, tool.shell, tool.file), which tools a harness advertises, whether a wire channel (updatedInput, systemMessage) is honoured, which interpreter or shell dialect a shell tool runs (.capture/shell-dialects), whether a harness loads another harness's files (`.claude/settings.json`, `.claude/skills`, `.mcp.json`) — or when adding fixtures under fixtures/<harness>/, editing a provenance README, working in .capture/ (including .capture/file-tools), or verifying an adapter claim live.
 ---
 
 # Harness capture
@@ -67,6 +67,17 @@ ancestry on three platforms, a host-configuration comparison, a per-build mode,
 and fixture promotion. Its Linux half ran in a container as an unprivileged
 account. Give any scratch `npm install` an explicit `--prefix`: without one
 npm installs into the nearest ancestor that has a `package.json`.
+
+**Probe foreign reads in both directions.** A harness may load another
+harness's project files as a compatibility feature, and then run that target's
+output in a form it only approximates (ADR-0033). For each foreign location,
+put a marker entry in a scratch project and observe whether it runs. Then try
+an opt-out key on the reader, and capture the owning harness with the same key.
+Both halves are required, and each is observed by effect: the reader skips it,
+and the owner still runs it with the rest of the file applied. Startup events
+such as `SessionStart` fire before any model request, so these probes need no
+credential. The worked pair is `.capture/copilot/claude-settings-probe.sh`
+(reader) and `claude-tolerance-probe.mjs` (owner).
 
 ## The router/hook-boundary distinction (Codex)
 

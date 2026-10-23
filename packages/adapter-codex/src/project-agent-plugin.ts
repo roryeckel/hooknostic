@@ -19,7 +19,6 @@ import {
   materializedPackageFiles,
   parseJsonObject,
   projectPackageSkillTexts,
-  RELATIVE_SKILL_TEXT,
   SKILL_REFERENCE_UNEXPANDED,
   skillInvocationPolicyProfiles,
   withSkillInvocationPolicy,
@@ -29,6 +28,12 @@ import { bundleMcpLauncher, MCP_LAUNCHER_FILE, MCP_SERVERS_FILE, rangeWithin } f
 
 import { CODEX_PLUGIN_HOOKS_PATH, CODEX_PLUGIN_MODE_RANGE } from "./generate.js";
 import { CODEX_SKILL_POLICY_RATIONALE, codexPackageSkillPolicyValidation, codexSkillPolicy } from "./skill-policy.js";
+import {
+  CODEX_SKILL_TEXT,
+  codexSkillDirectoryComparisonValidation,
+  codexSkillDirectoryDegradation,
+  codexSkillDirectoryValidation,
+} from "./skill-text.js";
 
 /** Codex reads its own plugin metadata from here; a root plugin.json outranks it. */
 const NATIVE_MANIFEST_PATH = ".codex-plugin/plugin.json";
@@ -513,7 +518,7 @@ const nativeCodexAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
         "agent-plugin.skills": {
           level: "exact",
           rationale:
-            "Copied as authored, except that ${SKILL_DIR} in a SKILL.md body becomes `.`: Codex expands nothing in skill text, and the base instructions of the models it bundles tell the model to resolve a skill's relative paths against the directory containing its SKILL.md (ADR-0028). A model without those instructions, such as one behind a custom provider, is not told.",
+            "Copied as authored, except that ${SKILL_DIR} in a SKILL.md body becomes `<absolute path of the directory containing this SKILL.md>`. The model must substitute the installed skill directory from the supplied SKILL.md path; Codex expands nothing in skill text. Rewritten skills report skill-directory-model-substitution (ADR-0028, issue #113).",
           degradations: [
             {
               id: SKILL_REFERENCE_UNEXPANDED,
@@ -521,6 +526,7 @@ const nativeCodexAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
                 "A SKILL.md that holds a Claude Code variable such as ${CLAUDE_PLUGIN_ROOT}, ${PLUGIN_ROOT} or ${PLUGIN_DATA} anywhere, or ${SKILL_DIR} in its frontmatter, reaches the model with that text as written: Codex expands nothing in skill text, frontmatter included.",
               evidence: ".capture/skill-directory",
             },
+            codexSkillDirectoryDegradation,
           ],
         },
         "agent-plugin.mcp.stdio": {
@@ -571,6 +577,8 @@ const nativeCodexAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
       source: {
         date: "2026-09-08",
         validatedOn: [
+          codexSkillDirectoryValidation,
+          codexSkillDirectoryComparisonValidation,
           {
             version: "0.154.0",
             date: "2026-09-30",
@@ -800,13 +808,14 @@ const nativeCodexAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
     // skipped.
     const insideRejectedSkill = isRejectedSkillPath(source);
     // A skill's SKILL.md is the one copied file whose bytes may change: its
-    // body's ${SKILL_DIR} becomes `.` (ADR-0028). A rewritten file is
+    // body's ${SKILL_DIR} becomes an explicit absolute-path placeholder
+    // for the model to substitute (ADR-0028). A rewritten file is
     // generated, not copied, but still occupies its path for every collision
     // check below.
     const skillTexts = projectPackageSkillTexts(
       source.skills,
       (path) => source.files.find((file) => file.path === path)?.contents,
-      RELATIVE_SKILL_TEXT,
+      CODEX_SKILL_TEXT,
       "Codex",
     );
 

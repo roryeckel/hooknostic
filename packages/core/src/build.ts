@@ -76,7 +76,7 @@ import type { ProjectIntegration } from "./project-files.js";
 import { projectPath } from "./project-files.js";
 import { planProjectSkillPolicies } from "./skill-policy.js";
 
-export const HOOKNOSTIC_VERSION = "0.7.0";
+export const HOOKNOSTIC_VERSION = "0.9.0";
 
 export interface BuildOptions {
   configPath: string;
@@ -416,7 +416,7 @@ async function canonical(path: string): Promise<string> {
  * transaction directories, native project wiring, the build report, every
  * target output, the config file itself, the hook source entry (its compiled
  * runtime ships instead), and agent definition directories (their native
- * translations ship instead, ADR-0032).
+ * translations ship instead, ADR-0034).
  * Package-level junk (`node_modules`, `.env`, …) is excluded by the loader.
  *
  * The loader inventories the root's realpath, so every pattern is derived from
@@ -518,7 +518,7 @@ function nativeAgentDiagnostics(
 
 /**
  * The definitions one target receives, and the default agent it can still
- * take (ADR-0032, decision 11). A deselected agent leaves before anything is
+ * take (ADR-0034, decision 11). A deselected agent leaves before anything is
  * counted, so it is never a shortfall; a deselected default is no default
  * there.
  */
@@ -809,7 +809,7 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
     componentSource = packageComponents(components);
     // Definitions beside a package are Hooknostic input, like hook source:
     // projectors translate them into each native package, and project targets
-    // receive them as they would from a direct source (ADR-0032).
+    // receive them as they would from a direct source (ADR-0034).
     if (config.components?.agents !== undefined) {
       const loaded = await loadAgentDefinitions({
         directories: config.components.agents.map((path) => resolve(configDir, path)),
@@ -1272,6 +1272,7 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
               capabilities: levelsFromMatrix(resolved.matrix ?? {}),
               minimumCapabilityLevel: compatibility.minimum,
               policy: runtimePolicy,
+              targetRange: spec.version,
               ...(pluginRootOffset === undefined ? {} : { pluginRootOffset }),
             }),
             resolveDir: configDir,
@@ -1586,7 +1587,7 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
             );
             // Resolve the fixed default independently of named definitions:
             // an adapter can deliver its instructions without offering agents
-            // for selection or delegation (ADR-0032, decision 10).
+            // for selection or delegation (ADR-0034, decision 10).
             const defaultName = selectedSource.defaultAgent;
             const deliversDefault = count("agents.default", defaultName === undefined ? 0 : 1);
             if (!deliversDefault) delete selectedSource.defaultAgent;
@@ -1612,7 +1613,7 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
             }
             // A target that cannot run a session as an agent still takes an
             // `all` definition as a subagent; a `primary` one has nothing left
-            // to deliver, so it leaves the definitions too (ADR-0032,
+            // to deliver, so it leaves the definitions too (ADR-0034,
             // decision 9). The component-level shortfall is reported above.
             // The delivered default is exempt: it already runs as the session.
             const primaryCell = support.matrix?.["agents.primary"];
@@ -1753,6 +1754,10 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
             integration.entries.push(...projected.entries);
             integration.guidance.push(...projected.guidance);
             integration.absent = [...(integration.absent ?? []), ...(projected.absent ?? [])];
+            integration.discoveryFallbacks = [
+              ...(integration.discoveryFallbacks ?? []),
+              ...(projected.discoveryFallbacks ?? []),
+            ];
             integration.omittedFiles = [...(integration.omittedFiles ?? []), ...(projected.omittedFiles ?? [])];
             integration.relinquishFiles = [
               ...(integration.relinquishFiles ?? []),

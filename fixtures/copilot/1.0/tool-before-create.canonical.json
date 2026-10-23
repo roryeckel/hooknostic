@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "harness": {
+    "id": "copilot",
+    "version": "1.0.101",
+    "nativeEvent": "preToolUse"
+  },
+  "session": {
+    "id": "23c7ccbd-4b42-4825-84cc-750614b0655e",
+    "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-copilot-capture\\tool-shapes"
+  },
+  "correlation": {},
+  "event": "tool.before",
+  "tool": {
+    "kind": "file.write",
+    "nativeName": "create",
+    "input": {
+      "path": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-copilot-capture\\tool-shapes\\probe.txt",
+      "file_text": "hello-probe"
+    },
+    "file": {
+      "paths": [
+        "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-copilot-capture\\tool-shapes\\probe.txt"
+      ],
+      "pathKey": "path"
+    }
+  }
+}

@@ -3,6 +3,15 @@ import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 
+export async function readEventRecords(path) {
+  const contents = await readFile(path, "utf8").catch(() => "");
+  // The capture writer may still be appending the final record. Retry it on the next poll.
+  return contents.slice(0, contents.lastIndexOf("\n") + 1)
+    .split("\n")
+    .filter(Boolean)
+    .map(JSON.parse);
+}
+
 export async function driveLifecycle({ executable, root, project, env, model, remote }) {
   const server = spawn(executable, ["serve", "--stdio", "--hostname", "127.0.0.1", "--port", "0"], {
     cwd: project,
@@ -15,12 +24,7 @@ export async function driveLifecycle({ executable, root, project, env, model, re
   server.stdout.on("data", (chunk) => (stdout += chunk));
   server.stderr.on("data", (chunk) => (stderr += chunk));
   const done = new Promise((resolve) => server.on("exit", resolve));
-  const records = async () =>
-    (await readFile(join(root, "captured/events.jsonl"), "utf8").catch(() => ""))
-      .trim()
-      .split("\n")
-      .filter(Boolean)
-      .map(JSON.parse);
+  const records = () => readEventRecords(join(root, "captured/events.jsonl"));
   const wait = async (predicate) => {
     for (let i = 0; i < 200; i++) {
       const value = await predicate();

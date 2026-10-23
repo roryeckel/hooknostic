@@ -5354,7 +5354,11 @@ var PI_FILE_SHAPES = {
   edit: { pathKey: "path" }
 };
 var piFileCodec = fileCodec(PI_FILE_SHAPES);
-function classifyPiTool(nativeName, input) {
+var PI_MCP_PREFIX = "mcp__";
+function classifyPiTool(nativeName, input, reported, nativeMcp = true) {
+  if (nativeMcp && nativeName.startsWith(PI_MCP_PREFIX)) {
+    return { kind: "mcp", nativeName, input, ...reported?.mcp ? { mcp: { ...reported.mcp } } : {} };
+  }
   const known = Object.hasOwn(EXACT, nativeName) ? EXACT[nativeName] : void 0;
   if (known !== void 0) {
     const shell = piShellCodec.classify(nativeName, input);
@@ -5400,7 +5404,17 @@ function snapshotPiRaw(native) {
     throw new PiDecodeError("pi event cannot be cloned");
   }
 }
-function decodePi(nativeEvent, invocation, enrichment = {}) {
+function piNativeMcpTool(source) {
+  const { path, source: kind } = record(source);
+  return path === "builtin:mcp" && kind === "builtin";
+}
+function piReportedMcp(details) {
+  if (typeof details !== "object" || details === null) return void 0;
+  const { server, tool } = details;
+  return typeof server === "string" && typeof tool === "string" ? { mcp: { server, tool } } : void 0;
+}
+function decodePi(nativeEvent, invocation, enrichment = {}, options = {}) {
+  const nativeMcp = options.nativeMcp ?? true;
   if (typeof nativeEvent !== "object" || nativeEvent === null) {
     throw new PiDecodeError("native event is not an object");
   }
@@ -5453,6 +5467,9 @@ function decodePi(nativeEvent, invocation, enrichment = {}) {
       };
     }
     case "before_agent_start": {
+      if (native.event["messageType"] === "custom") {
+        throw new PiDecodeError("before_agent_start for a custom-message run carries no user prompt");
+      }
       const prompt = native.event["prompt"];
       if (typeof prompt !== "string") {
         throw new PiDecodeError("before_agent_start has no prompt");
@@ -5470,7 +5487,12 @@ function decodePi(nativeEvent, invocation, enrichment = {}) {
         ...withToolCallId(base),
         raw: snapshotPiRaw(native),
         event: "tool.before",
-        tool: classifyPiTool(toolCall.toolName, snapshotPiValue(toolCall.input, "tool_call input"))
+        tool: classifyPiTool(
+          toolCall.toolName,
+          snapshotPiValue(toolCall.input, "tool_call input"),
+          void 0,
+          nativeMcp
+        )
       };
     }
     case "tool_result": {
@@ -5481,20 +5503,16 @@ function decodePi(nativeEvent, invocation, enrichment = {}) {
       const input = snapshotPiValue(toolCall.input, "tool_result input");
       const isError = native.event["isError"] === true;
       const output = native.event["content"];
+      const reported = nativeMcp && piNativeMcpTool(enrichment.toolSource) ? piReportedMcp(native.event["details"]) : void 0;
+      const tool = classifyPiTool(toolCall.toolName, input, reported, nativeMcp);
       if (isError) {
-        return {
-          ...withToolCallId(base),
-          raw,
-          event: "tool.error",
-          tool: classifyPiTool(toolCall.toolName, input),
-          error: {}
-        };
+        return { ...withToolCallId(base), raw, event: "tool.error", tool, error: {} };
       }
       return {
         ...withToolCallId(base),
         raw,
         event: "tool.after",
-        tool: classifyPiTool(toolCall.toolName, input),
+        tool,
         output: snapshotPiValue(output, "tool_result content")
       };
     }
@@ -5536,6 +5554,12 @@ function validatePiEffect(effect) {
   }
   return void 0;
 }
+function registeredToolSource(pi, name) {
+  const tools = pi.getAllTools?.();
+  if (!Array.isArray(tools)) return void 0;
+  const registered = tools.find((tool) => isPlainRecord(tool) && tool["name"] === name);
+  return isPlainRecord(registered) ? registered["sourceInfo"] : void 0;
+}
 function isMutablePlainRecord(value) {
   return isPlainRecord(value) && Object.isExtensible(value) && Reflect.ownKeys(value).every((key) => Object.getOwnPropertyDescriptor(value, key)?.configurable === true);
 }
@@ -5554,7 +5578,12 @@ function createHooknosticExtension(plugin, options) {
   const run = async (native, enrichment) => {
     let event;
     try {
-      event = decodePi(native, invocation, enrichment);
+      event = decodePi(
+        native,
+        invocation,
+        enrichment,
+        options.nativeMcp === void 0 ? {} : { nativeMcp: options.nativeMcp }
+      );
     } catch (error) {
       if (error instanceof PiDecodeError) return { result: void 0, application: {} };
       throw error;
@@ -5640,6 +5669,14 @@ function createHooknosticExtension(plugin, options) {
         } catch {
         }
       }
+      const toolName = event.toolName;
+      if (name === "tool_result" && options.nativeMcp !== false && typeof toolName === "string" && toolName.startsWith(PI_MCP_PREFIX)) {
+        try {
+          const source = registeredToolSource(pi, toolName);
+          if (source !== void 0) enrichment.toolSource = source;
+        } catch {
+        }
+      }
       const { result, application } = await runFailingOpen(native, enrichment);
       if (name === "agent_settled" && application.sendMessage !== void 0) {
         for (const message of application.sendMessage) {
@@ -5687,8 +5724,8 @@ export {
 /*!
 Bundled package notices
 
-@hooknostic/adapter-pi@0.7.0
-@hooknostic/runtime@0.7.0
+@hooknostic/adapter-pi@0.9.0
+@hooknostic/runtime@0.9.0
 LICENSE
 Apache License
                            Version 2.0, January 2004
@@ -5896,8 +5933,8 @@ Apache License
 /*!
 Bundled package notices
 
-@hooknostic/sdk@0.7.0
-hooknostic@0.7.0
+@hooknostic/sdk@0.9.0
+hooknostic@0.9.0
 LICENSE
 Apache License
                            Version 2.0, January 2004

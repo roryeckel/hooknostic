@@ -1,4 +1,4 @@
-import { relative } from "node:path";
+import { realpath } from "node:fs/promises";
 
 import type {
   AgentDefinition,
@@ -13,7 +13,13 @@ import {
   skillInvocationPolicyProfiles,
 } from "@hooknostic/agent-plugin";
 import type { GeneratedArtifact, HarnessAdapter, ProjectComponentOptions, ProjectIntegration } from "@hooknostic/core";
-import { projectAgentFiles, projectMcpLauncher, projectSkillFiles } from "@hooknostic/core";
+import {
+  portableRelative,
+  projectAgentFiles,
+  projectMcpLauncher,
+  projectSkillFiles,
+  REMOTE_ENVIRONMENT_SOURCE,
+} from "@hooknostic/core";
 
 import { AGENT_STEP_LIMIT_IGNORED, stepLimitDegradations } from "./agent-native.js";
 import { opencodeHarness } from "./harness.js";
@@ -61,7 +67,7 @@ export const opencodeAgents: NonNullable<HarnessAdapter["agents"]> = {
   projectDirectory: ".opencode/agents",
   // The file name is the identity, so `name` has nothing to say and v1 would
   // pass it to the provider as a model option. `prompt` (v1) and `system` (v2)
-  // are the instructions, and `mode` is the portable field's (ADR-0032).
+  // are the instructions, and `mode` is the portable field's (ADR-0034).
   reservedNativeKeys: ["name", "description", "mode", "prompt", "system"],
 };
 
@@ -149,8 +155,17 @@ export async function projectComponents(
       ),
     );
   if (source.mcp || source.defaultAgent !== undefined || (!emitMcp && Object.keys(skillPolicies).length > 0)) {
-    if (source.mcp) result.files.push(...(await projectMcpLauncher(source, root, output)).files);
-    const sourceRoot = relative(root, source.mcp?.root ?? root).replaceAll("\\", "/") || ".";
+    // Between real paths, as the launcher's own offsets are: the module runs
+    // from its physical location and the loaded source root is canonical, so a
+    // project reached through a junction or symlink would otherwise anchor the
+    // stdio cwd on a directory that does not exist. Across Windows drives or
+    // UNC shares it is absolute, which the module's resolve() accepts as is.
+    const projectRoot = source.mcp === undefined ? root : await realpath(root);
+    if (source.mcp) {
+      const launcher = await projectMcpLauncher(source, projectRoot, output);
+      result.files.push(...launcher.files);
+    }
+    const sourceRoot = portableRelative(projectRoot, source.mcp?.root ?? projectRoot);
     const translated = translateMcp(
       source.mcp ? { mcp: source.mcp.config } : {},
       new Set(options.mcpProjectCwdServers),
@@ -164,13 +179,7 @@ export async function projectComponents(
     const directEnvironmentResolution =
       source.mcp && source.origin === "direct"
         ? `
-const expandEnvironment = (value, missing) => value.replace(/\\$\\{([A-Za-z_][A-Za-z0-9_]*)(?::-([^}]*))?\\}/g, (reference, name, fallback) => {
-  const resolved = process.env[name];
-  if (resolved !== undefined) return resolved;
-  if (fallback !== undefined) return fallback;
-  missing.add(name);
-  return reference;
-});
+${REMOTE_ENVIRONMENT_SOURCE}
 const resolveRemote = (name, server) => {
   const missing = new Set();
   const resolved = { ...server,
@@ -178,7 +187,7 @@ const resolveRemote = (name, server) => {
     ...(server.headers === undefined ? {} : { headers: Object.fromEntries(Object.entries(server.headers).map(([header, value]) => [header, expandEnvironment(value, missing)])) }),
   };
   if (missing.size === 0) return resolved;
-  console.warn("Hooknostic disabled MCP " + JSON.stringify(name) + ": missing environment " + [...missing].sort().join(", "));
+  warnMissingEnvironment(name, missing);
   return { ...server, enabled: false };
 };
 `

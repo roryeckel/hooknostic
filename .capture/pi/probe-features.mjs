@@ -21,8 +21,9 @@ mkdirSync(out, { recursive: true });
 const detected = await runProcess(executable, ["--version"], { cwd: repo, env: withoutCredentials() });
 if (detected.code !== 0) throw new Error(detected.stderr);
 const version = detected.stdout.trim();
-if (version !== piHarness.referenceVersion)
-  throw new Error(`Expected reference build ${piHarness.referenceVersion}, found ${version}`);
+// A capture session may probe a candidate build before the metadata moves to it.
+const expected = process.env.HKN_PI_EXPECTED_VERSION ?? piHarness.referenceVersion;
+if (version !== expected) throw new Error(`Expected build ${expected}, found ${version}`);
 const metadata = {
   version,
   platform: process.platform,

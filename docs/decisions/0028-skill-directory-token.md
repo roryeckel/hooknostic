@@ -4,6 +4,9 @@
 
 Accepted, 2026-09-30. Applies the shortfall policy of
 [ADR-0022](0022-shortfall-policy.md) to skill text.
+Amended 2026-10-19 after [issue #113](https://github.com/roryeckel/hooknostic/issues/113):
+Codex uses an explicit absolute-path placeholder with a conditional degradation for
+model-dependent substitution.
 
 ## Context
 
@@ -45,15 +48,16 @@ non-goal: skills define their own portable convention.
 - **`${SKILL_DIR}` in a SKILL.md body names the skill's own directory.** The
   projection writes each target's form in its place:
 
-  | Target | `${SKILL_DIR}` becomes | Why it resolves |
+  | Target | `${SKILL_DIR}` becomes | Resolution |
   | --- | --- | --- |
   | Claude Code, package and project delivery | `${CLAUDE_SKILL_DIR}` | Claude expands it to the absolute directory |
-  | Codex, package and project delivery | `.` | its bundled models resolve relative paths against the SKILL.md's directory |
+  | Codex, package and project delivery | `<absolute path of the directory containing this SKILL.md>` | the model must substitute the installed directory from the supplied SKILL.md path; reported as `codex:skill-directory-model-substitution` |
   | OpenCode 1.x and 2.x, package and project delivery | `.` | the skill tool says relative paths are relative to the base directory it prints |
 
   So `node "${SKILL_DIR}/scripts/status.mjs"` becomes
-  `node "${CLAUDE_SKILL_DIR}/scripts/status.mjs"` on Claude Code and
-  `node "./scripts/status.mjs"` elsewhere.
+  `node "${CLAUDE_SKILL_DIR}/scripts/status.mjs"` on Claude Code,
+  `node "<absolute path of the directory containing this SKILL.md>/scripts/status.mjs"`
+  on Codex, and `node "./scripts/status.mjs"` on OpenCode and Pi.
 - **Only the body is rewritten.** The frontmatter is the harness's metadata, a
   name or description is not a path anyone resolves, and ADR-0021's rename
   already owns the one frontmatter line Hooknostic changes. Everything outside
@@ -90,11 +94,40 @@ non-goal: skills define their own portable convention.
   are run by a shell, and `${HOME}` or `${VAR:-default}` in one is the shell's
   to expand. Refusing every `${...}` would reject valid skills, and reporting
   every one would bury the few that matter.
-- **The skills component keeps its level.** `${SKILL_DIR}` is Hooknostic's
-  authoring token, not something the specification asks a harness to support,
-  and what reaches each harness is a form that harness documents or tells its
-  model to resolve. The rationale of each `agent-plugin.skills` cell states the
-  projection.
+- **Codex writes the tested explicit absolute-path placeholder.** The
+  owner-reported live probe in issue #113 observed command failures on Codex
+  0.163.0 with its bundled `gpt-6-luna`, despite the base instructions still
+  prescribing skill-relative paths. Short bodies passed, but bodies with a
+  longer argument-quoting paragraph ran `./scripts/where.sh` from the session
+  directory; additional command skills also ran from the plugin root. The
+  command's location depended on the model choosing the working directory.
+  The evidence and its limits are in
+  [the probe record](../../.capture/skill-directory/codex-command.md).
+
+  A [controlled live comparison](../../.capture/skill-directory/comparison.md)
+  on the same date with Codex 0.163.0 and `gpt-6-luna` found 10/10 first launcher
+  attempts succeeded with `<absolute path of the directory containing this SKILL.md>`,
+  versus 1/10 with `.` (2/10 after retries). It tested the exact failing body F
+  and a declared reconstruction of E, with Git Bash and owner-authorized
+  unsandboxed execution. Adopt that exact placeholder: the model can substitute
+  the installed skill directory from the absolute SKILL.md path Codex supplies.
+  The build does not know the eventual install path, and Codex does not expand
+  the placeholder at runtime.
+
+  **Each rewrite remains a degradation, `skill-directory-model-substitution`.**
+  The bounded comparison supports the change, but correct substitution still
+  depends on the model. Report each rewritten skill as HN101, an error by default
+  under ADR-0022. `components.accept: ["codex:skill-directory-model-substitution"]`
+  ships an explicitly reviewed exception and still records it as information.
+  The component's baseline level stays `exact`: skills without a body token
+  are copied as authored, and this particular shortfall is conditional on the
+  translation. A token confined to frontmatter, or in a skill discovered in
+  place, remains `skill-reference-unexpanded`; it was never rewritten.
+  Package and project profiles declare the degradation. Project delivery is a
+  conservative application of the same model-dependent substitution,
+  not a claim that the comparison separately probed project skills. No version
+  boundary is invented: earlier evidence established instructions and literal
+  text, not reliable execution of every projected command.
 
 ## Alternatives considered
 
@@ -109,6 +142,10 @@ non-goal: skills define their own portable convention.
   path there. No other target runs Hooknostic code when a skill loads, so it
   would help one family and leave the rest on `.`. It remains an option for
   that family if `.` proves unreliable there.
+- **Keep `.` on Codex with a degradation.** This describes the risk honestly,
+  but the controlled comparison above supports the explicit placeholder over
+  the relative projection for the failing command bodies. The new projection
+  retains a degradation for its model-dependent substitution.
 - **Reuse `${PLUGIN_ROOT}`.** It names the package, not the skill, it belongs to
   Agent Plugins configuration fields, and the specification requires
   unrecognised placeholder text to stay literal. A skill-scoped name avoids
@@ -124,12 +161,19 @@ non-goal: skills define their own portable convention.
   to the skill, and each target gets the form it resolves best. A source
   package that uses the token is a Hooknostic source: installed directly into a
   harness without a build, it shows `${SKILL_DIR}` as written.
-- On Codex and OpenCode the model still resolves `./...` against the skill's
-  directory. The token makes the path explicit; it does not make those targets
-  exact. A skill whose command must run from the project should pass the
-  project directory to its launcher explicitly.
+- On Codex the model must fill an explicit absolute-directory placeholder; on
+  OpenCode and Pi it must resolve `./...` against the skill's directory. Codex's
+  substitution remains model-dependent, so the rewrite is reported rather than
+  silently treated as exact.
+  A skill whose command must run from the project should pass the project
+  directory to its launcher explicitly; this alone does not fix the launcher's
+  own location.
 - Codex's guidance lives in its bundled models' instructions. A model behind a
   custom provider may lack it, and the capture's loopback model did.
+- Codex and OpenCode share the `.agents/skills` project destination. When a body
+  token produces different bytes there, combined project sync rejects the
+  duplicate integration destination before writing. Consumers can use package
+  delivery for separate projections, or author text both targets can share.
 - A package with Claude-only text in a skill now fails on the other targets
   until it is changed or accepted by id, which is the point.
 - The design's non-goal stands with one exception: Hooknostic still defines no

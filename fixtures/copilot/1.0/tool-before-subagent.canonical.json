@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "harness": {
+    "id": "copilot",
+    "version": "1.0.101",
+    "nativeEvent": "preToolUse"
+  },
+  "session": {
+    "id": "8cfbe2aa-abe3-485f-ad17-ca2426267dae",
+    "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-copilot-capture\\shell-interpreter-bash"
+  },
+  "correlation": {
+    "agentId": "8cfbe2aa-abe3-485f-ad17-ca2426267dae",
+    "parentAgentId": "a5a75f4a-fcdf-426e-937e-792da5179200"
+  },
+  "event": "tool.before",
+  "tool": {
+    "kind": "shell",
+    "nativeName": "powershell",
+    "input": {
+      "command": "bash -lc \"bash --version | head -1; command -v bash; echo BASH_VAR=\\$BASH\""
+    },
+    "shell": {
+      "command": "bash -lc \"bash --version | head -1; command -v bash; echo BASH_VAR=\\$BASH\"",
+      "commandKey": "command",
+      "dialect": "powershell"
+    }
+  }
+}

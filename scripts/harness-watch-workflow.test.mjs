@@ -37,7 +37,7 @@ function jobSource(name) {
 describe("harness-watch workflow structure", () => {
   it("rehearses free drift without running any writer job", () => {
     expect(source).toContain("      dry_run:");
-    for (const name of ["record", "report-failure", "publish-verdict"]) {
+    for (const name of ["record", "report-failure", "publish-verdict", "automerge"]) {
       const job = jobSource(name);
       expect(job.match(/^ {4}if:.*$/m)?.[0], name).toContain("inputs.dry_run != 'true'");
     }
@@ -224,5 +224,87 @@ describe("harness-watch workflow structure", () => {
     );
     expect(destination).toContain("EXPECTED_PR_TITLE");
     expect(destination).toContain('[ "$PR_TITLE" = "$EXPECTED_PR_TITLE" ]');
+  });
+
+  it("routes drift for an out-of-range build to its open range-extension issue", () => {
+    // record files the range-extension issue in the same run (publish-verdict
+    // needs record), so a drift verdict without a PR or failure issue must
+    // land there instead of opening a second thread for the same version.
+    const rangeTitle =
+      'TITLE="harness-watch: ${{ matrix.harness }} ${{ matrix.latest }} is outside every profile range"';
+    expect(jobSource("record")).toContain(rangeTitle);
+    const publish = jobSource("publish-verdict");
+    const destination = publish.slice(
+      publish.indexOf("Locate the conversation destination"),
+      publish.indexOf("File a deduped report issue"),
+    );
+    expect(destination).toContain(rangeTitle.replace('TITLE="', 'RANGE_TITLE="'));
+    // Exact-title match: gh's --search is fuzzy and also matches bodies.
+    expect(destination).toContain(`jq -r --arg t "$RANGE_TITLE" 'map(select(.title == $t)) | .[0].number // ""'`);
+    const failure = destination.indexOf("failed model-free playback");
+    const range = destination.indexOf("RANGE_TITLE=");
+    expect(failure).toBeGreaterThan(-1);
+    expect(range).toBeGreaterThan(failure);
+  });
+
+  it("drift report issue names the verdict's real transport", () => {
+    const publish = jobSource("publish-verdict");
+    const report = publish.slice(
+      publish.indexOf("File a deduped report issue"),
+      publish.indexOf("Comment the verdict on the destination"),
+    );
+    expect(report).not.toContain("'see artifact'");
+    expect(report).toContain('TRANSPORT="$(jq -r .transport drift-verdict-${{ matrix.harness }}.json)"');
+    expect(report).toContain("(transport: \\`$TRANSPORT\\`");
+  });
+
+  it("escapes every backtick inside unquoted heredocs", () => {
+    // An unquoted heredoc runs command substitution, so a bare `path` in an
+    // issue body executes the path and posts an empty string in its place.
+    const lines = source.split(/\r?\n/);
+    const bodies = [];
+    for (let i = 0; i < lines.length; i++) {
+      const open = /<<-?\s*([A-Za-z_]+)\b/.exec(lines[i]);
+      if (!open) continue;
+      const end = lines.findIndex((l, j) => j > i && l.trim() === open[1]);
+      bodies.push({ at: i + 1, text: lines.slice(i + 1, end) });
+      i = end;
+    }
+    expect(bodies.length).toBeGreaterThan(0);
+    for (const { at, text } of bodies) {
+      for (const line of text)
+        expect(line.replace(/\$\([^)]*\)/g, ""), `heredoc at line ${at}`).not.toMatch(/(^|[^\\])`/);
+    }
+  });
+
+  it("merges in one trusted coordinator after verification and drift publishing", () => {
+    expect(jobSource("record")).not.toContain("gh pr merge");
+    const merge = jobSource("automerge");
+    expect(merge).toContain("needs: [detect, verify, record, drift, publish-verdict]");
+    expect(merge).toContain("needs.publish-verdict.result == 'success'");
+    expect(merge).toContain("vars.HARNESS_WATCH_AUTOMERGE == 'true'");
+    expect(merge).not.toContain("strategy:");
+    expect(merge).toContain("ref: ${{ github.sha }}");
+    expect(merge).toContain("persist-credentials: false");
+    expect(merge).toContain("GH_TOKEN: ${{ secrets.HARNESS_WATCH_PAT }}");
+    expect(merge).toContain("pattern: watch-outcome-*");
+    expect(merge).toContain("pattern: drift-verdict-*");
+    expect(merge).toContain("WATCH_FORCE_DRIFT: ${{ inputs.force_llm }}");
+    expect(merge).toContain("node scripts/merge-harness-watch.mjs watch-evidence");
+  });
+
+  it("preserves the recorder's independent date for later coordinator retries", () => {
+    const record = jobSource("record");
+    expect(record).toContain('DATE="$(date -u +%F)"');
+    expect(record).toContain('echo "date=$DATE" >> "$GITHUB_OUTPUT"');
+    expect(record).toContain('--date "$DATE"');
+    const evidence = record.slice(record.indexOf("Save trusted recorder evidence"));
+    expect(evidence).toContain("steps.record.outputs.outcome == 'wrote'");
+    expect(evidence).toContain('--arg date "${{ steps.record.outputs.date }}"');
+    expect(evidence).toContain("name: watch-record-${{ matrix.harness }}-${{ matrix.latest }}");
+    expect(evidence).toContain("retention-days: 90");
+    const merge = jobSource("automerge");
+    expect(merge).toContain("actions: read");
+    expect(merge).toContain("WATCH_EVIDENCE_TOKEN: ${{ github.token }}");
   });
 });

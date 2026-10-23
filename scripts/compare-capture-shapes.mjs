@@ -35,6 +35,7 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
+import { harnessFixtureDirs } from "./harness-fixture-dirs.mjs";
 import { isMainModule } from "./is-main-module.mjs";
 
 // ---------------------------------------------------------------------------
@@ -142,6 +143,31 @@ export function variantOf(harness, payload) {
       ? `${hook}+${event.tool}${hook === "execute.after" && event.status === "error" ? "+error" : ""}`
       : String(hook);
   }
+  if (harness === "copilot") {
+    // CamelCase payloads do not name their event, so infer it from the one
+    // shape-defining field set. PascalCase and permissionRequest do state one.
+    const pascal = payload?.["hook_event_name"];
+    if (pascal !== undefined) {
+      const tool = payload?.["tool_name"];
+      return tool === undefined || tool === null ? String(pascal) : `${pascal}+${tool}`;
+    }
+    const tool = payload?.toolName;
+    if (payload?.hookName === "permissionRequest") return "permissionRequest";
+    if (tool !== undefined && tool !== null) {
+      if (payload?.toolResult !== undefined) return `postToolUse+${tool}`;
+      if (payload?.error !== undefined) return `postToolUseFailure+${tool}`;
+      return `preToolUse+${tool}`;
+    }
+    if (payload?.errorContext !== undefined) return "errorOccurred";
+    if (payload?.transformedPrompt !== undefined) return "userPromptTransformed";
+    if (payload?.response !== undefined) return `subagentStop+${payload?.agentName ?? ""}`;
+    if (payload?.stopReason !== undefined) return "agentStop";
+    if (payload?.agentName !== undefined) return `subagentStart+${payload?.agentName}`;
+    if (payload?.source !== undefined) return "sessionStart";
+    if (payload?.reason !== undefined) return "sessionEnd";
+    if (payload?.prompt !== undefined) return "userPromptSubmitted";
+    return "unknown";
+  }
   if (harness === "claude" || harness === "codex") {
     const event = payload?.["hook_event_name"];
     const tool = payload?.["tool_name"];
@@ -247,7 +273,7 @@ export function compareCaptures({ harness, captured, fixtures, expectedVariants 
   let busAppendix = [];
   let payloads = captured;
   if (harness === "pi") {
-    // Adapter-observed channels, per decodePi and fixtures/pi/0.84. The tee
+    // Adapter-observed channels, per decodePi and fixtures/pi/1.3. The tee
     // also records UI/token events that have no portable hook counterpart.
     const mapped = new Set([
       "session_start",
@@ -341,6 +367,7 @@ export function compareCaptures({ harness, captured, fixtures, expectedVariants 
   // never exercised the exchange, so absence is not a drift claim.
   const isToolVariant = (variant) =>
     variant.includes("tool") ||
+    /tooluse/i.test(variant) ||
     variant.startsWith("execute.") ||
     variant.includes("PreToolUse") ||
     variant.includes("PostToolUse");
@@ -348,7 +375,11 @@ export function compareCaptures({ harness, captured, fixtures, expectedVariants 
   const toolExchangeMissing =
     !toolExchangeFired && expectedVariants.filter(isToolVariant).some((variant) => !capturedByVariant.has(variant));
   for (const expected of expectedVariants) {
-    if (capturedByVariant.has(expected)) continue;
+    const matched =
+      capturedByVariant.has(expected) ||
+      (expected.endsWith("*") &&
+        [...capturedByVariant.keys()].some((variant) => variant.startsWith(expected.slice(0, -1))));
+    if (matched) continue;
     if (toolExchangeFired) {
       driftLines.push(`expected variant ${expected} absent from the capture (the tool exchange ran)`);
     }
@@ -409,15 +440,6 @@ function parseArgs(argv) {
   return opts;
 }
 
-const FIXTURE_DIRS = {
-  pi: "fixtures/pi/0.84",
-  claude: "fixtures/claude/2.1",
-  codex: "fixtures/codex/0.148",
-  opencode: "fixtures/opencode/1.18",
-  "opencode-v1": "fixtures/opencode/1.18",
-  "opencode-v2": "fixtures/opencode/2.0",
-};
-
 /**
  * Expected variant sets: the deterministic drive session must produce exactly
  * these (session start, prompt, PreToolUse+PostToolUse for the shell tool,
@@ -454,6 +476,18 @@ export const EXPECTED_VARIANTS = {
     "tool.execute.after+bash",
     "event+session.idle",
   ],
+  // The drive's lifecycle, plus both halves of the tool exchange whatever the
+  // platform calls its shell (`bash` or `powershell`). Wildcards match the
+  // suffix: a named tool variant is not portable across hosts.
+  copilot: [
+    "sessionStart",
+    "userPromptSubmitted",
+    "permissionRequest",
+    "preToolUse+*",
+    "postToolUse+*",
+    "agentStop",
+    "sessionEnd",
+  ],
 };
 
 /** Read every `*.json` (or `suffix`) file in a dir as parsed payloads.
@@ -476,7 +510,7 @@ async function main() {
     );
     process.exit(2);
   }
-  const fixtureDir = opts.fixtures ?? FIXTURE_DIRS[opts.harness];
+  const fixtureDir = opts.fixtures ?? (await harnessFixtureDirs())[opts.harness];
   if (fixtureDir === undefined) {
     process.stderr.write(`unknown harness: ${opts.harness}\n`);
     process.exit(2);

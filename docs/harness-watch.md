@@ -27,14 +27,16 @@ check that v1 remains unchanged.
 | Record | `record` | PAT job; never runs harness code | Pass → rolling `live-probe` record + PR; range exit → deduped issue |
 | Report | `report-failure` | `GITHUB_TOKEN` only | Deduped failure issue with a runbook |
 | Drift | `drift` | Free (playback transport) / paid (`force_llm`) | Capture-compare of a real harness session's native hook payloads against committed fixtures |
-| Publish | `publish-verdict` | `GITHUB_TOKEN` only | Single final writer: step summary + PR/issue comment + reconciliation |
+| Publish | `publish-verdict` | `GITHUB_TOKEN` only | Verdict writer: step summary + PR/issue comment + reconciliation |
+| Merge | `automerge` | PAT; opt-in, never runs PR code | Validation-only diff gate, branch updates, required checks, serial squash merges |
 
 The drift lane's two transports (issue #1 §6–7):
 
 - **`playback` (default, free)** — `scripts/drive-capture-session.mjs` starts
   the loopback model server (`startModelPlayback`) and drives the installed
   harness with the committed tee-capture templates (`.capture/claude/`,
-  `.capture/codex-capture/`, `.capture/opencode-capture/`) attached. The
+  `.capture/codex-capture/`, `.capture/opencode-capture/`, and
+  `.capture/copilot/`) attached. The
   harness is real and its hook payloads are real native output; only the
   model side is scripted. No secrets, no spend.
 - **`llm` (paid, `force_llm` dispatch only)** — same session shape, but the
@@ -60,6 +62,16 @@ exit 5 (inconclusive). The scheduled paid route has not yet been run.
 A direct Halogen Qwen live-provider check passed on the reference build;
 its procedure and limits are recorded in [the Pi capture notes](../.capture/pi/README.md).
 Its rolling record is maintained by the same recorder as the other lanes.
+
+Copilot's free drift lane runs
+`node scripts/drive-capture-session.mjs copilot --transport playback` after
+bundling. It creates a disposable repository, writes the teeing hook file at
+`.github/hooks/drift.json`, and drives `copilot --trust-folder` against the
+loopback chat-completions provider through BYOK (`COPILOT_PROVIDER_*`); no GitHub
+login or provider credential is involved. The comparator infers a camelCase
+payload's native event from its shape, because those payloads do not name one.
+Its `llm` transport uses the same local LiteLLM proxy path as the other
+chat-completions lanes.
 
 ## What automation edits — and what it never touches
 
@@ -100,9 +112,9 @@ Per harness (matrix from detect's `--matrix` output):
 2. `npm install -g --ignore-scripts <pkg>@<latest>` installs the newer build
    with one retry for registry flakiness. Package lifecycle scripts stay
    disabled during installation; the workflow then invokes the package-owned
-   bootstrap explicitly for Claude and OpenCode, while Codex needs none.
-   Keeping those steps explicit preserves a secret-free failure boundary and
-   makes a missing harness binary an `install-failure`, not behavior drift.
+   bootstrap explicitly for Claude and OpenCode, while Codex and Copilot need
+   none. Keeping those steps explicit preserves a secret-free failure boundary
+   and makes a missing harness binary an `install-failure`, not behavior drift.
    Checkout still uses `persist-credentials: false`.
 3. SDK + CLI bundles, then the playback suite with
    `HOOKNOSTIC_PLAYBACK=<harness>` and `HOOKNOSTIC_PLAYBACK_VERSION=<latest>`
@@ -134,7 +146,7 @@ harness. Sequence per harness:
 
 1. **Idempotency**: if the open `harness-watch/<harness>` PR already names
    `<latest>`, skip.
-2. `scripts/record-playback-validation.mjs <harness> <latest>` — guards in
+2. `scripts/record-playback-validation.mjs <harness> <latest> --date <UTC-date>` — guards in
    order: exit 3 = outside every profile range → range-extension issue (filed
    with `GITHUB_TOKEN`; the PAT deliberately has no Issues scope) and stop;
    exit 4 = baseline not advanced (already recorded / pinned-older dispatch)
@@ -145,15 +157,69 @@ harness. Sequence per harness:
    `pnpm test` — each exit code captured explicitly.
 4. Commit `chore(harness-watch): record <harness> <latest> playback
    validation` to branch `harness-watch/<harness>` (force-pushed, one branch
-   per harness), open or update the PR (PAT), label `harness-watch`.
-5. If the repo variable `HARNESS_WATCH_AUTOMERGE` is `true`:
-   `gh pr merge --auto --squash`. **Off by default** — merging is the human
-   decision; flipping the variable enables auto-merge with no code change.
+   per harness), open or update the PR (PAT), label `harness-watch`. Save the
+   same independently chosen date, harness, and version in a
+   `watch-record-<harness>-<version>` artifact, retained for 90 days.
+5. Merging is a separate coordinator job after verification, record creation,
+   drift, and verdict publishing finish. It is off by default; see below.
 
 All `gh` calls in this leg authenticate with `HARNESS_WATCH_PAT` (fine-grained:
 this repository, Contents RW + Pull requests RW) because a branch pushed with
 the default token does not trigger CI. The PAT needs no Issues scope: issue
 steps override `GH_TOKEN: ${{ github.token }}` per step.
+
+## Automatic merges (opt-in)
+
+Set the repository variable `HARNESS_WATCH_AUTOMERGE=true` to enable the
+`automerge` job. Leave it false to keep manual merging. This coordinator uses
+the normal protected squash-merge API; GitHub's repository-level **Allow
+auto-merge** setting is not required. It does not register persistent GitHub
+auto-merge requests that could later merge a contributor's additional code.
+
+The coordinator runs trusted code from the workflow run's commit, with
+`HARNESS_WATCH_PAT` (Contents RW + Pull requests RW). Candidate PR content is
+read as text and never executed. Artifact reads use the job's `GITHUB_TOKEN`
+with Actions read permission; the PAT needs no additional permissions. It
+processes the detected lanes serially:
+
+1. Require this run's matching successful playback outcome. For non-patch
+   jumps or forced drift, require a matching `clean` drift artifact with exit
+   code 0. Missing, inconclusive, failed, or mismatched evidence holds the PR.
+   A supplied non-clean drift verdict also holds a patch update.
+2. Find the matching open, non-draft, same-repository `harness-watch/<harness>`
+   PR with the generated title and `master` base. Compare its complete diff:
+   exactly the lane's profile and `docs/harness-support.md` may change. The
+   profile must equal the recorder's output with only an advancing verified
+   version and its trusted recorded date; the document must contain exactly
+   the corresponding row replacement. The date comes from the recorder
+   artifact, never from the candidate. Only this repository's harness-watch
+   runs on `master`, triggered by schedule or dispatch, can supply it.
+   Code changes, capability/range changes, other documentation
+   changes, and missing or ambiguous prior rows require manual review.
+3. Update a branch that is behind `master`, using its expected head SHA. Wait
+   for the update's merge commit, then its fresh required checks. Check all
+   required states; only the deliberately skipped Renovate readiness check is
+   allowed to skip. An empty or partially registered check set keeps polling;
+   GitHub must also report the PR ready to merge. Keep strict branch
+   protection enabled.
+4. Re-read the PR, base, and content immediately before merging, and squash
+   only the checked head SHA. A concurrent contributor push holds the PR;
+   a moving base triggers another freshness check. GitHub remains the final
+   authority on branch protection. A conflict, refusal, or timeout leaves the
+   PR open, with the reason in the job log and step summary.
+
+Each lane polls at most 40 times, 15 seconds apart, with at most three branch
+updates; the job has a 60-minute ceiling for
+the batch. Held lanes do not prevent other eligible lanes from being checked.
+The next scheduled run can retry a still-open matching PR even when record
+creation skipped it as already present, using the original recorder artifact.
+Missing or expired recorder evidence requires manual review, including PRs
+created before these artifacts were introduced. Turn the variable off to stop future
+coordinator jobs; cancel an already-running job separately if necessary.
+
+Initial activation remains an explicit repository configuration change after
+reviewing this workflow. It does not extend ranges, promote fixture provenance,
+or resolve drift issues such as unsupported major releases automatically.
 
 ## The drift lane, in detail
 
@@ -172,7 +238,8 @@ job's steps:
    The container runs as the image's unprivileged `node` user with an init
    process; npm installs into a temporary prefix owned by that user. Claude
    refuses the driver's permission-bypassing session when run as root.
-   Claude and OpenCode then run their package-owned bootstrap explicitly.
+   Claude and OpenCode then run their package-owned bootstrap explicitly;
+   Codex and Copilot need none.
    For OpenCode, the driver also pre-seeds the exact-version plugin dependency
    into its project and redirected config directories, both under the
    throwaway capture root.
@@ -217,7 +284,10 @@ empty, so the guards exclude the fork no-op and detect failure). Per harness:
    an already-recorded version produces no PR and no failure issue, and a
    clean/inconclusive result must not vanish.
 3. Locate the conversation destination: an open `harness-watch/<harness>` PR
-   whose title names this exact version first, else the deduped failure issue.
+   whose title names this exact version first, else the deduped failure issue,
+   else the open range-extension issue (exact title match) that `record` filed
+   earlier in the run for an out-of-range build — so a major release gets one
+   thread, not two.
    A non-clean verdict (drift *or* inconclusive) with no destination files a
    new deduped report issue; the verdict comment lands on whichever matching
    destination exists.

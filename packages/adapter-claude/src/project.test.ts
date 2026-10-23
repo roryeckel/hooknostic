@@ -97,7 +97,9 @@ describe("Claude project components", () => {
       expect(integration.entries).toEqual([
         expect.objectContaining({
           key: ["mcpServers", "local"],
-          value: { command: "node", args: ["./out/mcp-launcher.mjs", "0"] },
+          // cwd "." is for GitHub Copilot CLI, which reads this file too.
+          value: { command: "node", args: ["./out/mcp-launcher.mjs", "0"], cwd: "." },
+          share: expect.any(String),
         }),
       ]);
       expect(integration.deviations).toBeUndefined();

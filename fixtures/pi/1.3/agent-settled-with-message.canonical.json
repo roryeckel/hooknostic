@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "harness": {
+    "id": "pi",
+    "version": "1.3.0",
+    "nativeEvent": "agent_settled"
+  },
+  "session": {
+    "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-pi-features-xN0ZX2\\project"
+  },
+  "correlation": {
+    "turnId": "81f98e39"
+  },
+  "event": "turn.stop",
+  "lastMessage": "FEATURE_FINAL_REPLY"
+}

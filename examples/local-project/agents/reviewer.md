@@ -4,6 +4,8 @@ description: Reviews a change for correctness and missing tests. Use after editi
 native:
   claude:
     tools: [Read, Grep, Glob]
+  copilot:
+    tools: [read]
   opencode:
     permission:
       edit: deny

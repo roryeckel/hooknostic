@@ -1,6 +1,6 @@
 {
   "name": "hooknostic",
-  "version": "0.7.0",
+  "version": "0.9.0",
   "description": "Hooknostic — portable hooks, skills, and MCP with native harness packaging and project integration",
   "license": "Apache-2.0",
   "author": "Rory Eckel <16675082+roryeckel@users.noreply.github.com>",
@@ -56,6 +56,7 @@
     "@hooknostic/agent-plugin": "workspace:*",
     "@hooknostic/adapter-claude": "workspace:*",
     "@hooknostic/adapter-codex": "workspace:*",
+    "@hooknostic/adapter-copilot": "workspace:*",
     "@hooknostic/adapter-opencode": "workspace:*",
     "@hooknostic/adapter-pi": "workspace:*",
     "@hooknostic/core": "workspace:*",

@@ -1,0 +1,27 @@
+{
+  "event": {
+    "type": "tool_result",
+    "toolName": "bash",
+    "toolCallId": "call_playback",
+    "input": {
+      "command": "node interpreter.cjs; echo hooknostic-shell-finished"
+    },
+    "content": [
+      {
+        "type": "text",
+        "text": "{\"platform\":\"win32\",\"node\":\"v24.20.0\",\"ancestry\":[{\"pid\":89232,\"parentPid\":9996,\"name\":\"node.exe\",\"path\":\"C:\\\\Program Files\\\\nodejs\\\\node.exe\"},{\"pid\":9996,\"parentPid\":32304,\"name\":\"powershell.exe\",\"path\":\"C:\\\\WINDOWS\\\\System32\\\\WindowsPowerShell\\\\v1.0\\\\powershell.exe\"},{\"pid\":32304,\"parentPid\":43380,\"name\":\"node.exe\",\"path\":\"C:\\\\Program Files\\\\nodejs\\\\node.exe\"},{\"pid\":43380,\"parentPid\":82368,\"name\":\"cmd.exe\",\"path\":\"C:\\\\WINDOWS\\\\system32\\\\cmd.exe\"},{\"pid\":82368,\"parentPid\":52044,\"name\":\"node.exe\",\"path\":\"C:\\\\Program Files\\\\nodejs\\\\node.exe\"}]}\nhooknostic-shell-finished\r\n"
+      }
+    ],
+    "structuredContent": {
+      "output": "{\"platform\":\"win32\",\"node\":\"v24.20.0\",\"ancestry\":[{\"pid\":89232,\"parentPid\":9996,\"name\":\"node.exe\",\"path\":\"C:\\\\Program Files\\\\nodejs\\\\node.exe\"},{\"pid\":9996,\"parentPid\":32304,\"name\":\"powershell.exe\",\"path\":\"C:\\\\WINDOWS\\\\System32\\\\WindowsPowerShell\\\\v1.0\\\\powershell.exe\"},{\"pid\":32304,\"parentPid\":43380,\"name\":\"node.exe\",\"path\":\"C:\\\\Program Files\\\\nodejs\\\\node.exe\"},{\"pid\":43380,\"parentPid\":82368,\"name\":\"cmd.exe\",\"path\":\"C:\\\\WINDOWS\\\\system32\\\\cmd.exe\"},{\"pid\":82368,\"parentPid\":52044,\"name\":\"node.exe\",\"path\":\"C:\\\\Program Files\\\\nodejs\\\\node.exe\"}]}\nhooknostic-shell-finished\r\n",
+      "truncated": false,
+      "exit_code": 0,
+      "wall_time_seconds": 3.5
+    },
+    "isError": false
+  },
+  "ctx": {
+    "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-pi-features-785gKr\\project",
+    "mode": "print"
+  }
+}

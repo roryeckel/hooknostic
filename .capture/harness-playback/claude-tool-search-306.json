@@ -1,0 +1,46 @@
+{
+  "provenance": "Processed live model-request excerpts from Claude Code 2.1.306 on Windows, 2026-10-21. Only the discovery tool, selected MCP tool, and scripted discovery call are retained; unrelated tools, system instructions, and messages are omitted. This is model-router evidence, not a hook-payload fixture.",
+  "discoveryTool": {
+    "name": "ToolSearch",
+    "description": "Fetches full schema definitions for deferred tools so they can be called.\n\nDeferred tools appear by name in <system-reminder> messages. Until fetched, only the name is known — there is no parameter schema, so the tool cannot be invoked. This tool takes a query, matches it against the deferred tool list, and returns the matched tools' complete JSONSchema definitions inside a <functions> block. Once a tool's schema appears in that result, it is callable exactly like any tool defined at the top of the prompt.\n\nResult format: each matched tool appears as one <function>{\"description\": \"...\", \"name\": \"...\", \"parameters\": {...}}</function> line inside the <functions> block — the same encoding as the tool list at the top of this prompt.\n\nQuery forms:\n- \"select:Read,Edit,Grep\" — fetch these exact tools by name\n- \"notebook jupyter\" — keyword search, up to max_results best matches\n- \"+slack send\" — require \"slack\" in the name, rank by remaining terms",
+    "input_schema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "query": {
+          "description": "Query to find deferred tools. Use \"select:<tool_name>\" for direct selection, or keywords to search.",
+          "type": "string"
+        },
+        "max_results": {
+          "description": "Maximum number of results to return (default: 5)",
+          "default": 5,
+          "type": "number"
+        }
+      },
+      "required": [
+        "query",
+        "max_results"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "discoveryCall": {
+    "type": "tool_use",
+    "id": "toolu_playback_1",
+    "name": "ToolSearch",
+    "input": {
+      "query": "hooknostic_echo",
+      "max_results": 5
+    }
+  },
+  "discoveredTool": {
+    "name": "mcp__hooknostic_fixture__hooknostic_echo",
+    "description": "Echo the hooknostic playback sentinel. Takes no arguments.",
+    "input_schema": {
+      "type": "object",
+      "properties": {},
+      "required": []
+    },
+    "defer_loading": true
+  }
+}

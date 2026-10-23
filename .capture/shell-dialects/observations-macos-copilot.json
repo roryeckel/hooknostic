@@ -1,0 +1,38 @@
+{
+  "harness": "copilot",
+  "version": "1.0.101",
+  "platform": "macOS arm64",
+  "capturedAt": "2026-10-21T06:33:08.882Z",
+  "case": "bash-default",
+  "tool": "bash",
+  "host": {
+    "SHELL": "/bin/bash",
+    "pwshOnPath": true
+  },
+  "execution": {
+    "platform": "darwin",
+    "node": "v24.21.0",
+    "ancestry": [
+      {
+        "name": "node",
+        "command": "node"
+      },
+      {
+        "name": "bash",
+        "command": "/bin/bash"
+      },
+      {
+        "name": "copilot",
+        "command": "/Users/user/hostedtoolcache/node/24.21.0/arm64/lib/node_modules/@github/copilot/node_modules/@github/copilot-darwin-arm64/copilot"
+      },
+      {
+        "name": "node",
+        "command": "node"
+      },
+      {
+        "name": "node",
+        "command": "node"
+      }
+    ]
+  }
+}

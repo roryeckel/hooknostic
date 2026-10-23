@@ -1,0 +1,10 @@
+{
+  "sessionId": "eeae167f-52db-4447-8743-1eea15ded1e7",
+  "timestamp": 1792544140379,
+  "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-copilot-capture\\pascal-subagent",
+  "transcriptPath": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-copilot-capture\\pascal-subagent\\.copilot-home\\session-state\\eeae167f-52db-4447-8743-1eea15ded1e7\\events.jsonl",
+  "agentName": "explore",
+  "agent_id": "0273b257-e1cb-421a-8178-05be5c183cf8",
+  "agent_type": "explore",
+  "parent_agent_id": "eeae167f-52db-4447-8743-1eea15ded1e7"
+}
