@@ -59,7 +59,7 @@ jobs:
     # The hosted app maintains its runtime. This image supplies the matching
     # validator CLI without adding Renovate's Node floor to workspace engines.
     container:
-      image: ghcr.io/renovatebot/renovate:44.155.1
+      image: ghcr.io/renovatebot/renovate:44.186.3
       options: --user 0
     steps:
       - uses: actions/checkout@v7
