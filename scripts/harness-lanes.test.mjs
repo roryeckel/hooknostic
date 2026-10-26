@@ -1,5 +1,5 @@
 import { execFileSync, spawnSync } from "node:child_process";
-import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync } from "node:fs";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -10,7 +10,7 @@ import { expect, it } from "vitest";
 import { rollingPlaybackVersion } from "./check-harness-releases.mjs";
 import { harnessLaneId, harnessLanes } from "./harness-lanes.mjs";
 
-it.each(["opencode-v2", "pi"])(
+it.each(["opencode-v2", "pi", "copilot"])(
   "advances only the %s rolling baseline through the watch command-line tools",
   (laneId) => {
     const repo = fileURLToPath(new URL("../", import.meta.url));
@@ -24,6 +24,7 @@ it.each(["opencode-v2", "pi"])(
           "check-harness-releases",
           "record-playback-validation",
           "harness-playback-version",
+          "ts-resolve-hook",
         ].map((name) => `scripts/${name}.mjs`),
       ];
       for (const id of ["opencode-v1", laneId]) {
@@ -33,6 +34,18 @@ it.each(["opencode-v2", "pi"])(
       for (const file of files) {
         mkdirSync(dirname(join(root, file)), { recursive: true });
         cpSync(join(repo, file), join(root, file));
+      }
+      if (laneId === "copilot") {
+        // Exercise the real profile's runtime imports, including agent-plugin
+        // built by pretest (and by the recorder job before it loads profiles).
+        const adapter = "packages/adapter-copilot";
+        cpSync(join(repo, adapter, "src/skill-policy.ts"), join(root, adapter, "src/skill-policy.ts"));
+        mkdirSync(join(root, "node_modules/@hooknostic"), { recursive: true });
+        symlinkSync(
+          join(repo, "packages/agent-plugin"),
+          join(root, "node_modules/@hooknostic/agent-plugin"),
+          process.platform === "win32" ? "junction" : "dir",
+        );
       }
       const require = createRequire(import.meta.url);
       cpSync(dirname(require.resolve("semver/package.json")), join(root, "node_modules/semver"), { recursive: true });

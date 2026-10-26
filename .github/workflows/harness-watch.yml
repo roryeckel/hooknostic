@@ -325,6 +325,12 @@ jobs:
             echo "skip=false" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Build profile runtime dependencies
+        if: steps.gate.outputs.skip == 'false' && steps.pr.outputs.skip == 'false'
+        # Profiles can import runtime exports from agent-plugin. Build them
+        # before the recorder loads the unbuilt adapter TypeScript sources.
+        run: pnpm --filter @hooknostic/agent-plugin run bundle
+
       - name: Rewrite the rolling validation record
         id: record
         if: steps.gate.outputs.skip == 'false' && steps.pr.outputs.skip == 'false'
