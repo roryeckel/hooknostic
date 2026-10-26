@@ -1,1 +1,1 @@
-litellm[proxy]==1.105.0
+litellm[proxy]==1.106.4
