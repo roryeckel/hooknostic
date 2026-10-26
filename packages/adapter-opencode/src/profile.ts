@@ -162,8 +162,8 @@ export const opencodeCapabilityProfiles: CapabilityProfile[] = [
         // .capture/harness-playback/README.md. Keep field order stable.
         // scheduled-playback:begin
         {
-          version: "1.19.3",
-          date: "2026-10-19",
+          version: "1.19.4",
+          date: "2026-10-26",
           method: "live-probe",
           artifact: ".capture/harness-playback",
           what: "scheduled model-free playback vs a newer build: artifact discovery, rewrite/block markers, and lifecycle events verified",
