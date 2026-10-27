@@ -25,8 +25,8 @@
         "tool.before.context.add": "exact",
         "turn.stop.prevent": "exact"
       },
-      "commandKey": "cmd",
-      "evidence": "fixtures/codex/0.148/pre-tool-exec-command.canonical.json"
+      "commandKey": "command",
+      "evidence": "fixtures/codex/0.148/pre-tool-bash.canonical.json"
     },
     {
       "name": "GitHub Copilot CLI",

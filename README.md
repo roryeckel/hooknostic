@@ -21,7 +21,7 @@ front, so you don't find out later when a hook does nothing in one agent.
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/assets/hooknostic-hero-dark.gif">
-    <img src="docs/assets/hooknostic-hero-light.gif" width="960" alt="Animated overview. One TypeScript hook declares that it needs to block shell commands and would like to rewrite them. hooknostic check grades every harness's capabilities as exact, emulated, approximate, or unsupported and shows the hook passing on all of them. The same hook then runs in each harness, rewriting npm install to pnpm install under that harness's own input key, and blocking rm -rf / everywhere.">
+    <img src="docs/assets/hooknostic-hero-light.gif" width="960" alt="Animated overview. One TypeScript hook declares that it needs to block shell commands and would like to rewrite them. hooknostic check grades every harness's capabilities as exact, emulated, approximate, or unsupported and shows the hook passing on all of them. The same hook then runs in each harness, rewriting npm install to pnpm install in that harness's native tool input, and blocking rm -rf / everywhere.">
   </picture>
 </p>
 

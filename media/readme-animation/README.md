@@ -17,9 +17,10 @@ Every harness fact on screen comes from `src/facts.json`, which
 
 - names and capability grades from the adapter registry in the built CLI, at each
   harness family's recommended range;
-- the shell command's input key (`command`, `cmd`, ...) from one captured
-  canonical `tool.before` fixture per family, named in the script's
-  `SHELL_FIXTURES` map.
+- the shell command's input key from one canonical `tool.before` fixture per
+  family, named in the script's `SHELL_FIXTURES` map. Each must be marked
+  **captured** in its fixture directory's README; constructed or
+  schema-derived fixtures are not evidence of what a hook receives.
 
 A family without a fixture entry, a fixture that is not a shell `tool.before`
 event, or an unknown support level fails the script instead of being guessed. The

@@ -18,9 +18,12 @@ const LEVELS = new Set(["exact", "emulated", "approximate", "unsupported"]);
 
 // Which captured tool.before shell payload stands for each harness family. The
 // choice of evidence file is the only input; every value shown is read from it.
+// Each entry must be marked captured in its fixture directory's README: Codex's
+// pre-tool-exec-command is constructed defensive coverage that no hook has been
+// observed receiving, so Codex uses its captured Bash payload.
 const SHELL_FIXTURES = {
   "Claude Code": "pre-tool-bash",
-  "Codex CLI": "pre-tool-exec-command",
+  "Codex CLI": "pre-tool-bash",
   "GitHub Copilot CLI": "tool-before-bash",
   OpenCode: "tool-before",
   "OpenCode v2": "tool-before",
