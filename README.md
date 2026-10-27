@@ -5,17 +5,25 @@
   </picture>
 </p>
 
-<h1 align="center">Hooknostic</h1>
+<h1 align="center">hooknostic</h1>
 
 <p align="center">
-  <strong>Portable hooks, skills, and MCP servers for coding agents. Build native plugins for
-  Claude Code, Codex, and GitHub Copilot CLI, or maintain integrations directly in your repository.</strong>
+  <strong>Portable hooks, skills, and MCP servers for coding agents. Write them once, then ship them as
+  native plugins and packages, or sync them into each agent's own config files in your repository.</strong>
 </p>
 
-Keep one portable source and let Hooknostic translate it for **Claude Code**, **OpenAI
-Codex CLI**, **GitHub Copilot CLI**, **OpenCode**, and **Pi**. Adapters handle native packaging, component configuration,
-project discovery, and lifecycle behavior. Before writing output, Hooknostic checks what
-each target can deliver and reports every compatibility shortfall.
+One source targets **Claude Code**, **OpenAI Codex CLI**, **GitHub Copilot CLI**,
+**OpenCode**, and **Pi**. Each hook declares the capabilities it needs and the ones it can
+do without. Before anything is written, `hooknostic check` grades every target against
+that declaration as exact, emulated, approximate, or unsupported. It reports each gap up
+front, so you don't find out later when a hook does nothing in one agent.
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/hooknostic-hero-dark.gif">
+    <img src="docs/assets/hooknostic-hero-light.gif" width="960" alt="Animated overview. One TypeScript hook declares that it needs to block shell commands and would like to rewrite them. hooknostic check grades every harness's capabilities as exact, emulated, approximate, or unsupported and shows the hook passing on all of them. The same hook then runs in each harness, rewriting npm install to pnpm install under that harness's own input key, and blocking rm -rf / everywhere.">
+  </picture>
+</p>
 
 ## Standards in, native integrations out
 

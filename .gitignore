@@ -40,3 +40,6 @@ coverage/
 forbidden-marker.txt
 # Scratch copies the CLI build tests work in (see cleanExample).
 examples/.buildtest-*/
+
+# Remotion stills and scratch renders; the README GIFs are written to docs/assets.
+media/readme-animation/out/

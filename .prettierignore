@@ -27,6 +27,7 @@ examples/local-project/.mcp.json
 
 # Generated build reports and lockfiles (rewritten by tooling, not by editors)
 **/hooknostic-build.json
+media/readme-animation/src/facts.json
 **/package-lock.json
 pnpm-lock.yaml
 
