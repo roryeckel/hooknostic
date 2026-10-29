@@ -61,7 +61,9 @@ node --experimental-strip-types .capture/agents/drive.mjs opencode-v2
 
 Each case runs one session in a fresh scratch project, with the committed tee
 templates attached (`.capture/claude`, `.capture/codex-capture`,
-`.capture/opencode-capture`, plus a v2 tee written by the drive).
+`.capture/opencode-capture`, plus a v2 tee written by the drive). Claude
+sessions get their own empty `CLAUDE_CONFIG_DIR`, so the capturing account's
+settings and installed plugins (their hooks and agents) cannot reach them.
 
 1. **Seed the agent.** The scratch project gets an agent named `hn-probe` with
    three per-run nonces:
@@ -568,6 +570,63 @@ playback lanes install: Claude Code **2.1.238**, Codex CLI **0.148.0**, OpenCode
     guarded read on Claude and OpenCode v2, and the stray guard never ran. On
     OpenCode v1 the build refused the scope with HN201.
 
+### Model-request identity
+
+Run on 2026-10-12 against OpenCode **1.18.35** (`opencode-ai`) and **2.0.17**
+(`@opencode/cli`), and again unchanged on 2026-10-29 against **1.19.5** and
+**2.2.2**, on Windows. Both runs gave the results below. Same transport and
+evidence class as above.
+
+```sh
+npm install --prefix <scratch>/opencode-v1 opencode-ai@1.19.5
+PATH=<scratch>/opencode-v1/node_modules/.bin:$PATH HOOKNOSTIC_PLAYBACK_VERSION=1.19.5 \
+  node --experimental-strip-types .capture/agents/drive.mjs opencode-v1 --only request-identity
+node --experimental-strip-types .capture/agents/drive.mjs opencode-v2 --only request-identity
+```
+
+**The question.** `model.request.before` (ADR-0016) fires for every model
+request: the parent's turns, a title request, and every request of a delegated
+child session. A hook that should act in only one of them needs the event to
+say which. Does the native callback carry the agent or the route? If not, can a
+stateless hook find out?
+
+The `request-identity` case is the `direct` delegation plus a second plugin
+that records a summary of each request callback: its keys, session id, agent,
+and the first 160 characters of the system text (to tell the routes apart). The
+v1 plugin also calls `session.get` through its own client inside the callback.
+The summaries land in the case's `tee/identity.jsonl`.
+
+**OpenCode v1.**
+
+| Request | `system.transform` input | `session.get` inside the callback | `chat.params` after it |
+| --- | --- | --- | --- |
+| Title | `sessionID`, `model` | parent session; `agent: build`, no `parentID` | `agent: title` |
+| Parent turn | `sessionID`, `model` | the same | `agent: build` |
+| Child turn (×4) | `sessionID`, `model` | child session; `agent: hn-probe`, `parentID` = the parent | `agent: hn-probe` |
+
+- The callback names neither the agent nor the route. The input has the two keys
+  its typings declare, as on 1.18.30 (`.capture/opencode-context-channel`).
+- The lookup answered inside the callback, in 2-4 ms, with no deadlock. It
+  returns the **session's** agent, not the request's: the title request shares
+  the parent's session and reports `build`.
+- `chat.params` names the request's agent, title included, but it fires after
+  the request's messages are built. It cannot carry context
+  (`.capture/opencode-context-channel`).
+
+**OpenCode v2.**
+
+| Callback | Keys | `agent` |
+| --- | --- | --- |
+| `title` | `sessionID`, `model`, `system`, `messages`, `options` | absent |
+| `context`, parent | the same plus `agent`, `tools` | `build` |
+| `context`, child (×2) | the same | `hn-probe` |
+| `session.created` (child) | includes `parentID`, `agent` | `hn-probe` |
+
+- The route is the callback's own name, and `context` names the request's agent,
+  including a delegated child's.
+- The child stopped after two requests: the `direct` agent's `steps` cap, as in
+  the `direct` case, not the probe.
+
 `packages/cli/test/agent-definition-playback.test.ts` runs the `generated` and
 `packaged` cases, and outside Codex the `*-primary` cases, in CI's playback lanes
 (`HOOKNOSTIC_PLAYBACK=<harness>`) and in the harness-watch verify lane, so this
@@ -620,6 +679,13 @@ Claude decoder that read `agent_type` only beside `agent_id`, which failed
   - A session running as an agent is named too: on every Claude event, with no
     `agent_id` (a subagent's events carry one), and on OpenCode v2 tool events.
     Scoping a hook to an agent therefore reaches it as the main agent as well.
+- **Agent identity on `model.request.before`:**
+  - OpenCode v2: the `context` callback names the request's agent, a delegated
+    child's included, and the callback name gives the route. `title` names none.
+  - OpenCode v1: the callback names neither. The session's agent and parent are
+    one `session.get` away, answered inside the callback. That is the session's
+    agent, not the request's: a title request reports the parent's agent, and
+    its route is visible only in its system text.
 - **Main-session use ports to Claude and OpenCode, and not to Codex.** Both
   OpenCode families and Claude ran a session as the agent from a project file
   and from a package, on its instructions. OpenCode's `mode` decides where an

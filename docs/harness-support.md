@@ -821,6 +821,7 @@ Projection validation records:
 | 1.18.34 | 2026-10-10 | live-probe | `.capture/shell-dialects` | Linux container shell interpreter probe: the bash tool ran bash, zsh and tcsh by SHELL, and bash where SHELL named fish or was unset; the tool.definition hook stated each by name before the call. |
 | 1.18.34 | 2026-10-10 | live-probe | `.capture/shell-dialects` | Windows loopback shell interpreter probe: one bash tool ran powershell.exe, Git for Windows bash.exe, cmd.exe and pwsh.exe by host configuration under identical tool.execute.before input, and the tool.definition hook stated each shell by name before the call. |
 | 1.18.34 | 2026-10-11 | live-probe | `.capture/shell-dialects` | macOS runner shell interpreter recapture: with SHELL naming bash, the bash tool ran bash and the tool.definition hook stated bash before the call, naming the platform darwin. No other macOS configuration was captured. |
+| 1.19.5 | 2026-10-29 | live-probe | `.capture/agents` | request-identity case, loopback model: experimental.chat.system.transform's input carried only sessionID and model for the parent's request, its title request and a delegated subagent's requests, so the callback names neither the agent nor the route. The plugin's own client answered session.get inside the callback in 2-4 ms with the session's agent and, for the child only, its parentID; the title request shares the parent's session and reported its agent (build). chat.params fired after each transform with the request's agent (title, build, hn-probe). The same held on 1.18.35 (2026-10-12). |
 
 #### Optional event fields
 
@@ -1099,6 +1100,7 @@ Projection validation records:
 | 2.0.20 | 2026-10-10 | live-probe | `.capture/shell-dialects` | Windows loopback shell interpreter probe: one shell tool ran powershell.exe, Git for Windows bash.exe, cmd.exe and pwsh.exe by host configuration under identical execute.before input, and the context hook stated each shell by name before the call. |
 | 2.0.20 | 2026-10-11 | live-probe | `.capture/shell-dialects` | macOS runner shell interpreter recapture: with SHELL naming bash, the shell tool ran bash and the context hook stated bash before the call, naming the platform macOS; shell.created carried /bin/bash. No other macOS configuration was captured. |
 | 2.0.22 | 2026-10-04 | captured | `fixtures/opencode/2.0/context-max-tokens.input.json` | Linux isolated harness-watch playback capture: the context callback carries numeric event.options.maxTokens (4096). The native envelope is preserved in raw; no token-limit effect or normalized field is claimed. |
+| 2.2.2 | 2026-10-29 | live-probe | `.capture/agents` | request-identity case, loopback model: the context callback named the request's agent (build for the parent, hn-probe in a delegated child session), the title callback carried no agent, and session.created carried the child's parentID and agent. The same held on 2.0.17 (2026-10-12). |
 
 #### Optional event fields
 

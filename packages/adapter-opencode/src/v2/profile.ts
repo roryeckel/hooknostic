@@ -183,6 +183,13 @@ export const opencodeV2CapabilityProfiles: CapabilityProfile[] = [
           artifact: "fixtures/opencode/2.0/context-max-tokens.input.json",
           what: "Linux isolated harness-watch playback capture: the context callback carries numeric event.options.maxTokens (4096). The native envelope is preserved in raw; no token-limit effect or normalized field is claimed.",
         },
+        {
+          version: "2.2.2",
+          date: "2026-10-29",
+          method: "live-probe",
+          artifact: ".capture/agents",
+          what: "request-identity case, loopback model: the context callback named the request's agent (build for the parent, hn-probe in a delegated child session), the title callback carried no agent, and session.created carried the child's parentID and agent. The same held on 2.0.17 (2026-10-12).",
+        },
       ],
     },
     // Optional event fields (ADR-0027). The turn fields rest on the 2.0.18

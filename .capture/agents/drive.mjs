@@ -485,7 +485,7 @@ function scopedReadTurns(toolName, key, seed) {
 // Sessions
 // ---------------------------------------------------------------------------
 
-function claudeEnv(baseUrl) {
+function claudeEnv(baseUrl, configDir) {
   return {
     ...withoutCredentials(),
     ANTHROPIC_API_KEY: "hooknostic-playback",
@@ -494,6 +494,9 @@ function claudeEnv(baseUrl) {
     CLAUDE_CODE_DISABLE_UNKNOWN_MODEL_WINDOW_ENFORCEMENT: "1",
     DISABLE_AUTOUPDATER: "1",
     DISABLE_TELEMETRY: "1",
+    // The account's own configuration (user settings, installed plugins and
+    // their hooks and agents) must not reach the probe session.
+    CLAUDE_CONFIG_DIR: configDir,
   };
 }
 
@@ -607,6 +610,8 @@ async function claudeSession(caseName) {
     (scope ? scopedReadTurns : readTurns)("Read", "file_path", seed),
   );
   let result;
+  const configDir = join(scratch, "..", "claude-config");
+  mkdirSync(configDir, { recursive: true });
   try {
     result = await runProcess(
       "claude",
@@ -621,7 +626,7 @@ async function claudeSession(caseName) {
         "6",
         ...extraArgs,
       ],
-      { cwd: scratch, timeoutMs: 180_000, env: claudeEnv(router.baseUrl) },
+      { cwd: scratch, timeoutMs: 180_000, env: claudeEnv(router.baseUrl, configDir) },
     );
   } finally {
     await router.close();
@@ -919,6 +924,10 @@ async function opencodeV1Session(caseName) {
   if (caseName === "neutral") write(join(scratch, ".agents/agents", `${NAME}.md`), claudeAgent());
   if (caseName === "cross") write(join(scratch, ".claude/agents", `${NAME}.md`), claudeAgent());
   if (caseName === "inject") write(join(scratch, ".opencode/plugins/hn-inject.js"), v1Injector());
+  if (caseName === "request-identity") {
+    write(join(scratch, ".opencode/agents", `${NAME}.md`), opencodeV1Agent());
+    write(join(scratch, ".opencode/plugins/hn-identity.js"), V1_IDENTITY);
+  }
   if (caseName === "inject-primary" || caseName === "inject-default") {
     write(join(scratch, ".opencode/plugins/hn-inject.js"), v1Injector("primary", caseName === "inject-default"));
   }
@@ -942,7 +951,7 @@ async function opencodeV1Session(caseName) {
     caseName === "packaged" || caseName === "packaged-primary" || caseName === "packaged-steps" || caseName === "packaged-maxsteps"
       ? await buildPackaged(join(scratch, "..", "packaged"), "opencode-v1", modeOf(caseName), cap)
       : undefined;
-  const delegates = ["direct", "maxsteps", "singular", "inject", "generated", "packaged", "generated-steps", "generated-maxsteps", "packaged-steps", "packaged-maxsteps", "scoped"].includes(caseName);
+  const delegates = ["direct", "maxsteps", "singular", "inject", "generated", "packaged", "generated-steps", "generated-maxsteps", "packaged-steps", "packaged-maxsteps", "scoped", "request-identity"].includes(caseName);
   let deliveredNative;
   if (Object.keys(cap).length) {
     if (packaged) {
@@ -1068,6 +1077,120 @@ export default {
 };
 `;
 
+// ---------------------------------------------------------------------------
+// Request identity: what a per-request system callback can tell about the
+// request it runs for (which agent, which session, which route). A request in
+// a delegated child session, a title request and the parent's own request all
+// pass through the same callback; a hook that should run only in one of them
+// needs a field that says which. Recorded as summaries, not envelopes: the
+// question is which keys and values exist, and the model object is large.
+// ---------------------------------------------------------------------------
+
+/** v1: experimental.chat.system.transform, with a session lookup through the plugin's own client. */
+const V1_IDENTITY = `import { appendFileSync, mkdirSync } from "node:fs";
+import { join } from "node:path";
+
+const clip = (value) => JSON.parse(JSON.stringify(value ?? null, (key, entry) =>
+  typeof entry === "string" && entry.length > 200 ? entry.slice(0, 200) + "..." : entry));
+
+export const HnIdentity = async (ctx) => {
+  const root = join(ctx.directory, ".opencode", "plugins", "captured");
+  mkdirSync(root, { recursive: true });
+  const record = (hook, data) => appendFileSync(join(root, "identity.jsonl"), JSON.stringify({ hook, at: Date.now(), ...data }) + "\\n");
+  record("surface", { ctx: Object.keys(ctx), client: ctx.client ? Object.keys(ctx.client) : null });
+  // A stateless hook can still ask the server; whether that answers inside the
+  // callback (rather than deadlocking it) is part of the question.
+  const lookup = async (id) => {
+    if (typeof id !== "string") return { skipped: "no sessionID" };
+    const started = Date.now();
+    try {
+      const reply = await Promise.race([
+        ctx.client.session.get({ path: { id } }),
+        new Promise((_, reject) => setTimeout(() => reject(new Error("timeout 5000ms")), 5000)),
+      ]);
+      const session = reply?.data ?? reply;
+      return { ok: true, ms: Date.now() - started, keys: Object.keys(session ?? {}), parentID: session?.parentID ?? null, agent: session?.agent ?? null, title: session?.title };
+    } catch (error) {
+      return { ok: false, ms: Date.now() - started, error: String(error) };
+    }
+  };
+  return {
+    "experimental.chat.system.transform": async (input, output) => {
+      record("system.transform", {
+        inputKeys: Object.keys(input ?? {}),
+        input: clip({ ...input, model: input?.model ? { providerID: input.model.providerID, id: input.model.id ?? input.model.modelID } : undefined }),
+        outputKeys: Object.keys(output ?? {}),
+        systemCount: output?.system?.length,
+        systemHead: String(output?.system?.[0] ?? "").slice(0, 160),
+        session: await lookup(input?.sessionID),
+      });
+    },
+    "chat.params": async (input) => {
+      record("chat.params", { inputKeys: Object.keys(input ?? {}), sessionID: input?.sessionID, agent: typeof input?.agent === "string" ? input.agent : input?.agent?.name ?? null });
+    },
+    "chat.message": async (input) => {
+      record("chat.message", { inputKeys: Object.keys(input ?? {}), sessionID: input?.sessionID, agent: input?.agent ?? null });
+    },
+  };
+};
+`;
+
+/** v2: the four session request callbacks, plus session creation with its parent. */
+const V2_IDENTITY = `import { appendFileSync, mkdirSync } from "node:fs";
+import { join } from "node:path";
+
+const methods = (value) => {
+  const names = new Set();
+  for (let object = value; object && object !== Object.prototype; object = Object.getPrototypeOf(object)) {
+    for (const name of Object.getOwnPropertyNames(object)) if (name !== "constructor") names.add(name);
+  }
+  return [...names].sort();
+};
+const describe = (value) =>
+  value === undefined ? undefined
+    : value === null || typeof value !== "object" ? value
+    : { keys: Object.keys(value), id: value.id ?? null, name: value.name ?? null, mode: value.mode ?? null };
+
+export default {
+  id: "hooknostic.capture.identity",
+  async setup(ctx) {
+    const root = process.env.HKN_CAPTURE_DIR;
+    mkdirSync(root, { recursive: true });
+    const record = (hook, data) => appendFileSync(join(root, "identity.jsonl"), JSON.stringify({ hook, at: Date.now(), ...data }) + "\\n");
+    record("surface", { ctx: methods(ctx), session: ctx.session ? methods(ctx.session) : null });
+    const registrations = [];
+    for (const name of ["context", "title", "generate", "compaction"]) {
+      registrations.push(await ctx.session.hook(name, async (event) => {
+        record(name, {
+          keys: Object.keys(event ?? {}),
+          sessionID: event?.sessionID,
+          agent: describe(event?.agent),
+          model: event?.model,
+          systemHead: String(event?.system?.[0]?.text ?? event?.system?.[0] ?? "").slice(0, 160),
+        });
+      }));
+    }
+    const controller = new AbortController();
+    const task = (async () => {
+      try {
+        for await (const event of ctx.event.subscribe({ signal: controller.signal })) {
+          if (event.type !== "session.created") continue;
+          const data = event.data ?? {};
+          record("session.created", { dataKeys: Object.keys(data), sessionID: data.sessionID ?? null, parentID: data.parentID ?? null, agent: describe(data.agent) });
+        }
+      } catch {
+        /* disposal */
+      }
+    })();
+    return async () => {
+      controller.abort();
+      await Promise.allSettled(registrations.map((registration) => registration.dispose?.()));
+      await task;
+    };
+  },
+};
+`;
+
 async function opencodeV2Session(caseName) {
   const root = mkdtempSync(join(tmpdir(), "hkn-agents-v2-"));
   const project = join(root, "project");
@@ -1098,6 +1221,10 @@ async function opencodeV2Session(caseName) {
   }
   if (caseName === "direct") write(join(project, ".opencode/agents", `${NAME}.md`), opencodeV2Agent());
   if (caseName === "readonly") write(join(project, ".opencode/agents", `${NAME}.md`), opencodeV2Agent(true));
+  if (caseName === "request-identity") {
+    write(join(project, ".opencode/agents", `${NAME}.md`), opencodeV2Agent());
+    write(join(project, ".opencode/plugins/identity.js"), V2_IDENTITY);
+  }
   if (caseName === "control") write(join(project, ".opencode/agents-off", `${NAME}.md`), opencodeV2Agent());
   if (caseName === "neutral") write(join(project, ".agents/agents", `${NAME}.md`), claudeAgent());
   if (caseName === "cross") write(join(project, ".claude/agents", `${NAME}.md`), claudeAgent());
@@ -1119,7 +1246,7 @@ async function opencodeV2Session(caseName) {
     caseName === "packaged" || caseName === "packaged-primary"
       ? await buildPackaged(join(root, "packaged"), "opencode-v2", modeOf(caseName))
       : undefined;
-  const delegates = ["direct", "readonly", "inject", "generated", "packaged", "scoped"].includes(caseName);
+  const delegates = ["direct", "readonly", "inject", "generated", "packaged", "scoped", "request-identity"].includes(caseName);
   const parentScript = delegates
     ? [
         {
@@ -1422,6 +1549,7 @@ const CASES = {
     "packaged-primary",
     "scoped-primary",
     "generated-default",
+    "request-identity",
   ],
   "opencode-v2": [
     "direct",
@@ -1440,6 +1568,7 @@ const CASES = {
     "packaged-primary",
     "scoped-primary",
     "generated-default",
+    "request-identity",
   ],
 };
 

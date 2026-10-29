@@ -239,6 +239,13 @@ export const opencodeCapabilityProfiles: CapabilityProfile[] = [
           artifact: ".capture/shell-dialects",
           what: "macOS runner shell interpreter recapture: with SHELL naming bash, the bash tool ran bash and the tool.definition hook stated bash before the call, naming the platform darwin. No other macOS configuration was captured.",
         },
+        {
+          version: "1.19.5",
+          date: "2026-10-29",
+          method: "live-probe",
+          artifact: ".capture/agents",
+          what: "request-identity case, loopback model: experimental.chat.system.transform's input carried only sessionID and model for the parent's request, its title request and a delegated subagent's requests, so the callback names neither the agent nor the route. The plugin's own client answered session.get inside the callback in 2-4 ms with the session's agent and, for the child only, its parentID; the title request shares the parent's session and reported its agent (build). chat.params fired after each transform with the request's agent (title, build, hn-probe). The same held on 1.18.35 (2026-10-12).",
+        },
       ],
       notes: ["https://opencode.ai/docs/plugins (fetched 2026-08-20)"],
     },
