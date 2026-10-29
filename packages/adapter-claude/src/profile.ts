@@ -179,6 +179,13 @@ export const claudeCapabilityProfiles: CapabilityProfile[] = [
           artifact: ".capture/harness-playback",
           what: "A -p run's first model request preceded a plugin stdio MCP server's connection: it listed WaitForMcpServers and the plugin's HTTP and SSE tools, and not the stdio tool. After a WaitForMcpServers call with no arguments the next request listed it, and the server had started with the projected root, working directory and data directory. The Claude playback lane passes on this build once its model makes that call.",
         },
+        {
+          version: "2.1.312",
+          date: "2026-10-29",
+          method: "live-probe",
+          artifact: ".capture/claude-output",
+          what: "SessionStart output over the loopback model: hookSpecificOutput.additionalContext reached the model's request for source startup, resume and compact; systemMessage reached no request, rendered under the input line of the interactive TUI at startup, and in headless -p streamed as a system informational notice only for source compact. The same held on 2.1.296 (2026-10-12).",
+        },
       ],
       notes: [
         "https://code.claude.com/docs/en/hooks (fetched 2026-08-20)",
