@@ -102,3 +102,68 @@ only the user. This is the composition the whole change depends on, and it works
 so the model can act on it. hooknostic has no `turn.stop.context.add` capability,
 so this is currently unreachable through the portable API — a real gap worth
 filing separately.
+
+## SessionStart output
+
+Provenance for a possible `session.start.notify` cell, beside the existing
+`session.start.context.add`.
+
+**Live-probed against Claude Code 2.1.296 on Windows, 2026-10-12, and
+re-run unchanged against 2.1.312 on 2026-10-29, over the loopback playback
+model.** Both builds gave the results below. No model credits; the model side
+is observed as the requests the playback server recorded. Each run uses its own
+`CLAUDE_CONFIG_DIR`, so the account's settings and installed plugins (and
+their SessionStart hooks) cannot reach the probe session.
+
+```bash
+node --experimental-strip-types .capture/claude-output/session-start.mjs       # headless, three variants
+node --experimental-strip-types .capture/claude-output/session-start-pty.mjs   # interactive TUI, startup
+```
+
+A second SessionStart hook beside the stdin tee answers with a body whose
+strings carry a per-run nonce and the payload's `source`, so a match names the
+field and the start reason. `session-start.mjs` runs each variant three times
+in one project: a fresh start, `--resume <id>`, and `/compact` on the resumed
+session. `session-start-pty.mjs` starts the interactive TUI under node-pty,
+walks the first-run dialogs (a reduced copy of the playback suite's walk), and
+searches the rendered screen. It sends no prompt.
+
+The `/compact` run fires SessionStart twice: `resume` when the session loads,
+then `compact`.
+
+### Results
+
+| Variant | Emitted | Reached a model request | Headless stream (`-p --output-format stream-json --verbose`) |
+| --- | --- | --- | --- |
+| `notify` | `{systemMessage}` | never | `system/informational` "SessionStart:compact says: …" for source `compact` only |
+| `compose` | `systemMessage` + `hookSpecificOutput.additionalContext` | context: yes, for `startup`, `resume`, `compact`; notice: never | the same notice, `compact` only |
+| `context` | `hookSpecificOutput.additionalContext` | yes, for all three | no notice |
+
+Every run also streams a `system/hook_response` record carrying the hook's raw
+stdout. That is verbose tracing of every hook, not a notice, and is not counted
+above.
+
+**Interactive TUI, source `startup`:** the notice rendered under the input line
+as `⎿  SessionStart:startup says: HKN-NOTICE-…-startup`. The context string did
+not appear on screen.
+
+### What this establishes
+
+- **`systemMessage` on SessionStart is a user-only notice.** It reached no model
+  request in any run, and the interactive TUI showed it at startup. That is the
+  `notify` semantic the Stop family has (above).
+- **Headless delivery differs by source.** In `-p` mode the notice was streamed
+  for `compact` and not for `startup` or `resume`. In the recorded streams the
+  `startup` and `resume` hooks finished before the `init` record, while the
+  `compact` notice followed it. An SDK or `-p` consumer does not see a startup
+  notice.
+- **`additionalContext` reached the model for all three sources** as a
+  system-level message beginning `SessionStart hook additional context:`. On
+  resume, the request carried the earlier run's context as well as the new one.
+
+### Not established
+
+- Whether the TUI shows the notice for `resume`, `clear` or `compact`; only
+  `startup` was driven under the pty.
+- `clear`, which a headless session cannot issue.
+- Versions other than 2.1.296 and 2.1.312, and macOS and Linux.
