@@ -1,0 +1,76 @@
+{
+  "capabilities": [
+    "tool.before.block",
+    "tool.before.input.replace",
+    "tool.before.context.add",
+    "turn.stop.prevent"
+  ],
+  "harnesses": [
+    {
+      "name": "Claude Code",
+      "grades": {
+        "tool.before.block": "exact",
+        "tool.before.input.replace": "exact",
+        "tool.before.context.add": "exact",
+        "turn.stop.prevent": "exact"
+      },
+      "commandKey": "command",
+      "evidence": "fixtures/claude/2.1/pre-tool-bash.canonical.json"
+    },
+    {
+      "name": "Codex CLI",
+      "grades": {
+        "tool.before.block": "exact",
+        "tool.before.input.replace": "exact",
+        "tool.before.context.add": "exact",
+        "turn.stop.prevent": "exact"
+      },
+      "commandKey": "command",
+      "evidence": "fixtures/codex/0.148/pre-tool-bash.canonical.json"
+    },
+    {
+      "name": "GitHub Copilot CLI",
+      "grades": {
+        "tool.before.block": "exact",
+        "tool.before.input.replace": "exact",
+        "tool.before.context.add": "exact",
+        "turn.stop.prevent": "exact"
+      },
+      "commandKey": "command",
+      "evidence": "fixtures/copilot/1.0/tool-before-bash.canonical.json"
+    },
+    {
+      "name": "OpenCode",
+      "grades": {
+        "tool.before.block": "exact",
+        "tool.before.input.replace": "exact",
+        "tool.before.context.add": "unsupported",
+        "turn.stop.prevent": "approximate"
+      },
+      "commandKey": "command",
+      "evidence": "fixtures/opencode/1.18/tool-before.canonical.json"
+    },
+    {
+      "name": "OpenCode v2",
+      "grades": {
+        "tool.before.block": "exact",
+        "tool.before.input.replace": "exact",
+        "tool.before.context.add": "unsupported",
+        "turn.stop.prevent": "approximate"
+      },
+      "commandKey": "command",
+      "evidence": "fixtures/opencode/2.0/tool-before.canonical.json"
+    },
+    {
+      "name": "pi",
+      "grades": {
+        "tool.before.block": "exact",
+        "tool.before.input.replace": "exact",
+        "tool.before.context.add": "unsupported",
+        "turn.stop.prevent": "emulated"
+      },
+      "commandKey": "command",
+      "evidence": "fixtures/pi/1.3/tool-call-bash.canonical.json"
+    }
+  ]
+}
