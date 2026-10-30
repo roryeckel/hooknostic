@@ -1315,6 +1315,12 @@ function summarize(harness, caseName, session) {
           model: entry.body.model,
           ...(sandbox === undefined ? {} : { sandboxReported: sandbox }),
           tools: toolDeclarations(entry.body).map(toolName),
+          // Declared with defer_loading: kept out of the model's context until a
+          // tool search loads it. Claude 2.1.304 added one to a session running
+          // as an agent (README, "The agent as the main session").
+          deferredTools: toolDeclarations(entry.body)
+            .filter((tool) => tool.defer_loading === true)
+            .map(toolName),
           markerInSystem: system.some((text) => text.includes(MARKER)),
           systemParts: system.length,
           system: excerpt(joined),

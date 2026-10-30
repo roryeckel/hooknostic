@@ -443,6 +443,26 @@ and 1.18.18, and OpenCode 2.0.17, with the same result on each build of a family
   refused: "Agent type 'hn-probe' has been denied by permission rule
   'Agent(hn-probe)' from projectSettings." With the same rule, `--agent hn-probe`
   still ran the session as the agent (`deny-flag`).
+- **From Claude 2.1.304, a session running as an agent also declares an inert
+  deferred tool.** Re-run on 2026-10-29, `generated-primary` declared exactly
+  `Read, Grep` on 2.1.238, 2.1.274, 2.1.289, 2.1.296, 2.1.302 and 2.1.303. On
+  2.1.304, 2.1.306, 2.1.310, 2.1.311 and 2.1.312 every request also declared
+  `DeferredToolPlaceholder`, with `defer_loading: true`, an empty input schema
+  and the description "Reserved placeholder that keeps deferred tool loading
+  active; never call this tool." `packaged-primary` and `generated-default` did
+  the same on 2.1.312, while the delegated child of `generated` and `packaged`
+  still declared exactly `Read, Grep`. The Messages API documents that a
+  `defer_loading` tool stays out of the model's context until a tool search
+  loads it (doc-derived: a loopback server cannot see the model's context).
+  These requests declare no search tool, so the loaded set is still
+  `Read, Grep`. The result was the same with the account's configuration in
+  place and with an empty `CLAUDE_CONFIG_DIR`.
+  Claude's own deferred tools are not declared this way. With an MCP server
+  passed through `--mcp-config` and the agent file's `tools` removed (a
+  mutant), the session listed `mcp__greet__greet` by name in a message for
+  its `ToolSearch` tool, and the placeholder was still the only `defer_loading`
+  declaration. The drive reports such declarations as `deferredTools`, and the
+  playback test asserts the loaded set: the declarations that are not deferred.
 - **OpenCode v2 ignores the agent's model for a session running as it.** In an
   earlier run of `primary-flag` with no configured `model`, the session did not
   fall back to the agent's model either. It reached OpenCode's hosted default

@@ -38,7 +38,7 @@ interface Summary {
   childWriteLanded: boolean;
   playbackErrors: string[];
   parent: { descriptionInRequest: boolean; childResultReturned: boolean; toolBearingRequests: number };
-  child: { turns: { model?: string; tools: string[]; markerInSystem: boolean }[] };
+  child: { turns: { model?: string; tools: string[]; deferredTools: string[]; markerInSystem: boolean }[] };
   identity: string[];
 }
 
@@ -87,6 +87,14 @@ const DEFAULT_CASE: { model: string; agent?: string } =
       : lane === "codex"
         ? { model: "hooknostic-playback" }
         : { model: ALT_MODEL, agent: "chat.message:hn-probe" };
+
+// native.claude.tools is the child's exact loaded tool set. Since 2.1.304 a
+// session running as an agent also declares DeferredToolPlaceholder with
+// defer_loading, described as never to be called, so a deferred declaration
+// is not a loaded tool (.capture/agents/README.md).
+function expectClaudeTools(turn: Summary["child"]["turns"][number]): void {
+  expect(turn.tools.filter((name) => !turn.deferredTools.includes(name))).toEqual(["Read", "Grep"]);
+}
 
 describe.skipIf(lane === undefined)(`agent definition playback (${lane ?? "off"})`, () => {
   it.skipIf(lane !== "codex")(
@@ -189,8 +197,7 @@ describe.skipIf(lane === undefined)(`agent definition playback (${lane ?? "off"}
         expect(turn.markerInSystem).toBe(true);
         expect(turn.model).toBe(model);
       }
-      // native.claude.tools is the child's exact tool set.
-      if (lane === "claude") expect(summary.child.turns[0]!.tools).toEqual(["Read", "Grep"]);
+      if (lane === "claude") expectClaudeTools(summary.child.turns[0]!);
       expect(summary.parent.childResultReturned).toBe(true);
     },
     300_000,
@@ -210,7 +217,7 @@ describe.skipIf(lane === undefined)(`agent definition playback (${lane ?? "off"}
         expect(turn.model).toBe(model);
       }
       expect(summary.parent.toolBearingRequests, output).toBe(0);
-      if (lane === "claude") expect(summary.child.turns[0]!.tools).toEqual(["Read", "Grep"]);
+      if (lane === "claude") expectClaudeTools(summary.child.turns[0]!);
       // The session's own events name the agent, as the harness reports it.
       expect(summary.identity).toContain(agent);
     },
