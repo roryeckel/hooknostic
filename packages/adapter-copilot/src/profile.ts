@@ -140,6 +140,13 @@ export const copilotValidationRecords: AgentPluginProjectionProfile["source"]["v
     what: 'A root .mcp.json shared with Claude: .github/copilot/settings.json disabledMcpServers kept named servers from starting while repo-level deniedMcpServers was ignored, Claude\'s disabledMcpjsonServers was ignored, and a cwd "." entry started in the project with GITHUB_WORKSPACE set elsewhere (foreign-components-probe.sh).',
   },
   COPILOT_SKILL_POLICY_VALIDATION,
+  {
+    version: "1.0.102",
+    date: "2026-10-30",
+    method: "live-probe",
+    artifact: CAPTURE,
+    what: 'sessionStart output over the loopback model, headless and in the TUI, camelCase and PascalCase: systemMessage was dropped at parse (absent from hook.end, every output stream, the screen and every model request) for sources new, resume and a TUI /clear; additionalContext reached the model as its own user message; a type:"prompt" entry ran only in the TUI, as an auto-submitted user turn the model answered. The same held on 1.0.101.',
+  },
 ];
 
 /**
