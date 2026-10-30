@@ -53,6 +53,8 @@ node .capture/copilot/probe.mjs mcp-permission
 node .capture/copilot/claude-mcp-fence-probe.mjs [claude-binary]
 node .capture/copilot/probe.mjs notification-shell-while-busy
 node .capture/copilot/probe.mjs notification-background-agent
+node --experimental-strip-types .capture/copilot/session-start-notify.mjs [variant...]
+node --experimental-strip-types .capture/copilot/session-start-notify-pty.mjs [variant...]
 node .capture/copilot/make-fixtures.mjs
 ```
 
@@ -102,6 +104,9 @@ node .capture/copilot/make-fixtures.mjs
   URL, a git-hosted marketplace, `--plugin-dir`) from a loopback smart-HTTP git
   server and records the install tree, a dependency-install marker, and the
   `PLUGIN_ROOT`/`PLUGIN_DATA` a hook and a stdio server see.
+- `session-start-notify.mjs` / `session-start-notify-pty.mjs` — the
+  session-start notice probe, headless and TUI, against the loopback model
+  (no model spend). `COPILOT_BINARY` selects the build.
 - `make-fixtures.mjs` — redacts the account name to `user` and writes input
   fixtures plus the native-event hints the camelCase payloads need.
 - `captured/` — gitignored raw tees.
@@ -142,6 +147,71 @@ node .capture/copilot/make-fixtures.mjs
 | `agentStop` prevent | `{decision:"block",reason}` forced another turn. The harness stopped after eight consecutive blocks; later calls had `stop_hook_active:true`. | `turn.stop.prevent` exact. |
 | `subagentStop` prevent | `{decision:"block",reason}` forced more subagent turns. A session-scoped hook blocked more than forty consecutive completions with `stop_hook_active:true`; the documented eight-block guard was not observed. | `agent.stop.prevent` approximate, with the unbounded-loop rationale. |
 | User-facing notification on stop | `{decision:"allow",reason}` changed nothing the user sees, and `{systemMessage}` on `agentStop` and `subagentStop` appeared neither in the output nor in the session log. | `*.notify` unsupported. |
+| User-facing notice at session start | `{systemMessage}` on `sessionStart` was shown nowhere and never reached the model. A `type:"prompt"` entry is an auto-submitted user turn, not a notice. See [Session-start notice](#session-start-notice). | No `session.start.notify` channel. |
+
+## Session-start notice
+
+Question: can a `sessionStart` hook show the user a notice that the model never
+sees? This is the evidence for a possible portable `session.start.notify`; no
+vocabulary or adapter behaviour depends on it yet.
+
+Method (2026-10-30, Windows 11, no model spend): `session-start-notify.mjs`
+(headless) and `session-start-notify-pty.mjs` (TUI under node-pty with an
+`@xterm/headless` screen) run the real binary against the loopback playback
+model with the BYOK variables the playback lane uses, a private `COPILOT_HOME`
+and `COPILOT_ALLOW_ALL=true` (`--trust-folder` is refused beside `--resume` and
+outside `-p`). A command hook answers `{systemMessage}` (`notify`),
+`{systemMessage, additionalContext}` (`compose`) or `{additionalContext}`
+(`context`, the control). Each string carries a per-run nonce and the payload's
+`source`. The `prompt` variants add a `{type:"prompt", prompt}` entry beside a
+silent command entry. Every variant ran again under `SessionStart` (`pascal-*`),
+where `compose` and `context` also returned
+`hookSpecificOutput.additionalContext`. Each nonce was searched in stdout and
+stderr (text and `--output-format json`), in every file under `COPILOT_HOME`
+(session `events.jsonl` and the process logs), on the rendered screen, and in
+every loopback request. Builds: scratch `npm install --prefix` of 1.0.101 and
+1.0.102. With auto-update left on, a native binary starts the newest build in
+`%LOCALAPPDATA%\copilot\pkg`, whatever its own version.
+`COPILOT_AUTO_UPDATE=false` kept the 1.0.101 binary on 1.0.101. Every run sets
+it and records `--version` under that environment.
+
+| Source (how) | Surface | `systemMessage` shown | `systemMessage` reached model | `additionalContext` | `prompt` entry |
+| --- | --- | --- | --- | --- | --- |
+| `new` (`-p`) | stdout text and JSON stream | no | no | not shown; reached the model | did not run |
+| `resume` (`-p --resume=<id>`) | stdout text and JSON stream | no | no | not shown; reached the model | did not run |
+| `new` (TUI first prompt) | screen | no | no | not shown; reached the model | submitted at launch as the first user turn: shown as `❯ <prompt>`, answered by the model |
+| `resume` (TUI `--resume=<id>`) | screen | no | no | not shown; reached the model | not resubmitted; the earlier turn is replayed from history |
+| `new` (TUI `/clear`) | screen | no | no | not shown; reached the model | submitted again in the fresh session |
+
+Observations, identical on 1.0.101 and 1.0.102 and in both hook spellings:
+
+- **`systemMessage` is dropped at parse.** The hook printed it on every run, but
+  the session log's `hook.end` record keeps only recognised output. That is
+  `{"success":true}` for `notify`, and `output:{additionalContext}` only for
+  `compose`. The nonce appeared in no output stream, log, screen or request.
+- **Sources.** Only `new` and `resume` were observed. `/clear` in the TUI
+  starts a new session id and fires the event again with `source: "new"`.
+  Compaction does not fire it (`preCompact` row above).
+- **Timing in the TUI.** The event fires when the first prompt is submitted,
+  not at launch: its `initialPrompt` is the typed text, so nothing a hook
+  returns can be on screen before the user's first prompt. A `prompt` entry
+  becomes that first prompt, which fires the event at launch with
+  `initialPrompt` set to the entry's text.
+- **Context placement.** `additionalContext` arrives as its own `user`
+  message holding exactly the string, before the user's prompt. On resume the
+  new `-resume` context is inserted at the head of the replayed history, and
+  the original `-new` context is not replayed. Under `SessionStart`,
+  `hookSpecificOutput.additionalContext` beside a top-level
+  `additionalContext` did not reach the model; only the top-level field did.
+  The nested field was not probed alone.
+- **`prompt` entry.** Interactive-only. In `-p` it neither ran nor reached
+  the model. In the TUI it is a real user turn: written to the log as
+  `user.message`, sent to the model, and shown as the user's own input. It is
+  model-visible by construction, so it is no notice channel.
+
+Consequence: Copilot has no user-only channel at session start. A portable
+`session.start.notify` would be `unsupported` here; the only start-time output
+that reaches anything is `additionalContext`, which is model-visible.
 
 ## Tool shapes and shell dialects
 
