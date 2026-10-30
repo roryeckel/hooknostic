@@ -55,6 +55,11 @@ export interface PiApplication {
    * is model-visible and cannot implement a user-facing notify effect.
    */
   sendMessage?: { content: string; triggerTurn: true }[];
+  /**
+   * session_start: ctx.ui.notify calls, in order. User-only: no model request
+   * carried one (.capture/pi/README.md).
+   */
+  notices?: string[];
 }
 
 const UNREPRESENTABLE = "[hooknostic: unrepresentable output]";
@@ -125,6 +130,13 @@ export function planPiApplication(result: HookResult): PiApplication {
 
   if (result.event === "turn.stop" && terminal?.kind === "preventStop") {
     application.sendMessage = [{ content: terminal.reason ?? "hooknostic: continue working", triggerTurn: true }];
+  }
+
+  if (result.event === "session.start") {
+    const notices = result.effects
+      .filter((e) => e.effect.kind === "notify")
+      .map((e) => (e.effect as { message: string }).message);
+    if (notices.length > 0) application.notices = notices;
   }
 
   return application;

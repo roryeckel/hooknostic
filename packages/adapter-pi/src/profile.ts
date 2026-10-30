@@ -327,6 +327,11 @@ export const piCapabilityProfiles: CapabilityProfile[] = [
     },
     fields: piFields,
     matrix: piMatrix("1.3.0", "1.3", {
+      "session.start.notify": {
+        level: "approximate",
+        rationale:
+          "ctx.ui.notify at warning level from session_start reached no model request and shows in the TUI and as an RPC extension_ui_request. Print mode has no UI and shows nothing, and a --continue launch paints no notify. Info level is not used: Pi's own status line replaced it after reload, resume and fork (.capture/pi/README.md).",
+      },
       "tool.after.output.replace": {
         level: "approximate",
         rationale:

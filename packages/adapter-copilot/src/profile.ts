@@ -202,6 +202,11 @@ export const copilotCapabilityProfiles: CapabilityProfile[] = [
     matrix: {
       "session.start.observe": { level: "exact" },
       "session.start.context.add": { level: "exact" },
+      "session.start.notify": {
+        level: "unsupported",
+        rationale:
+          'No user-only channel at session start: a sessionStart systemMessage is dropped at parse, headless and in the TUI, additionalContext reaches the model, and a type:"prompt" entry is an auto-submitted user turn the model answers (.capture/copilot/README.md).',
+      },
 
       "session.end.observe": { level: "exact" },
 

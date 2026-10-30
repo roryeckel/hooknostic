@@ -45,6 +45,12 @@ export interface OpenCodeApplication {
    * notice before the instruction that keeps it working.
    */
   prompts?: { text: string; reply: boolean }[];
+  /**
+   * Text the shim shows with `client.tui.showToast`, the only user-only channel
+   * and only under a TUI (.capture/opencode-notice). One string, because a newer
+   * toast replaces the one on screen.
+   */
+  toast?: string;
 }
 
 const UNREPRESENTABLE_OUTPUT = "[hooknostic: unrepresentable output]";
@@ -115,6 +121,13 @@ export function planOpenCodeApplication(result: HookResult): OpenCodeApplication
       });
     }
     if (prompts.length > 0) application.prompts = prompts;
+  }
+
+  if (result.event === "session.start") {
+    const notices = result.effects
+      .filter((e) => e.effect.kind === "notify")
+      .map((e) => (e.effect as { message: string }).message);
+    if (notices.length > 0) application.toast = notices.join("\n");
   }
 
   if (result.event === "permission.request" && terminal?.kind === "block") {

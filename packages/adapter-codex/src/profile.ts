@@ -249,6 +249,11 @@ export const codexCapabilityProfiles: CapabilityProfile[] = [
     matrix: {
       "session.start.observe": { level: "exact" },
       "session.start.context.add": { level: "exact" },
+      "session.start.notify": {
+        level: "approximate",
+        rationale:
+          "systemMessage on SessionStart renders in the interactive TUI for every source and reached no model request, but codex exec, plain or --json, shows it nowhere. The TUI dispatches SessionStart with the first submitted prompt, so the notice appears then, not when the session opens (.capture/codex-session-start).",
+      },
 
       "session.end.observe": { level: "exact" },
 

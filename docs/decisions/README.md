@@ -42,6 +42,7 @@ Read these when you want to know *why* something works the way it does, not just
 | [0031 — Unsupported components can have named, accepted omissions](0031-named-component-omissions.md) | How does a package deliberately omit one unsupported component without relaxing every target's policy? |
 | [0032 — An MCP tool's server and tool may come from what the harness states](0032-stated-mcp-identity.md) | Why does a pi `tool.before` hook see an MCP call without its server, and where does the server come from? |
 | [0033 — Each harness runs only the output generated for it](0033-no-cross-harness-compatibility-reads.md) | Why does Copilot ignore my `.claude/settings.json` hooks, and what happens when one harness reads another's files? |
+| [0036 — A session-start notification](0036-session-start-notify.md) | Why can a hook tell the user something when a session starts, and where does that not work? |
 
 Each record is immutable once accepted; a change of course gets a new record that
 supersedes the old one rather than a silent edit.

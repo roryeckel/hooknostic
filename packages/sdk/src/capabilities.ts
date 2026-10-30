@@ -12,6 +12,7 @@ import type { HookEventName } from "./events.js";
 export const ALL_CAPABILITY_IDS = [
   "session.start.observe",
   "session.start.context.add",
+  "session.start.notify",
 
   "session.end.observe",
 

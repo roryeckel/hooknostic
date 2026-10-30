@@ -123,6 +123,7 @@ So each effect, at each event, is a named **capability**:
 tool.before.block          tool.after.output.replace     session.start.context.add
 tool.before.input.replace  tool.after.blockContinuation  turn.stop.prevent
 tool.before.requestApproval  ...                          turn.stop.notify
+                                                           session.start.notify
 ```
 
 (Using an event at all implies its `<event>.observe` capability.)

@@ -272,6 +272,11 @@ export const opencodeCapabilityProfiles: CapabilityProfile[] = [
           "observed via plugin initialization and session.created on the server event bus; there is no per-session subprocess start.",
       },
       // No context channel at session start → session.start.context.add unsupported.
+      "session.start.notify": {
+        level: "approximate",
+        rationale:
+          "client.tui.showToast at session.created is user-only, but only under a TUI, local or attached to serve: it reached no model request, and under opencode run the call succeeds and nothing appears. The toast is transient and a newer toast replaces it. Best-effort: a silent no-op without a client or if the call fails (.capture/opencode-notice).",
+      },
 
       "session.end.observe": {
         level: "approximate",

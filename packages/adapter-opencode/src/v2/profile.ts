@@ -207,6 +207,11 @@ export const opencodeV2CapabilityProfiles: CapabilityProfile[] = [
         rationale:
           "Via the live session.created subscription, for sessions created in the plugin's own location. A server session created before lazy plugin setup is missed; plugin setup itself is not a session start.",
       },
+      "session.start.notify": {
+        level: "unsupported",
+        rationale:
+          "A server plugin has no user-only channel: ctx has no ui or attention at runtime, no built-in TUI renders an RPC event, and session.synthetic resume:false is not shown and reaches the model. Only a companion ./tui entry can show one, and Hooknostic generates none (.capture/opencode-notice).",
+      },
       "prompt.before.observe": { level: "exact" },
       "prompt.before.block": {
         level: "exact",

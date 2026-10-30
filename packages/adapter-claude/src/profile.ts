@@ -237,6 +237,11 @@ export const claudeCapabilityProfiles: CapabilityProfile[] = [
     matrix: {
       "session.start.observe": { level: "exact" },
       "session.start.context.add": { level: "exact" },
+      "session.start.notify": {
+        level: "approximate",
+        rationale:
+          "systemMessage on SessionStart is user-only: it reached no model request on any source, and the interactive TUI shows it for startup, clear, compact and resume. Headless -p streams it only for source compact, so a startup or resume notice is lost to a -p or SDK consumer. The TUI redraws earlier notices when a session is resumed (.capture/claude-output).",
+      },
 
       "session.end.observe": { level: "exact" },
 

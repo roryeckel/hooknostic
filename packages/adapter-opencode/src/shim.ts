@@ -27,6 +27,9 @@ export interface OpenCodeShimOptions {
   pluginRoot?: string;
 }
 
+/** Long enough to read a toast; the duration the capture rendered. */
+const TOAST_DURATION_MS = 15_000;
+
 /**
  * Minimal structural view of the OpenCode SDK client. Described locally rather
  * than imported: this package deliberately has no dependency on
@@ -49,6 +52,13 @@ export interface OpenCodeClient {
      * .capture/opencode-turn-fields). Prototype method, same `this` caveat.
      */
     messages?: (options: { path: { id: string } }) => unknown;
+  };
+  tui?: {
+    /**
+     * Shows a toast and answers true whether or not anything rendered
+     * (.capture/opencode-notice). Prototype method, same `this` caveat.
+     */
+    showToast?: (options: { body: { title?: string; message: string; variant: "info"; duration?: number } }) => unknown;
   };
   /**
    * Answers a pending permission request ("Respond to a permission request",
@@ -263,6 +273,7 @@ export function createHooknosticHooks(
     if (diagnostics !== undefined) console.error(diagnostics);
 
     await postPrompts(event, application);
+    await showToast(application);
     await replyPermission(event, native, application);
 
     if (application.throwMessage !== undefined) {
@@ -334,6 +345,28 @@ export function createHooknosticHooks(
       } catch {
         // Fail open.
       }
+    }
+  };
+
+  /**
+   * Show a session-start notice. Best-effort like postPrompts: a missing client
+   * or a failed call is a silent no-op. Bounded for the same reason.
+   */
+  const showToast = async (application: ReturnType<typeof planOpenCodeApplication>): Promise<void> => {
+    if (application.toast === undefined) return;
+    // Called as `tui.showToast(...)`, never detached: see postPrompts.
+    const tui = pluginInput.client?.tui;
+    if (tui === undefined || typeof tui.showToast !== "function") return;
+    try {
+      await withTimeout(
+        Promise.resolve(
+          tui.showToast({
+            body: { title: "hooknostic", message: application.toast, variant: "info", duration: TOAST_DURATION_MS },
+          }),
+        ),
+      );
+    } catch {
+      // Fail open.
     }
   };
 
