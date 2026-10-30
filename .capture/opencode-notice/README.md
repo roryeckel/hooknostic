@@ -134,3 +134,24 @@ A portable `session.start.notify` has these OpenCode cells:
 Neither family offers a mode-independent route. The only route that works in
 every mode, a transcript message (`noReply` / `synthetic`), is read by the
 model.
+
+## OpenCode Desktop (doc-derived, source read 2026-10-30)
+
+Desktop was **not run**. No probe here observed it, and nothing above covers
+it. This records a read of the `anomalyco/opencode` `dev` branch and its plugin
+docs; `packages/plugin/src/gui/plugin.ts` was also confirmed in tag `v2.2.0`.
+
+- A v2 plugin has separate parts. `./tui` runs in the terminal UI, and
+  `./gui-experimental`, a prebuilt CommonJS bundle using
+  `@opencode/plugin/gui`, runs in Desktop windows and its main process.
+- Desktop loads GUI parts from the plugins in the global `opencode.json`, so a
+  project-level plugin would not reach it.
+- The GUI context has its own toast API, in `packages/plugin/src/gui/host-apis.ts`.
+- Only the desktop app's own server runs a plugin's GUI. Other servers and the
+  web app list plugin names (`packages/app/src/runtime/plugin/extension-plugins.tsx`).
+- A code search found no `tui.toast` handling under `packages/app`,
+  `packages/desktop`, `packages/ui` or `packages/session-ui`, which suggests the
+  v1 toast does not reach Desktop either. A code search can miss files, so this
+  is not established.
+
+Consequence: a companion `./tui` entry serves terminal users only (ADR-0036).

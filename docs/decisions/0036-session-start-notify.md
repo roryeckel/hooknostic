@@ -45,8 +45,8 @@ No model request carried a notice on any harness. Four of the six deliver one, w
    anything that has to reach the user. Claude, Codex, OpenCode v1 and Pi are therefore
    `approximate`, each rationale naming what is lost.
 4. **OpenCode v2 and Copilot are `unsupported`, stated explicitly.** Hooknostic generates
-   no `./tui` entry. A generated TUI companion is a new delivery surface and a separate
-   decision.
+   no `./tui` entry, and this decision does not add one: it would serve terminal users
+   only, because OpenCode Desktop does not load that part (see Consequences).
 5. **Pi uses warning level, and only the 1.x line is rated.** Pi's status line replaced
    an info notice after reload, resume and fork. The 0.84 line was not probed.
 6. **OpenCode joins notices into one toast.** The TUI shows one toast at a time and a
@@ -62,6 +62,13 @@ No model request carried a notice on any harness. Four of the six deliver one, w
 - A notice can arrive late or more than once. Codex dispatches SessionStart with the
   first submitted prompt, Claude fires it twice around `/compact` (`resume`, then
   `compact`), and its TUI redraws earlier notices on resume.
+- A `./tui` entry would not reach OpenCode Desktop. Desktop loads a separate
+  `./gui-experimental` part, a prebuilt CommonJS bundle, from the plugins in the global
+  `opencode.json`, so project delivery could not reach it either. Its API is marked
+  experimental and has its own toast call. If v2 notices become a priority, the design to
+  evaluate is one server RPC event with thin `./tui` and `./gui-experimental`
+  subscribers. This rests on a source read (`.capture/opencode-notice`), not a capture:
+  Desktop was not run, so it supports the decision not to build, and no rating cites it.
 - OpenCode v1 raises `session.start` for every `session.created`. Whether a child
   session's toast is wanted was not probed.
 - Hooks should gate on `ctx.capabilities.has("session.start.notify")` and declare it
