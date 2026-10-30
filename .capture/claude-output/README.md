@@ -110,23 +110,36 @@ Provenance for a possible `session.start.notify` cell, beside the existing
 
 **Live-probed against Claude Code 2.1.296 on Windows, 2026-10-12, and
 re-run unchanged against 2.1.312 on 2026-10-29, over the loopback playback
-model.** Both builds gave the results below. No model credits; the model side
-is observed as the requests the playback server recorded. Each run uses its own
+model.** Both builds gave the results below. The interactive TUI was driven
+through every source against 2.1.312 and the reference build 2.1.238 on
+Windows, 2026-10-30 (the TUI table below). No model credits; the model side is
+observed as the requests the playback server recorded. Each run uses its own
 `CLAUDE_CONFIG_DIR`, so the account's settings and installed plugins (and
 their SessionStart hooks) cannot reach the probe session.
 
 ```bash
 node --experimental-strip-types .capture/claude-output/session-start.mjs       # headless, three variants
-node --experimental-strip-types .capture/claude-output/session-start-pty.mjs   # interactive TUI, startup
+node --experimental-strip-types .capture/claude-output/session-start-pty.mjs   # interactive TUI, every source, three variants
 ```
+
+Set `HOOKNOSTIC_CLAUDE_BIN` to pick the build `session-start-pty.mjs` drives.
 
 A second SessionStart hook beside the stdin tee answers with a body whose
 strings carry a per-run nonce and the payload's `source`, so a match names the
 field and the start reason. `session-start.mjs` runs each variant three times
 in one project: a fresh start, `--resume <id>`, and `/compact` on the resumed
-session. `session-start-pty.mjs` starts the interactive TUI under node-pty,
-walks the first-run dialogs (a reduced copy of the playback suite's walk), and
-searches the rendered screen. It sends no prompt.
+session. `session-start-pty.mjs` starts the interactive TUI under node-pty and
+walks the first-run dialogs (a reduced copy of the playback suite's walk). One
+process then runs startup, a prompt, `/clear`, three prompts, `/compact`, a
+prompt, `/resume` (taking the picker's preselected entry, the startup
+session), and a prompt. A second process starts with `--resume <startup id>`
+and sends a prompt. Each step waits until the hook logs the source the step
+should produce, then searches only the screen output rendered since the step
+began. The prompts make model requests, so after each source the context is
+observed reaching the model and the notice is observed not reaching it. The
+playback model answers every request, the `/compact` summary included, with
+`ready`. 2.1.238 refused `/compact` after a single exchange ("Not enough
+messages to compact."), which is why the script sends three prompts before it.
 
 The `/compact` run fires SessionStart twice: `resume` when the session loads,
 then `compact`.
@@ -143,27 +156,58 @@ Every run also streams a `system/hook_response` record carrying the hook's raw
 stdout. That is verbose tracing of every hook, not a notice, and is not counted
 above.
 
-**Interactive TUI, source `startup`:** the notice rendered under the input line
-as `⎿  SessionStart:startup says: HKN-NOTICE-…-startup`. The context string did
-not appear on screen.
+**Interactive TUI.** Each cell below is the same on both builds and for both
+the `notify` and `compose` variants. A notice that is "shown" rendered as
+`⎿  SessionStart:<source> says: HKN-NOTICE-…-<source>`, beneath the command or
+the input line.
+
+| Source (how driven) | Notice shown | Notice in a model request | Context in the next model request (`compose`, `context`) |
+| --- | --- | --- | --- |
+| `startup` (launch) | yes | never | yes |
+| `clear` (`/clear`) | yes | never | yes |
+| `compact` (`/compact`) | yes, after `Compacted` | never, including the compaction request | yes |
+| `resume` (`/resume`) | yes | never | yes, with the resumed session's `startup` context |
+| `resume` (`--resume <id>`) | yes | never | yes, with the resumed session's `startup` context |
+
+The `context` variant showed nothing on screen for any source, and the context
+string never appeared on screen in any variant. In the `notify` variant no
+request carried either string. Across the six runs (two builds, three
+variants), no recorded request carried a notice string.
+
+Earlier notices are redrawn. The TUI stores each notice in the session
+transcript as an `attachment` record of type `hook_system_message`, beside the
+`hook_success` record. When a session is resumed, the earlier notices are
+redrawn with the restored history: `--resume` showed the old `startup` notice
+above the new `resume` one. Screen repaints after `/compact` and `/resume` also
+redrew notices from earlier in the current process. Redraws are history, not
+new deliveries: the notice for a source never appeared before its hook ran.
 
 ### What this establishes
 
 - **`systemMessage` on SessionStart is a user-only notice.** It reached no model
-  request in any run, and the interactive TUI showed it at startup. That is the
-  `notify` semantic the Stop family has (above).
+  request in any run, headless or interactive. The interactive TUI showed it
+  for every source: `startup`, `clear`, `compact`, and `resume` both through
+  `/resume` and `--resume`. That is the `notify` semantic the Stop family has
+  (above).
 - **Headless delivery differs by source.** In `-p` mode the notice was streamed
   for `compact` and not for `startup` or `resume`. In the recorded streams the
   `startup` and `resume` hooks finished before the `init` record, while the
   `compact` notice followed it. An SDK or `-p` consumer does not see a startup
   notice.
-- **`additionalContext` reached the model for all three sources** as a
-  system-level message beginning `SessionStart hook additional context:`. On
-  resume, the request carried the earlier run's context as well as the new one.
+- **`additionalContext` reached the model for every source**: the three
+  headless ones, and `clear` in the TUI. It arrived as a system-level message
+  beginning `SessionStart hook additional context:`. On resume, the request
+  carried the earlier run's context as well as the new one.
+- **The difference is the surface, not the source.** The interactive TUI
+  shows the notice for every source. Headless `-p` streams it only for
+  `compact`.
 
 ### Not established
 
-- Whether the TUI shows the notice for `resume`, `clear` or `compact`; only
-  `startup` was driven under the pty.
-- `clear`, which a headless session cannot issue.
-- Versions other than 2.1.296 and 2.1.312, and macOS and Linux.
+- Interactive builds other than 2.1.238 and 2.1.312. Headless builds other
+  than 2.1.296 and 2.1.312.
+- macOS and Linux. Linux was reachable from the capturing host through WSL
+  (Ubuntu) and Docker, but driving it needs a Linux Claude install and a Linux
+  node-pty build. That setup was not built for this probe.
+- Auto-compaction. Only `/compact` was driven.
+- IDE and other non-terminal front ends.
