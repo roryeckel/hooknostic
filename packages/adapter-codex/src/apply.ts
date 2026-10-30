@@ -50,6 +50,15 @@ export function applyCodex(
     hookSpecificOutput["additionalContext"] = context.join("\n");
     hasHookSpecific = true;
   }
+  // Only SessionStart: the stop family accepts systemMessage and discards it
+  // (.capture/codex-output). On SessionStart it renders in the TUI and never
+  // reaches the model (.capture/codex-session-start).
+  if (result.event === "session.start") {
+    const notices = result.effects
+      .filter((e) => e.effect.kind === "notify")
+      .map((e) => (e.effect as { message: string }).message);
+    if (notices.length > 0) body["systemMessage"] = notices.join("\n");
+  }
   if (replacedInput !== undefined && result.event === "tool.before") {
     // 0.148.0 protocol: a rewrite is expressed as allow + updatedInput.
     hookSpecificOutput["permissionDecision"] = "allow";

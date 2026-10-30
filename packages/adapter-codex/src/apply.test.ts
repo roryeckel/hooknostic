@@ -162,6 +162,37 @@ describe("applyCodex", () => {
     });
   });
 
+  it("encodes a session-start notice as a top-level systemMessage beside its context", async () => {
+    const native = await applyCodex(
+      result({
+        event: "session.start",
+        effects: [
+          { hookId: "a", effect: { kind: "notify", message: "first" } },
+          { hookId: "b", effect: { kind: "notify", message: "second" } },
+          { hookId: "c", effect: { kind: "addContext", context: "for the model" } },
+        ],
+      }),
+      {},
+      INVOCATION,
+    );
+    expect(native).toEqual({
+      exitCode: 0,
+      body: {
+        systemMessage: "first\nsecond",
+        hookSpecificOutput: { hookEventName: "SessionStart", additionalContext: "for the model" },
+      },
+    });
+  });
+
+  it("emits no systemMessage on the stop family, which discards it", async () => {
+    const native = await applyCodex(
+      result({ event: "turn.stop", effects: [{ hookId: "a", effect: { kind: "notify", message: "x" } }] }),
+      {},
+      INVOCATION,
+    );
+    expect(native).toEqual({ exitCode: 0 });
+  });
+
   it("emits a clean exit 0 when there is nothing to say", async () => {
     expect(await applyCodex(result({ event: "session.end" }), {}, INVOCATION)).toEqual({
       exitCode: 0,

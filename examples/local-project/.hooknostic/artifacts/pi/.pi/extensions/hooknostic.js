@@ -10,6 +10,7 @@ var __export = (target, all) => {
 var ALL_CAPABILITY_IDS = [
   "session.start.observe",
   "session.start.context.add",
+  "session.start.notify",
   "session.end.observe",
   "prompt.before.observe",
   "prompt.before.block",
@@ -5251,6 +5252,10 @@ function planPiApplication(result) {
   if (result.event === "turn.stop" && terminal?.kind === "preventStop") {
     application.sendMessage = [{ content: terminal.reason ?? "hooknostic: continue working", triggerTurn: true }];
   }
+  if (result.event === "session.start") {
+    const notices = result.effects.filter((e) => e.effect.kind === "notify").map((e) => e.effect.message);
+    if (notices.length > 0) application.notices = notices;
+  }
   return application;
 }
 var EXACT = {
@@ -5600,6 +5605,15 @@ function createHooknosticExtension(plugin, options) {
         }
       }
       const { result, application } = await runFailingOpen(native, enrichment);
+      if (name === "session_start" && application.notices !== void 0) {
+        const ui = ctx?.ui;
+        for (const message of application.notices) {
+          try {
+            ui?.notify?.(message, "warning");
+          } catch {
+          }
+        }
+      }
       if (name === "agent_settled" && application.sendMessage !== void 0) {
         for (const message of application.sendMessage) {
           try {
@@ -5635,7 +5649,7 @@ function createHooknosticExtension(plugin, options) {
 // hooknostic-shim-entry.ts
 var extension = createHooknosticExtension(hooks_default, {
   targetId: "pi",
-  capabilities: { "session.start.observe": "exact", "prompt.before.observe": "exact", "prompt.before.context.add": "exact", "model.request.before.observe": "exact", "model.request.before.context.add": "exact", "tool.before.observe": "exact", "tool.before.block": "exact", "tool.before.input.replace": "exact", "tool.after.observe": "exact", "tool.after.output.replace": "approximate", "tool.error.observe": "emulated", "context.compact.before.observe": "exact", "context.compact.before.block": "exact", "context.compact.after.observe": "exact", "turn.stop.observe": "emulated", "turn.stop.prevent": "emulated", "session.end.observe": "emulated" },
+  capabilities: { "session.start.observe": "exact", "prompt.before.observe": "exact", "prompt.before.context.add": "exact", "model.request.before.observe": "exact", "model.request.before.context.add": "exact", "tool.before.observe": "exact", "tool.before.block": "exact", "tool.before.input.replace": "exact", "tool.after.observe": "exact", "tool.after.output.replace": "approximate", "tool.error.observe": "emulated", "context.compact.before.observe": "exact", "context.compact.before.block": "exact", "context.compact.after.observe": "exact", "turn.stop.observe": "emulated", "turn.stop.prevent": "emulated", "session.end.observe": "emulated", "session.start.notify": "approximate" },
   minimumCapabilityLevel: "emulated",
   policy: { "onHookError": "continue", "timeoutMs": 5e3, "contextCharLimit": 16e3, "notifyCharLimit": 2e3 }
 });

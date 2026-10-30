@@ -315,6 +315,8 @@ tool.before.requestApproval  tool.after.blockContinuation
 tool.before.input.replace                                  context.compact.before.observe
 tool.before.context.add                                    context.compact.before.block
 
+session.start.notify
+
 turn.stop.observe
 turn.stop.prevent
 turn.stop.notify

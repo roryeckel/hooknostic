@@ -197,6 +197,27 @@ describe("applyClaude", () => {
     expect(native).toEqual({ exitCode: 0, body: { systemMessage: "first\nsecond" } });
   });
 
+  it("keeps a session-start notice top-level, beside its context", async () => {
+    const native = await applyClaude(
+      result({
+        event: "session.start",
+        effects: [
+          { hookId: "a", effect: { kind: "notify", message: "for the user" } },
+          { hookId: "b", effect: { kind: "addContext", context: "for the model" } },
+        ],
+      }),
+      {},
+      INVOCATION,
+    );
+    expect(native).toEqual({
+      exitCode: 0,
+      body: {
+        systemMessage: "for the user",
+        hookSpecificOutput: { hookEventName: "SessionStart", additionalContext: "for the model" },
+      },
+    });
+  });
+
   it("encodes blockContinuation approximately via exit 2 stderr", async () => {
     const native = await applyClaude(
       result({

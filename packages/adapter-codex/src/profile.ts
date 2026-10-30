@@ -52,6 +52,27 @@ export const codexCapabilityProfiles: CapabilityProfile[] = [
           what: "Stop output semantics: systemMessage accepted-and-discarded, never rendered",
         },
         {
+          version: "0.148.0",
+          date: "2026-10-30",
+          method: "live-probe",
+          artifact: ".capture/codex-session-start",
+          what:
+            "SessionStart output over the loopback model: systemMessage validates, renders in the interactive TUI for startup, " +
+            "compact, clear, resume and fork (fork arrives as source startup), and reached no model request; codex exec, plain or " +
+            "--json, shows it nowhere. additionalContext reached the model as a developer message and the TUI also showed it. " +
+            "The TUI dispatches SessionStart with the first submitted prompt, not when it opens.",
+        },
+        {
+          version: "0.166.0",
+          date: "2026-10-30",
+          method: "live-probe",
+          artifact: ".capture/codex-session-start",
+          what:
+            "SessionStart output re-probed: as 0.148.0 except that fork arrives as source fork and the TUI no longer shows " +
+            "additionalContext. systemMessage renders in the TUI for every source and reached no model request; codex exec, plain " +
+            "or --json, shows it nowhere.",
+        },
+        {
           version: "0.151.0",
           date: "2026-08-30",
           method: "router-log",
@@ -228,6 +249,11 @@ export const codexCapabilityProfiles: CapabilityProfile[] = [
     matrix: {
       "session.start.observe": { level: "exact" },
       "session.start.context.add": { level: "exact" },
+      "session.start.notify": {
+        level: "approximate",
+        rationale:
+          "systemMessage on SessionStart renders in the interactive TUI for every source and reached no model request, but codex exec, plain or --json, shows it nowhere. The TUI dispatches SessionStart with the first submitted prompt, so the notice appears then, not when the session opens (.capture/codex-session-start).",
+      },
 
       "session.end.observe": { level: "exact" },
 

@@ -3780,6 +3780,47 @@ scenarioDrive(
 );
 
 scenarioDrive(
+  "session-start-notify",
+  async () => {
+    const dir = await mkdtemp(join(tmpdir(), `hooknostic-sessionnotice-${adapter!.id}-`));
+    tempDirs.push(dir);
+    const build = await buildPlaybackArtifact(adapter!, dir);
+    let recordedRequests: readonly unknown[] = [];
+    let driveOutput = "";
+    await runInstalledHarness(build, "rewrite", {
+      effects: ["session-start-notify"],
+      extraArgs: adapter!.id === "claude" ? ["--output-format", "stream-json", "--verbose"] : [],
+      verify: async ({ server }) => {
+        recordedRequests = server.requests;
+      },
+      capture: (raw) => {
+        driveOutput = raw.stdout + raw.stderr;
+      },
+    });
+
+    expect(await traceEvents(build.tracePath)).toContain("session.start");
+    expect(recordedRequests.length, "no model requests were recorded").toBeGreaterThan(0);
+    const contents = requestContents(recordedRequests);
+    // The cell's semantic on every lane: whatever the user sees, the model does
+    // not. A channel that also fed the model would be addContext.
+    expect(
+      contents.filter((text) => text.includes("hooknostic-session-notice-marker")),
+      "session-start notice reached a model request",
+    ).toEqual([]);
+    // Headless drives show nothing, as each rationale documents: the TUI half
+    // of the cell needs a screen, and is pinned by each harness's .capture
+    // probe (ADR-0036). A verbose stream's hook_response row carries the hook's
+    // raw stdout and is tracing, not a notice (.capture/claude-output).
+    const shown = driveOutput
+      .split(/\r?\n/)
+      .filter((line) => line.includes("hooknostic-session-notice-marker"))
+      .filter((line) => !line.includes('"hook_response"'));
+    expect(shown, "session-start notice surfaced in headless output").toEqual([]);
+  },
+  () => cellLevel("session.start.notify") === undefined,
+);
+
+scenarioDrive(
   "stop-notify",
   async () => {
     const dir = await mkdtemp(join(tmpdir(), `hooknostic-notify-${adapter!.id}-`));

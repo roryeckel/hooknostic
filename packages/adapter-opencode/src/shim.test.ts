@@ -572,6 +572,54 @@ describe("createHooknosticHooks turn.stop posting", () => {
     body: { parts: { type: "text"; text: string }[]; noReply?: boolean };
   }
 
+  describe("session.start notify", () => {
+    const created = { event: { type: "session.created", properties: { info: { id: "ses_1" } } } };
+
+    function noticeHooks(client: unknown) {
+      const plugin = definePlugin({
+        name: "notice-test",
+        hooks: [
+          hook("session.start", {
+            id: "notice",
+            capabilities: { "session.start.notify": "required" },
+            async run() {
+              return [notify("first"), notify("second")];
+            },
+          }),
+        ],
+      });
+      return createHooknosticHooks(plugin, { capabilities: LEVELS, minimumCapabilityLevel: "approximate" }, {
+        ...PLUGIN_INPUT,
+        client,
+      } as Parameters<typeof createHooknosticHooks>[2]);
+    }
+
+    it("shows one toast, with its receiver, and posts nothing into the session", async () => {
+      // A newer toast replaces the one on screen, so notices share one. A class
+      // double because the real client's methods need `this` (see promptAsync).
+      class Tui {
+        readonly calls: { body: { message: string } }[] = [];
+        showToast(options: { body: { message: string } }) {
+          this.calls.push(options);
+          return Promise.resolve(true);
+        }
+      }
+      const tui = new Tui();
+      const promptAsync = vi.fn();
+      await noticeHooks({ tui, session: { promptAsync } })["event"]!(created, {});
+      expect(tui.calls).toEqual([
+        { body: { title: "hooknostic", message: "first\nsecond", variant: "info", duration: 15_000 } },
+      ]);
+      expect(promptAsync).not.toHaveBeenCalled();
+    });
+
+    it("is a silent no-op without a client, and survives a failing call", async () => {
+      await expect(noticeHooks(undefined)["event"]!(created, {})).resolves.toBeUndefined();
+      const failing = { tui: { showToast: () => Promise.reject(new Error("offline")) } };
+      await expect(noticeHooks(failing)["event"]!(created, {})).resolves.toBeUndefined();
+    });
+  });
+
   function stopPlugin() {
     return definePlugin({
       name: "stop-test",

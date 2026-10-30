@@ -306,6 +306,20 @@ export const piCapabilityProfiles: CapabilityProfile[] = [
           what: "HOOKNOSTIC_PLAYBACK=pi on Linux: the generated extension gave the fixture server's codemode-nested call tool.mcp on tool.after from pi.getAllTools() and none on tool.before, and its MCP-only output replacement reached the model in place of the fixture's output",
         },
         ...piEarlierMcpSourceValidations,
+        {
+          version: "1.3.0",
+          date: "2026-10-30",
+          method: "live-probe",
+          artifact: ".capture/pi/README.md",
+          what: "Session-start notices over the loopback model on Windows: ctx.ui.notify, setStatus, setWidget and setTitle from session_start reached no model request for any reason. RPC emitted each as an extension_ui_request for startup, new, resume and fork. The TUI rendered status, widget and title for every reason and a warning notify for all but a --continue launch; Pi's own status line replaced an info notify after reload, resume and fork. Print mode (hasUI false) showed none. A displayed pi.sendMessage reached every next request. --continue and --fork launches reported reason startup",
+        },
+        {
+          version: "1.4.0",
+          date: "2026-10-30",
+          method: "live-probe",
+          artifact: ".capture/pi/README.md",
+          what: "Session-start notice probe repeated on 1.4.0 with the same result as 1.3.0 for every surface and reason",
+        },
       ],
       notes: [
         "Installed package CHANGELOG.md and dist/core/extensions/types.d.ts (read 2026-10-19) are the schema-derived source; 1.2.0 made before_agent_start a messageType union",
@@ -313,6 +327,11 @@ export const piCapabilityProfiles: CapabilityProfile[] = [
     },
     fields: piFields,
     matrix: piMatrix("1.3.0", "1.3", {
+      "session.start.notify": {
+        level: "approximate",
+        rationale:
+          "ctx.ui.notify at warning level from session_start reached no model request and shows in the TUI and as an RPC extension_ui_request. Print mode has no UI and shows nothing, and a --continue launch paints no notify. Info level is not used: Pi's own status line replaced it after reload, resume and fork (.capture/pi/README.md).",
+      },
       "tool.after.output.replace": {
         level: "approximate",
         rationale:

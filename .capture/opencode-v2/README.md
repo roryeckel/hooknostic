@@ -162,6 +162,14 @@ paths, foreground subagent execution, and default MCP OAuth with refresh.
 A generated user-only notification, WebSocket/provider OAuth, search execution
 and SSE remain outside verified support.
 
+The user-only notification question was answered for session start on
+2026-10-30 (2.0.17 and 2.2.0, `../opencode-notice`). A **server-only** plugin
+has no `ctx.ui` or `ctx.attention` at runtime. Its RPC event reaches the event
+stream, but no built-in TUI renders it, whether local or attached to `serve`.
+`session.synthetic` with `resume:false` at `session.created` was not rendered
+and reached the model with the next prompt. Only the companion `./tui` route
+renders a notice: `notifications` re-ran green on 2.2.0.
+
 ## Stop prevention and notification
 
 `stop` drives a private `serve --stdio` server, because a posted continuation

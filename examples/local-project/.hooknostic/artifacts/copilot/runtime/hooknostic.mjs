@@ -29,6 +29,7 @@ var init_capabilities = __esm({
     ALL_CAPABILITY_IDS = [
       "session.start.observe",
       "session.start.context.add",
+      "session.start.notify",
       "session.end.observe",
       "prompt.before.observe",
       "prompt.before.block",
@@ -5827,7 +5828,7 @@ async function runCopilotCommandShim(source, options) {
 // hooknostic-shim-entry.ts
 await runCopilotCommandShim(() => Promise.resolve().then(() => (init_hooks(), hooks_exports)), {
   targetId: "copilot",
-  capabilities: { "session.start.observe": "exact", "session.start.context.add": "exact", "session.end.observe": "exact", "context.compact.before.observe": "exact", "prompt.before.observe": "exact", "prompt.before.block": "exact", "prompt.before.context.add": "emulated", "tool.before.observe": "exact", "tool.before.block": "exact", "tool.before.requestApproval": "exact", "tool.before.input.replace": "exact", "tool.before.context.add": "exact", "tool.after.observe": "exact", "tool.after.output.replace": "exact", "tool.after.blockContinuation": "approximate", "tool.after.context.add": "exact", "tool.error.observe": "exact", "tool.error.context.add": "exact", "permission.request.observe": "exact", "permission.request.block": "exact", "agent.start.observe": "exact", "agent.stop.observe": "exact", "agent.stop.prevent": "approximate", "turn.stop.observe": "exact", "turn.stop.prevent": "exact" },
+  capabilities: { "session.start.observe": "exact", "session.start.context.add": "exact", "session.start.notify": "unsupported", "session.end.observe": "exact", "context.compact.before.observe": "exact", "prompt.before.observe": "exact", "prompt.before.block": "exact", "prompt.before.context.add": "emulated", "tool.before.observe": "exact", "tool.before.block": "exact", "tool.before.requestApproval": "exact", "tool.before.input.replace": "exact", "tool.before.context.add": "exact", "tool.after.observe": "exact", "tool.after.output.replace": "exact", "tool.after.blockContinuation": "approximate", "tool.after.context.add": "exact", "tool.error.observe": "exact", "tool.error.context.add": "exact", "permission.request.observe": "exact", "permission.request.block": "exact", "agent.start.observe": "exact", "agent.stop.observe": "exact", "agent.stop.prevent": "approximate", "turn.stop.observe": "exact", "turn.stop.prevent": "exact" },
   minimumCapabilityLevel: "emulated",
   policy: { "onHookError": "continue", "timeoutMs": 5e3, "contextCharLimit": 16e3, "notifyCharLimit": 2e3 }
 });

@@ -132,6 +132,7 @@ export type PlaybackEffect =
   | "block-prompt" // prompt.before.block fires on the sentinel prompt
   | "prevent-stop-once" // stop.prevent on the first stop event only
   | "notify" // notify on stop events
+  | "session-start-notify" // notify on session.start
   | "block-continuation" // tool.after.blockContinuation on the sentinel marker
   | "request-approval" // tool.before.requestApproval on the sentinel marker
   | "permission-deny" // permission.request.block on any permission prompt
@@ -143,6 +144,7 @@ export const ALL_PLAYBACK_EFFECTS: readonly PlaybackEffect[] = [
   "block-prompt",
   "prevent-stop-once",
   "notify",
+  "session-start-notify",
   "block-continuation",
   "request-approval",
   "permission-deny",
@@ -170,6 +172,7 @@ function playbackPluginSource(
         : undefined,
       event === "permission.request" ? `"permission.request.block": "optional"` : undefined,
       event === "prompt.before" ? `"prompt.before.block": "optional"` : undefined,
+      event === "session.start" ? `"session.start.notify": "optional"` : undefined,
       event === "agent.stop"
         ? `"agent.stop.prevent": "optional",
         "agent.stop.notify": "optional"`
@@ -243,6 +246,9 @@ function playbackPluginSource(
             (event.raw?.stop_hook_active ?? false) !== true && !preventedSessions.has(event.session.id ?? "")) {
           preventedSessions.add(event.session.id ?? "");
           return preventStop("stop prevented once by harness playback");
+        }
+        if (effects.includes("session-start-notify") && "${event}" === "session.start") {
+          return notify("hooknostic-session-notice-marker");
         }
         if (effects.includes("notify") && ("${event}" === "turn.stop" || "${event}" === "agent.stop")) {
           return notify("hooknostic-notify-marker");
@@ -368,6 +374,7 @@ export async function buildPlaybackArtifact(
       if (event === "prompt.before") {
         declared["prompt.before.block"] = "optional" as const;
       }
+      if (event === "session.start") declared["session.start.notify"] = "optional" as const;
       if (event === "agent.stop") {
         declared["agent.stop.prevent"] = "optional" as const;
         declared["agent.stop.notify"] = "optional" as const;
