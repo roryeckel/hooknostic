@@ -1,0 +1,34 @@
+{
+  "hook": "execute.after",
+  "directory": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-agents-v2-Hb4wEC\\project",
+  "event": {
+    "tool": "read",
+    "sessionID": "ses_f10fc2403fferD1iCWg5YpcaAk",
+    "agent": "hn-probe",
+    "messageID": "msg_0ef03dc14001GBgzCSpkJnBKYY",
+    "id": "call_playback",
+    "input": {
+      "path": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-agents-v2-Hb4wEC\\project\\seed.txt"
+    },
+    "status": "completed",
+    "result": {
+      "output": {
+        "type": "file",
+        "uri": "file:///C:/Users/user/AppData/Local/Temp/hkn-agents-v2-Hb4wEC/project/seed.txt",
+        "name": "seed.txt",
+        "content": "alpha\n",
+        "encoding": "utf8",
+        "mime": "text/plain"
+      },
+      "content": [
+        {
+          "type": "text",
+          "text": "Read file C:\\Users\\user\\AppData\\Local\\Temp\\hkn-agents-v2-Hb4wEC\\project\\seed.txt, lines 1-1\n1: alpha"
+        }
+      ],
+      "metadata": {
+        "truncated": false
+      }
+    }
+  }
+}

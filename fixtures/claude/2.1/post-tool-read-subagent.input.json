@@ -1,0 +1,29 @@
+{
+  "session_id": "b1ecac89-df16-48f8-a47b-9ec1cd635cec",
+  "transcript_path": "C:\\Users\\user\\.claude\\projects\\C--Users-user-AppData-Local-Temp-hkn-agents-7fJTGp-claude\\b1ecac89-df16-48f8-a47b-9ec1cd635cec.jsonl",
+  "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-agents-7fJTGp\\claude",
+  "prompt_id": "e1f85ea7-b428-4b41-940e-47716627a3d5",
+  "permission_mode": "bypassPermissions",
+  "agent_id": "a4fc130c1dd24337f",
+  "agent_type": "hn-probe",
+  "effort": {
+    "level": "xhigh"
+  },
+  "hook_event_name": "PostToolUse",
+  "tool_name": "Read",
+  "tool_input": {
+    "file_path": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-agents-7fJTGp\\claude\\seed.txt"
+  },
+  "tool_response": {
+    "type": "text",
+    "file": {
+      "filePath": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-agents-7fJTGp\\claude\\seed.txt",
+      "content": "alpha\n",
+      "numLines": 2,
+      "startLine": 1,
+      "totalLines": 2
+    }
+  },
+  "tool_use_id": "toolu_playback_1",
+  "duration_ms": 6
+}

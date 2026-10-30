@@ -1,8 +1,7 @@
 import semver from "semver";
 
 import {
-  AGENT_PLUGIN_COMPONENT_IDS,
-  type AgentPluginComponentId,
+  type AgentDefinition,
   type AgentPluginComponentSupport,
   type AgentPluginDegradation,
   type AgentPluginDegradationDeclaration,
@@ -14,9 +13,11 @@ import {
   type AgentPluginProjectionProfile,
   type AgentPluginProjector,
   type AgentPluginRuntimePackage,
+  COMPONENT_IDS,
+  type ComponentId,
+  discoverComponents,
   selectSkillPolicies,
   SKILL_INVOCATION_POLICY,
-  skillPolicyCount,
 } from "@hooknostic/agent-plugin";
 import { type CompatibilityPolicy, leastCapable, meetsMinimum } from "@hooknostic/sdk";
 
@@ -25,7 +26,7 @@ import type { Diagnostic } from "./diagnostics.js";
 import { isRangeFullyCovered } from "./matrix.js";
 
 export interface AgentPluginProjectionResolution {
-  matrix?: Partial<Record<AgentPluginComponentId, AgentPluginComponentSupport>>;
+  matrix?: Partial<Record<ComponentId, AgentPluginComponentSupport>>;
   profilesUsed: AgentPluginProjectionProfile[];
   diagnostics: Diagnostic[];
 }
@@ -86,8 +87,8 @@ export function resolveAgentPluginProjection(
     });
     return { profilesUsed: [...used], diagnostics };
   }
-  const matrix: Partial<Record<AgentPluginComponentId, AgentPluginComponentSupport>> = {};
-  for (const id of AGENT_PLUGIN_COMPONENT_IDS) {
+  const matrix: Partial<Record<ComponentId, AgentPluginComponentSupport>> = {};
+  for (const id of COMPONENT_IDS) {
     let chosen: AgentPluginComponentSupport | undefined;
     // Every profile's, not the chosen one's: a build must not claim more than
     // the worst version in its range delivers, and a deviation any version in
@@ -130,7 +131,7 @@ export interface AgentPluginDeviationDiagnosticOptions {
   adapter: string;
   onDeviation: "error" | "warn";
   /** The resolved matrix the projector was given; every reported id must be declared in it. */
-  support: Partial<Record<AgentPluginComponentId, AgentPluginComponentSupport>>;
+  support: Partial<Record<ComponentId, AgentPluginComponentSupport>>;
   /** Qualified ids from `components.accept`, reported as information whatever the policy. */
   accept?: readonly string[];
 }
@@ -141,7 +142,7 @@ export interface AgentPluginDegradationDiagnosticOptions {
   adapter: string;
   onDegraded: "error" | "warn";
   /** The resolved matrix the projector was given; every reported id must be declared in it. */
-  support: Partial<Record<AgentPluginComponentId, AgentPluginComponentSupport>>;
+  support: Partial<Record<ComponentId, AgentPluginComponentSupport>>;
   /** Qualified ids from `components.accept`, reported as information whatever the policy. */
   accept?: readonly string[];
 }
@@ -188,7 +189,7 @@ function shortfallDiagnostics(
     target: string;
     adapter: string;
     severity: "error" | "warn";
-    support: Partial<Record<AgentPluginComponentId, AgentPluginComponentSupport>>;
+    support: Partial<Record<ComponentId, AgentPluginComponentSupport>>;
     accept?: readonly string[];
   },
 ): Diagnostic[] {
@@ -248,29 +249,26 @@ function discoveredComponents(
   source: AgentPluginPackage,
   namespace: string,
   runtimePackage?: AgentPluginRuntimePackage,
-): AgentPluginComponentId[] {
-  const ids = new Set<AgentPluginComponentId>(["agent-plugin.manifest"]);
-  if (source.skills.length > 0) ids.add("agent-plugin.skills");
-  if (skillPolicyCount(source.skills)) ids.add(SKILL_INVOCATION_POLICY);
-  for (const server of Object.values(source.mcp?.mcpServers ?? {})) {
-    ids.add(`agent-plugin.mcp.${server.type}` as AgentPluginComponentId);
-  }
-  if (
-    namespace !== "" &&
-    (source.files.some((file) => file.path.startsWith(`${namespace}/`)) ||
-      source.manifest.extensions?.[namespace] !== undefined)
-  ) {
-    ids.add("agent-plugin.client-extension.files");
-  }
-  if (runtimePackage !== undefined) ids.add("agent-plugin.runtime-package");
-  return [...ids];
+  agents?: readonly AgentDefinition[],
+  harness?: string,
+  defaultAgent?: string,
+): ComponentId[] {
+  return [
+    ...discoverComponents(source, {
+      namespace,
+      hasRuntimePackage: runtimePackage !== undefined,
+      ...(agents === undefined ? {} : { agents }),
+      ...(harness === undefined ? {} : { harness }),
+      ...(defaultAgent === undefined ? {} : { defaultAgent }),
+    }).keys(),
+  ];
 }
 
 /** HN205 retains unsupported fidelity even when its named omission is accepted. */
 export function unsupportedComponentDiagnostic(options: {
   adapter: string;
   target: string;
-  component: AgentPluginComponentId;
+  component: ComponentId;
   support?: AgentPluginComponentSupport;
   onUnsupported: "error" | "warn";
   accept?: readonly string[];
@@ -313,6 +311,10 @@ export function analyzeAgentPluginProjection(
    */
   compatibility?: Pick<Required<CompatibilityPolicy>, "minimum" | "onBelowMinimum">,
   accept?: readonly string[],
+  /** Agent definitions configured beside the package. */
+  agents?: readonly AgentDefinition[],
+  /** The default agent reported as a component. */
+  defaultAgent?: string,
 ): AgentPluginProjectionResolution {
   const projector = adapter.agentPluginProjector;
   if (projector === undefined) {
@@ -331,6 +333,9 @@ export function analyzeAgentPluginProjection(
             source,
             "",
             runtimePackage,
+            agents,
+            adapter.id,
+            defaultAgent,
           )
             .map((component) => JSON.stringify(component))
             .join(", ")} cannot be projected.`,
@@ -341,7 +346,14 @@ export function analyzeAgentPluginProjection(
   }
   const resolved = resolveAgentPluginProjection(target, projector);
   if (!resolved.matrix) return resolved;
-  for (const component of discoveredComponents(source, projector.namespace, runtimePackage)) {
+  for (const component of discoveredComponents(
+    source,
+    projector.namespace,
+    runtimePackage,
+    agents,
+    adapter.id,
+    defaultAgent,
+  )) {
     const support = resolved.matrix[component] ?? { level: "unsupported" as const };
     if (component === SKILL_INVOCATION_POLICY) {
       // Policy is per skill: accepting one known missing gate must neither

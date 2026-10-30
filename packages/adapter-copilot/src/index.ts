@@ -22,7 +22,7 @@ import { copilotHookRuntimePath, copilotHooksPath, generateCopilotArtifacts } fr
 import { copilotHarness } from "./harness.js";
 import { copilotHookEntryProblem } from "./hook-entries.js";
 import { copilotCapabilityProfiles } from "./profile.js";
-import { projectComponentProfiles, projectComponents, projectIntegration } from "./project.js";
+import { copilotAgents, projectComponentProfiles, projectComponents, projectIntegration } from "./project.js";
 import { copilotAgentPluginProjector } from "./project-agent-plugin.js";
 import { copilotSkillPolicy } from "./skill-policy.js";
 import {
@@ -37,7 +37,16 @@ export { copilotHarness } from "./harness.js";
 export { copilotHookEntryProblem } from "./hook-entries.js";
 export { copilotCapabilityProfiles } from "./profile.js";
 export { copilotAgentPluginProjector, nativeCopilotAgentPluginProjector } from "./project-agent-plugin.js";
-export { projectComponents, projectComponentProfiles, projectIntegration } from "./project.js";
+export {
+  COPILOT_AGENTS_DIRECTORY,
+  copilotAgents,
+  PRIMARY_AGENT_DELEGABLE,
+  primaryDelegableDeviations,
+  projectComponents,
+  projectComponentProfiles,
+  projectIntegration,
+  renderCopilotAgent,
+} from "./project.js";
 export { applyCopilot } from "./apply.js";
 export { CopilotDecodeError, decodeCopilot } from "./decode.js";
 export { copilotHookRuntimePath, copilotHooksPath, generateCopilotArtifacts } from "./generate.js";
@@ -111,7 +120,14 @@ export function copilotAdapter(): HarnessAdapter {
     id: "copilot",
     adapterVersion: "0.9.0", // kept equal to package.json by versions.test.ts
     harness: copilotHarness,
-    projectPaths: [".github/hooks", ".mcp.json", ".github/mcp.json", ".github/copilot/settings.json", ".agents/skills"],
+    projectPaths: [
+      ".github/hooks",
+      ".mcp.json",
+      ".github/mcp.json",
+      ".github/copilot/settings.json",
+      ".agents/skills",
+      ".github/agents",
+    ],
     // Copilot reads only the root .mcp.json when it exists, and a repository's
     // .github/copilot/settings.json disabledMcpServers keeps a named server in
     // it from starting while Claude ignores that file (1.0.101,
@@ -123,6 +139,7 @@ export function copilotAdapter(): HarnessAdapter {
     projectIntegration,
     projectComponents,
     projectComponentProfiles,
+    agents: copilotAgents,
     skillInvocationPolicy: {
       destination: ".agents/skills",
       discoveryDirectories: [".github/skills", ".claude/skills"],

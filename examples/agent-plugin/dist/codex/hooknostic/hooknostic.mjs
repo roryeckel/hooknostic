@@ -22,6 +22,10 @@ function isCapabilityId(value) {
 function canonicalCapability(event, key) {
   return isCapabilityId(key) ? key : `${event}.${key}`;
 }
+function agentIdentityCapability(event) {
+  const id = `${event}.agent.identity`;
+  return isCapabilityId(id) ? id : void 0;
+}
 var ALL_CAPABILITY_IDS, CAPABILITY_SET;
 var init_capabilities = __esm({
   "../../packages/sdk/dist/capabilities.js"() {
@@ -41,23 +45,29 @@ var init_capabilities = __esm({
       "tool.before.requestApproval",
       "tool.before.input.replace",
       "tool.before.context.add",
+      "tool.before.agent.identity",
       "tool.after.observe",
       "tool.after.output.replace",
       "tool.after.blockContinuation",
       "tool.after.context.add",
+      "tool.after.agent.identity",
       "tool.error.observe",
       "tool.error.context.add",
+      "tool.error.agent.identity",
       "permission.request.observe",
       "permission.request.block",
       "permission.request.context.add",
+      "permission.request.agent.identity",
       "context.compact.before.observe",
       "context.compact.before.block",
       "context.compact.before.context.add",
       "context.compact.after.observe",
       "agent.start.observe",
+      "agent.start.agent.identity",
       "agent.stop.observe",
       "agent.stop.prevent",
       "agent.stop.notify",
+      "agent.stop.agent.identity",
       "turn.stop.observe",
       "turn.stop.prevent",
       "turn.stop.notify"
@@ -126,7 +136,7 @@ var init_effects = __esm({
 function isToolScopedEvent(event) {
   return TOOL_SCOPED_EVENTS.includes(event);
 }
-var HOOK_EVENT_NAMES, TOOL_SCOPED_EVENTS;
+var HOOK_EVENT_NAMES, TOOL_SCOPED_EVENTS, AGENT_SCOPED_EVENTS;
 var init_events = __esm({
   "../../packages/sdk/dist/events.js"() {
     "use strict";
@@ -150,6 +160,11 @@ var init_events = __esm({
       "tool.after",
       "tool.error",
       "permission.request"
+    ];
+    AGENT_SCOPED_EVENTS = [
+      ...TOOL_SCOPED_EVENTS,
+      "agent.start",
+      "agent.stop"
     ];
   }
 });
@@ -196,6 +211,17 @@ var init_fields = __esm({
 });
 
 // ../../packages/sdk/dist/hook.js
+function hookAppliesToAgent(hook2, event) {
+  const scope = hook2.agents;
+  if (scope === void 0)
+    return true;
+  const agent = event.correlation.agentType;
+  if (scope.include !== void 0 && (agent === void 0 || !scope.include.includes(agent)))
+    return false;
+  if (scope.exclude !== void 0 && agent !== void 0 && scope.exclude.includes(agent))
+    return false;
+  return true;
+}
 function hookAppliesToTarget(hook2, targetId) {
   if (hook2.targets?.include && !hook2.targets.include.includes(targetId))
     return false;
@@ -230,16 +256,28 @@ function canonicalFields(event, hookId, declared) {
   return [...spelledAs.keys()];
 }
 function hook(event, spec) {
+  const capabilities = canonicalCapabilities(event, spec.id, spec.capabilities);
+  if (spec.agents !== void 0) {
+    const identity = agentIdentityCapability(event);
+    if (identity !== void 0) {
+      if (capabilities[identity] === "optional") {
+        throw new Error(`hook "${spec.id}" is scoped to agents, which requires "${identity}"; it cannot also declare it optional.`);
+      }
+      capabilities[identity] = "required";
+    }
+  }
   const def = {
     event,
     id: spec.id,
-    capabilities: canonicalCapabilities(event, spec.id, spec.capabilities),
+    capabilities,
     run: spec.run
   };
   if (spec.match !== void 0)
     def.match = spec.match;
   if (spec.targets !== void 0)
     def.targets = spec.targets;
+  if (spec.agents !== void 0)
+    def.agents = spec.agents;
   if (spec.timeoutMs !== void 0)
     def.timeoutMs = spec.timeoutMs;
   if (spec.fields !== void 0)
@@ -4627,7 +4665,7 @@ var init_tools = __esm({
 });
 
 // ../../packages/sdk/dist/schemas.js
-var hookEventNameSchema, capabilityIdSchema, supportLevelSchema, requirementLevelSchema, toolKindSchema, shellDialectSchema, eventFieldIdSchema, fieldAcceptanceSchema, MAX_TIMER_DELAY_MS, packageMaterializerSchema, toolInvocationSchema, baseHookEventSchema, jsonValueSchema, effectSchema, compatibilityPolicySchema, runtimePolicySchema, targetConfigSchema, projectMcpServerOverrideSchema, projectMcpTargetOverrideSchema, mcpEnvironmentRecordSchema, mcpEnvironmentSchema, hooknosticConfigSchema, targetScopeSchema, toolMatchSchema, hookDefinitionSchema, pluginSpecSchema;
+var hookEventNameSchema, capabilityIdSchema, supportLevelSchema, requirementLevelSchema, toolKindSchema, shellDialectSchema, eventFieldIdSchema, fieldAcceptanceSchema, MAX_TIMER_DELAY_MS, packageMaterializerSchema, toolInvocationSchema, baseHookEventSchema, jsonValueSchema, effectSchema, compatibilityPolicySchema, runtimePolicySchema, agentSelectionSchema, targetConfigSchema, projectMcpServerOverrideSchema, projectMcpTargetOverrideSchema, mcpEnvironmentRecordSchema, mcpEnvironmentSchema, hooknosticConfigSchema, targetScopeSchema, agentScopeSchema, toolMatchSchema, hookDefinitionSchema, pluginSpecSchema;
 var init_schemas = __esm({
   "../../packages/sdk/dist/schemas.js"() {
     "use strict";
@@ -4690,6 +4728,7 @@ var init_schemas = __esm({
         turnId: external_exports.string().optional(),
         toolCallId: external_exports.string().optional(),
         agentId: external_exports.string().optional(),
+        agentType: external_exports.string().optional(),
         parentAgentId: external_exports.string().optional()
       }).strict(),
       raw: external_exports.unknown()
@@ -4728,6 +4767,10 @@ var init_schemas = __esm({
       contextCharLimit: external_exports.number().int().positive().optional(),
       notifyCharLimit: external_exports.number().int().positive().optional()
     }).strict();
+    agentSelectionSchema = external_exports.object({
+      include: external_exports.array(external_exports.string().min(1)).optional(),
+      exclude: external_exports.array(external_exports.string().min(1)).optional()
+    }).strict();
     targetConfigSchema = external_exports.object({
       adapter: external_exports.string().min(1).optional(),
       version: external_exports.string().min(1),
@@ -4735,6 +4778,7 @@ var init_schemas = __esm({
       output: external_exports.string().min(1),
       npmName: external_exports.string().min(1).optional(),
       skillNames: external_exports.enum(["qualified", "authored"]).optional(),
+      agents: agentSelectionSchema.optional(),
       compatibility: compatibilityPolicySchema.optional()
     }).strict();
     projectMcpServerOverrideSchema = external_exports.object({
@@ -4770,6 +4814,7 @@ var init_schemas = __esm({
         root: external_exports.string().min(1).optional(),
         skills: external_exports.array(external_exports.string().min(1)).optional(),
         mcp: external_exports.string().min(1).optional(),
+        agents: external_exports.array(external_exports.string().min(1)).min(1).optional(),
         mcpOverrides: external_exports.record(external_exports.string().min(1), projectMcpTargetOverrideSchema).optional(),
         targets: external_exports.array(external_exports.string().min(1)).min(1).optional(),
         exclude: external_exports.array(external_exports.string().min(1)).optional(),
@@ -4789,7 +4834,8 @@ var init_schemas = __esm({
         onInvalid: external_exports.enum(["error", "warn"]).optional(),
         onDeviation: external_exports.enum(["error", "warn"]).optional(),
         onDegraded: external_exports.enum(["error", "warn"]).optional(),
-        accept: external_exports.array(external_exports.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*:[a-z0-9]+(?:-[a-z0-9]+)*$/)).optional()
+        accept: external_exports.array(external_exports.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*:[a-z0-9]+(?:-[a-z0-9]+)*$/)).optional(),
+        defaultAgent: external_exports.string().min(1).optional()
       }).strict().optional()
     }).strict().superRefine((config, context) => {
       if (config.entry === void 0 && config.components === void 0) {
@@ -4824,6 +4870,22 @@ var init_schemas = __esm({
         }
       }
       const componentTargets = new Set(config.components?.targets ?? Object.keys(config.targets));
+      for (const [name, target] of Object.entries(config.targets)) {
+        if (target.agents === void 0)
+          continue;
+        if (config.components?.agents === void 0)
+          context.addIssue({
+            code: external_exports.ZodIssueCode.custom,
+            path: ["targets", name, "agents"],
+            message: "a target's agents selection requires components.agents"
+          });
+        else if (!componentTargets.has(name))
+          context.addIssue({
+            code: external_exports.ZodIssueCode.custom,
+            path: ["targets", name, "agents"],
+            message: `target ${JSON.stringify(name)} selects agents but is not in components.targets`
+          });
+      }
       if (config.components && !config.project && Object.entries(config.targets).some(([name, target]) => componentTargets.has(name) && target.delivery === "project")) {
         context.addIssue({ code: external_exports.ZodIssueCode.custom, message: "project component delivery requires project.root" });
       }
@@ -4847,6 +4909,13 @@ var init_schemas = __esm({
             message: "components.executableFiles requires components.root or components.skills"
           });
         }
+        if (config.components.agents === void 0 && config.components.defaultAgent !== void 0) {
+          context.addIssue({
+            code: external_exports.ZodIssueCode.custom,
+            path: ["components", "defaultAgent"],
+            message: "components.defaultAgent requires components.agents"
+          });
+        }
         if (config.components.mcp === void 0 && config.components.mcpOverrides !== void 0) {
           context.addIssue({ code: external_exports.ZodIssueCode.custom, message: "components.mcpOverrides requires components.mcp" });
         }
@@ -4857,8 +4926,11 @@ var init_schemas = __esm({
             message: "components.mcpEnvironment requires components.root"
           });
         }
-        if (config.components.root === void 0 && config.components.skills === void 0 && config.components.mcp === void 0) {
-          context.addIssue({ code: external_exports.ZodIssueCode.custom, message: "components requires root, skills, or mcp" });
+        if (config.components.root === void 0 && config.components.skills === void 0 && config.components.mcp === void 0 && config.components.agents === void 0) {
+          context.addIssue({
+            code: external_exports.ZodIssueCode.custom,
+            message: "components requires root, skills, mcp, or agents"
+          });
         }
         const configured = new Set(Object.keys(config.targets));
         const seen = /* @__PURE__ */ new Set();
@@ -4932,6 +5004,10 @@ var init_schemas = __esm({
       include: external_exports.array(external_exports.string().min(1)).optional(),
       exclude: external_exports.array(external_exports.string().min(1)).optional()
     }).strict();
+    agentScopeSchema = external_exports.object({
+      include: external_exports.array(external_exports.string().min(1)).optional(),
+      exclude: external_exports.array(external_exports.string().min(1)).optional()
+    }).strict();
     toolMatchSchema = external_exports.object({
       kind: external_exports.union([toolKindSchema, external_exports.array(toolKindSchema)]).optional(),
       nativeName: external_exports.union([external_exports.string(), external_exports.array(external_exports.string())]).optional()
@@ -4941,6 +5017,7 @@ var init_schemas = __esm({
       id: external_exports.string().min(1),
       match: toolMatchSchema.optional(),
       targets: targetScopeSchema.optional(),
+      agents: agentScopeSchema.optional(),
       // Same bound as runtimePolicySchema.timeoutMs, and for the same reason:
       // Node clamps a longer delay to 1 ms, so an out-of-range budget makes the
       // hook time out on every dispatch instead of never. `positive` also keeps
@@ -5121,6 +5198,7 @@ async function dispatch(hooks, event, options) {
   const matching = hooks.filter((hook2) => {
     if (hook2.event !== event.event) return false;
     if (!hookAppliesToTarget(hook2, options.targetId)) return false;
+    if (!hookAppliesToAgent(hook2, event)) return false;
     const tool = toolOf(event);
     if (hook2.match && tool && !matchesTool(hook2.match, tool)) return false;
     return true;
@@ -5601,6 +5679,7 @@ var CODEX_TOOL_KINDS = {
   WebSearch: "web.search",
   spawn_agent: "agent",
   Agent: "agent",
+  multi_agent_v1wait_agent: "other",
   update_plan: "other"
 };
 var CODEX_SHELL_SHAPES = {
@@ -5661,7 +5740,10 @@ function decodeCodex(nativeEvent, invocation) {
     correlation: {
       ...typeof payload.turn_id === "string" ? { turnId: payload.turn_id } : {},
       ...typeof payload.tool_use_id === "string" ? { toolCallId: payload.tool_use_id } : {},
-      ...typeof payload.agent_id === "string" ? { agentId: payload.agent_id } : {}
+      ...typeof payload.agent_id === "string" ? { agentId: payload.agent_id } : {},
+      // Inside a subagent only; the main agent's events carry none (ADR-0035,
+      // fixtures pre-tool-bash-subagent and subagent-start-live).
+      ...typeof payload.agent_type === "string" ? { agentType: payload.agent_type } : {}
     },
     raw: nativeEvent
   };
@@ -5789,7 +5871,7 @@ async function runCodexCommandShim(source, options) {
 // hooknostic-shim-entry.ts
 await runCodexCommandShim(() => Promise.resolve().then(() => (init_hooks(), hooks_exports)), {
   targetId: "codex",
-  capabilities: { "session.start.observe": "exact", "session.start.context.add": "exact", "session.start.notify": "approximate", "session.end.observe": "exact", "prompt.before.observe": "exact", "prompt.before.block": "exact", "prompt.before.context.add": "exact", "tool.before.observe": "exact", "tool.before.block": "exact", "tool.before.requestApproval": "exact", "tool.before.input.replace": "exact", "tool.before.context.add": "exact", "tool.after.observe": "exact", "tool.after.output.replace": "unsupported", "tool.after.blockContinuation": "exact", "tool.after.context.add": "exact", "permission.request.observe": "exact", "permission.request.block": "exact", "context.compact.before.observe": "exact", "context.compact.after.observe": "exact", "agent.start.observe": "exact", "agent.stop.observe": "exact", "agent.stop.prevent": "exact", "turn.stop.observe": "exact", "turn.stop.prevent": "exact", "turn.stop.notify": "unsupported", "agent.stop.notify": "unsupported" },
+  capabilities: { "session.start.observe": "exact", "session.start.context.add": "exact", "session.start.notify": "approximate", "session.end.observe": "exact", "prompt.before.observe": "exact", "prompt.before.block": "exact", "prompt.before.context.add": "exact", "tool.before.observe": "exact", "tool.before.block": "exact", "tool.before.requestApproval": "exact", "tool.before.input.replace": "exact", "tool.before.context.add": "exact", "tool.before.agent.identity": "unsupported", "tool.after.observe": "exact", "tool.after.output.replace": "unsupported", "tool.after.blockContinuation": "exact", "tool.after.context.add": "exact", "tool.after.agent.identity": "unsupported", "permission.request.observe": "exact", "permission.request.block": "exact", "context.compact.before.observe": "exact", "context.compact.after.observe": "exact", "agent.start.observe": "exact", "agent.start.agent.identity": "unsupported", "agent.stop.observe": "exact", "agent.stop.prevent": "exact", "agent.stop.notify": "unsupported", "agent.stop.agent.identity": "unsupported", "turn.stop.observe": "exact", "turn.stop.prevent": "exact", "turn.stop.notify": "unsupported" },
   minimumCapabilityLevel: "emulated",
   policy: { "onHookError": "continue", "timeoutMs": 5e3, "contextCharLimit": 16e3, "notifyCharLimit": 2e3 },
   pluginRoot: pluginRootFrom(import.meta.url, "..")
@@ -5798,6 +5880,216 @@ await runCodexCommandShim(() => Promise.resolve().then(() => (init_hooks(), hook
 Bundled package notices
 
 @hooknostic/adapter-codex@0.9.0
+NOTICE
+Codex ConfigToml schema snapshots
+Copyright OpenAI. Licensed under Apache-2.0.
+Modified by removing descriptive/default metadata and adding standalone role metadata.
+Versions and source links: .capture/agents/README.md.
+
+                                 Apache License
+                           Version 2.0, January 2004
+                        http://www.apache.org/licenses/
+
+TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION
+
+1.  Definitions.
+
+    "License" shall mean the terms and conditions for use, reproduction,
+    and distribution as defined by Sections 1 through 9 of this document.
+
+    "Licensor" shall mean the copyright owner or entity authorized by
+    the copyright owner that is granting the License.
+
+    "Legal Entity" shall mean the union of the acting entity and all
+    other entities that control, are controlled by, or are under common
+    control with that entity. For the purposes of this definition,
+    "control" means (i) the power, direct or indirect, to cause the
+    direction or management of such entity, whether by contract or
+    otherwise, or (ii) ownership of fifty percent (50%) or more of the
+    outstanding shares, or (iii) beneficial ownership of such entity.
+
+    "You" (or "Your") shall mean an individual or Legal Entity
+    exercising permissions granted by this License.
+
+    "Source" form shall mean the preferred form for making modifications,
+    including but not limited to software source code, documentation
+    source, and configuration files.
+
+    "Object" form shall mean any form resulting from mechanical
+    transformation or translation of a Source form, including but
+    not limited to compiled object code, generated documentation,
+    and conversions to other media types.
+
+    "Work" shall mean the work of authorship, whether in Source or
+    Object form, made available under the License, as indicated by a
+    copyright notice that is included in or attached to the work
+    (an example is provided in the Appendix below).
+
+    "Derivative Works" shall mean any work, whether in Source or Object
+    form, that is based on (or derived from) the Work and for which the
+    editorial revisions, annotations, elaborations, or other modifications
+    represent, as a whole, an original work of authorship. For the purposes
+    of this License, Derivative Works shall not include works that remain
+    separable from, or merely link (or bind by name) to the interfaces of,
+    the Work and Derivative Works thereof.
+
+    "Contribution" shall mean any work of authorship, including
+    the original version of the Work and any modifications or additions
+    to that Work or Derivative Works thereof, that is intentionally
+    submitted to Licensor for inclusion in the Work by the copyright owner
+    or by an individual or Legal Entity authorized to submit on behalf of
+    the copyright owner. For the purposes of this definition, "submitted"
+    means any form of electronic, verbal, or written communication sent
+    to the Licensor or its representatives, including but not limited to
+    communication on electronic mailing lists, source code control systems,
+    and issue tracking systems that are managed by, or on behalf of, the
+    Licensor for the purpose of discussing and improving the Work, but
+    excluding communication that is conspicuously marked or otherwise
+    designated in writing by the copyright owner as "Not a Contribution."
+
+    "Contributor" shall mean Licensor and any individual or Legal Entity
+    on behalf of whom a Contribution has been received by Licensor and
+    subsequently incorporated within the Work.
+
+2.  Grant of Copyright License. Subject to the terms and conditions of
+    this License, each Contributor hereby grants to You a perpetual,
+    worldwide, non-exclusive, no-charge, royalty-free, irrevocable
+    copyright license to reproduce, prepare Derivative Works of,
+    publicly display, publicly perform, sublicense, and distribute the
+    Work and such Derivative Works in Source or Object form.
+
+3.  Grant of Patent License. Subject to the terms and conditions of
+    this License, each Contributor hereby grants to You a perpetual,
+    worldwide, non-exclusive, no-charge, royalty-free, irrevocable
+    (except as stated in this section) patent license to make, have made,
+    use, offer to sell, sell, import, and otherwise transfer the Work,
+    where such license applies only to those patent claims licensable
+    by such Contributor that are necessarily infringed by their
+    Contribution(s) alone or by combination of their Contribution(s)
+    with the Work to which such Contribution(s) was submitted. If You
+    institute patent litigation against any entity (including a
+    cross-claim or counterclaim in a lawsuit) alleging that the Work
+    or a Contribution incorporated within the Work constitutes direct
+    or contributory patent infringement, then any patent licenses
+    granted to You under this License for that Work shall terminate
+    as of the date such litigation is filed.
+
+4.  Redistribution. You may reproduce and distribute copies of the
+    Work or Derivative Works thereof in any medium, with or without
+    modifications, and in Source or Object form, provided that You
+    meet the following conditions:
+
+    (a) You must give any other recipients of the Work or
+    Derivative Works a copy of this License; and
+
+    (b) You must cause any modified files to carry prominent notices
+    stating that You changed the files; and
+
+    (c) You must retain, in the Source form of any Derivative Works
+    that You distribute, all copyright, patent, trademark, and
+    attribution notices from the Source form of the Work,
+    excluding those notices that do not pertain to any part of
+    the Derivative Works; and
+
+    (d) If the Work includes a "NOTICE" text file as part of its
+    distribution, then any Derivative Works that You distribute must
+    include a readable copy of the attribution notices contained
+    within such NOTICE file, excluding those notices that do not
+    pertain to any part of the Derivative Works, in at least one
+    of the following places: within a NOTICE text file distributed
+    as part of the Derivative Works; within the Source form or
+    documentation, if provided along with the Derivative Works; or,
+    within a display generated by the Derivative Works, if and
+    wherever such third-party notices normally appear. The contents
+    of the NOTICE file are for informational purposes only and
+    do not modify the License. You may add Your own attribution
+    notices within Derivative Works that You distribute, alongside
+    or as an addendum to the NOTICE text from the Work, provided
+    that such additional attribution notices cannot be construed
+    as modifying the License.
+
+    You may add Your own copyright statement to Your modifications and
+    may provide additional or different license terms and conditions
+    for use, reproduction, or distribution of Your modifications, or
+    for any such Derivative Works as a whole, provided Your use,
+    reproduction, and distribution of the Work otherwise complies with
+    the conditions stated in this License.
+
+5.  Submission of Contributions. Unless You explicitly state otherwise,
+    any Contribution intentionally submitted for inclusion in the Work
+    by You to the Licensor shall be under the terms and conditions of
+    this License, without any additional terms or conditions.
+    Notwithstanding the above, nothing herein shall supersede or modify
+    the terms of any separate license agreement you may have executed
+    with Licensor regarding such Contributions.
+
+6.  Trademarks. This License does not grant permission to use the trade
+    names, trademarks, service marks, or product names of the Licensor,
+    except as required for reasonable and customary use in describing the
+    origin of the Work and reproducing the content of the NOTICE file.
+
+7.  Disclaimer of Warranty. Unless required by applicable law or
+    agreed to in writing, Licensor provides the Work (and each
+    Contributor provides its Contributions) on an "AS IS" BASIS,
+    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
+    implied, including, without limitation, any warranties or conditions
+    of TITLE, NON-INFRINGEMENT, MERCHANTABILITY, or FITNESS FOR A
+    PARTICULAR PURPOSE. You are solely responsible for determining the
+    appropriateness of using or redistributing the Work and assume any
+    risks associated with Your exercise of permissions under this License.
+
+8.  Limitation of Liability. In no event and under no legal theory,
+    whether in tort (including negligence), contract, or otherwise,
+    unless required by applicable law (such as deliberate and grossly
+    negligent acts) or agreed to in writing, shall any Contributor be
+    liable to You for damages, including any direct, indirect, special,
+    incidental, or consequential damages of any character arising as a
+    result of this License or out of the use or inability to use the
+    Work (including but not limited to damages for loss of goodwill,
+    work stoppage, computer failure or malfunction, or any and all
+    other commercial damages or losses), even if such Contributor
+    has been advised of the possibility of such damages.
+
+9.  Accepting Warranty or Additional Liability. While redistributing
+    the Work or Derivative Works thereof, You may choose to offer,
+    and charge a fee for, acceptance of support, warranty, indemnity,
+    or other liability obligations and/or rights consistent with this
+    License. However, in accepting such obligations, You may act only
+    on Your own behalf and on Your sole responsibility, not on behalf
+    of any other Contributor, and only if You agree to indemnify,
+    defend, and hold each Contributor harmless for any liability
+    incurred by, or claims asserted against, such Contributor by reason
+    of your accepting any such warranty or additional liability.
+
+END OF TERMS AND CONDITIONS
+
+APPENDIX: How to apply the Apache License to your work.
+
+      To apply the Apache License to your work, attach the following
+      boilerplate notice, with the fields enclosed by brackets "[]"
+      replaced with your own identifying information. (Don't include
+      the brackets!)  The text should be enclosed in the appropriate
+      comment syntax for the file format. We also recommend that a
+      file or class name and description of purpose be included on the
+      same "printed page" as the copyright notice for easier
+      identification within third-party archives.
+
+Copyright 2025 OpenAI
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+       http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+
+---
+
 @hooknostic/runtime@0.9.0
 LICENSE
 Apache License

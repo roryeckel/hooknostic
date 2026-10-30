@@ -30,8 +30,8 @@ For repository integration, prefer [init, sync, and verify](project-integration.
 | `claude` | `package` | `dist/claude/` | A Claude Code plugin: `.claude-plugin/plugin.json`, `hooks/hooks.json`, `runtime/hooknostic.mjs` |
 | `codex` | `project` | `dist/codex/.codex/` | A repo-level Codex directory: `hooks.json` + `hooknostic/hooknostic.mjs` |
 | `codex` | `package` | `dist/codex/` | A native Codex plugin: `.codex-plugin/plugin.json`, `.mcp.json`, `skills/`, `hooks.json`, runtime |
-| `copilot` | `package` | `dist/copilot/` | An Agent Plugins package: `plugin.json`, `skills/`, `mcp.json`, `com.github.copilot/hooks/hooks.json`, `runtime/hooknostic.mjs` |
-| `copilot` | `project` | `dist/copilot/` | The runtime and compiled hooks document; `sync` writes `.github/hooks/hooknostic.json`, `.agents/skills/`, and the root `.mcp.json` |
+| `copilot` | `package` | `dist/copilot/` | An Agent Plugins package: `plugin.json`, `skills/`, `agents/` when configured, `mcp.json`, `com.github.copilot/hooks/hooks.json`, `runtime/hooknostic.mjs` |
+| `copilot` | `project` | `dist/copilot/` | The runtime and compiled hooks document; `sync` writes `.github/hooks/hooknostic.json`, `.agents/skills/`, `.github/agents/<name>.agent.md`, and the root `.mcp.json` |
 | `opencode` | `project` | `dist/opencode/.opencode/` | Project plugin modules under `plugins/`, plus a copied `skills/` |
 | `pi` | `project` | `dist/pi/.pi/` | Project extension under `extensions/`, plus copied `skills/` |
 | `pi` | `package` | `dist/pi/` | npm package with a `pi` manifest declaring its bundled extension and skills |
@@ -66,7 +66,12 @@ get `PLUGIN_ROOT` and `PLUGIN_DATA` in their environment; its hooks get
 `PLUGIN_ROOT` only.
 
 Project delivery writes `.github/hooks/hooknostic.json`, copies selected skills
-to `.agents/skills/`, and declares MCP servers in the root `.mcp.json`. Copilot
+to `.agents/skills/`, writes custom agents to `.github/agents/`, and declares
+MCP servers in the root `.mcp.json`. Select a custom agent with
+`copilot --agent <id or frontmatter name>` or `/agent`; a package agent is
+`<plugin>:<name>`. Copilot has no project default-agent setting, so
+`components.defaultAgent` is unsupported there. Copilot also lists Claude's
+`.claude/agents`; a same-ID `.github/agents` copy wins. Copilot
 reads one workspace MCP file: a root `.mcp.json` whenever one exists, even
 empty, and `.github/mcp.json` only without it. Claude Code reads the root
 file too. If `sync` would create the root file and `.github/mcp.json` already

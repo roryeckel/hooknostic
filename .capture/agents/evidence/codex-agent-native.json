@@ -1,0 +1,99 @@
+{
+  "provenance": "live-probe",
+  "platform": "win32",
+  "date": "2026-10-17",
+  "cases": [
+    {
+      "version": "0.148.0",
+      "case": "direct",
+      "agentSandbox": "read-only",
+      "parentSandbox": "danger-full-access",
+      "exit": 0,
+      "playbackErrors": [],
+      "childWriteLanded": true,
+      "turns": [
+        {
+          "model": "hooknostic-playback-alt",
+          "markerInSystem": true,
+          "sandboxReported": "danger-full-access"
+        },
+        {
+          "model": "hooknostic-playback-alt",
+          "markerInSystem": true,
+          "sandboxReported": "danger-full-access"
+        }
+      ]
+    },
+    {
+      "version": "0.148.0",
+      "case": "generated-sandbox",
+      "agentSandbox": "read-only",
+      "parentSandbox": "danger-full-access",
+      "requestedNative": {
+        "sandbox_mode": "read-only"
+      },
+      "deliveredSandbox": "read-only",
+      "exit": 0,
+      "playbackErrors": [],
+      "childWriteLanded": true,
+      "turns": [
+        {
+          "model": "hooknostic-playback-alt",
+          "markerInSystem": true,
+          "sandboxReported": "danger-full-access"
+        },
+        {
+          "model": "hooknostic-playback-alt",
+          "markerInSystem": true,
+          "sandboxReported": "danger-full-access"
+        }
+      ]
+    },
+    {
+      "version": "0.156.1",
+      "case": "direct",
+      "agentSandbox": "read-only",
+      "parentSandbox": "danger-full-access",
+      "exit": 0,
+      "playbackErrors": [],
+      "childWriteLanded": true,
+      "turns": [
+        {
+          "model": "hooknostic-playback-alt",
+          "markerInSystem": true,
+          "sandboxReported": "danger-full-access"
+        },
+        {
+          "model": "hooknostic-playback-alt",
+          "markerInSystem": true,
+          "sandboxReported": "danger-full-access"
+        }
+      ]
+    },
+    {
+      "version": "0.156.1",
+      "case": "generated-sandbox",
+      "agentSandbox": "read-only",
+      "parentSandbox": "danger-full-access",
+      "requestedNative": {
+        "sandbox_mode": "read-only"
+      },
+      "deliveredSandbox": "read-only",
+      "exit": 0,
+      "playbackErrors": [],
+      "childWriteLanded": true,
+      "turns": [
+        {
+          "model": "hooknostic-playback-alt",
+          "markerInSystem": true,
+          "sandboxReported": "danger-full-access"
+        },
+        {
+          "model": "hooknostic-playback-alt",
+          "markerInSystem": true,
+          "sandboxReported": "danger-full-access"
+        }
+      ]
+    }
+  ]
+}

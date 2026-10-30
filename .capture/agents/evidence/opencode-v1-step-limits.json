@@ -1,0 +1,371 @@
+{
+  "provenance": "live-probe",
+  "platform": "win32",
+  "date": "2026-10-17",
+  "cases": [
+    {
+      "version": "1.18.18",
+      "case": "generated",
+      "requestedNative": {},
+      "exit": 0,
+      "playbackErrors": [],
+      "parentReceivedResult": true,
+      "childRequests": 4,
+      "turns": [
+        {
+          "model": "hooknostic-playback-alt",
+          "markerInSystem": true
+        },
+        {
+          "model": "hooknostic-playback-alt",
+          "markerInSystem": true
+        },
+        {
+          "model": "hooknostic-playback-alt",
+          "markerInSystem": true
+        },
+        {
+          "model": "hooknostic-playback-alt",
+          "markerInSystem": true
+        }
+      ]
+    },
+    {
+      "version": "1.18.18",
+      "case": "packaged",
+      "requestedNative": {},
+      "exit": 0,
+      "playbackErrors": [],
+      "parentReceivedResult": true,
+      "childRequests": 4,
+      "turns": [
+        {
+          "model": "hooknostic-playback-alt",
+          "markerInSystem": true
+        },
+        {
+          "model": "hooknostic-playback-alt",
+          "markerInSystem": true
+        },
+        {
+          "model": "hooknostic-playback-alt",
+          "markerInSystem": true
+        },
+        {
+          "model": "hooknostic-playback-alt",
+          "markerInSystem": true
+        }
+      ]
+    },
+    {
+      "version": "1.18.18",
+      "case": "generated-steps",
+      "requestedNative": {
+        "steps": 2
+      },
+      "deliveredNative": {
+        "steps": 2
+      },
+      "exit": 0,
+      "playbackErrors": [],
+      "parentReceivedResult": true,
+      "childRequests": 4,
+      "turns": [
+        {
+          "model": "hooknostic-playback-alt",
+          "markerInSystem": true
+        },
+        {
+          "model": "hooknostic-playback-alt",
+          "markerInSystem": true
+        },
+        {
+          "model": "hooknostic-playback-alt",
+          "markerInSystem": true
+        },
+        {
+          "model": "hooknostic-playback-alt",
+          "markerInSystem": true
+        }
+      ]
+    },
+    {
+      "version": "1.18.18",
+      "case": "generated-maxsteps",
+      "requestedNative": {
+        "maxSteps": 2
+      },
+      "deliveredNative": {
+        "maxSteps": 2
+      },
+      "exit": 0,
+      "playbackErrors": [],
+      "parentReceivedResult": true,
+      "childRequests": 4,
+      "turns": [
+        {
+          "model": "hooknostic-playback-alt",
+          "markerInSystem": true
+        },
+        {
+          "model": "hooknostic-playback-alt",
+          "markerInSystem": true
+        },
+        {
+          "model": "hooknostic-playback-alt",
+          "markerInSystem": true
+        },
+        {
+          "model": "hooknostic-playback-alt",
+          "markerInSystem": true
+        }
+      ]
+    },
+    {
+      "version": "1.18.18",
+      "case": "packaged-steps",
+      "requestedNative": {
+        "steps": 2
+      },
+      "deliveredNative": {
+        "steps": 2
+      },
+      "exit": 0,
+      "playbackErrors": [],
+      "parentReceivedResult": true,
+      "childRequests": 4,
+      "turns": [
+        {
+          "model": "hooknostic-playback-alt",
+          "markerInSystem": true
+        },
+        {
+          "model": "hooknostic-playback-alt",
+          "markerInSystem": true
+        },
+        {
+          "model": "hooknostic-playback-alt",
+          "markerInSystem": true
+        },
+        {
+          "model": "hooknostic-playback-alt",
+          "markerInSystem": true
+        }
+      ]
+    },
+    {
+      "version": "1.18.18",
+      "case": "packaged-maxsteps",
+      "requestedNative": {
+        "maxSteps": 2
+      },
+      "deliveredNative": {
+        "maxSteps": 2
+      },
+      "exit": 0,
+      "playbackErrors": [],
+      "parentReceivedResult": true,
+      "childRequests": 4,
+      "turns": [
+        {
+          "model": "hooknostic-playback-alt",
+          "markerInSystem": true
+        },
+        {
+          "model": "hooknostic-playback-alt",
+          "markerInSystem": true
+        },
+        {
+          "model": "hooknostic-playback-alt",
+          "markerInSystem": true
+        },
+        {
+          "model": "hooknostic-playback-alt",
+          "markerInSystem": true
+        }
+      ]
+    },
+    {
+      "version": "1.18.31",
+      "case": "generated",
+      "requestedNative": {},
+      "exit": 0,
+      "playbackErrors": [],
+      "parentReceivedResult": true,
+      "childRequests": 4,
+      "turns": [
+        {
+          "model": "hooknostic-playback-alt",
+          "markerInSystem": true
+        },
+        {
+          "model": "hooknostic-playback-alt",
+          "markerInSystem": true
+        },
+        {
+          "model": "hooknostic-playback-alt",
+          "markerInSystem": true
+        },
+        {
+          "model": "hooknostic-playback-alt",
+          "markerInSystem": true
+        }
+      ]
+    },
+    {
+      "version": "1.18.31",
+      "case": "packaged",
+      "requestedNative": {},
+      "exit": 0,
+      "playbackErrors": [],
+      "parentReceivedResult": true,
+      "childRequests": 4,
+      "turns": [
+        {
+          "model": "hooknostic-playback-alt",
+          "markerInSystem": true
+        },
+        {
+          "model": "hooknostic-playback-alt",
+          "markerInSystem": true
+        },
+        {
+          "model": "hooknostic-playback-alt",
+          "markerInSystem": true
+        },
+        {
+          "model": "hooknostic-playback-alt",
+          "markerInSystem": true
+        }
+      ]
+    },
+    {
+      "version": "1.18.31",
+      "case": "generated-steps",
+      "requestedNative": {
+        "steps": 2
+      },
+      "deliveredNative": {
+        "steps": 2
+      },
+      "exit": 0,
+      "playbackErrors": [],
+      "parentReceivedResult": true,
+      "childRequests": 4,
+      "turns": [
+        {
+          "model": "hooknostic-playback-alt",
+          "markerInSystem": true
+        },
+        {
+          "model": "hooknostic-playback-alt",
+          "markerInSystem": true
+        },
+        {
+          "model": "hooknostic-playback-alt",
+          "markerInSystem": true
+        },
+        {
+          "model": "hooknostic-playback-alt",
+          "markerInSystem": true
+        }
+      ]
+    },
+    {
+      "version": "1.18.31",
+      "case": "generated-maxsteps",
+      "requestedNative": {
+        "maxSteps": 2
+      },
+      "deliveredNative": {
+        "maxSteps": 2
+      },
+      "exit": 0,
+      "playbackErrors": [],
+      "parentReceivedResult": true,
+      "childRequests": 4,
+      "turns": [
+        {
+          "model": "hooknostic-playback-alt",
+          "markerInSystem": true
+        },
+        {
+          "model": "hooknostic-playback-alt",
+          "markerInSystem": true
+        },
+        {
+          "model": "hooknostic-playback-alt",
+          "markerInSystem": true
+        },
+        {
+          "model": "hooknostic-playback-alt",
+          "markerInSystem": true
+        }
+      ]
+    },
+    {
+      "version": "1.18.31",
+      "case": "packaged-steps",
+      "requestedNative": {
+        "steps": 2
+      },
+      "deliveredNative": {
+        "steps": 2
+      },
+      "exit": 0,
+      "playbackErrors": [],
+      "parentReceivedResult": true,
+      "childRequests": 4,
+      "turns": [
+        {
+          "model": "hooknostic-playback-alt",
+          "markerInSystem": true
+        },
+        {
+          "model": "hooknostic-playback-alt",
+          "markerInSystem": true
+        },
+        {
+          "model": "hooknostic-playback-alt",
+          "markerInSystem": true
+        },
+        {
+          "model": "hooknostic-playback-alt",
+          "markerInSystem": true
+        }
+      ]
+    },
+    {
+      "version": "1.18.31",
+      "case": "packaged-maxsteps",
+      "requestedNative": {
+        "maxSteps": 2
+      },
+      "deliveredNative": {
+        "maxSteps": 2
+      },
+      "exit": 0,
+      "playbackErrors": [],
+      "parentReceivedResult": true,
+      "childRequests": 4,
+      "turns": [
+        {
+          "model": "hooknostic-playback-alt",
+          "markerInSystem": true
+        },
+        {
+          "model": "hooknostic-playback-alt",
+          "markerInSystem": true
+        },
+        {
+          "model": "hooknostic-playback-alt",
+          "markerInSystem": true
+        },
+        {
+          "model": "hooknostic-playback-alt",
+          "markerInSystem": true
+        }
+      ]
+    }
+  ]
+}

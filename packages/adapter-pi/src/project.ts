@@ -10,7 +10,13 @@ import {
   skillInvocationPolicyProfiles,
 } from "@hooknostic/agent-plugin";
 import type { GeneratedArtifact, ProjectComponentOptions, ProjectIntegration } from "@hooknostic/core";
-import { MCP_LAUNCHER_FILE, portableRelative, projectMcpLauncher, projectSkillFiles } from "@hooknostic/core";
+import {
+  MCP_LAUNCHER_FILE,
+  portableRelative,
+  projectAgentFiles,
+  projectMcpLauncher,
+  projectSkillFiles,
+} from "@hooknostic/core";
 
 import {
   legacyPiMcpCells,
@@ -82,6 +88,21 @@ export async function projectComponents(
   options: ProjectComponentOptions,
 ): Promise<ProjectIntegration> {
   const result = projectSkillFiles(source, root, ".pi/skills", { target: RELATIVE_SKILL_TEXT, harness: "Pi" });
+  const defaultAgent = source.agents?.find((agent) => agent.name === source.defaultAgent);
+  if (defaultAgent !== undefined) {
+    result.files.push(
+      ...projectAgentFiles([defaultAgent], ".pi", (agent) => ({
+        file: "APPEND_SYSTEM.md",
+        contents: agent.instructions,
+      })).files,
+    );
+    result.guidance.push(
+      `Start Pi at the trusted project root to use the ${defaultAgent.name} default role from .pi/APPEND_SYSTEM.md. ` +
+        "It preserves Pi's base prompt or .pi/SYSTEM.md, shadows the global APPEND_SYSTEM.md, and is bypassed by --append-system-prompt. " +
+        "Only instructions are projected; model, thinking and tools keep their native defaults. " +
+        "This does not offer delegation, named agent selection, or agent-scoped hooks.",
+    );
+  }
   if (!source.mcp) return result;
   // Core always resolves the matrix for the target range; a caller without
   // one (a direct integration call) gets the reference build's cells.
@@ -141,8 +162,32 @@ export function piExtensionsRelative(
   return portableRelative(paths.join(projectRoot, ".pi", "extensions"), target, paths);
 }
 
+/**
+ * Pi has no captured named-agent or delegation route. A selected primary-only
+ * default uses `agents.default` independently.
+ */
+const piAgentComponents: AgentPluginProjectionProfile["components"] = {
+  "agents.definition": {
+    level: "unsupported",
+    rationale:
+      "Pi has no captured native named-agent or delegation route. A selected primary-only default uses agents.default independently.",
+  },
+  "agents.primary": {
+    level: "unsupported",
+    rationale:
+      "Pi has no captured native named primary-agent selection route; a fixed default role is handled separately.",
+  },
+  "agents.native": { level: "unsupported", rationale: "This adapter does not project native agent fields." },
+  "agents.default": {
+    level: "emulated",
+    rationale:
+      "The selected default's instructions are written to owned .pi/APPEND_SYSTEM.md, preserving the base or custom system prompt. Windows loopback capture on 0.84.4 and 1.3.0 establishes trusted project-root startup only: this file shadows the global append, --append-system-prompt bypasses it, and nested startup ignores it. No named selection, delegation, native settings, or agent identity is supplied; agent-scoped hooks remain unsupported.",
+  },
+};
+
 /** Both lines rate the same components; only the MCP cells differ. */
 const piProjectComponents = (mcp: PiMcpCells): AgentPluginProjectionProfile["components"] => ({
+  ...piAgentComponents,
   "agent-plugin.skills": {
     level: "exact",
     rationale:
@@ -193,6 +238,27 @@ const legacyProjectComponentProfile: AgentPluginProjectionProfile = {
         artifact: ".capture/pi/README.md",
         what: "pi package skill discovery verified by effect (installed package skill answered its prompt); project-local .pi/ discovery per loader.js and skills.js source.",
       },
+      {
+        version: "0.84.4",
+        date: "2026-10-17",
+        method: "live-probe",
+        artifact: ".capture/pi-default-agent",
+        what: "Windows loopback investigation of native project role emulation: prompt replacement and appending, trust, global and CLI precedence, nested working directories, model/thinking/tool defaults, and a minimal project prompt callback. Establishes the native append route's limits; named agents and delegation were not supplied.",
+      },
+      {
+        version: "0.84.4",
+        date: "2026-10-17",
+        method: "live-probe",
+        artifact: ".capture/pi-default-agent/evidence/win32.json",
+        what: "Generated-default prototype: core sync and verify deliver a portable primary default to .pi/APPEND_SYSTEM.md. Windows Pi startup receives its instructions at developer level with native or custom system prompts, project context and a projected skill; read executes normally. CLI append bypasses it; untrusted startup ignores it. Tool callbacks have no role identity (packages/cli/test/pi-default-agent-playback.test.ts).",
+      },
+      {
+        version: "0.84.4",
+        date: "2026-10-17",
+        method: "live-probe",
+        artifact: ".capture/pi-default-agent/evidence/local-smoke-win32.json",
+        what: "Windows local Qwen smoke through Ollama: a synchronized primary default supplied its random role marker at developer level. With an explicit read-tool request, one successful native read supplied the actual random file token and the model returned both in the role's required JSON; a deselected-default control read without the role marker. The initial implicit-read attempt returned the role marker but fabricated the file value without reading, and is retained as a model-compliance limitation. No delegation or agent identity is supplied.",
+      },
     ],
   },
 };
@@ -205,6 +271,13 @@ const projectComponentProfile: AgentPluginProjectionProfile = {
     validatedOn: [
       piFeatureValidation,
       ...nativePiMcpValidations,
+      {
+        version: "1.3.0",
+        date: "2026-10-22",
+        method: "live-probe",
+        artifact: ".capture/pi-default-agent/evidence/win32-1.3.0.json",
+        what: "The 0.84.4 default-role probes repeated on the reference build: a synchronized primary default's instructions reached the model at developer level in .pi/APPEND_SYSTEM.md, preserving a custom .pi/SYSTEM.md; CLI --append-system-prompt bypassed the role, an untrusted project ignored it, and a nested working directory did not read the project prompt files. Only instructions are projected.",
+      },
       {
         version: "1.3.0",
         date: "2026-10-19",

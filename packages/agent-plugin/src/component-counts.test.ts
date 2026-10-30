@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { componentSummary } from "./component-counts.js";
+import type { AgentDefinition } from "./agent-definitions.js";
+import { componentSummary, discoverComponents } from "./component-counts.js";
 import {
   AGENT_PLUGIN_MANIFEST_SCHEMA,
   AGENT_PLUGIN_MCP_SCHEMA,
@@ -105,5 +106,58 @@ describe("componentSummary", () => {
 
   it("omits every component the package does not contain", () => {
     expect(Object.keys(componentSummary(source()))).toEqual(["agent-plugin.manifest"]);
+  });
+});
+
+describe("discoverComponents", () => {
+  const agent = (
+    name: string,
+    native: AgentDefinition["native"] = {},
+    mode: AgentDefinition["mode"] = "subagent",
+  ): AgentDefinition => ({
+    name,
+    mode,
+    description: `${name} description`,
+    instructions: `${name} instructions`,
+    native,
+    source: `/agents/${name}.md`,
+  });
+
+  it("counts agent definitions configured beside the package, and native fields only for the harness asked about", () => {
+    const agents = [
+      agent("reviewer", { claude: { model: "sonnet" } }),
+      agent("planner", { opencode: { model: "x/y" } }),
+      agent("tester"),
+    ];
+    const claude = discoverComponents(source(), { agents, harness: "claude" });
+    expect(claude.get("agents.definition")).toBe(3);
+    expect(claude.get("agents.native")).toBe(1);
+    // Another harness's native block is not this harness's component.
+    expect(discoverComponents(source(), { agents, harness: "codex" }).has("agents.native")).toBe(false);
+    // Without a harness, native fields are never attributed to one.
+    expect(discoverComponents(source(), { agents }).has("agents.native")).toBe(false);
+  });
+
+  it("counts every definition that can run as a session under agents.primary, and only those", () => {
+    const agents = [agent("planner", {}, "primary"), agent("writer", {}, "all"), agent("reviewer")];
+    const discovered = discoverComponents(source(), { agents });
+    expect(discovered.get("agents.definition")).toBe(3);
+    expect(discovered.get("agents.primary")).toBe(2);
+    expect(discoverComponents(source(), { agents: [agent("reviewer")] }).has("agents.primary")).toBe(false);
+  });
+
+  it("discovers no agent component when none is configured", () => {
+    const discovered = discoverComponents(source(), { agents: [], harness: "claude" });
+    expect([...discovered.keys()]).toEqual(["agent-plugin.manifest"]);
+  });
+
+  it("feeds componentSummary, so a skipped agent definition is reported rather than dropped", () => {
+    const counts = componentSummary(source(), {
+      agents: [agent("reviewer", { codex: { model: "m" } })],
+      harness: "codex",
+      skipped: (component, discovered) => (component.startsWith("agents.") ? discovered : 0),
+    });
+    expect(counts["agents.definition"]).toEqual({ discovered: 1, emitted: 0, skipped: 1 });
+    expect(counts["agents.native"]).toEqual({ discovered: 1, emitted: 0, skipped: 1 });
   });
 });

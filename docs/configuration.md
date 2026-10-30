@@ -11,10 +11,55 @@ running a command. Paths resolve from `hooknostic.config.ts`.
 | Portable hooks | `entry: "./src/hooks.ts"` | Hooks alone or alongside components |
 | Agent Plugins 1.0 package | `components: { root: "./portable" }` | Standard manifest, skills, MCP, and supported client extensions |
 | Direct project components | `components: { skills: ["./skills"], mcp: "./mcp.json" }` | Repository integration without a package manifest; either field can be used alone |
+| Agent definitions | `components: { agents: ["./agents"] }` | [Portable agents](spec/agents/0.1.md), alone or beside either of the above |
 
-At least one of `entry` and `components` is required. Package-root and direct-component
-inputs are mutually exclusive. `components.targets` optionally narrows which configured
-targets receive components; hooks retain their configured target set.
+At least one of `entry` and `components` is required. A package root and direct
+`skills`/`mcp` sources are mutually exclusive; `agents` combines with either.
+`components.defaultAgent` optionally names one of those definitions, whose `mode` is
+`primary` or `all`, as the agent every session of the project starts as. Only project
+targets take it; see [Tutorial 5](tutorials/05-portable-agents.md#making-it-the-default).
+`components.targets` optionally narrows which configured targets receive components;
+hooks retain their configured target set.
+
+`components.agents` names directories of flat `<name>.md` files in the
+[Hooknostic Agent Definition 0.1](spec/agents/0.1.md) format: a name, a
+description, harness-only fields under `native`, and the instructions as the body.
+Project delivery writes each harness's own agent file (`.claude/agents/<name>.md`,
+`.codex/agents/<name>.toml`, `.github/agents/<name>.agent.md`,
+`.opencode/agents/<name>.md`). Beside a package `root`, package delivery translates
+them into the package instead: a Claude or Copilot plugin agent, or an agent the
+OpenCode module registers. A Codex plugin has no agents route, so a Codex package
+target reports them as unsupported. `hooknostic inspect <target> --component
+agents.definition` shows a target's level and evidence.
+
+Pi project delivery can emulate a `mode: primary` default by writing only its
+instructions to owned `.pi/APPEND_SYSTEM.md`. It offers no named selection or
+delegation. This route applies at trusted project-root startup, shadows the
+global append and is bypassed by `--append-system-prompt`; it preserves Pi's base
+or custom system prompt. Other selected definitions and `native.pi` blocks remain
+unsupported, including the delegation half of an `all` default. Pi package
+defaults and agent-scoped hooks remain unsupported. Copilot has no project
+default-agent setting: `components.defaultAgent` is unsupported there, and
+`--agent <id or name>` or `/agent` selects one for a session. See
+[the default-agent tutorial](tutorials/05-portable-agents.md#making-it-the-default).
+
+Every target receives every definition unless it selects some. A target's
+`agents: { include?, exclude? }` names definitions by their `name`, in the shape of a
+hook's `targets`:
+
+```ts
+targets: {
+  claude: { /* version, delivery, output */ agents: { include: ["reviewer"] } },
+  codex: { /* version, delivery, output */ agents: { exclude: ["planner"] } },
+},
+```
+
+A definition a target does not select is not delivered there, and it is not a
+shortfall: nothing is counted or reported as unsupported for it, so a `primary`
+definition kept off Codex does not fail the build. A deselected
+`components.defaultAgent` is not that target's default. A name that matches no
+loaded definition is refused (HN503), and a selection on a target that receives no
+definitions is a configuration error.
 
 Every target has a version range, `delivery`, and output directory. A target name
 defaults to its adapter id; set `adapter` explicitly for multiple named targets.

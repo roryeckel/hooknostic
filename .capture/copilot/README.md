@@ -1,7 +1,8 @@
 # GitHub Copilot CLI capture project
 
 Capture questions, method, and observations for `@hooknostic/adapter-copilot`,
-against **GitHub Copilot CLI 1.0.101** on 2026-10-20. Fixtures live in
+against **GitHub Copilot CLI 1.0.101** on 2026-10-20; the custom-agent probes
+were repeated on **1.0.102** on 2026-10-22. Fixtures live in
 `fixtures/copilot/1.0/`; the profile is the normative home for every capability
 claim.
 
@@ -33,6 +34,7 @@ node .capture/copilot/probe.mjs camel-lifecycle
 node .capture/copilot/probe.mjs pascal-lifecycle
 node .capture/copilot/interactive-skill-probe.mjs project
 node .capture/copilot/interactive-skill-probe.mjs plugin
+node .capture/copilot/agents-probe.mjs --write   # requires a BYOK provider in COPILOT_PROVIDER_*
 node .capture/copilot/interactive-approval-probe.mjs allow
 node .capture/copilot/interactive-approval-probe.mjs deny
 node .capture/copilot/interactive-compact-probe.mjs [observe|block-json|block-exit2|context]
@@ -65,6 +67,10 @@ node .capture/copilot/make-fixtures.mjs
 - `probe.mjs` — scratch-project driver for lifecycle, tool-shape, effect,
   skill, plugin and MCP probes. Every hook entry uses `exec`/`args`, the same
   form Hooknostic generates.
+- `agents-probe.mjs` — custom-agent driver: project `.github/agents` and Claude
+  `.claude/agents` discovery, `--agent` by ID and frontmatter name, a package's
+  `agents/` directory, the namespace tree that is not loaded, and two negative
+  controls. It writes `evidence/agents-1.0.102.json`.
 - `interactive-skill-probe.mjs` — pty driver for the interactive slash command:
   it loads `.agents/skills` or a `--plugin-dir` package, submits `/gated` or
   `/<plugin-name>:gated`, records the screen, and reads the session event log.
@@ -252,6 +258,29 @@ invocation. The pty probe separates the two: the interactive slash command
 injects the skill, while `-p` has no slash path and can only ask the model to
 call `skill()`. The probe writes the filtered `evidence.json` beside the screen
 under ignored `captured/`; it fails if the session log lacks the injection.
+
+## Custom agents
+
+Curated evidence: [`evidence/agents-1.0.102.json`](evidence/agents-1.0.102.json).
+The driver is `agents-probe.mjs`; it uses the provider configured by
+`COPILOT_PROVIDER_*`, not a paid GitHub model.
+
+| Question | Observation on 1.0.102 | Consequence |
+| --- | --- | --- |
+| Where do project agents live? | `.github/agents/<id>.agent.md` and `.github/agents/<id>.md` both load. The ID is the file stem without either extension, and `--agent` also accepts the frontmatter `name`. | Project integration writes `.github/agents/<name>.agent.md`. |
+| What is in the file? | YAML frontmatter with `name`, `description` and optional `tools`; the Markdown body becomes the selected agent's instructions. `tools: ["read"]` was recorded as the selected agent's tool list, and the body's random token was the model's reply. | The portable `name`, `description` and body map directly; `native.copilot` fields ride in the frontmatter. |
+| How is it selected? | `--agent <id>` and `--agent <frontmatter name>` both selected the same file. The session log recorded `subagent.selected` with `agentName` and `tools`. | `agents.primary` is exact. |
+| Can it be a subagent? | Copilot documents delegation to custom agents and exposes an `agent`/`Task` tool alias. The captured session's `subagent.selected` event is the CLI's own record of the selected agent, not a model-initiated delegation. | `agents.definition` is exact; a model-initiated delegation was not separately driven. |
+| Default agent | `copilot help config` and `copilot config --list` expose no project or user key that starts every session as a custom agent. `--agent` and `/agent` are per session. | `agents.default` is unsupported, not emulated. |
+| Package route | A `--plugin-dir` package's `agents/pkg.agent.md` loaded as `<plugin>:pkg` and ran its instructions. The same package's `com.github.copilot/agents/ns.agent.md` was not listed. | The projector writes `agents/<name>.agent.md` at the plugin root; the client-extension namespace is not an agent route. |
+| Claude's directory | `.claude/agents/foreign.md` was listed and selectable as `foreign`. With both `.github/agents/shared.agent.md` and `.claude/agents/shared.md` present, `--agent shared` ran the `.github` copy. | This is a foreign read (ADR-0033). A same-ID Copilot target copy wins; a Claude-only project's agents are still visible to Copilot. |
+| Negative controls | `--agent does-not-exist` exited 1; a `.github/agents/malformed.md` with no frontmatter exited 1; the namespace package's `plugin:ns` exited 1 with "No such agent". | The positives are not an artifact of every unknown name being accepted. |
+
+Limits: Windows only; no Linux or macOS run. `--agent` selection was driven
+headlessly, not through the interactive `/agent` picker. A model-initiated
+delegation was not required by the assertions; the documented route and the
+selected-agent event are the evidence for availability. The package agent was
+loaded with `--plugin-dir`, not installed from a marketplace.
 
 ## MCP
 

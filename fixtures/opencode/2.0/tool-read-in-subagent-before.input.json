@@ -1,0 +1,14 @@
+{
+  "hook": "execute.before",
+  "directory": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-agents-v2-Hb4wEC\\project",
+  "event": {
+    "tool": "read",
+    "sessionID": "ses_f10fc2403fferD1iCWg5YpcaAk",
+    "agent": "hn-probe",
+    "messageID": "msg_0ef03dc14001GBgzCSpkJnBKYY",
+    "id": "call_playback",
+    "input": {
+      "path": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-agents-v2-Hb4wEC\\project\\seed.txt"
+    }
+  }
+}

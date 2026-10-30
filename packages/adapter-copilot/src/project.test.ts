@@ -320,3 +320,63 @@ describe("Copilot project components", () => {
     }
   });
 });
+
+describe("Copilot custom agents", () => {
+  const reviewer = {
+    name: "reviewer",
+    description: "Reviews diffs for correctness.",
+    mode: "subagent" as const,
+    instructions: "You review diffs.\n",
+    native: { copilot: { tools: ["read"], model: "glm53", name: "ignored", mode: "primary", "mcp-servers": {} } },
+    source: "agents/reviewer.md",
+  };
+  const planner = { ...reviewer, name: "planner", mode: "primary" as const, source: "agents/planner.md" };
+
+  it("writes .github/agents/<name>.agent.md with native fields and a reserved key removed", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "hooknostic-copilot-agents-"));
+    try {
+      const integration = await projectComponents({ ...source("direct", dir), agents: [reviewer] }, dir, "out", "", {
+        support,
+      });
+      const file = integration.files.find((entry) => entry.path === ".github/agents/reviewer.agent.md");
+      expect(file).toBeDefined();
+      const text = typeof file!.contents === "string" ? file!.contents : new TextDecoder().decode(file!.contents);
+      expect(text).toContain("name: reviewer\n");
+      expect(text).toContain("description: Reviews diffs for correctness.\n");
+      expect(text).toContain("tools:\n  - read\n");
+      expect(text).toContain("model: glm53\n");
+      expect(text).not.toContain("ignored");
+      expect(text).not.toContain("mode:");
+      expect(text).not.toContain("mcp-servers");
+      expect(text).toContain("You review diffs.\n");
+      expect(integration.guidance.join(" ")).toContain("--agent <id>");
+      expect(integration.guidance.join(" ")).toContain(".claude/agents");
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("reports a primary-only definition as also delegable", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "hooknostic-copilot-agents-"));
+    try {
+      const integration = await projectComponents(
+        { ...source("direct", dir), agents: [planner, reviewer] },
+        dir,
+        "out",
+        "",
+        { support },
+      );
+      expect(integration.deviations).toEqual([
+        {
+          id: "primary-agent-delegable",
+          component: "agents.primary",
+          name: "planner",
+          path: "agents/planner.md",
+          reason: expect.stringContaining("also offers it for delegation"),
+        },
+      ]);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+});

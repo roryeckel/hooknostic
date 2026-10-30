@@ -32,7 +32,8 @@ export default defineConfig({
 `entry` is optional when components are present. Direct components accept skill
 collection directories and an MCP declaration file (`mcp: "./mcp.json"`).
 Alternatively use `components: { root: "./portable-package" }` to load an Agent
-Plugins package. These forms are mutually exclusive. Package delivery requires
+Plugins package. These forms are mutually exclusive. Directories of agent
+definitions (`agents: ["./agents"]`) combine with either. Package delivery requires
 package identity when projecting components. `components.targets` selects the
 configured targets receiving components; synchronization still processes the
 entire configured project integration. Targets may have arbitrary names with an
@@ -187,6 +188,34 @@ project containment rule. Codex translates milliseconds with ceiling conversion 
 or servers, non-positive timeouts, unrepresentable adapter options, and unsafe cwd
 values fail validation. Each target receives a clone; the canonical declaration
 is unchanged and stays standards-compliant.
+
+Agent definitions (`components.agents`, [the format](spec/agents/0.1.md))
+become one owned file per agent and harness: `.claude/agents/<name>.md`,
+`.codex/agents/<name>.toml`, `.github/agents/<name>.agent.md` and
+`.opencode/agents/<name>.md`. The OpenCode file serves both families and always
+states the definition's `mode`, because v2 otherwise makes the agent primary.
+Claude and Copilot have no mode, so every file is both a subagent and an agent a
+session can run as (`claude --agent <name>`, `copilot --agent <id or name>`); a
+`primary` definition is still offered for delegation and reports
+`<adapter>:primary-agent-delegable` (HN106). Copilot has no project default-agent
+setting, so `components.defaultAgent` is unsupported there and `--agent` selects
+one per session. Copilot also lists Claude's `.claude/agents`; a same-ID
+`.github/agents` copy wins, and a project targeting both should give Copilot its
+own copy. Codex has no agent a session runs as: a `primary` definition is not
+written for it, and an `all` definition becomes a custom agent only, each reported
+as unsupported. A target's `agents: { include?, exclude? }` keeps definitions off
+that harness altogether, without a shortfall ([configuration](configuration.md)).
+Each of these directories also gets a generated `.gitattributes`
+that keeps the files' bytes as generated. A definitions directory inside one of
+them is refused (HN501), because that harness would read the portable file itself.
+`native` fields reach only their own harness, verbatim; a field the harness reserves
+for the portable core or for another component, such as Claude `hooks` or Codex
+`mcp_servers`, is refused (HN503). Codex ignores a whole agent file over one key it
+does not know, so `native.codex` must hold only keys Codex accepts. A Codex child
+also inherits the parent's reasoning effort, which another model can refuse: pair a
+`native.codex.model` with `model_reasoning_effort`, as `sync` advises. The
+instructions replace the base prompt on Claude and OpenCode, and are added to it on
+Codex, so write them to stand alone.
 
 Codex must trust the project before it reads project MCP configuration. Same-named
 servers merge across home, project, nested, and command-line configuration;

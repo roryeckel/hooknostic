@@ -38,6 +38,7 @@ notification remains unsupported.
 | session-audit/permissions.json | captured + constructed labels/counts | Allow, accept, reject and configured-deny controls |
 | remote/observations.json | captured + constructed scenario labels | HTTP execution/headers and absent legacy SSE fallback |
 | session-created-child | captured | Subagent child creation carrying the parent as `parentID` |
+| tool-read-in-subagent-before/after | captured (2026-09-29, `.capture/agents` `direct` case, `promote.mjs`) | A `read` inside a delegated project subagent: `agent` names the subagent, where the parent's own tool events name its primary agent (`build`). Delegation and read arguments scripted; the `directory` envelope is the plugin's `ctx.location.directory`, as the shim wraps it |
 | execution-interrupted-user | captured | User interrupt of a pending request (`reason: "user"`) |
 | stop-audit/outcomes.json | captured counts + constructed labels | Execution counts per session for the `stop` drive |
 

@@ -49,6 +49,23 @@ describe("resolveCapabilityMatrix", () => {
     expect(result.matrix?.["tool.before.observe"]?.level).toBe("exact");
   });
 
+  it("keeps a declared unsupported cell across profiles, so its rationale can still be shown", () => {
+    // Splitting one profile in two must not cost `inspect` the reason a cell is
+    // unsupported: a single profile passes its explicit cells through as-is.
+    const why = { level: "unsupported" as const, rationale: "never observed below 1.5" };
+    const result = resolveCapabilityMatrix(
+      "fake",
+      [
+        { ...older, matrix: { ...older.matrix, "tool.before.context.add": why } },
+        { ...newer, matrix: { ...newer.matrix, "tool.before.context.add": { level: "exact" } } },
+      ],
+      ">=1.0 <2",
+    );
+    expect(result.matrix?.["tool.before.context.add"]).toEqual(why);
+    // A cell no profile declares at the lowest level stays absent.
+    expect(result.matrix?.["tool.before.input.replace"]).toBeUndefined();
+  });
+
   it.each([
     [">=0.9 <1.2", "leading partial overlap"],
     [">=1.8 <2.1", "trailing partial overlap"],

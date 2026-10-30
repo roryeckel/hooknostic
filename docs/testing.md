@@ -180,10 +180,43 @@ Use `claude`, `codex`, `copilot`, `opencode-v1`, `opencode-v2`, or `pi`. The his
 `opencode` lane selector remains a v1 alias. V2 uses
 `packages/cli/test/opencode-v2-playback.test.ts`; see
 [OpenCode families](opencode-families.md) for its independently verified
-capabilities and limits. The test removes common model credential
+capabilities and limits. Agent definitions (ADR-0034) have their own file,
+`packages/cli/test/agent-definition-playback.test.ts`, which runs on the Claude,
+Codex, and both OpenCode lanes: it
+synchronizes a portable definition through project delivery, makes the harness
+delegate to it, and asserts the child ran on its instructions and native model
+(`.capture/agents/README.md`). Outside Codex it also starts a session as a
+`mode: primary` definition and asserts the session ran on its instructions.
+Copilot's project route has its own
+`packages/cli/test/copilot-agent-playback.test.ts`: it syncs
+`.github/agents/<id>.agent.md`, starts `copilot --agent <id>` against the
+loopback, and asserts the instruction marker reached a model request and the
+session log recorded the agent and its `tools`; a no-`--agent` control must not
+receive the marker. Copilot's package lane is exercised through `--plugin-dir`
+by the main playback file. The tests remove common model credential
 variables from the spawned process and supplies only a dummy credential where
 the harness requires a non-empty value. Model requests are served on
 `127.0.0.1` and never forwarded.
+
+The same agent playback file checks native-field shortfalls: the Codex lane
+verifies a generated read-only request remains in TOML while the real child
+inherits its full-access parent, and the v1 lane verifies both cap spellings in
+generated project/package delivery before observing the child exceed them.
+Native validation and diagnostic-policy regressions are separate unit/core tests.
+The capture record distinguishes live behavior from schema/source-derived checks.
+
+Pi's instruction-only project default has a separate generated-artifact check:
+
+```sh
+HOOKNOSTIC_PLAYBACK=pi pnpm exec vitest run packages/cli/test/pi-default-agent-playback.test.ts
+```
+
+CI and the harness watch include this file in their explicit playback lists. It
+synchronizes and verifies a portable primary default, then drives Pi startup with
+native/custom prompts, a projected skill, CLI append and trust controls. The
+capture driver accepts the watch lane's explicit `HOOKNOSTIC_PLAYBACK_VERSION`;
+ordinary runs require the reference build. See
+[the Pi default-role capture](../.capture/pi-default-agent/README.md).
 
 ## Marketplace release gates
 

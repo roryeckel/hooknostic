@@ -120,6 +120,86 @@ async function fixture(
 const fm = (text: string) => parse(text.split("---")[1]!);
 const counts = (discovered: number, emitted: number) => ({ discovered, emitted, skipped: discovered - emitted });
 
+describe("agent definitions with skill invocation policy", () => {
+  it.each([
+    ["project", "oc1"],
+    ["project", "oc2"],
+    ["package", "oc1"],
+    ["package", "oc2"],
+  ] as const)(
+    "composes both components in %s delivery for %s",
+    async (delivery, id) => {
+      const f = await fixture(delivery, [id], {
+        components: { agents: ["./definitions"], ...(delivery === "project" ? { defaultAgent: "reviewer" } : {}) },
+      });
+      await mkdir(join(f.root, "definitions"));
+      await writeFile(
+        join(f.root, "definitions/reviewer.md"),
+        "---\nname: reviewer\ndescription: Reviews code\nmode: all\n---\nReview it.\n",
+      );
+      if (delivery === "project") {
+        const synced = await runProject({ ...f.options, command: "sync" });
+        expect(synced.ok, JSON.stringify(synced)).toBe(true);
+      }
+      const built = await buildProject(f.options);
+      expect(built.ok, JSON.stringify(built.report.diagnostics)).toBe(true);
+      const report =
+        delivery === "project" ? built.report.targets[id]!.project! : built.report.targets[id]!.projection!;
+      expect(report.components[SKILL_INVOCATION_POLICY]).toMatchObject(counts(1, 1));
+      expect(report.components["agents.definition"]).toMatchObject(counts(1, 1));
+      const file =
+        delivery === "project" ? ".opencode/plugins/hooknostic-components.js" : `dist/${id}/hooknostic-agent-plugin.js`;
+      const module = await import(pathToFileURL(join(f.root, file)).href);
+      if (id === "oc1") {
+        const native: Record<string, unknown> = {};
+        (await module.default()).config(native);
+        if (delivery === "package") expect(native["agent"]).toHaveProperty("policy-probe-reviewer");
+        else expect(native["default_agent"]).toBe("reviewer");
+        expect(native["permission"]).toMatchObject({
+          skill: { [delivery === "package" ? "policy-probe-review" : "review"]: "deny" },
+        });
+      } else {
+        const registered: unknown[] = [];
+        const defaults: string[] = [];
+        const agents: string[] = [];
+        await module.default.setup({
+          location: { directory: f.root },
+          mcp: { transform: (edit: (editor: object) => void) => edit({}) },
+          skill: {
+            transform: (edit: (editor: { add(value: unknown): void }) => void) =>
+              edit({ add: (value) => registered.push(value) }),
+          },
+          agent: {
+            transform: (
+              edit: (editor: {
+                default(name: string): void;
+                update(name: string, fn: (value: object) => void): void;
+              }) => void,
+            ) =>
+              edit({
+                default: (name) => defaults.push(name),
+                update: (name, fn) => {
+                  fn({});
+                  agents.push(name);
+                },
+              }),
+          },
+        });
+        if (delivery === "package") {
+          expect(registered).toContainEqual(expect.objectContaining({ id: "policy-probe/review", autoinvoke: false }));
+          expect(agents).toContain("policy-probe-reviewer");
+        } else {
+          expect(defaults).toEqual(["reviewer"]);
+          expect(
+            fm(await readFile(join(f.root, ".agents/skills/review/SKILL.md"), "utf8")).metadata["opencode/autoinvoke"],
+          ).toBe("false");
+        }
+      }
+    },
+    60_000,
+  );
+});
+
 type PermissionAction = "allow" | "ask" | "deny";
 type NativePermissions = Record<string, PermissionAction | Record<string, PermissionAction>>;
 // Constructed model of the probed native fromConfig/evaluate/wildcard cases:

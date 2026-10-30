@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "harness": {
+    "id": "claude",
+    "nativeEvent": "SessionStart"
+  },
+  "session": {
+    "id": "f794ebce-c6f0-4404-886d-5410018ec569",
+    "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-agents-Kxoa5r\\claude"
+  },
+  "correlation": {
+    "agentType": "hn-probe"
+  },
+  "event": "session.start",
+  "how": "startup"
+}

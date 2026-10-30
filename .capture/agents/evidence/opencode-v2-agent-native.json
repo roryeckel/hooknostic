@@ -1,0 +1,1576 @@
+{
+  "platform": "win32",
+  "cases": [
+    {
+      "version": "2.0.17",
+      "route": "plugin",
+      "case": "fields",
+      "exit": 0,
+      "root": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-native-v2-WmKghu\\fields",
+      "agent": {
+        "id": "hn-native-probe",
+        "name": "hn-native-probe",
+        "request": {
+          "settings": {},
+          "headers": {
+            "x-hn-agent": "overlay"
+          },
+          "body": {
+            "hn_agent_overlay": "overlay",
+            "shared": "agent"
+          }
+        },
+        "mode": "subagent",
+        "hidden": false,
+        "permissions": [
+          {
+            "action": "*",
+            "resource": "*",
+            "effect": "allow"
+          },
+          {
+            "action": "external_directory",
+            "resource": "*",
+            "effect": "ask"
+          },
+          {
+            "action": "read",
+            "resource": "*.env",
+            "effect": "ask"
+          },
+          {
+            "action": "read",
+            "resource": "*.env.*",
+            "effect": "ask"
+          },
+          {
+            "action": "read",
+            "resource": "*.env.example",
+            "effect": "allow"
+          },
+          {
+            "action": "external_directory",
+            "resource": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-native-v2-WmKghu\\fields\\data\\opencode\\shell\\*\\*",
+            "effect": "allow"
+          },
+          {
+            "action": "external_directory",
+            "resource": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-native-v2-WmKghu\\fields\\data\\opencode\\tool-output\\*",
+            "effect": "allow"
+          },
+          {
+            "action": "external_directory",
+            "resource": "C:\\Users\\user\\AppData\\Local\\Temp\\opencode\\*",
+            "effect": "allow"
+          },
+          {
+            "action": "external_directory",
+            "resource": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-native-v2-WmKghu\\fields\\config\\opencode\\*",
+            "effect": "allow"
+          },
+          {
+            "action": "external_directory",
+            "resource": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-native-v2-WmKghu\\fields\\*",
+            "effect": "allow"
+          },
+          {
+            "action": "shell",
+            "resource": "*",
+            "effect": "deny"
+          },
+          {
+            "action": "edit",
+            "resource": "*",
+            "effect": "deny"
+          },
+          {
+            "action": "read",
+            "resource": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-native-v2-WmKghu\\fields\\denied.txt",
+            "effect": "deny"
+          },
+          {
+            "action": "read",
+            "resource": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-native-v2-WmKghu\\fields\\second-denied.txt",
+            "effect": "deny"
+          },
+          {
+            "action": "read",
+            "resource": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-native-v2-WmKghu\\fields\\third-denied.txt",
+            "effect": "deny"
+          },
+          {
+            "action": "shell",
+            "resource": "echo $HOME",
+            "effect": "deny"
+          }
+        ],
+        "description": "Native fields probe",
+        "system": "HN-NATIVE-SYSTEM",
+        "model": {
+          "providerID": "playback",
+          "id": "hooknostic-playback-alt",
+          "variant": "probe"
+        },
+        "color": "#123abc",
+        "steps": 2
+      },
+      "childTurns": 2,
+      "models": [
+        "hooknostic-playback-alt",
+        "hooknostic-playback-alt"
+      ],
+      "firstTools": [
+        "glob",
+        "grep",
+        "question",
+        "read",
+        "shell",
+        "skill",
+        "subagent",
+        "webfetch",
+        "websearch",
+        "execute"
+      ],
+      "variantInRequest": true,
+      "agentHeaderInRequest": false,
+      "agentBodyInRequest": false,
+      "deniedReadReported": true,
+      "secretInRequest": false,
+      "parentReturned": false,
+      "errors": []
+    },
+    {
+      "version": "2.0.17",
+      "route": "plugin",
+      "case": "uncapped",
+      "exit": 0,
+      "root": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-native-v2-WmKghu\\uncapped",
+      "agent": {
+        "id": "hn-native-probe",
+        "name": "hn-native-probe",
+        "request": {
+          "settings": {},
+          "headers": {
+            "x-hn-agent": "overlay"
+          },
+          "body": {
+            "hn_agent_overlay": "overlay",
+            "shared": "agent"
+          }
+        },
+        "mode": "subagent",
+        "hidden": false,
+        "permissions": [
+          {
+            "action": "*",
+            "resource": "*",
+            "effect": "allow"
+          },
+          {
+            "action": "external_directory",
+            "resource": "*",
+            "effect": "ask"
+          },
+          {
+            "action": "read",
+            "resource": "*.env",
+            "effect": "ask"
+          },
+          {
+            "action": "read",
+            "resource": "*.env.*",
+            "effect": "ask"
+          },
+          {
+            "action": "read",
+            "resource": "*.env.example",
+            "effect": "allow"
+          },
+          {
+            "action": "external_directory",
+            "resource": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-native-v2-WmKghu\\uncapped\\data\\opencode\\shell\\*\\*",
+            "effect": "allow"
+          },
+          {
+            "action": "external_directory",
+            "resource": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-native-v2-WmKghu\\uncapped\\data\\opencode\\tool-output\\*",
+            "effect": "allow"
+          },
+          {
+            "action": "external_directory",
+            "resource": "C:\\Users\\user\\AppData\\Local\\Temp\\opencode\\*",
+            "effect": "allow"
+          },
+          {
+            "action": "external_directory",
+            "resource": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-native-v2-WmKghu\\uncapped\\config\\opencode\\*",
+            "effect": "allow"
+          },
+          {
+            "action": "external_directory",
+            "resource": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-native-v2-WmKghu\\uncapped\\*",
+            "effect": "allow"
+          },
+          {
+            "action": "shell",
+            "resource": "*",
+            "effect": "deny"
+          },
+          {
+            "action": "edit",
+            "resource": "*",
+            "effect": "deny"
+          },
+          {
+            "action": "read",
+            "resource": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-native-v2-WmKghu\\uncapped\\denied.txt",
+            "effect": "deny"
+          },
+          {
+            "action": "read",
+            "resource": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-native-v2-WmKghu\\uncapped\\second-denied.txt",
+            "effect": "deny"
+          },
+          {
+            "action": "read",
+            "resource": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-native-v2-WmKghu\\uncapped\\third-denied.txt",
+            "effect": "deny"
+          },
+          {
+            "action": "shell",
+            "resource": "echo $HOME",
+            "effect": "deny"
+          }
+        ],
+        "description": "Native fields probe",
+        "system": "HN-NATIVE-SYSTEM",
+        "model": {
+          "providerID": "playback",
+          "id": "hooknostic-playback-alt",
+          "variant": "probe"
+        },
+        "color": "#123abc",
+        "steps": 4
+      },
+      "childTurns": 4,
+      "models": [
+        "hooknostic-playback-alt",
+        "hooknostic-playback-alt",
+        "hooknostic-playback-alt",
+        "hooknostic-playback-alt"
+      ],
+      "firstTools": [
+        "glob",
+        "grep",
+        "question",
+        "read",
+        "shell",
+        "skill",
+        "subagent",
+        "webfetch",
+        "websearch",
+        "execute"
+      ],
+      "variantInRequest": true,
+      "agentHeaderInRequest": false,
+      "agentBodyInRequest": false,
+      "deniedReadReported": true,
+      "secretInRequest": false,
+      "parentReturned": true,
+      "errors": []
+    },
+    {
+      "version": "2.0.17",
+      "route": "plugin",
+      "case": "object-model",
+      "exit": 0,
+      "root": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-native-v2-WmKghu\\object-model",
+      "agent": {
+        "id": "hn-native-probe",
+        "name": "hn-native-probe",
+        "request": {
+          "settings": {},
+          "headers": {
+            "x-hn-agent": "overlay"
+          },
+          "body": {
+            "hn_agent_overlay": "overlay",
+            "shared": "agent"
+          }
+        },
+        "mode": "subagent",
+        "hidden": false,
+        "permissions": [
+          {
+            "action": "*",
+            "resource": "*",
+            "effect": "allow"
+          },
+          {
+            "action": "external_directory",
+            "resource": "*",
+            "effect": "ask"
+          },
+          {
+            "action": "read",
+            "resource": "*.env",
+            "effect": "ask"
+          },
+          {
+            "action": "read",
+            "resource": "*.env.*",
+            "effect": "ask"
+          },
+          {
+            "action": "read",
+            "resource": "*.env.example",
+            "effect": "allow"
+          },
+          {
+            "action": "external_directory",
+            "resource": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-native-v2-WmKghu\\object-model\\data\\opencode\\shell\\*\\*",
+            "effect": "allow"
+          },
+          {
+            "action": "external_directory",
+            "resource": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-native-v2-WmKghu\\object-model\\data\\opencode\\tool-output\\*",
+            "effect": "allow"
+          },
+          {
+            "action": "external_directory",
+            "resource": "C:\\Users\\user\\AppData\\Local\\Temp\\opencode\\*",
+            "effect": "allow"
+          },
+          {
+            "action": "external_directory",
+            "resource": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-native-v2-WmKghu\\object-model\\config\\opencode\\*",
+            "effect": "allow"
+          },
+          {
+            "action": "external_directory",
+            "resource": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-native-v2-WmKghu\\object-model\\*",
+            "effect": "allow"
+          },
+          {
+            "action": "shell",
+            "resource": "*",
+            "effect": "deny"
+          },
+          {
+            "action": "edit",
+            "resource": "*",
+            "effect": "deny"
+          },
+          {
+            "action": "read",
+            "resource": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-native-v2-WmKghu\\object-model\\denied.txt",
+            "effect": "deny"
+          },
+          {
+            "action": "read",
+            "resource": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-native-v2-WmKghu\\object-model\\second-denied.txt",
+            "effect": "deny"
+          },
+          {
+            "action": "read",
+            "resource": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-native-v2-WmKghu\\object-model\\third-denied.txt",
+            "effect": "deny"
+          },
+          {
+            "action": "shell",
+            "resource": "echo $HOME",
+            "effect": "deny"
+          }
+        ],
+        "description": "Native fields probe",
+        "system": "HN-NATIVE-SYSTEM",
+        "model": {
+          "providerID": "playback",
+          "id": "hooknostic-playback-alt",
+          "variant": "probe"
+        },
+        "color": "#123abc",
+        "steps": 2
+      },
+      "childTurns": 2,
+      "models": [
+        "hooknostic-playback-alt",
+        "hooknostic-playback-alt"
+      ],
+      "firstTools": [
+        "glob",
+        "grep",
+        "question",
+        "read",
+        "shell",
+        "skill",
+        "subagent",
+        "webfetch",
+        "websearch",
+        "execute"
+      ],
+      "variantInRequest": true,
+      "agentHeaderInRequest": false,
+      "agentBodyInRequest": false,
+      "deniedReadReported": true,
+      "secretInRequest": false,
+      "parentReturned": false,
+      "errors": []
+    },
+    {
+      "version": "2.0.17",
+      "route": "plugin",
+      "case": "primary",
+      "exit": 0,
+      "root": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-native-v2-WmKghu\\primary",
+      "agent": {
+        "id": "hn-native-probe",
+        "name": "hn-native-probe",
+        "request": {
+          "settings": {},
+          "headers": {
+            "x-hn-agent": "overlay"
+          },
+          "body": {
+            "hn_agent_overlay": "overlay",
+            "shared": "agent"
+          }
+        },
+        "mode": "primary",
+        "hidden": false,
+        "permissions": [
+          {
+            "action": "*",
+            "resource": "*",
+            "effect": "allow"
+          },
+          {
+            "action": "external_directory",
+            "resource": "*",
+            "effect": "ask"
+          },
+          {
+            "action": "read",
+            "resource": "*.env",
+            "effect": "ask"
+          },
+          {
+            "action": "read",
+            "resource": "*.env.*",
+            "effect": "ask"
+          },
+          {
+            "action": "read",
+            "resource": "*.env.example",
+            "effect": "allow"
+          },
+          {
+            "action": "external_directory",
+            "resource": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-native-v2-WmKghu\\primary\\data\\opencode\\shell\\*\\*",
+            "effect": "allow"
+          },
+          {
+            "action": "external_directory",
+            "resource": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-native-v2-WmKghu\\primary\\data\\opencode\\tool-output\\*",
+            "effect": "allow"
+          },
+          {
+            "action": "external_directory",
+            "resource": "C:\\Users\\user\\AppData\\Local\\Temp\\opencode\\*",
+            "effect": "allow"
+          },
+          {
+            "action": "external_directory",
+            "resource": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-native-v2-WmKghu\\primary\\config\\opencode\\*",
+            "effect": "allow"
+          },
+          {
+            "action": "external_directory",
+            "resource": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-native-v2-WmKghu\\primary\\*",
+            "effect": "allow"
+          },
+          {
+            "action": "shell",
+            "resource": "*",
+            "effect": "deny"
+          },
+          {
+            "action": "edit",
+            "resource": "*",
+            "effect": "deny"
+          },
+          {
+            "action": "read",
+            "resource": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-native-v2-WmKghu\\primary\\denied.txt",
+            "effect": "deny"
+          },
+          {
+            "action": "read",
+            "resource": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-native-v2-WmKghu\\primary\\second-denied.txt",
+            "effect": "deny"
+          },
+          {
+            "action": "read",
+            "resource": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-native-v2-WmKghu\\primary\\third-denied.txt",
+            "effect": "deny"
+          },
+          {
+            "action": "shell",
+            "resource": "echo $HOME",
+            "effect": "deny"
+          }
+        ],
+        "description": "Native fields probe",
+        "system": "HN-NATIVE-SYSTEM",
+        "model": {
+          "providerID": "playback",
+          "id": "hooknostic-playback-alt",
+          "variant": "probe"
+        },
+        "color": "#123abc",
+        "steps": 2
+      },
+      "childTurns": 2,
+      "models": [
+        "hooknostic-playback",
+        "hooknostic-playback"
+      ],
+      "firstTools": [
+        "glob",
+        "grep",
+        "question",
+        "read",
+        "shell",
+        "skill",
+        "subagent",
+        "webfetch",
+        "websearch",
+        "execute"
+      ],
+      "variantInRequest": false,
+      "agentHeaderInRequest": false,
+      "agentBodyInRequest": false,
+      "deniedReadReported": true,
+      "secretInRequest": false,
+      "parentReturned": false,
+      "errors": []
+    },
+    {
+      "version": "2.0.17",
+      "route": "plugin",
+      "case": "disabled",
+      "exit": 0,
+      "root": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-native-v2-WmKghu\\disabled",
+      "agent": null,
+      "childTurns": 0,
+      "models": [],
+      "firstTools": [],
+      "variantInRequest": false,
+      "agentHeaderInRequest": false,
+      "agentBodyInRequest": false,
+      "deniedReadReported": false,
+      "secretInRequest": false,
+      "parentReturned": false,
+      "errors": []
+    },
+    {
+      "version": "2.0.17",
+      "route": "plugin",
+      "case": "merge",
+      "exit": 0,
+      "root": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-native-v2-WmKghu\\merge",
+      "agent": {
+        "id": "hn-native-probe",
+        "name": "hn-native-probe",
+        "request": {
+          "settings": {
+            "seed": "keep"
+          },
+          "headers": {
+            "x-hn-existing": "keep",
+            "x-hn-agent": "overlay"
+          },
+          "body": {
+            "existing": "keep",
+            "shared": "agent",
+            "hn_agent_overlay": "overlay"
+          }
+        },
+        "mode": "subagent",
+        "hidden": false,
+        "permissions": [
+          {
+            "action": "*",
+            "resource": "*",
+            "effect": "allow"
+          },
+          {
+            "action": "external_directory",
+            "resource": "*",
+            "effect": "ask"
+          },
+          {
+            "action": "read",
+            "resource": "*.env",
+            "effect": "ask"
+          },
+          {
+            "action": "read",
+            "resource": "*.env.*",
+            "effect": "ask"
+          },
+          {
+            "action": "read",
+            "resource": "*.env.example",
+            "effect": "allow"
+          },
+          {
+            "action": "external_directory",
+            "resource": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-native-v2-WmKghu\\merge\\data\\opencode\\shell\\*\\*",
+            "effect": "allow"
+          },
+          {
+            "action": "external_directory",
+            "resource": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-native-v2-WmKghu\\merge\\data\\opencode\\tool-output\\*",
+            "effect": "allow"
+          },
+          {
+            "action": "external_directory",
+            "resource": "C:\\Users\\user\\AppData\\Local\\Temp\\opencode\\*",
+            "effect": "allow"
+          },
+          {
+            "action": "external_directory",
+            "resource": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-native-v2-WmKghu\\merge\\config\\opencode\\*",
+            "effect": "allow"
+          },
+          {
+            "action": "read",
+            "resource": "seed-guard",
+            "effect": "deny"
+          },
+          {
+            "action": "external_directory",
+            "resource": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-native-v2-WmKghu\\merge\\*",
+            "effect": "allow"
+          },
+          {
+            "action": "shell",
+            "resource": "*",
+            "effect": "deny"
+          },
+          {
+            "action": "edit",
+            "resource": "*",
+            "effect": "deny"
+          },
+          {
+            "action": "read",
+            "resource": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-native-v2-WmKghu\\merge\\denied.txt",
+            "effect": "deny"
+          },
+          {
+            "action": "read",
+            "resource": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-native-v2-WmKghu\\merge\\second-denied.txt",
+            "effect": "deny"
+          },
+          {
+            "action": "read",
+            "resource": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-native-v2-WmKghu\\merge\\third-denied.txt",
+            "effect": "deny"
+          },
+          {
+            "action": "shell",
+            "resource": "echo $HOME",
+            "effect": "deny"
+          }
+        ],
+        "system": "HN-NATIVE-SYSTEM",
+        "description": "Native fields probe",
+        "model": {
+          "providerID": "playback",
+          "id": "hooknostic-playback-alt",
+          "variant": "probe"
+        },
+        "color": "#123abc",
+        "steps": 2
+      },
+      "childTurns": 2,
+      "models": [
+        "hooknostic-playback-alt",
+        "hooknostic-playback-alt"
+      ],
+      "firstTools": [
+        "glob",
+        "grep",
+        "question",
+        "read",
+        "shell",
+        "skill",
+        "subagent",
+        "webfetch",
+        "websearch",
+        "execute"
+      ],
+      "variantInRequest": true,
+      "agentHeaderInRequest": false,
+      "agentBodyInRequest": false,
+      "deniedReadReported": true,
+      "secretInRequest": false,
+      "parentReturned": false,
+      "errors": []
+    },
+    {
+      "version": "2.0.17",
+      "route": "project",
+      "case": "fields",
+      "exit": 0,
+      "root": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-native-v2-889FRY\\fields",
+      "agent": null,
+      "childTurns": 2,
+      "models": [
+        "hooknostic-playback-alt",
+        "hooknostic-playback-alt"
+      ],
+      "firstTools": [
+        "glob",
+        "grep",
+        "question",
+        "read",
+        "shell",
+        "skill",
+        "subagent",
+        "webfetch",
+        "websearch",
+        "execute"
+      ],
+      "variantInRequest": true,
+      "agentHeaderInRequest": false,
+      "agentBodyInRequest": false,
+      "deniedReadReported": true,
+      "secretInRequest": false,
+      "parentReturned": false,
+      "errors": []
+    },
+    {
+      "version": "2.0.17",
+      "route": "project",
+      "case": "uncapped",
+      "exit": 0,
+      "root": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-native-v2-889FRY\\uncapped",
+      "agent": null,
+      "childTurns": 4,
+      "models": [
+        "hooknostic-playback-alt",
+        "hooknostic-playback-alt",
+        "hooknostic-playback-alt",
+        "hooknostic-playback-alt"
+      ],
+      "firstTools": [
+        "glob",
+        "grep",
+        "question",
+        "read",
+        "shell",
+        "skill",
+        "subagent",
+        "webfetch",
+        "websearch",
+        "execute"
+      ],
+      "variantInRequest": true,
+      "agentHeaderInRequest": false,
+      "agentBodyInRequest": false,
+      "deniedReadReported": true,
+      "secretInRequest": false,
+      "parentReturned": true,
+      "errors": []
+    },
+    {
+      "version": "2.0.17",
+      "route": "project",
+      "case": "object-model",
+      "exit": 0,
+      "root": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-native-v2-889FRY\\object-model",
+      "agent": null,
+      "childTurns": 2,
+      "models": [
+        "hooknostic-playback-alt",
+        "hooknostic-playback-alt"
+      ],
+      "firstTools": [
+        "glob",
+        "grep",
+        "question",
+        "read",
+        "shell",
+        "skill",
+        "subagent",
+        "webfetch",
+        "websearch",
+        "execute"
+      ],
+      "variantInRequest": true,
+      "agentHeaderInRequest": false,
+      "agentBodyInRequest": false,
+      "deniedReadReported": true,
+      "secretInRequest": false,
+      "parentReturned": false,
+      "errors": []
+    },
+    {
+      "version": "2.0.17",
+      "route": "project",
+      "case": "primary",
+      "exit": 0,
+      "root": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-native-v2-889FRY\\primary",
+      "agent": null,
+      "childTurns": 2,
+      "models": [
+        "hooknostic-playback",
+        "hooknostic-playback"
+      ],
+      "firstTools": [
+        "glob",
+        "grep",
+        "question",
+        "read",
+        "shell",
+        "skill",
+        "subagent",
+        "webfetch",
+        "websearch",
+        "execute"
+      ],
+      "variantInRequest": false,
+      "agentHeaderInRequest": false,
+      "agentBodyInRequest": false,
+      "deniedReadReported": true,
+      "secretInRequest": false,
+      "parentReturned": false,
+      "errors": []
+    },
+    {
+      "version": "2.0.17",
+      "route": "generated",
+      "case": "fields",
+      "exit": 0,
+      "root": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-native-v2-dpeldF\\fields",
+      "agent": {
+        "id": "hn-native-probe",
+        "name": "hn-native-probe",
+        "request": {
+          "settings": {},
+          "headers": {
+            "x-hn-agent": "overlay"
+          },
+          "body": {
+            "hn_agent_overlay": "overlay",
+            "shared": "agent"
+          }
+        },
+        "mode": "subagent",
+        "hidden": false,
+        "permissions": [
+          {
+            "action": "*",
+            "resource": "*",
+            "effect": "allow"
+          },
+          {
+            "action": "external_directory",
+            "resource": "*",
+            "effect": "ask"
+          },
+          {
+            "action": "read",
+            "resource": "*.env",
+            "effect": "ask"
+          },
+          {
+            "action": "read",
+            "resource": "*.env.*",
+            "effect": "ask"
+          },
+          {
+            "action": "read",
+            "resource": "*.env.example",
+            "effect": "allow"
+          },
+          {
+            "action": "external_directory",
+            "resource": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-native-v2-dpeldF\\fields\\data\\opencode\\shell\\*\\*",
+            "effect": "allow"
+          },
+          {
+            "action": "external_directory",
+            "resource": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-native-v2-dpeldF\\fields\\data\\opencode\\tool-output\\*",
+            "effect": "allow"
+          },
+          {
+            "action": "external_directory",
+            "resource": "C:\\Users\\user\\AppData\\Local\\Temp\\opencode\\*",
+            "effect": "allow"
+          },
+          {
+            "action": "external_directory",
+            "resource": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-native-v2-dpeldF\\fields\\config\\opencode\\*",
+            "effect": "allow"
+          },
+          {
+            "action": "external_directory",
+            "resource": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-native-v2-dpeldF\\fields\\*",
+            "effect": "allow"
+          },
+          {
+            "action": "shell",
+            "resource": "*",
+            "effect": "deny"
+          },
+          {
+            "action": "edit",
+            "resource": "*",
+            "effect": "deny"
+          },
+          {
+            "action": "read",
+            "resource": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-native-v2-dpeldF\\fields\\denied.txt",
+            "effect": "deny"
+          },
+          {
+            "action": "read",
+            "resource": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-native-v2-dpeldF\\fields\\second-denied.txt",
+            "effect": "deny"
+          },
+          {
+            "action": "read",
+            "resource": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-native-v2-dpeldF\\fields\\third-denied.txt",
+            "effect": "deny"
+          },
+          {
+            "action": "shell",
+            "resource": "echo $HOME",
+            "effect": "deny"
+          }
+        ],
+        "description": "Native fields probe",
+        "system": "HN-NATIVE-SYSTEM\n",
+        "model": {
+          "providerID": "playback",
+          "id": "hooknostic-playback-alt",
+          "variant": "probe"
+        },
+        "color": "#123abc",
+        "steps": 2
+      },
+      "childTurns": 2,
+      "models": [
+        "hooknostic-playback-alt",
+        "hooknostic-playback-alt"
+      ],
+      "firstTools": [
+        "glob",
+        "grep",
+        "question",
+        "read",
+        "shell",
+        "skill",
+        "subagent",
+        "webfetch",
+        "websearch",
+        "execute"
+      ],
+      "variantInRequest": true,
+      "agentHeaderInRequest": false,
+      "agentBodyInRequest": false,
+      "deniedReadReported": true,
+      "secretInRequest": false,
+      "parentReturned": false,
+      "errors": []
+    },
+    {
+      "version": "2.0.17",
+      "route": "generated",
+      "case": "uncapped",
+      "exit": 0,
+      "root": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-native-v2-dpeldF\\uncapped",
+      "agent": {
+        "id": "hn-native-probe",
+        "name": "hn-native-probe",
+        "request": {
+          "settings": {},
+          "headers": {
+            "x-hn-agent": "overlay"
+          },
+          "body": {
+            "hn_agent_overlay": "overlay",
+            "shared": "agent"
+          }
+        },
+        "mode": "subagent",
+        "hidden": false,
+        "permissions": [
+          {
+            "action": "*",
+            "resource": "*",
+            "effect": "allow"
+          },
+          {
+            "action": "external_directory",
+            "resource": "*",
+            "effect": "ask"
+          },
+          {
+            "action": "read",
+            "resource": "*.env",
+            "effect": "ask"
+          },
+          {
+            "action": "read",
+            "resource": "*.env.*",
+            "effect": "ask"
+          },
+          {
+            "action": "read",
+            "resource": "*.env.example",
+            "effect": "allow"
+          },
+          {
+            "action": "external_directory",
+            "resource": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-native-v2-dpeldF\\uncapped\\data\\opencode\\shell\\*\\*",
+            "effect": "allow"
+          },
+          {
+            "action": "external_directory",
+            "resource": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-native-v2-dpeldF\\uncapped\\data\\opencode\\tool-output\\*",
+            "effect": "allow"
+          },
+          {
+            "action": "external_directory",
+            "resource": "C:\\Users\\user\\AppData\\Local\\Temp\\opencode\\*",
+            "effect": "allow"
+          },
+          {
+            "action": "external_directory",
+            "resource": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-native-v2-dpeldF\\uncapped\\config\\opencode\\*",
+            "effect": "allow"
+          },
+          {
+            "action": "external_directory",
+            "resource": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-native-v2-dpeldF\\uncapped\\*",
+            "effect": "allow"
+          },
+          {
+            "action": "shell",
+            "resource": "*",
+            "effect": "deny"
+          },
+          {
+            "action": "edit",
+            "resource": "*",
+            "effect": "deny"
+          },
+          {
+            "action": "read",
+            "resource": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-native-v2-dpeldF\\uncapped\\denied.txt",
+            "effect": "deny"
+          },
+          {
+            "action": "read",
+            "resource": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-native-v2-dpeldF\\uncapped\\second-denied.txt",
+            "effect": "deny"
+          },
+          {
+            "action": "read",
+            "resource": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-native-v2-dpeldF\\uncapped\\third-denied.txt",
+            "effect": "deny"
+          },
+          {
+            "action": "shell",
+            "resource": "echo $HOME",
+            "effect": "deny"
+          }
+        ],
+        "description": "Native fields probe",
+        "system": "HN-NATIVE-SYSTEM\n",
+        "model": {
+          "providerID": "playback",
+          "id": "hooknostic-playback-alt",
+          "variant": "probe"
+        },
+        "color": "#123abc",
+        "steps": 4
+      },
+      "childTurns": 4,
+      "models": [
+        "hooknostic-playback-alt",
+        "hooknostic-playback-alt",
+        "hooknostic-playback-alt",
+        "hooknostic-playback-alt"
+      ],
+      "firstTools": [
+        "glob",
+        "grep",
+        "question",
+        "read",
+        "shell",
+        "skill",
+        "subagent",
+        "webfetch",
+        "websearch",
+        "execute"
+      ],
+      "variantInRequest": true,
+      "agentHeaderInRequest": false,
+      "agentBodyInRequest": false,
+      "deniedReadReported": true,
+      "secretInRequest": false,
+      "parentReturned": true,
+      "errors": []
+    },
+    {
+      "version": "2.0.17",
+      "route": "generated",
+      "case": "object-model",
+      "exit": 0,
+      "root": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-native-v2-dpeldF\\object-model",
+      "agent": {
+        "id": "hn-native-probe",
+        "name": "hn-native-probe",
+        "request": {
+          "settings": {},
+          "headers": {
+            "x-hn-agent": "overlay"
+          },
+          "body": {
+            "hn_agent_overlay": "overlay",
+            "shared": "agent"
+          }
+        },
+        "mode": "subagent",
+        "hidden": false,
+        "permissions": [
+          {
+            "action": "*",
+            "resource": "*",
+            "effect": "allow"
+          },
+          {
+            "action": "external_directory",
+            "resource": "*",
+            "effect": "ask"
+          },
+          {
+            "action": "read",
+            "resource": "*.env",
+            "effect": "ask"
+          },
+          {
+            "action": "read",
+            "resource": "*.env.*",
+            "effect": "ask"
+          },
+          {
+            "action": "read",
+            "resource": "*.env.example",
+            "effect": "allow"
+          },
+          {
+            "action": "external_directory",
+            "resource": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-native-v2-dpeldF\\object-model\\data\\opencode\\shell\\*\\*",
+            "effect": "allow"
+          },
+          {
+            "action": "external_directory",
+            "resource": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-native-v2-dpeldF\\object-model\\data\\opencode\\tool-output\\*",
+            "effect": "allow"
+          },
+          {
+            "action": "external_directory",
+            "resource": "C:\\Users\\user\\AppData\\Local\\Temp\\opencode\\*",
+            "effect": "allow"
+          },
+          {
+            "action": "external_directory",
+            "resource": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-native-v2-dpeldF\\object-model\\config\\opencode\\*",
+            "effect": "allow"
+          },
+          {
+            "action": "external_directory",
+            "resource": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-native-v2-dpeldF\\object-model\\*",
+            "effect": "allow"
+          },
+          {
+            "action": "shell",
+            "resource": "*",
+            "effect": "deny"
+          },
+          {
+            "action": "edit",
+            "resource": "*",
+            "effect": "deny"
+          },
+          {
+            "action": "read",
+            "resource": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-native-v2-dpeldF\\object-model\\denied.txt",
+            "effect": "deny"
+          },
+          {
+            "action": "read",
+            "resource": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-native-v2-dpeldF\\object-model\\second-denied.txt",
+            "effect": "deny"
+          },
+          {
+            "action": "read",
+            "resource": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-native-v2-dpeldF\\object-model\\third-denied.txt",
+            "effect": "deny"
+          },
+          {
+            "action": "shell",
+            "resource": "echo $HOME",
+            "effect": "deny"
+          }
+        ],
+        "description": "Native fields probe",
+        "system": "HN-NATIVE-SYSTEM\n",
+        "model": {
+          "providerID": "playback",
+          "id": "hooknostic-playback-alt",
+          "variant": "probe"
+        },
+        "color": "#123abc",
+        "steps": 2
+      },
+      "childTurns": 2,
+      "models": [
+        "hooknostic-playback-alt",
+        "hooknostic-playback-alt"
+      ],
+      "firstTools": [
+        "glob",
+        "grep",
+        "question",
+        "read",
+        "shell",
+        "skill",
+        "subagent",
+        "webfetch",
+        "websearch",
+        "execute"
+      ],
+      "variantInRequest": true,
+      "agentHeaderInRequest": false,
+      "agentBodyInRequest": false,
+      "deniedReadReported": true,
+      "secretInRequest": false,
+      "parentReturned": false,
+      "errors": []
+    },
+    {
+      "version": "2.0.17",
+      "route": "generated",
+      "case": "primary",
+      "exit": 0,
+      "root": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-native-v2-dpeldF\\primary",
+      "agent": {
+        "id": "hn-native-probe",
+        "name": "hn-native-probe",
+        "request": {
+          "settings": {},
+          "headers": {
+            "x-hn-agent": "overlay"
+          },
+          "body": {
+            "hn_agent_overlay": "overlay",
+            "shared": "agent"
+          }
+        },
+        "mode": "primary",
+        "hidden": false,
+        "permissions": [
+          {
+            "action": "*",
+            "resource": "*",
+            "effect": "allow"
+          },
+          {
+            "action": "external_directory",
+            "resource": "*",
+            "effect": "ask"
+          },
+          {
+            "action": "read",
+            "resource": "*.env",
+            "effect": "ask"
+          },
+          {
+            "action": "read",
+            "resource": "*.env.*",
+            "effect": "ask"
+          },
+          {
+            "action": "read",
+            "resource": "*.env.example",
+            "effect": "allow"
+          },
+          {
+            "action": "external_directory",
+            "resource": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-native-v2-dpeldF\\primary\\data\\opencode\\shell\\*\\*",
+            "effect": "allow"
+          },
+          {
+            "action": "external_directory",
+            "resource": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-native-v2-dpeldF\\primary\\data\\opencode\\tool-output\\*",
+            "effect": "allow"
+          },
+          {
+            "action": "external_directory",
+            "resource": "C:\\Users\\user\\AppData\\Local\\Temp\\opencode\\*",
+            "effect": "allow"
+          },
+          {
+            "action": "external_directory",
+            "resource": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-native-v2-dpeldF\\primary\\config\\opencode\\*",
+            "effect": "allow"
+          },
+          {
+            "action": "external_directory",
+            "resource": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-native-v2-dpeldF\\primary\\*",
+            "effect": "allow"
+          },
+          {
+            "action": "shell",
+            "resource": "*",
+            "effect": "deny"
+          },
+          {
+            "action": "edit",
+            "resource": "*",
+            "effect": "deny"
+          },
+          {
+            "action": "read",
+            "resource": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-native-v2-dpeldF\\primary\\denied.txt",
+            "effect": "deny"
+          },
+          {
+            "action": "read",
+            "resource": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-native-v2-dpeldF\\primary\\second-denied.txt",
+            "effect": "deny"
+          },
+          {
+            "action": "read",
+            "resource": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-native-v2-dpeldF\\primary\\third-denied.txt",
+            "effect": "deny"
+          },
+          {
+            "action": "shell",
+            "resource": "echo $HOME",
+            "effect": "deny"
+          }
+        ],
+        "description": "Native fields probe",
+        "system": "HN-NATIVE-SYSTEM\n",
+        "model": {
+          "providerID": "playback",
+          "id": "hooknostic-playback-alt",
+          "variant": "probe"
+        },
+        "color": "#123abc",
+        "steps": 2
+      },
+      "childTurns": 2,
+      "models": [
+        "hooknostic-playback",
+        "hooknostic-playback"
+      ],
+      "firstTools": [
+        "glob",
+        "grep",
+        "question",
+        "read",
+        "shell",
+        "skill",
+        "subagent",
+        "webfetch",
+        "websearch",
+        "execute"
+      ],
+      "variantInRequest": false,
+      "agentHeaderInRequest": false,
+      "agentBodyInRequest": false,
+      "deniedReadReported": true,
+      "secretInRequest": false,
+      "parentReturned": false,
+      "errors": []
+    },
+    {
+      "version": "2.0.17",
+      "route": "generated",
+      "case": "disabled",
+      "exit": 0,
+      "root": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-native-v2-dpeldF\\disabled",
+      "agent": null,
+      "childTurns": 0,
+      "models": [],
+      "firstTools": [],
+      "variantInRequest": false,
+      "agentHeaderInRequest": false,
+      "agentBodyInRequest": false,
+      "deniedReadReported": false,
+      "secretInRequest": false,
+      "parentReturned": false,
+      "errors": []
+    },
+    {
+      "version": "2.0.17",
+      "route": "generated",
+      "case": "merge",
+      "exit": 0,
+      "root": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-native-v2-dpeldF\\merge",
+      "agent": {
+        "id": "hn-native-probe",
+        "name": "hn-native-probe",
+        "request": {
+          "settings": {
+            "seed": "keep"
+          },
+          "headers": {
+            "x-hn-existing": "keep",
+            "x-hn-agent": "overlay"
+          },
+          "body": {
+            "existing": "keep",
+            "shared": "agent",
+            "hn_agent_overlay": "overlay"
+          }
+        },
+        "mode": "subagent",
+        "hidden": false,
+        "permissions": [
+          {
+            "action": "*",
+            "resource": "*",
+            "effect": "allow"
+          },
+          {
+            "action": "external_directory",
+            "resource": "*",
+            "effect": "ask"
+          },
+          {
+            "action": "read",
+            "resource": "*.env",
+            "effect": "ask"
+          },
+          {
+            "action": "read",
+            "resource": "*.env.*",
+            "effect": "ask"
+          },
+          {
+            "action": "read",
+            "resource": "*.env.example",
+            "effect": "allow"
+          },
+          {
+            "action": "external_directory",
+            "resource": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-native-v2-dpeldF\\merge\\data\\opencode\\shell\\*\\*",
+            "effect": "allow"
+          },
+          {
+            "action": "external_directory",
+            "resource": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-native-v2-dpeldF\\merge\\data\\opencode\\tool-output\\*",
+            "effect": "allow"
+          },
+          {
+            "action": "external_directory",
+            "resource": "C:\\Users\\user\\AppData\\Local\\Temp\\opencode\\*",
+            "effect": "allow"
+          },
+          {
+            "action": "external_directory",
+            "resource": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-native-v2-dpeldF\\merge\\config\\opencode\\*",
+            "effect": "allow"
+          },
+          {
+            "action": "read",
+            "resource": "seed-guard",
+            "effect": "deny"
+          },
+          {
+            "action": "external_directory",
+            "resource": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-native-v2-dpeldF\\merge\\*",
+            "effect": "allow"
+          },
+          {
+            "action": "shell",
+            "resource": "*",
+            "effect": "deny"
+          },
+          {
+            "action": "edit",
+            "resource": "*",
+            "effect": "deny"
+          },
+          {
+            "action": "read",
+            "resource": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-native-v2-dpeldF\\merge\\denied.txt",
+            "effect": "deny"
+          },
+          {
+            "action": "read",
+            "resource": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-native-v2-dpeldF\\merge\\second-denied.txt",
+            "effect": "deny"
+          },
+          {
+            "action": "read",
+            "resource": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-native-v2-dpeldF\\merge\\third-denied.txt",
+            "effect": "deny"
+          },
+          {
+            "action": "shell",
+            "resource": "echo $HOME",
+            "effect": "deny"
+          }
+        ],
+        "system": "HN-NATIVE-SYSTEM\n",
+        "description": "Native fields probe",
+        "model": {
+          "providerID": "playback",
+          "id": "hooknostic-playback-alt",
+          "variant": "probe"
+        },
+        "color": "#123abc",
+        "steps": 2
+      },
+      "childTurns": 2,
+      "models": [
+        "hooknostic-playback-alt",
+        "hooknostic-playback-alt"
+      ],
+      "firstTools": [
+        "glob",
+        "grep",
+        "question",
+        "read",
+        "shell",
+        "skill",
+        "subagent",
+        "webfetch",
+        "websearch",
+        "execute"
+      ],
+      "variantInRequest": true,
+      "agentHeaderInRequest": false,
+      "agentBodyInRequest": false,
+      "deniedReadReported": true,
+      "secretInRequest": false,
+      "parentReturned": false,
+      "errors": []
+    }
+  ],
+  "provenance": "Derived runtime inventory and HTTP observations; model replies and tool arguments scripted.",
+  "date": "2026-10-17",
+  "method": "live-probe"
+}

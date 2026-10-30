@@ -1,0 +1,17 @@
+{
+  "session_id": "01a0eea8-de61-7c23-897f-1595fcddfe96",
+  "turn_id": "01a0eea8-dea7-7d30-ad5f-9b3417019885",
+  "transcript_path": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-agents-74z6Ku\\codex-home\\sessions\\2026\\09\\29\\rollout-2026-09-29T14-33-59-01a0eea8-de61-7c23-897f-1595fcddfe96.jsonl",
+  "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-agents-74z6Ku\\codex",
+  "hook_event_name": "PreToolUse",
+  "model": "hooknostic-playback",
+  "permission_mode": "bypassPermissions",
+  "tool_name": "multi_agent_v1wait_agent",
+  "tool_input": {
+    "targets": [
+      "01a0eea8-e146-7193-b947-5065e533d9f0"
+    ],
+    "timeout_ms": 60000
+  },
+  "tool_use_id": "call_playback"
+}

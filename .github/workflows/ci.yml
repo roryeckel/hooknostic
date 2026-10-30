@@ -257,7 +257,7 @@ jobs:
 
       - name: Run model-free playback
         id: playback
-        run: pnpm exec vitest run packages/cli/test/harness-playback.test.ts packages/cli/test/opencode-v2-playback.test.ts scripts/pi-drift-driver.test.mjs
+        run: pnpm exec vitest run packages/cli/test/harness-playback.test.ts packages/cli/test/opencode-v2-playback.test.ts packages/cli/test/agent-definition-playback.test.ts packages/cli/test/copilot-agent-playback.test.ts packages/cli/test/pi-default-agent-playback.test.ts scripts/pi-drift-driver.test.mjs
         env:
           HOOKNOSTIC_PLAYBACK: ${{ matrix.harness }}
           HKN_PLAYBACK_ARTIFACT_DIR: ${{ runner.temp }}/opencode-v2-playback

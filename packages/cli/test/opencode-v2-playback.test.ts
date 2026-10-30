@@ -249,7 +249,7 @@ describe.skipIf(!enabled)("OpenCode v2 offline playback", () => {
       expect.objectContaining({
         tool: expect.objectContaining({ nativeName: "read", kind: "file.read" }),
         error: { message: "File not found: definitely-missing-hooknostic.txt" },
-        correlation: { toolCallId: "call_probe_1" },
+        correlation: expect.objectContaining({ toolCallId: "call_probe_1" }),
       }),
     ]);
     const customErrorCapture = opencodeV2CapabilityProfiles
