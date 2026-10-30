@@ -231,25 +231,40 @@ pnpm lint
 
 ## Support and status
 
-The compiler, project reconciliation, and package projectors are implemented. See the
-[generated support table](docs/harness-support.md) for version ranges, component support,
-and the evidence behind each claim. Package and project support can differ; Codex
-package hooks require a narrower version range than project hooks.
+Claude Code, Codex CLI, GitHub Copilot CLI, OpenCode (v1 and v2 families), and Pi
+are each supported for package and project delivery. The
+[generated support table](docs/harness-support.md) is the authority: version ranges,
+the support level of every component, and the captured evidence behind each claim.
+This section flags only what is most likely to change a decision.
 
-**macOS has unit and fixture coverage, but no real-harness playback evidence.** Windows
-and Linux observations are recorded separately. OpenCode v2 retains explicit limitations,
-including approximate context/stop behavior and incomplete MCP identity normalization;
-read [OpenCode families](docs/opencode-families.md) before relying on those capabilities.
-Pi supports project and package hooks and skills; its native MCP and permission
-channels are unsupported. See the [support table](docs/harness-support.md) and
-[installation guide](docs/installing-artifacts.md#pi).
+A weekly [harness-watch](docs/harness-watch.md) workflow detects new harness releases
+on npm, runs the model-free playback suite against them, and records each pass in that
+table, so support tracks upstream releases rather than a one-time snapshot. A failure
+opens an issue instead.
 
-GitHub Copilot CLI supports package and project delivery of hooks, skills, and MCP from
-`>=1.0.101`. Repository hooks load only in a trusted folder and from the directory the
-session starts in. Copilot also reads Claude Code's `.claude/settings.json` hooks and root
-`.mcp.json`, so Hooknostic keeps each harness on its own generated output when a project
-targets both ([ADR-0033](docs/decisions/0033-no-cross-harness-compatibility-reads.md)). See the
-[Copilot installation guide](docs/installing-artifacts.md#github-copilot-cli).
+**macOS has unit and fixture coverage, but no real-harness playback evidence.**
+Shell-interpreter captures exist there for every harness except Pi; end-to-end
+harness behavior is established on Windows and Linux.
+
+Known limits worth reading before you rely on a harness:
+
+- **Codex CLI**: installed-plugin (package) hooks need a newer Codex than repository
+  hooks, so package support has a narrower version range.
+- **GitHub Copilot CLI**: repository hooks load only in a trusted folder and from the
+  directory the session starts in. Copilot also reads Claude Code's
+  `.claude/settings.json` hooks and root `.mcp.json`, so Hooknostic keeps each harness
+  on its own generated output when a project targets both
+  ([ADR-0033](docs/decisions/0033-no-cross-harness-compatibility-reads.md),
+  [installation](docs/installing-artifacts.md#github-copilot-cli)).
+- **OpenCode v2**: context injection and stop behavior are approximate, and Code Mode
+  MCP calls are not normalized to `kind: "mcp"`. Read
+  [OpenCode families](docs/opencode-families.md) before relying on those capabilities.
+- **Pi**: has no permission event, so permission hooks are unsupported. Pi 1.x runs
+  stdio and streamable-HTTP MCP servers through its native client and rejects SSE
+  ([details above](#one-package-multiple-targets),
+  [installation](docs/installing-artifacts.md#pi)).
+
+Release notes: [release highlights](docs/release-highlights.md).
 
 The default compatibility minimum is `emulated`. Unsupported components and degraded
 items fail by default; known standard deviations warn and remain visible in the report.

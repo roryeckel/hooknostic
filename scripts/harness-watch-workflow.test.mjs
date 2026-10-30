@@ -75,6 +75,17 @@ describe("harness-watch workflow structure", () => {
     );
   });
 
+  it("builds profile runtime dependencies before recording playback validation", () => {
+    const record = jobSource("record");
+    const build = record.indexOf("pnpm --filter @hooknostic/agent-plugin run bundle");
+    expect(build).toBeGreaterThan(-1);
+    expect(build).toBeLessThan(
+      record.indexOf("node --experimental-strip-types scripts/record-playback-validation.mjs"),
+    );
+    const step = record.slice(record.lastIndexOf("- name:", build), build);
+    expect(step).toContain("if: steps.gate.outputs.skip == 'false' && steps.pr.outputs.skip == 'false'");
+  });
+
   it("never expands a matrix when detect was skipped or failed", () => {
     for (const job of ["record", "report-failure"]) {
       expect(jobSource(job)).toMatch(/needs\.detect\.result == 'success' && needs\.detect\.outputs\.count != '0'/);

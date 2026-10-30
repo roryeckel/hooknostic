@@ -6,6 +6,7 @@
 //
 //   node --experimental-strip-types scripts/record-playback-validation.mjs \
 //     <claude|codex|opencode> <version> [--date YYYY-MM-DD]
+// Build @hooknostic/agent-plugin first: profiles can import its runtime exports.
 //
 // Exit codes:
 //   0  success (record written, or same-version no-op)
@@ -24,6 +25,7 @@
 // pinned in-range OLDER build with an empty marker region is a no-op (exit 4)
 // rather than a redundant record.
 import { readFileSync, writeFileSync } from "node:fs";
+import { register } from "node:module";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -125,8 +127,9 @@ async function main() {
     fail(`not an ISO date: ${date}`, 2);
   }
 
-  // strip-types import of the unbuilt TS profile (same pattern as
-  // harness-playback-version.mjs).
+  // Type stripping leaves sibling ".js" specifiers unchanged. Resolve those
+  // against the unbuilt workspace sources, as the capture driver does.
+  register(new URL("./ts-resolve-hook.mjs", import.meta.url));
   const imported = await import(new URL(entry.profileModule, import.meta.url));
   const profiles = imported[entry.profileExport];
   if (!Array.isArray(profiles) || profiles.length === 0) {

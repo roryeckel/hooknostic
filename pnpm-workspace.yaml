@@ -16,7 +16,7 @@ catalog:
   "toml-eslint-parser": "^1.0.3"
   "jsonc-parser": "^3.3.1"
   "@eslint/js": "^10.0.1"
-  "@modelcontextprotocol/server": "^2.3.1"
+  "@modelcontextprotocol/server": "^2.4.0"
   "@types/node": "^22.20.5"
   "@types/npm-package-arg": "^6.1.4"
   "@types/semver": "^7.8.0"
@@ -24,7 +24,7 @@ catalog:
   "@xterm/headless": "^6.0.0"
   "cross-spawn": "^7.0.6"
   "esbuild": "^0.28.2"
-  "eslint": "^10.12.0"
+  "eslint": "^10.13.0"
   "eslint-plugin-simple-import-sort": "^14.0.0"
   "minimatch": "^10.2.6"
   "node-pty": "^1.1.0"
@@ -32,9 +32,9 @@ catalog:
   "prettier": "^3.9.10"
   "typescript": "npm:@typescript/typescript6@~6.0.2"
   "@typescript/native": "npm:typescript@~7.0.2"
-  "typescript-eslint": "^8.71.1"
+  "typescript-eslint": "^8.72.0"
   "validate-npm-package-name": "^8.0.0"
-  "vitest": "^5.0.3"
+  "vitest": "^5.0.5"
   "yaml": "^2.9.1"
 catalogs:
   semver-runtime:
@@ -44,4 +44,4 @@ catalogs:
   zod3:
     "zod": "^3.25.76"
   zod4:
-    "zod": "^4.6.6"
+    "zod": "^4.6.7"
