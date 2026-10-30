@@ -29,6 +29,10 @@ contracts introduced on master after the original Pi adapter.
   compaction, and a stop-prevention continuation), writing to ignored
   `captured-sessions/<platform>/`. `promote-sessions.mjs` curates them into
   the reference fixture directory. See [pi 1.3.0 recapture](#pi-130-recapture-windows-and-linux-2026-10-19).
+- `probe-session-start-notice.mjs` — model-free probe that tests whether
+  `ctx.ui` notices from `session_start` reach the user and the model, across
+  print, RPC, and TUI. It writes to ignored `captured-session-start/`. See
+  [session-start notices](#session-start-notices-130-and-140-windows-2026-10-30).
 - `scratch/` — probe workspace (probe pi-package, scratch agent dirs);
   gitignored.
 
@@ -149,6 +153,103 @@ node --experimental-strip-types .capture/pi/make-canonical.mjs
 The probes check the build against `referenceVersion`;
 `HKN_PI_EXPECTED_VERSION` overrides that for a candidate probed before the
 metadata moves. Promotion accepts only the reference build.
+
+## Session-start notices (1.3.0 and 1.4.0, Windows, 2026-10-30)
+
+Question: can an extension show the user a notice at session start that the
+model never sees? `probe-session-start-notice.mjs` loads an extension whose
+`session_start` handler calls every fire-and-forget `ctx.ui` notice method:
+`notify` at `info` and `warning`, `setStatus`, `setWidget`, and `setTitle`.
+For comparison, the same handler sends `pi.sendMessage({customType, content,
+display: true})`. Each string carries a per-run nonce, a per-start sequence
+number, the reason, and the method, so a match names the exact start and the
+method that produced it. A prompt follows every start, so the loopback model
+receives a request that could carry the notice. Each surface runs in a
+disposable home, agent directory, and project, with `PI_OFFLINE` and
+`PI_SKIP_VERSION_CHECK` set, so the only traffic is the loopback model. Both
+builds were installed with `--ignore-scripts` into scratch prefixes.
+
+Surfaces and starts:
+
+- **print**: `-p`, then `--continue -p`, then `--fork <first session> -p`.
+  Stdout and stderr were searched.
+- **rpc**: `--mode rpc` startup, then `new_session`, `switch_session` back to
+  the first session, `fork`, and `clone`. A second process ran with
+  `--continue`. Stdout rows were searched.
+- **tui**: the interactive TUI ran under node-pty and was rendered by
+  `@xterm/headless`. It went through startup, `/new`, `/reload`, `/resume`
+  (first entry), and `/fork` (first entry), then a second process with
+  `--continue`. Everything painted was searched: the raw stream with escapes
+  stripped, plus OSC title sequences for `setTitle`.
+
+1.3.0 and 1.4.0 gave identical results:
+
+| Surface | Reason (how started) | `ctx.ui` notice shown | Notice reached model | `sendMessage` shown | `sendMessage` reached model |
+|---|---|---|---|---|---|
+| print | `startup` (plain, `--continue`, `--fork`) | none (`hasUI: false`) | no | no (only the reply prints) | yes |
+| rpc | `startup` (plain, `--continue`) | notify info + warning, setStatus, setWidget, setTitle as `extension_ui_request` | no | no stdout row | yes |
+| rpc | `new` (`new_session`) | all five, as above | no | `message_start`/`message_end` | yes |
+| rpc | `resume` (`switch_session`) | all five | no | yes | yes |
+| rpc | `fork` (`fork`, `clone`) | all five | no | yes | yes |
+| tui | `startup` (fresh) | notify info + warning, status line, widget, title | no | yes | yes |
+| tui | `startup` (`--continue`) | status line, widget, title; **no notify** | no | yes | yes |
+| tui | `new` (`/new`) | all five | no | yes | yes |
+| tui | `reload` (`/reload`) | warning notify, status, widget, title; **info notify never painted** | no | yes | yes |
+| tui | `resume` (`/resume`) | as reload | no | yes | yes |
+| tui | `fork` (`/fork`) | as reload | no | yes | yes |
+
+No model request on any surface carried a notice nonce. Every displayed
+`sendMessage` nonce reached the next request and stayed in later context.
+
+Observed behaviour behind the table. Where source is cited, it is the
+installed `dist/`, which is schema-derived:
+
+- **The start reasons are `startup`, `new`, `resume`, `fork`, and `reload`.**
+  A launch that resumes or forks an existing session (`--continue`, `--fork`)
+  reports `startup` with no `previousSessionFile`, even though the earlier
+  context reached the model. The other reasons occur only when a running
+  process replaces its session. `reload` is TUI-only: RPC has no reload
+  command.
+- **RPC fires `session_start` twice per session replacement.** `new_session`,
+  `switch_session`, `fork`, and `clone` each logged two `session_start`
+  events with the same reason. Each event produced its own UI requests and its
+  own `sendMessage` entry, and both entries reached the model. Only the second
+  entry produced `message_start`/`message_end` rows on stdout. Startup fired
+  once. In `rpc-mode.js`, the runtime host's rebind callback and the
+  command's explicit `rebindSession()` both rebind extensions. The TUI fired
+  once per replacement.
+- **RPC startup**: a `sendMessage` made at startup produced no stdout row. It
+  was still persisted and sent to the model. The UI requests for that start
+  did arrive.
+- **The TUI drops some notify calls before they paint.** An `info` notify
+  renders through the chat's collapsing status line. After `/reload`,
+  `/resume`, and `/fork`, Pi writes its own status message ("Reloaded …",
+  "Resumed session", "Forked to new session") into that line before the next
+  render, so the notice never reaches the terminal. On a `--continue` launch,
+  `renderInitialMessages()` runs after extensions bind, and both notify rows
+  were gone before the first paint. `setStatus` (footer), `setWidget` (above
+  the editor), and `setTitle` (OSC 0) survived every start. A `warning`
+  notify survived everything except `--continue`.
+- `/fork` puts the forked message back in the editor, so the TUI's next
+  probe prompt was appended to it. This does not affect any nonce.
+
+Consequence: Pi can show the user a model-invisible notice at session start
+in the TUI and in RPC, and has no channel for one in print mode. `setStatus`
+and `setWidget` were the only methods that rendered for every reason in the
+TUI. `notify` was dropped for some reasons. `pi.sendMessage` does not meet
+the requirement, because the model reads it (`packages/adapter-pi/src/apply.ts`
+already treats it as model-visible). This section records evidence only. No
+vocabulary, capability cell, or adapter behaviour follows from it.
+
+Reproduce from the repository root after `pnpm run bundle`:
+
+```sh
+node --experimental-strip-types .capture/pi/probe-session-start-notice.mjs <pi-1.3.0-binary> <pi-1.4.0-binary>
+```
+
+Each build's ignored `captured-session-start/<version>/` holds
+`summary.json` (per-start verdicts, every start event, RPC UI requests, and
+nonces per model request) and the TUI screens.
 
 ## Captured facts (pi 0.84.4, Windows, 2026-09-27)
 
@@ -294,5 +395,6 @@ Package-route probe: install `scratch/hkn-probe-package` into
   interactive and RPC modes. The single-prompt print-mode probe succeeded;
   `prompt.before.block` remains unrated until the portable mapping is verified.
 - `notify` (user-facing): `ctx.ui.notify` verified to be a safe no-op in
-  print mode (`hasUI: false`); TUI/RPC rendering not probed (no fixtures can
-  represent it).
+  print mode (`hasUI: false`). Rendering from `session_start` in the TUI and
+  in RPC is covered by [session-start notices](#session-start-notices-130-and-140-windows-2026-10-30).
+  Notify from other events is not probed.
