@@ -1,0 +1,260 @@
+{
+  "harness": "claude",
+  "version": "2.1.311",
+  "date": "2026-10-29",
+  "platform": "win32",
+  "node": "v24.20.0",
+  "probeName": "budget-probe",
+  "probeDescription": "BUDGET_PROBE_DESCRIPTION harmless capture control.",
+  "cases": [
+    {
+      "label": "default",
+      "budgetEnv": null,
+      "exitCode": 0,
+      "listing": {
+        "chars": 5983,
+        "entries": [
+          {
+            "name": "budget-probe",
+            "form": "name-only",
+            "chars": 14
+          },
+          {
+            "name": "dataviz",
+            "form": "full",
+            "chars": 1447
+          },
+          {
+            "name": "update-config",
+            "form": "full",
+            "chars": 707
+          },
+          {
+            "name": "keybindings-help",
+            "form": "full",
+            "chars": 248
+          },
+          {
+            "name": "code-review",
+            "form": "full",
+            "chars": 840
+          },
+          {
+            "name": "simplify",
+            "form": "full",
+            "chars": 188
+          },
+          {
+            "name": "fewer-permission-prompts",
+            "form": "full",
+            "chars": 191
+          },
+          {
+            "name": "loop",
+            "form": "full",
+            "chars": 344
+          },
+          {
+            "name": "claude-api",
+            "form": "full",
+            "chars": 1082
+          },
+          {
+            "name": "workflow-authoring",
+            "form": "full",
+            "chars": 252
+          },
+          {
+            "name": "run",
+            "form": "full",
+            "chars": 368
+          },
+          {
+            "name": "plugin-authoring",
+            "form": "full",
+            "chars": 266
+          },
+          {
+            "name": "init",
+            "form": "name-only",
+            "chars": 6
+          },
+          {
+            "name": "security-review",
+            "form": "name-only",
+            "chars": 17
+          }
+        ],
+        "probeEntry": "- budget-probe"
+      },
+      "overBudgetLog": "[WARN] Skill listing over budget: 14 skills, 6167 chars > 6000 budget — descriptions will be truncated. Run /skills to disable some, or raise skillListingBudgetFraction in settings.",
+      "requestsSha256": "f8d414f1beacda65090f49554c30f989a50ddfe7a8bd92b478605974e11d48a1"
+    },
+    {
+      "label": "raised",
+      "budgetEnv": "100000",
+      "exitCode": 0,
+      "listing": {
+        "chars": 6169,
+        "entries": [
+          {
+            "name": "budget-probe",
+            "form": "full",
+            "chars": 66
+          },
+          {
+            "name": "dataviz",
+            "form": "full",
+            "chars": 1447
+          },
+          {
+            "name": "update-config",
+            "form": "full",
+            "chars": 707
+          },
+          {
+            "name": "keybindings-help",
+            "form": "full",
+            "chars": 248
+          },
+          {
+            "name": "code-review",
+            "form": "full",
+            "chars": 840
+          },
+          {
+            "name": "simplify",
+            "form": "full",
+            "chars": 188
+          },
+          {
+            "name": "fewer-permission-prompts",
+            "form": "full",
+            "chars": 191
+          },
+          {
+            "name": "loop",
+            "form": "full",
+            "chars": 344
+          },
+          {
+            "name": "claude-api",
+            "form": "full",
+            "chars": 1082
+          },
+          {
+            "name": "workflow-authoring",
+            "form": "full",
+            "chars": 252
+          },
+          {
+            "name": "run",
+            "form": "full",
+            "chars": 368
+          },
+          {
+            "name": "plugin-authoring",
+            "form": "full",
+            "chars": 266
+          },
+          {
+            "name": "init",
+            "form": "full",
+            "chars": 67
+          },
+          {
+            "name": "security-review",
+            "form": "full",
+            "chars": 90
+          }
+        ],
+        "probeEntry": "- budget-probe: BUDGET_PROBE_DESCRIPTION harmless capture control."
+      },
+      "overBudgetLog": null,
+      "requestsSha256": "386564cfe832e39d009251cc9843819dc456882e23954fa6b4b63b7f9dac2e9a"
+    },
+    {
+      "label": "tight",
+      "budgetEnv": "2000",
+      "exitCode": 0,
+      "listing": {
+        "chars": 5983,
+        "entries": [
+          {
+            "name": "budget-probe",
+            "form": "name-only",
+            "chars": 14
+          },
+          {
+            "name": "dataviz",
+            "form": "full",
+            "chars": 1447
+          },
+          {
+            "name": "update-config",
+            "form": "full",
+            "chars": 707
+          },
+          {
+            "name": "keybindings-help",
+            "form": "full",
+            "chars": 248
+          },
+          {
+            "name": "code-review",
+            "form": "full",
+            "chars": 840
+          },
+          {
+            "name": "simplify",
+            "form": "full",
+            "chars": 188
+          },
+          {
+            "name": "fewer-permission-prompts",
+            "form": "full",
+            "chars": 191
+          },
+          {
+            "name": "loop",
+            "form": "full",
+            "chars": 344
+          },
+          {
+            "name": "claude-api",
+            "form": "full",
+            "chars": 1082
+          },
+          {
+            "name": "workflow-authoring",
+            "form": "full",
+            "chars": 252
+          },
+          {
+            "name": "run",
+            "form": "full",
+            "chars": 368
+          },
+          {
+            "name": "plugin-authoring",
+            "form": "full",
+            "chars": 266
+          },
+          {
+            "name": "init",
+            "form": "name-only",
+            "chars": 6
+          },
+          {
+            "name": "security-review",
+            "form": "name-only",
+            "chars": 17
+          }
+        ],
+        "probeEntry": "- budget-probe"
+      },
+      "overBudgetLog": "[WARN] Skill listing over budget: 14 skills, 6167 chars > 2000 budget — descriptions will be truncated. Run /skills to disable some, or raise skillListingBudgetFraction in settings.",
+      "requestsSha256": "27614f03b438fc6054c50cd54f06f9d3c52e6eab1cf1340d9a59ae803397b95d"
+    }
+  ]
+}

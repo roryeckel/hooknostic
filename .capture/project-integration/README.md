@@ -52,6 +52,16 @@ variable is set.
 Claude's rules for the same text in its own declaration are recorded in
 `../claude-project-mcp-environment`.
 
+## Follow-up — 2026-10-29: Claude skill-listing budget
+
+On Claude Code 2.1.311 and 2.1.312 the skill marker stopped reaching the model.
+The request still listed `local-sample`, but by name alone. Claude's own entries
+exceed its skill-listing budget for the playback model id from 2.1.311, and over
+that budget Claude keeps only its bundled skills' descriptions
+(`../claude-skill-listing-budget`). The Claude lane now sets
+`SLASH_COMMAND_TOOL_CHAR_BUDGET`, and the case passes again on 2.1.238, 2.1.311
+and 2.1.312 with the same assertion.
+
 ## Regression mutation evidence
 
 `mutation-results.json` records isolated source mutants and the failed regression

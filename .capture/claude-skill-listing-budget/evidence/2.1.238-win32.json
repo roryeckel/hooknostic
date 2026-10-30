@@ -1,0 +1,215 @@
+{
+  "harness": "claude",
+  "version": "2.1.238",
+  "date": "2026-10-29",
+  "platform": "win32",
+  "node": "v24.20.0",
+  "probeName": "budget-probe",
+  "probeDescription": "BUDGET_PROBE_DESCRIPTION harmless capture control.",
+  "cases": [
+    {
+      "label": "default",
+      "budgetEnv": null,
+      "exitCode": 0,
+      "listing": {
+        "chars": 4477,
+        "entries": [
+          {
+            "name": "budget-probe",
+            "form": "full",
+            "chars": 66
+          },
+          {
+            "name": "dataviz",
+            "form": "full",
+            "chars": 1146
+          },
+          {
+            "name": "update-config",
+            "form": "full",
+            "chars": 707
+          },
+          {
+            "name": "keybindings-help",
+            "form": "full",
+            "chars": 248
+          },
+          {
+            "name": "simplify",
+            "form": "full",
+            "chars": 188
+          },
+          {
+            "name": "fewer-permission-prompts",
+            "form": "full",
+            "chars": 191
+          },
+          {
+            "name": "loop",
+            "form": "full",
+            "chars": 314
+          },
+          {
+            "name": "claude-api",
+            "form": "full",
+            "chars": 1082
+          },
+          {
+            "name": "run",
+            "form": "full",
+            "chars": 368
+          },
+          {
+            "name": "init",
+            "form": "full",
+            "chars": 67
+          },
+          {
+            "name": "security-review",
+            "form": "full",
+            "chars": 90
+          }
+        ],
+        "probeEntry": "- budget-probe: BUDGET_PROBE_DESCRIPTION harmless capture control."
+      },
+      "overBudgetLog": null,
+      "requestsSha256": "08e5918bee2116f88b31c6a57c6b148c607e0ffd9112922df67620006f405940"
+    },
+    {
+      "label": "raised",
+      "budgetEnv": "100000",
+      "exitCode": 0,
+      "listing": {
+        "chars": 4477,
+        "entries": [
+          {
+            "name": "budget-probe",
+            "form": "full",
+            "chars": 66
+          },
+          {
+            "name": "dataviz",
+            "form": "full",
+            "chars": 1146
+          },
+          {
+            "name": "update-config",
+            "form": "full",
+            "chars": 707
+          },
+          {
+            "name": "keybindings-help",
+            "form": "full",
+            "chars": 248
+          },
+          {
+            "name": "simplify",
+            "form": "full",
+            "chars": 188
+          },
+          {
+            "name": "fewer-permission-prompts",
+            "form": "full",
+            "chars": 191
+          },
+          {
+            "name": "loop",
+            "form": "full",
+            "chars": 314
+          },
+          {
+            "name": "claude-api",
+            "form": "full",
+            "chars": 1082
+          },
+          {
+            "name": "run",
+            "form": "full",
+            "chars": 368
+          },
+          {
+            "name": "init",
+            "form": "full",
+            "chars": 67
+          },
+          {
+            "name": "security-review",
+            "form": "full",
+            "chars": 90
+          }
+        ],
+        "probeEntry": "- budget-probe: BUDGET_PROBE_DESCRIPTION harmless capture control."
+      },
+      "overBudgetLog": null,
+      "requestsSha256": "49b67a19029e494a45727cbc8875f33a039fd0b01eb9850fd638be6907a88da0"
+    },
+    {
+      "label": "tight",
+      "budgetEnv": "2000",
+      "exitCode": 0,
+      "listing": {
+        "chars": 4291,
+        "entries": [
+          {
+            "name": "budget-probe",
+            "form": "name-only",
+            "chars": 14
+          },
+          {
+            "name": "dataviz",
+            "form": "full",
+            "chars": 1146
+          },
+          {
+            "name": "update-config",
+            "form": "full",
+            "chars": 707
+          },
+          {
+            "name": "keybindings-help",
+            "form": "full",
+            "chars": 248
+          },
+          {
+            "name": "simplify",
+            "form": "full",
+            "chars": 188
+          },
+          {
+            "name": "fewer-permission-prompts",
+            "form": "full",
+            "chars": 191
+          },
+          {
+            "name": "loop",
+            "form": "full",
+            "chars": 314
+          },
+          {
+            "name": "claude-api",
+            "form": "full",
+            "chars": 1082
+          },
+          {
+            "name": "run",
+            "form": "full",
+            "chars": 368
+          },
+          {
+            "name": "init",
+            "form": "name-only",
+            "chars": 6
+          },
+          {
+            "name": "security-review",
+            "form": "name-only",
+            "chars": 17
+          }
+        ],
+        "probeEntry": "- budget-probe"
+      },
+      "overBudgetLog": "[WARN] Skill listing over budget: 11 skills, 4475 chars > 2000 budget — descriptions will be truncated. Run /skills to disable some, or raise skillListingBudgetFraction in settings.",
+      "requestsSha256": "28f402e5149272cb0812ab2b2841a1372215110bc42f301d497863f686fd1a92"
+    }
+  ]
+}
