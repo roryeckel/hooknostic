@@ -10,6 +10,7 @@ var __export = (target, all) => {
 var ALL_CAPABILITY_IDS = [
   "session.start.observe",
   "session.start.context.add",
+  "session.start.notify",
   "session.end.observe",
   "prompt.before.observe",
   "prompt.before.block",
@@ -5354,6 +5355,10 @@ function planOpenCodeApplication(result) {
     }
     if (prompts.length > 0) application.prompts = prompts;
   }
+  if (result.event === "session.start") {
+    const notices = result.effects.filter((e) => e.effect.kind === "notify").map((e) => e.effect.message);
+    if (notices.length > 0) application.toast = notices.join("\n");
+  }
   if (result.event === "permission.request" && terminal?.kind === "block") {
     application.permissionReply = { response: "reject" };
   }
@@ -5627,6 +5632,7 @@ var OPENCODE_V2_FILE_SHAPES = {
   patch: { patchKey: "patchText" }
 };
 var opencodeV2FileCodec = fileCodec(OPENCODE_V2_FILE_SHAPES);
+var TOAST_DURATION_MS = 15e3;
 var DISPOSE_CAP_MS = 15e3;
 function createHooknosticHooks(plugin, options, pluginInput) {
   const targetId = options.targetId ?? "opencode";
@@ -5716,6 +5722,7 @@ function createHooknosticHooks(plugin, options, pluginInput) {
     const diagnostics = formatHandlerErrors(result);
     if (diagnostics !== void 0) console.error(diagnostics);
     await postPrompts(event, application);
+    await showToast(application);
     await replyPermission(event, native, application);
     if (application.throwMessage !== void 0) {
       throw new HooknosticBlock(application.throwMessage);
@@ -5750,6 +5757,21 @@ function createHooknosticHooks(plugin, options, pluginInput) {
         );
       } catch {
       }
+    }
+  };
+  const showToast = async (application) => {
+    if (application.toast === void 0) return;
+    const tui = pluginInput.client?.tui;
+    if (tui === void 0 || typeof tui.showToast !== "function") return;
+    try {
+      await withTimeout(
+        Promise.resolve(
+          tui.showToast({
+            body: { title: "hooknostic", message: application.toast, variant: "info", duration: TOAST_DURATION_MS }
+          })
+        )
+      );
+    } catch {
     }
   };
   const replyPermission = async (event, native, application) => {
@@ -5850,7 +5872,7 @@ function createHooknosticHooks(plugin, options, pluginInput) {
 // hooknostic-shim-entry.ts
 var HooknosticPlugin = async (input) => createHooknosticHooks(hooks_default, {
   targetId: "legacy",
-  capabilities: { "session.start.observe": "emulated", "session.end.observe": "approximate", "prompt.before.observe": "emulated", "model.request.before.observe": "exact", "model.request.before.context.add": "exact", "tool.before.observe": "exact", "tool.before.block": "exact", "tool.before.input.replace": "exact", "tool.before.agent.identity": "unsupported", "tool.after.observe": "exact", "tool.after.agent.identity": "unsupported", "tool.after.output.replace": "approximate", "permission.request.observe": "emulated", "permission.request.block": "approximate", "context.compact.before.observe": "exact", "context.compact.before.context.add": "exact", "context.compact.after.observe": "emulated", "turn.stop.observe": "approximate", "turn.stop.prevent": "approximate", "turn.stop.notify": "approximate" },
+  capabilities: { "session.start.observe": "emulated", "session.start.notify": "approximate", "session.end.observe": "approximate", "prompt.before.observe": "emulated", "model.request.before.observe": "exact", "model.request.before.context.add": "exact", "tool.before.observe": "exact", "tool.before.block": "exact", "tool.before.input.replace": "exact", "tool.before.agent.identity": "unsupported", "tool.after.observe": "exact", "tool.after.agent.identity": "unsupported", "tool.after.output.replace": "approximate", "permission.request.observe": "emulated", "permission.request.block": "approximate", "context.compact.before.observe": "exact", "context.compact.before.context.add": "exact", "context.compact.after.observe": "emulated", "turn.stop.observe": "approximate", "turn.stop.prevent": "approximate", "turn.stop.notify": "approximate" },
   minimumCapabilityLevel: "emulated",
   policy: { "onHookError": "continue", "timeoutMs": 5e3, "contextCharLimit": 16e3, "notifyCharLimit": 2e3 },
   pluginRoot: pluginRootFrom(import.meta.url, "package")

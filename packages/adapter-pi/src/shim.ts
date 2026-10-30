@@ -243,6 +243,20 @@ export function createHooknosticExtension(plugin: PluginSpec, options: PiShimOpt
         }
         const { result, application } = await runFailingOpen(native, enrichment);
 
+        // Warning, not info: Pi's own status line replaced an info notice after
+        // reload, resume and fork (.capture/pi/README.md). Print mode has no UI
+        // and shows nothing. A missing ctx.ui is a silent no-op.
+        if (name === "session_start" && application.notices !== undefined) {
+          const ui = (ctx as { ui?: { notify?: (message: string, level: string) => void } } | undefined)?.ui;
+          for (const message of application.notices) {
+            try {
+              ui?.notify?.(message, "warning");
+            } catch {
+              // Fail open.
+            }
+          }
+        }
+
         // preventStop posts back into the session after the settled run.
         // Verified by effect (.capture/pi): sendMessage({triggerTurn: true})
         // starts another turn. A missing sendMessage is a silent no-op.

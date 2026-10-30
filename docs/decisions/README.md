@@ -44,6 +44,7 @@ Read these when you want to know *why* something works the way it does, not just
 | [0033 — Each harness runs only the output generated for it](0033-no-cross-harness-compatibility-reads.md) | Why does Copilot ignore my `.claude/settings.json` hooks, and what happens when one harness reads another's files? |
 | [0034 — Portable agent definitions (proposed)](0034-portable-agents.md) | Can one definition become a Claude subagent, a Codex custom agent and an OpenCode agent, or the agent a session runs as, and what survives the translation? |
 | [0035 — Agent-scoped hooks (proposed)](0035-agent-scoped-hooks.md) | How does a hook run only inside one agent, and on which harnesses can it tell? |
+| [0036 — A session-start notification](0036-session-start-notify.md) | Why can a hook tell the user something when a session starts, and where does that not work? |
 
 Each record is immutable once accepted; a change of course gets a new record that
 supersedes the old one rather than a silent edit.

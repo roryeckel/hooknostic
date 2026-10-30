@@ -242,6 +242,12 @@ export const SCENARIOS: readonly ScenarioDefinition[] = [
     driverByHarness: { opencode: "opencode-serve" },
   },
   {
+    id: "session-start-notify",
+    title: "a session-start notice never reaches the model, and stays out of headless output",
+    covers: ["session.start.notify"],
+    driver: "loopback",
+  },
+  {
     id: "stop-notify",
     title: "stop-time notifications surface where claimed, and stay inert where explicitly unsupported",
     covers: ["agent.stop.notify", "turn.stop.notify"],

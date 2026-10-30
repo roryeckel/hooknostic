@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import type { PluginSpec } from "@hooknostic/sdk";
-import { definePlugin, hook } from "@hooknostic/sdk";
+import { definePlugin, hook, notify } from "@hooknostic/sdk";
 import { loadFixture } from "@hooknostic/testkit";
 
 import type { PiEnrichment, PiNativeEvent } from "./decode.js";
@@ -614,6 +614,53 @@ describe("createHooknosticExtension", () => {
       { customType: "hooknostic", content: "run the tests", display: false },
       { triggerTurn: true },
     );
+  });
+
+  describe("session.start notify", () => {
+    function noticePlugin() {
+      return pluginWith([
+        hook("session.start", {
+          id: "n",
+          capabilities: { "session.start.notify": "optional" },
+          async run() {
+            return [notify("first"), notify("second")];
+          },
+        }),
+      ]);
+    }
+    const options = {
+      ...INVOCATION,
+      capabilities: { ...LEVELS, "session.start.notify": "approximate" as const },
+      minimumCapabilityLevel: "approximate" as const,
+    };
+    const start = { type: "session_start", reason: "startup" };
+
+    it("shows notices through ctx.ui at warning level and posts nothing into the session", async () => {
+      const pi = fakePi();
+      const notifyUi = vi.fn();
+      createHooknosticExtension(noticePlugin(), options)(pi);
+      await fire(pi, "session_start", start, { cwd: "C:/project", ui: { notify: notifyUi } } as PiNativeEvent["ctx"]);
+      expect(notifyUi.mock.calls).toEqual([
+        ["first", "warning"],
+        ["second", "warning"],
+      ]);
+      expect(pi.sendMessage).not.toHaveBeenCalled();
+    });
+
+    it("is a silent no-op without a UI, and survives a throwing one", async () => {
+      const pi = fakePi();
+      createHooknosticExtension(noticePlugin(), options)(pi);
+      await expect(fire(pi, "session_start", start)).resolves.toBeUndefined();
+      const throwing = {
+        cwd: "C:/project",
+        ui: {
+          notify: () => {
+            throw new Error("no ui");
+          },
+        },
+      } as PiNativeEvent["ctx"];
+      await expect(fire(pi, "session_start", start, throwing)).resolves.toBeUndefined();
+    });
   });
 
   it("rejects an optional notify effect instead of posting a hidden model message", async () => {

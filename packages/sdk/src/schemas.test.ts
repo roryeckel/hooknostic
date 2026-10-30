@@ -57,6 +57,11 @@ describe("capability registry", () => {
 
   it("lists capabilities per event", () => {
     expect(capabilitiesForEvent("turn.stop")).toEqual(["turn.stop.observe", "turn.stop.prevent", "turn.stop.notify"]);
+    expect(capabilitiesForEvent("session.start")).toEqual([
+      "session.start.observe",
+      "session.start.context.add",
+      "session.start.notify",
+    ]);
     expect(capabilitiesForEvent("agent.stop")).toEqual([
       "agent.stop.observe",
       "agent.stop.prevent",
@@ -94,6 +99,7 @@ describe("effect → capability mapping", () => {
     expect(capabilityForEffect("turn.stop", "preventStop")).toBe("turn.stop.prevent");
     expect(capabilityForEffect("agent.stop", "preventStop")).toBe("agent.stop.prevent");
     expect(capabilityForEffect("turn.stop", "notify")).toBe("turn.stop.notify");
+    expect(capabilityForEffect("session.start", "notify")).toBe("session.start.notify");
     expect(capabilityForEffect("agent.stop", "notify")).toBe("agent.stop.notify");
   });
 

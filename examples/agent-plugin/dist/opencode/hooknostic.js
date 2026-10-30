@@ -10,6 +10,7 @@ var __export = (target, all) => {
 var ALL_CAPABILITY_IDS = [
   "session.start.observe",
   "session.start.context.add",
+  "session.start.notify",
   "session.end.observe",
   "prompt.before.observe",
   "prompt.before.block",
@@ -5691,7 +5692,7 @@ async function setupOpenCodeV2(plugin, options2, ctx) {
 }
 
 // hooknostic-shim-entry.ts
-var options = { "targetId": "opencode", "capabilities": { "session.start.observe": "approximate", "prompt.before.observe": "exact", "prompt.before.block": "exact", "tool.before.observe": "exact", "tool.before.block": "exact", "tool.before.input.replace": "exact", "tool.before.agent.identity": "exact", "tool.after.observe": "exact", "tool.after.agent.identity": "exact", "tool.error.observe": "approximate", "tool.after.output.replace": "approximate", "model.request.before.observe": "approximate", "model.request.before.context.add": "approximate", "turn.stop.observe": "approximate", "turn.stop.prevent": "approximate", "turn.stop.notify": "approximate", "context.compact.before.observe": "exact", "context.compact.before.context.add": "exact", "context.compact.after.observe": "emulated", "permission.request.observe": "approximate", "permission.request.block": "approximate" }, "policy": { "onHookError": "continue", "timeoutMs": 5e3, "contextCharLimit": 16e3, "notifyCharLimit": 2e3 }, "minimumCapabilityLevel": "emulated" };
+var options = { "targetId": "opencode", "capabilities": { "session.start.observe": "approximate", "session.start.notify": "unsupported", "prompt.before.observe": "exact", "prompt.before.block": "exact", "tool.before.observe": "exact", "tool.before.block": "exact", "tool.before.input.replace": "exact", "tool.before.agent.identity": "exact", "tool.after.observe": "exact", "tool.after.agent.identity": "exact", "tool.error.observe": "approximate", "tool.after.output.replace": "approximate", "model.request.before.observe": "approximate", "model.request.before.context.add": "approximate", "turn.stop.observe": "approximate", "turn.stop.prevent": "approximate", "turn.stop.notify": "approximate", "context.compact.before.observe": "exact", "context.compact.before.context.add": "exact", "context.compact.after.observe": "emulated", "permission.request.observe": "approximate", "permission.request.block": "approximate" }, "policy": { "onHookError": "continue", "timeoutMs": 5e3, "contextCharLimit": 16e3, "notifyCharLimit": 2e3 }, "minimumCapabilityLevel": "emulated" };
 options.pluginRoot = pluginRootFrom(import.meta.url, "package");
 var HooknosticPlugin = { id: "hooknostic." + hooks_default.name + ".opencode", setup: (ctx) => setupOpenCodeV2(hooks_default, options, ctx) };
 var hooknostic_shim_entry_default = HooknosticPlugin;

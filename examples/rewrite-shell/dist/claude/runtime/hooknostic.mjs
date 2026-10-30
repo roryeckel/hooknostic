@@ -33,6 +33,7 @@ var init_capabilities = __esm({
     ALL_CAPABILITY_IDS = [
       "session.start.observe",
       "session.start.context.add",
+      "session.start.notify",
       "session.end.observe",
       "prompt.before.observe",
       "prompt.before.block",
@@ -5869,7 +5870,7 @@ async function runClaudeCommandShim(source, options) {
 // hooknostic-shim-entry.ts
 await runClaudeCommandShim(() => Promise.resolve().then(() => (init_hooks(), hooks_exports)), {
   targetId: "claude",
-  capabilities: { "session.start.observe": "exact", "session.start.context.add": "exact", "session.end.observe": "exact", "prompt.before.observe": "exact", "prompt.before.block": "exact", "prompt.before.context.add": "exact", "tool.before.observe": "exact", "tool.before.block": "exact", "tool.before.requestApproval": "exact", "tool.before.input.replace": "exact", "tool.before.context.add": "exact", "tool.before.agent.identity": "exact", "tool.after.observe": "exact", "tool.after.blockContinuation": "approximate", "tool.after.context.add": "exact", "tool.after.agent.identity": "exact", "tool.error.observe": "exact", "tool.error.context.add": "exact", "permission.request.observe": "exact", "permission.request.block": "exact", "permission.request.context.add": "exact", "context.compact.before.observe": "exact", "context.compact.before.block": "exact", "context.compact.after.observe": "exact", "agent.start.observe": "exact", "agent.start.agent.identity": "exact", "agent.stop.observe": "exact", "agent.stop.prevent": "exact", "agent.stop.notify": "exact", "agent.stop.agent.identity": "exact", "turn.stop.observe": "exact", "turn.stop.prevent": "exact", "turn.stop.notify": "exact" },
+  capabilities: { "session.start.observe": "exact", "session.start.context.add": "exact", "session.start.notify": "approximate", "session.end.observe": "exact", "prompt.before.observe": "exact", "prompt.before.block": "exact", "prompt.before.context.add": "exact", "tool.before.observe": "exact", "tool.before.block": "exact", "tool.before.requestApproval": "exact", "tool.before.input.replace": "exact", "tool.before.context.add": "exact", "tool.before.agent.identity": "exact", "tool.after.observe": "exact", "tool.after.blockContinuation": "approximate", "tool.after.context.add": "exact", "tool.after.agent.identity": "exact", "tool.error.observe": "exact", "tool.error.context.add": "exact", "permission.request.observe": "exact", "permission.request.block": "exact", "permission.request.context.add": "exact", "context.compact.before.observe": "exact", "context.compact.before.block": "exact", "context.compact.after.observe": "exact", "agent.start.observe": "exact", "agent.start.agent.identity": "exact", "agent.stop.observe": "exact", "agent.stop.prevent": "exact", "agent.stop.notify": "exact", "agent.stop.agent.identity": "exact", "turn.stop.observe": "exact", "turn.stop.prevent": "exact", "turn.stop.notify": "exact" },
   minimumCapabilityLevel: "emulated",
   policy: { "onHookError": "continue", "timeoutMs": 5e3, "contextCharLimit": 16e3, "notifyCharLimit": 2e3 }
 });

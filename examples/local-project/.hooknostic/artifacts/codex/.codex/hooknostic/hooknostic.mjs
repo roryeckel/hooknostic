@@ -33,6 +33,7 @@ var init_capabilities = __esm({
     ALL_CAPABILITY_IDS = [
       "session.start.observe",
       "session.start.context.add",
+      "session.start.notify",
       "session.end.observe",
       "prompt.before.observe",
       "prompt.before.block",
@@ -5584,6 +5585,10 @@ function applyCodex(result, _nativeEvent, _invocation) {
     hookSpecificOutput["additionalContext"] = context.join("\n");
     hasHookSpecific = true;
   }
+  if (result.event === "session.start") {
+    const notices = result.effects.filter((e) => e.effect.kind === "notify").map((e) => e.effect.message);
+    if (notices.length > 0) body["systemMessage"] = notices.join("\n");
+  }
   if (replacedInput !== void 0 && result.event === "tool.before") {
     hookSpecificOutput["permissionDecision"] = "allow";
     hookSpecificOutput["updatedInput"] = replacedInput.input;
@@ -5841,7 +5846,7 @@ async function runCodexCommandShim(source, options) {
 // hooknostic-shim-entry.ts
 await runCodexCommandShim(() => Promise.resolve().then(() => (init_hooks(), hooks_exports)), {
   targetId: "codex",
-  capabilities: { "session.start.observe": "exact", "session.start.context.add": "exact", "session.end.observe": "exact", "prompt.before.observe": "exact", "prompt.before.block": "exact", "prompt.before.context.add": "exact", "tool.before.observe": "exact", "tool.before.block": "exact", "tool.before.requestApproval": "exact", "tool.before.input.replace": "exact", "tool.before.context.add": "exact", "tool.before.agent.identity": "unsupported", "tool.after.observe": "exact", "tool.after.output.replace": "unsupported", "tool.after.blockContinuation": "exact", "tool.after.context.add": "exact", "tool.after.agent.identity": "unsupported", "permission.request.observe": "exact", "permission.request.block": "exact", "context.compact.before.observe": "exact", "context.compact.after.observe": "exact", "agent.start.observe": "exact", "agent.start.agent.identity": "unsupported", "agent.stop.observe": "exact", "agent.stop.prevent": "exact", "agent.stop.notify": "unsupported", "agent.stop.agent.identity": "unsupported", "turn.stop.observe": "exact", "turn.stop.prevent": "exact", "turn.stop.notify": "unsupported" },
+  capabilities: { "session.start.observe": "exact", "session.start.context.add": "exact", "session.start.notify": "approximate", "session.end.observe": "exact", "prompt.before.observe": "exact", "prompt.before.block": "exact", "prompt.before.context.add": "exact", "tool.before.observe": "exact", "tool.before.block": "exact", "tool.before.requestApproval": "exact", "tool.before.input.replace": "exact", "tool.before.context.add": "exact", "tool.before.agent.identity": "unsupported", "tool.after.observe": "exact", "tool.after.output.replace": "unsupported", "tool.after.blockContinuation": "exact", "tool.after.context.add": "exact", "tool.after.agent.identity": "unsupported", "permission.request.observe": "exact", "permission.request.block": "exact", "context.compact.before.observe": "exact", "context.compact.after.observe": "exact", "agent.start.observe": "exact", "agent.start.agent.identity": "unsupported", "agent.stop.observe": "exact", "agent.stop.prevent": "exact", "agent.stop.notify": "unsupported", "agent.stop.agent.identity": "unsupported", "turn.stop.observe": "exact", "turn.stop.prevent": "exact", "turn.stop.notify": "unsupported" },
   minimumCapabilityLevel: "emulated",
   policy: { "onHookError": "continue", "timeoutMs": 5e3, "contextCharLimit": 16e3, "notifyCharLimit": 2e3 }
 });

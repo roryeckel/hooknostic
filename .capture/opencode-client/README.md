@@ -84,6 +84,15 @@ under a TUI — inert under `opencode run` and `opencode serve`. Making the mech
 depend on execution mode would be worse for a portability product than one honest
 `approximate` cell.
 
+That toast claim was not captured when this was written. It was captured on
+2026-10-30 (1.18.18 and 1.19.5, `../opencode-notice`). The toast renders under
+the local TUI and under a TUI attached to `serve`, and no model request carries
+it. Under `opencode run` it returns `true` but nothing appears. Under bare
+`serve` it is a `tui.toast.show` event on `/event` that only an attached TUI
+renders. A toast sent during plugin init is lost under the TUI. The same capture
+confirmed that a `noReply` message is shown as a user message and reaches the
+model.
+
 ### `session.idle` cardinality — why `turn.stop.observe` stays `approximate`
 
 On a normally-completed turn it is exactly one per turn: 1 idle on a 1-turn run,

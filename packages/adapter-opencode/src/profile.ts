@@ -239,6 +239,20 @@ export const opencodeCapabilityProfiles: CapabilityProfile[] = [
           artifact: ".capture/shell-dialects",
           what: "macOS runner shell interpreter recapture: with SHELL naming bash, the bash tool ran bash and the tool.definition hook stated bash before the call, naming the platform darwin. No other macOS configuration was captured.",
         },
+        {
+          version: "1.18.18",
+          date: "2026-10-30",
+          method: "live-probe",
+          artifact: ".capture/opencode-notice",
+          what: "Windows loopback session-start notice probe: client.tui.showToast and tui.publish(tui.toast.show) at session.created render on the TUI screen, local or attached to serve, and appear in no model request. Under opencode run they return true and nothing appears; under serve they are only tui.toast.show events. A toast sent during plugin init is lost under the TUI, and awaiting it inside init hung opencode run. promptAsync noReply is shown as a user message and reaches the model.",
+        },
+        {
+          version: "1.19.5",
+          date: "2026-10-30",
+          method: "live-probe",
+          artifact: ".capture/opencode-notice",
+          what: "The 1.18.18 session-start notice probe repeated on the latest 1.x with the same results: the TUI-only toast at session.created is shown and is invisible to the model, it is inert under run, appendPrompt text reaches the model with the next submission, and noReply reaches the model.",
+        },
       ],
       notes: ["https://opencode.ai/docs/plugins (fetched 2026-08-20)"],
     },
@@ -272,6 +286,11 @@ export const opencodeCapabilityProfiles: CapabilityProfile[] = [
           "observed via plugin initialization and session.created on the server event bus; there is no per-session subprocess start.",
       },
       // No context channel at session start → session.start.context.add unsupported.
+      "session.start.notify": {
+        level: "approximate",
+        rationale:
+          "client.tui.showToast at session.created is user-only, but only under a TUI, local or attached to serve: it reached no model request, and under opencode run the call succeeds and nothing appears. The toast is transient and a newer toast replaces it. Best-effort: a silent no-op without a client or if the call fails (.capture/opencode-notice).",
+      },
 
       "session.end.observe": {
         level: "approximate",
