@@ -162,6 +162,20 @@ export const opencodeV2CapabilityProfiles: CapabilityProfile[] = [
           artifact: "fixtures/opencode/2.0/context-max-tokens.input.json",
           what: "Linux isolated harness-watch playback capture: the context callback carries numeric event.options.maxTokens (4096). The native envelope is preserved in raw; no token-limit effect or normalized field is claimed.",
         },
+        {
+          version: "2.0.17",
+          date: "2026-10-30",
+          method: "live-probe",
+          artifact: ".capture/opencode-notice",
+          what: "Windows loopback session-start notice probe, server-only project plugin (no ./tui entry), under the TUI, an attached TUI, run and serve: ctx has no ui or attention at runtime; an RPC events.emit reaches the event stream but no built-in TUI renders it; session.synthetic resume:false at session.created is not rendered and reaches the model with the next prompt. No route showed the user a notice the model did not see. On serve, plugin setup ran only after the first prompt.",
+        },
+        {
+          version: "2.2.0",
+          date: "2026-10-30",
+          method: "live-probe",
+          artifact: ".capture/opencode-notice",
+          what: "The 2.0.17 session-start notice probe repeated with the same results: a server-only plugin has no user-only route. The companion ./tui RPC route (.capture/opencode-v2 notifications) still renders a server-emitted notice and makes no model request; attention.notify still returns attention_disabled under scratch defaults.",
+        },
       ],
     },
     // Optional event fields (ADR-0027). The turn fields rest on the 2.0.18
