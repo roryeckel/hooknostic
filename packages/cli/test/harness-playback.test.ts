@@ -694,6 +694,12 @@ async function runClaudePlayback(
           CLAUDE_CODE_DISABLE_UNKNOWN_MODEL_WINDOW_ENFORCEMENT: "1",
           DISABLE_AUTOUPDATER: "1",
           DISABLE_TELEMETRY: "1",
+          // Past its skill-listing budget, Claude keeps its bundled skills'
+          // descriptions and lists every other skill by name alone. From
+          // 2.1.311 its own entries exceed the default budget for this model
+          // id (.capture/claude-skill-listing-budget), so a budget no listing
+          // reaches keeps a fixture skill's description model-visible.
+          SLASH_COMMAND_TOOL_CHAR_BUDGET: "100000",
           HOOKNOSTIC_PLAYBACK_TRACE: build.tracePath,
           ...(options.effects ? { HOOKNOSTIC_PLAYBACK_EFFECTS: options.effects.join(",") } : {}),
         },

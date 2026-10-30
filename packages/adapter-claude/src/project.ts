@@ -312,6 +312,13 @@ const nativeProjectComponentProfiles: readonly AgentPluginProjectionProfile[] = 
       date: "2026-09-12",
       validatedOn: [
         {
+          version: "2.1.312",
+          date: "2026-10-29",
+          method: "live-probe",
+          artifact: ".capture/claude-skill-listing-budget",
+          what: "On Windows with isolated state and a loopback model, a .claude/skills project skill stayed listed but lost its description once the skill listing passed Claude's budget, while bundled skills kept theirs. Claude's own entries exceed the 6000-character default for the playback model id from 2.1.311; SLASH_COMMAND_TOOL_CHAR_BUDGET restored the description on 2.1.311 and 2.1.312, and a tight one collapsed it on 2.1.238 and 2.1.310.",
+        },
+        {
           version: "2.1.286",
           date: "2026-10-04",
           method: "live-probe",

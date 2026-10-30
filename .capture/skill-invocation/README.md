@@ -117,6 +117,7 @@ requires discovery controls and explicit/ungated body markers, and promotion
 requires all six cases. Failed or timed-out sessions are not promoted.
 
 Claude's native listing sometimes retains a skill's name without its description.
+The cause is its skill-listing budget (`../claude-skill-listing-budget`).
 `visibleSkills` records either an exact Claude list entry or the description
 marker; `descriptionMarkersInInitialRequest` remains the narrower marker-only
 summary. Explicit request cases are never used to infer ordinary discovery.
