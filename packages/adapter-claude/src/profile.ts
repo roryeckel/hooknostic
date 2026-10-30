@@ -186,6 +186,13 @@ export const claudeCapabilityProfiles: CapabilityProfile[] = [
           artifact: ".capture/claude-output",
           what: "SessionStart output over the loopback model: hookSpecificOutput.additionalContext reached the model's request for source startup, resume and compact; systemMessage reached no request, rendered under the input line of the interactive TUI at startup, and in headless -p streamed as a system informational notice only for source compact. The same held on 2.1.296 (2026-10-12).",
         },
+        {
+          version: "2.1.238",
+          date: "2026-10-30",
+          method: "live-probe",
+          artifact: ".capture/claude-output",
+          what: "Interactive TUI SessionStart over the loopback model, driven under node-pty: systemMessage rendered on screen for source startup, clear (/clear), compact (/compact) and resume (/resume and --resume), and no model request carried it. hookSpecificOutput.additionalContext reached the next model request after every source. The notice is stored in the transcript as a hook_system_message attachment and is redrawn when the session is resumed. The same held on 2.1.312 (2026-10-30).",
+        },
       ],
       notes: [
         "https://code.claude.com/docs/en/hooks (fetched 2026-08-20)",
