@@ -67,6 +67,11 @@ jobs:
           persist-credentials: false
       - uses: pnpm/action-setup@v6
       - run: pnpm install --frozen-lockfile
+      # A stale resolution that a wider range already satisfies passes every
+      # other gate, but inlines a second copy into the committed example
+      # bundles. See docs/dependencies.md.
+      - name: Require a deduped lockfile
+        run: pnpm dedupe --check --lockfile-only
       - run: renovate-config-validator --strict renovate.json
       - name: Extract maintained dependencies without lookups or writes
         env:

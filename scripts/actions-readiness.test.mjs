@@ -143,6 +143,19 @@ it("runs the pinned LiteLLM compatibility probe in the required Ubuntu CI lane",
   expect(probe).not.toContain("secrets.");
 });
 
+it("requires a deduped lockfile in the dependency policy lane", () => {
+  const ci = readFileSync(new URL("../.github/workflows/ci.yml", import.meta.url), "utf8");
+  const policy = ci.split("  dependency-policy:")[1].split(/\r?\n {2}\S/)[0];
+  const steps = policy.split(/\r?\n {6}- /).slice(1);
+  const gate = steps.find((step) => /^name: Require a deduped lockfile\r?$/m.test(step));
+  expect(gate).toBeDefined();
+  // Match the executable field, so a commented-out or failure-swallowing form fails.
+  expect(gate.match(/^ {8}run: (.+?)\r?$/m)?.[1]).toBe("pnpm dedupe --check --lockfile-only");
+  expect(policy.indexOf("pnpm install --frozen-lockfile")).toBeLessThan(
+    policy.indexOf("name: Require a deduped lockfile"),
+  );
+});
+
 function runWatchStep(name, expressions, prelude = "", workflow = "harness-watch", status = 0) {
   const source = readFileSync(new URL(`../.github/workflows/${workflow}.yml`, import.meta.url), "utf8");
   const step = source
