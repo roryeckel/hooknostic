@@ -20,7 +20,7 @@ belong in subsequent reviewed PRs. Contribution scope remains in
 | LiteLLM proxy | `.github/requirements/litellm.txt` | Renovate pip_requirements manager; pipx consumes the single requirement | Extraction comparison; workflow tests; optional owner-requested sidecar validation |
 | Harness reference/compatibility versions | Adapter `harness` metadata and profile `validatedOn` records | Existing [harness-watch](harness-watch.md) and evidence review | `node scripts/generate-harness-support.mjs`; `node scripts/check-version-literals.mjs`; [playback](testing.md) |
 | Hooknostic release versions | Workspace manifests, managed by `scripts/set-versions.mjs` | Existing human-reviewed [release flow](releases.md) | `node scripts/set-versions.mjs --check <release-version>`; release workflow tests |
-| Locked resolutions | Root `pnpm-lock.yaml` and the standalone runtime's npm lockfile | Package managers after requirement changes; monthly Renovate maintenance | Frozen install; lint, build, test; pack and example drift checks |
+| Locked resolutions | Root `pnpm-lock.yaml` and the standalone runtime's npm lockfile | Package managers after requirement changes; monthly Renovate maintenance | `pnpm dedupe --check` (root pnpm lockfile only); frozen install; lint, build, test; pack and example drift checks |
 | Generated dependency manifests and bundled versions | Build outputs, including both committed example `dist` directories | Compiler regeneration, never direct bot edits | `pnpm build:examples`; existing CI artifact drift gate |
 | Captures, fixtures, historical observations | `.capture/`, `fixtures/`, dated docs and provenance records | Historical evidence; new captures record new observations | Existing fixture replay and provenance checks; never dependency-bot upgrades |
 
@@ -63,6 +63,22 @@ into a catalog changes importer specifiers and adds catalog records without
 requiring a new resolution. Compare every old requirement after dereferencing
 catalogs, every importer resolution, and the entire `packages` and `snapshots`
 maps when reviewing a migration. Do not delete the lockfile during that step.
+
+A lockfile can also keep a resolution that a wider range already satisfies,
+leaving a second version of one package. Duplicates are not cosmetic here: the
+example bundles inline every reachable copy, so a grouped catalog bump that
+widens a requirement can add a complete extra copy, and a notices entry, to the
+committed artifacts without changing any manifest. The `dependency-policy` job
+therefore runs `pnpm dedupe --check --lockfile-only` after the frozen install.
+`ERR_PNPM_DEDUPE_CHECK_ISSUES` means pnpm's own dedupe would rewrite the
+lockfile: run `pnpm dedupe --lockfile-only`, commit the result, and regenerate
+the examples. Any other nonzero status is operational — registry access,
+configuration, or the release-age policy — and is not a dedupe finding. The
+check compares the lockfile pnpm's dedupe would produce, so it applies to the
+root pnpm lockfile only and says nothing about the standalone runtime's npm
+lockfile. Intentional duplicates — the `zod` 3 and 4 catalog lines, the
+TypeScript compiler and its API line, or packages whose ranges do not overlap —
+are not reported.
 
 Monthly lockfile maintenance intentionally refreshes transitive resolutions
 within the declared ranges in both lockfiles. The example plugin's generated `package-lock.json`
@@ -380,3 +396,31 @@ build, and test gates also passed on Node 24.20.0. Rebuilding the committed
 examples on Node 24 reproduced the Node 22 output byte for byte. The lockfile
 refresh also consolidated the MCP dependency tree onto the existing Zod 4.6.6
 resolution; the regenerated example bundles and notices reflect that deduplication.
+
+### Lockfile maintenance and bundled Zod dedupe: 2026-11-01
+
+[Lockfile-maintenance PR #136](https://github.com/roryeckel/hooknostic/pull/136)
+refreshed 36 resolved versions within their declared ranges and removed the
+duplicate `zod@4.6.6` resolution. No manifest or importer specifier changed, no
+`engines` range moved, and no package was added.
+
+The duplicate arrived with
+[npm PR #130](https://github.com/roryeckel/hooknostic/pull/130), which raised
+`@modelcontextprotocol/server` to 2.4.0 and `catalog:zod4` to `^4.6.7` in one
+grouped update. The MCP subtree kept its existing 4.6.6 resolution while the
+example's direct requirement moved to 4.6.7, so each bundled `greet-mcp.mjs`
+inlined two complete copies of Zod and the notices listed both. Git blob sizes
+for `dist/claude/bundled/greet-mcp.mjs` were 819,719 bytes before #130, 1,018,523
+after it, and 846,850 after #136: #130 added 198,804 bytes per bundle, #136
+removed 171,673, and the residual 27,131 bytes are MCP server 2.4.0, not Zod.
+
+Zod 4.6.6 and 4.6.7 differ only in `package.json`/`jsr.json` version strings and
+the `patch` value in `core/versions.ts`. The range contains no runtime source
+change, so the surviving bundled code differs only by that constant.
+`THIRD_PARTY_NOTICES.txt` now carries one Zod entry, and
+`dist/hooknostic-build.json` changed only its per-projection content digests.
+
+The `dependency-policy` job now requires `pnpm dedupe --check --lockfile-only`,
+so a grouped catalog bump that leaves a stale resolution fails the pull request
+instead of only surfacing at the next monthly refresh. The check runs after
+generation, so it prevents the merge rather than the artifact commit.
