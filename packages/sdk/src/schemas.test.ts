@@ -97,8 +97,9 @@ describe("effect → capability mapping", () => {
     expect(capabilityForEffect("tool.after", "replaceInput")).toBeUndefined();
     expect(capabilityForEffect("tool.after", "updateShell")).toBeUndefined();
     expect(capabilityForEffect("session.start", "preventStop")).toBeUndefined();
-    // notify is scoped to the stop events; nowhere else has a user-visible
-    // channel that does not also change control flow.
+    // notify is scoped to the stop events and session.start (ADR-0036); no
+    // other event has a user-visible channel that does not also change control
+    // flow.
     expect(capabilityForEffect("tool.before", "notify")).toBeUndefined();
     expect(capabilityForEffect("session.end", "notify")).toBeUndefined();
   });
