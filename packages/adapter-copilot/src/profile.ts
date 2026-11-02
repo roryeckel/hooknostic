@@ -168,6 +168,13 @@ export const copilotCapabilityProfiles: CapabilityProfile[] = [
         // workflow). Git history is the audit trail; see ADR-0009 and
         // .capture/harness-playback/README.md. Keep field order stable.
         // scheduled-playback:begin
+        {
+          version: "1.0.105",
+          date: "2026-11-02",
+          method: "live-probe",
+          artifact: ".capture/harness-playback",
+          what: "scheduled model-free playback vs a newer build: artifact discovery, rewrite/block markers, and lifecycle events verified",
+        },
         // scheduled-playback:end
       ],
       notes: [
