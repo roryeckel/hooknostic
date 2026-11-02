@@ -1,90 +1,83 @@
-# GitHub Copilot CLI, and harnesses that read each other's files
+# A notice when a session opens, without the model seeing it
 
-0.9.0 adds GitHub Copilot CLI as the fifth target. Package delivery emits an
-Agent Plugins 1.0 package that Copilot loads natively, and project delivery
-writes `.github/hooks`, `.agents/skills` and the root `.mcp.json`. Copilot also
-reads Claude Code's hooks, skills and MCP file. This release makes each harness
-run only the output generated for it, and records that rule as
-[ADR-0033](decisions/0033-no-cross-harness-compatibility-reads.md). See the
-versioned [harness support table](harness-support.md) for support levels and
-their evidence.
+0.10.0 adds `session.start.notify`. A hook can show the user a short message as
+a session opens — a required tool is missing, a policy is active, a check was
+skipped — and no harness puts that message in front of the model. The
+capability is a new scope for the existing `notify` effect, decided in
+[ADR-0036](decisions/0036-session-start-notify.md); text the model should read
+is still `session.start.context.add`. It is delivered on four of the five
+harnesses and stated as unsupported on the other two, where no user-only
+channel exists. See the versioned [harness support table](harness-support.md)
+for the builds behind each rating.
 
 ## What is included
 
-- A `copilot` adapter for `>=1.0.101 <2`, referencing 1.0.101. Its hook
-  payloads, tool argument shapes and effect channels were captured on Windows
-  and Linux, and its shell dialect on macOS as well. It covers all of these
-  events: session start and end, prompts, tools, tool errors, permission
-  requests, compaction notices, subagents, and turn stops.
-  - **Exact:** blocking and approval requests before a tool, input and output
-    replacement, and tool-time context.
-  - **Approximate:** blocking continuation after a tool, and preventing a
-    subagent stop.
-  - **Emulated:** prompt context, which reaches the model as prompt text.
-- Package delivery: `copilot --plugin-dir ./dist/copilot`, or a local or
-  git-hosted marketplace. Skills and stdio, streamable-HTTP and SSE MCP
-  servers ship in the package, and the hooks go under
-  `com.github.copilot/hooks/hooks.json`. The combined example now builds a
-  Copilot package and includes a `.github/plugin/marketplace.json` for it.
-- Project delivery for `sync`, `verify` and `recover`. It writes
-  `.github/hooks/hooknostic.json`, copies skills to `.agents/skills`, and
-  declares MCP servers in the root `.mcp.json`. `doctor` reports the installed
-  version without triggering Copilot's self-update.
-- **Claude and Copilot in one project.** Copilot runs `.claude/settings.json`
-  hooks, so Hooknostic's Claude entries carry a non-numeric `timeoutSec`. That
-  key makes Copilot drop the file's hooks; Claude ignores it. Both harnesses
-  read the root `.mcp.json`, so each server has one entry that serves both.
-  When `components.targets` selects only one of them, `sync` lists the shared
-  servers in the other harness's native disable setting. Names you added to
-  that setting yourself are kept.
-- `tool.mcp` is never set on Copilot. It names an MCP tool
-  `<server>-<tool>` on tool events and `<server>/<tool>` on a permission
-  request. Either part may contain hyphens, and no hook payload states the
-  split. Guard MCP calls on `kind: "mcp"` and `nativeName`
-  ([ADR-0032](decisions/0032-stated-mcp-identity.md)).
-- The harness playback suite drives Copilot against a loopback model server
-  on Windows and Linux, with no credentials and no spend. Claude Code's
-  deferred MCP tools are now found through ToolSearch during playback.
+- **One capability, four harnesses.** Claude Code, Codex CLI, OpenCode v1 and
+  pi 1.x each deliver the notice, rated `approximate` with the loss named. The
+  contract is user-only: a channel the model reads does not qualify, so the
+  transcript routes `turn.stop.notify` accepts on OpenCode are refused at
+  session start.
+  - **Claude:** `systemMessage` on `SessionStart` renders in the interactive
+    TUI for startup, `/clear`, `/compact` and resume. A `-p` consumer loses it
+    except at `/compact`, and a resumed session redraws an earlier notice.
+  - **Codex:** `systemMessage` renders in the interactive TUI for every source.
+    `codex exec`, plain or `--json`, shows it nowhere. The TUI dispatches
+    `SessionStart` with the first submitted prompt, so the notice appears then,
+    not when the TUI opens.
+  - **OpenCode v1:** a TUI toast (`client.tui.showToast`) at `session.created`,
+    shown for 15 seconds when a TUI is attached, local or through `serve`. It is
+    inert under `opencode run`.
+  - **pi 1.x:** `ctx.ui.notify` at warning level, in the TUI and over RPC.
+    Print mode shows nothing, `--continue` can lose a notice, and pi's own
+    status line can replace it.
+- **Unsupported where it must be stated.** GitHub Copilot CLI drops a
+  `sessionStart` `systemMessage` at parse, and an OpenCode v2 server plugin has
+  no user-only route: only a companion `./tui` entry could show one, and it
+  would not reach OpenCode Desktop, so Hooknostic generates none. Both are
+  rated `unsupported` rather than silently dropped, so a build that requires
+  the capability fails there with a diagnostic.
+- **Declared like any other capability.** A hook declares
+  `capabilities: { notify: "optional" }` on its `session.start` hook and gates
+  on `ctx.capabilities.has("notify")`. A `required` declaration fails the build
+  for Copilot and OpenCode v2.
+- **Playback covers it.** The `session-start-notify` scenario runs on every
+  lane and asserts the two halves a lane can see: no model request carries the
+  notice, and headless output does not show it.
+- **Support evidence refreshed.** The playback lanes re-ran against Claude
+  2.1.310, Codex 0.164.0, OpenCode 1.19.4 and 2.1.4, and pi 1.4.0. The notice
+  probes add Claude 2.1.238 and 2.1.312, Codex 0.148.0 and 0.166.0, Copilot
+  1.0.102, OpenCode 1.18.18, 1.19.5, 2.0.17 and 2.2.0, and pi 1.3.0 and 1.4.0.
+  Recommended target ranges and reference builds are unchanged.
 
-## Upgrading from 0.8.0
+## Upgrading from 0.9.0
 
-- **Re-sync Claude projects.** `sync` rewrites Claude's project hook entries
-  with the `timeoutSec` marker, and adds `cwd: "."` to stdio servers in the
-  root `.mcp.json`. That `cwd` is needed under `GITHUB_WORKSPACE`, and Claude
-  ignores it. Until you run `sync`, `verify` reports the old entries as drift.
-- **`.github/mcp.json`.** If `sync` would create a root `.mcp.json` while
-  `.github/mcp.json` lists servers, it now stops before writing anything. The
-  root file would hide those servers from Copilot. This applies to a
-  Claude-only project too. Move the servers into the root file, then fence
-  any Claude should not start with `disabledMcpjsonServers`.
-- **Conflicting definitions.** A server whose per-target overrides define it
-  differently for Claude and Copilot fails `sync`, because the shared file
-  holds one definition per name.
+- **Nothing changes for a hook that does not use it.** Artifacts, effects, exit
+  codes and diagnostics are the same as 0.9.0.
+- **New scope on an old effect.** `notify` returned from a `session.start` hook
+  is now licensed, so the SDK accepts what 0.9.0 rejected at compile time.
+  Declare the capability and keep it optional wherever the plugin is built for
+  more than the four harnesses above.
+- **Re-sync a project that adopts it.** The OpenCode shim and the pi extension
+  carry the call, so a package needs a rebuild to pick it up, and a
+  project-delivered install needs `sync` to rewrite the generated shim and
+  extension.
 
 ## Limits
 
-- Copilot reads `.claude/skills` as well as `.agents/skills`. A skill in both
-  resolves to Copilot's own `.agents/skills` copy, but a hand-written skill
-  that only exists in `.claude/skills` still reaches Copilot.
-- A hand-written hook in the same `.claude/settings.json` is dropped for
-  Copilot, along with Hooknostic's entries.
-- Repository hooks load only in a trusted folder, from the directory the
-  session starts in. They load at startup, so restart Copilot after `sync`.
-- `prompt.before.context.add` is emulated by appending to the prompt.
-  Preventing a subagent stop has no observed loop guard. Compaction is a
-  notice only, and there is no `model.request` or `turn.stop.notify` channel.
-- Copilot expands placeholder text that Agent Plugins 1.0 requires to stay
-  literal: ambient `${NAME}`, `${NAME:-fallback}` and bare `$NAME`
-  references, and `${PLUGIN_ROOT}` or `${PLUGIN_DATA}` in a stdio command or
-  in their bare and fallback spellings. Each such use is reported as the
-  `copilot:mcp-environment-expansion` deviation (HN106), which warns by
-  default. The exact aliases in stdio `args`, `env` and `cwd` conform and are
-  not reported.
-- A git-hosted marketplace install is a copy, so a rebuilt package reaches
-  Copilot only after `copilot plugin update`. No install route runs a
-  dependency install, so bundle a package's Node dependencies.
-- The interactive approval scenario has no automated driver on the playback
-  lane. macOS evidence covers the shell dialect only.
+- **Best-effort, interactive.** A notice is not a delivery guarantee. Do not
+  rely on one for anything that has to reach the user; nothing in a probe
+  survived every launch mode.
+- **It can arrive late or more than once.** Codex dispatches `SessionStart`
+  with the first prompt. Claude fires it twice around `/compact` (`resume`, then
+  `compact`) and redraws earlier notices on resume. OpenCode v1 raises
+  `session.start` for every `session.created`, including a child session.
+- **One toast at a time on OpenCode v1.** A newer notice replaces an older one,
+  and a toast sent during plugin initialization is lost under the TUI.
+- **Headless and desktop surfaces.** `opencode run`, `codex exec`, print mode
+  and Claude's `-p` show nothing in most sources, and OpenCode Desktop cannot
+  show an OpenCode v2 notice at all.
+- **Only the pi 1.x line is rated.** The 0.84 line was not probed for session
+  start.
 
 Start with the [README](../README.md); the [release runbook](releases.md)
 describes preparation, draft creation, and publication.
