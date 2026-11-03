@@ -249,8 +249,8 @@ export const piCapabilityProfiles: CapabilityProfile[] = [
         piCompletionEdgesValidation,
         // scheduled-playback:begin
         {
-          version: "1.4.0",
-          date: "2026-10-26",
+          version: "1.5.0",
+          date: "2026-11-02",
           method: "live-probe",
           artifact: ".capture/harness-playback",
           what: "scheduled model-free playback vs a newer build: artifact discovery, rewrite/block markers, and lifecycle events verified",
