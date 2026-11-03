@@ -195,7 +195,7 @@ catalogs:
       specifier: ^0.28.2
       version: 0.28.2
     eslint:
-      specifier: ^10.13.0
+      specifier: ^10.14.0
       version: 10.14.0
     eslint-plugin-simple-import-sort:
       specifier: ^14.0.0
@@ -222,7 +222,7 @@ catalogs:
       specifier: npm:@typescript/typescript6@~6.0.2
       version: 6.0.2
     typescript-eslint:
-      specifier: ^8.72.0
+      specifier: ^8.72.1
       version: 8.72.1
     validate-npm-package-name:
       specifier: ^8.0.0
