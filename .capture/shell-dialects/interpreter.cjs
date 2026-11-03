@@ -15,11 +15,25 @@ if (process.platform === "win32") {
     "}",
     "ConvertTo-Json -InputObject @($rows) -Depth 4 -Compress",
   ].join("\n");
-  ancestry = JSON.parse(execFileSync(
-    join(process.env.SystemRoot, "System32/WindowsPowerShell/v1.0/powershell.exe"),
-    ["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", query],
-    { encoding: "utf8", windowsHide: true, timeout: 20000 },
-  ));
+  const powershell = join(process.env.SystemRoot, "System32/WindowsPowerShell/v1.0/powershell.exe");
+  // A Win32_Process query can stall on a busy hosted runner. One 20s attempt
+  // used to abort the probe before it wrote interpreter.json, which playback
+  // read as a missing file rather than a transient WMI failure. Retry once
+  // and leave enough room for a slow query to finish.
+  let lastError;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      ancestry = JSON.parse(execFileSync(
+        powershell,
+        ["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", query],
+        { encoding: "utf8", windowsHide: true, timeout: 30000 },
+      ));
+      break;
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  if (ancestry === undefined) throw lastError;
 } else if (process.platform === "darwin") {
   ancestry = [];
   let pid = process.pid;

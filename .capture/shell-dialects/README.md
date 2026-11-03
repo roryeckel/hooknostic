@@ -24,7 +24,8 @@ model from `packages/cli/test/harness-playback.ts`.
    existing tee template attached. Claude and Codex have isolated configuration
    homes; OpenCode uses isolated configuration and state directories.
 3. `interpreter.cjs` runs as the command's Node child and records its process
-   ancestry. Windows uses `Get-CimInstance Win32_Process`; macOS uses `/bin/ps`
+   ancestry. Windows uses `Get-CimInstance Win32_Process` with one bounded
+   retry for a transient WMI stall; macOS uses `/bin/ps`
    with `pid`, `ppid`, `ucomm`, and `comm`; Linux reads `/proc/<pid>/stat` and
    the `/proc/<pid>/exe` link. The macOS accounting name is recorded separately
    from the command field; `comm` is not normalized to an executable path. See
