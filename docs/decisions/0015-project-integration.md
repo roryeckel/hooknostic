@@ -169,10 +169,9 @@ because Codex has no equivalent native field.
 - **v1 reads the same rule from the config hook.** The v1 `config` hook receives
   a process-level host layer, in the config-side spelling `enabled: false`, and
   it wins over a same-named project `opencode.json` entry. The v1 module
-  therefore skips a declaration whose inherited entry is `enabled: false`. A
-  write by an earlier plugin is part of the document this module reads and so
-  wins over it, which is the point: a host or a peer that disabled a name owns
-  it.
+  therefore skips a declaration whose inherited entry is `enabled: false`, in
+  whatever `config.mcp` its hook receives. Whether another plugin's earlier
+  `config` write is part of that document is not captured.
 - **Effect, not shape.** The `opencode-v2` playback lane runs both cases with
   two projected stdio servers and each server's own startup witness: the
   host-disabled one never starts while the other server, the copied skill and
