@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { appendFile, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
+import { access, appendFile, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { isAbsolute, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -761,6 +761,64 @@ describe.skipIf(!enabled)("OpenCode v2 offline playback", () => {
     },
     70000,
   );
+  // The host's own switch, not Hooknostic's: a same-named entry the host layer
+  // disabled is left alone, and the sibling projected server still starts.
+  it("leaves a host-disabled projected MCP server alone and keeps the rest working", async () => {
+    const driver = fileURLToPath(new URL("../../../.capture/opencode-v2/drive.mjs", import.meta.url));
+    const result = await runProcess(
+      process.execPath,
+      ["--experimental-strip-types", driver, "project-components-host-disabled"],
+      {
+        cwd: fileURLToPath(new URL("../../..", import.meta.url)),
+        env: process.env,
+        timeoutMs: 60000,
+      },
+    );
+    expect(result.code, result.stdout + result.stderr).toBe(0);
+    const { root } = JSON.parse(result.stdout.split("\n").find((line) => line.startsWith('{"root"'))!);
+    await expect(access(join(root, "project/portable/startup.json"))).rejects.toMatchObject({ code: "ENOENT" });
+    await access(join(root, "project/portable/startup-other.json"));
+    const captured = (await readFile(join(root, "captured/events.jsonl"), "utf8"))
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line));
+    expect(captured.find((row) => row.hook === "skills").event).toContainEqual(
+      expect.objectContaining({ id: "greet" }),
+    );
+    expect(await readFile(join(root, "project/hooknostic-tool.txt"), "utf8")).toBe("hooknostic-rewritten");
+    const playback = JSON.parse(await readFile(join(root, "result.json"), "utf8"));
+    expect(playback.errors).toEqual([]);
+    expect(playback.code).toBe(0);
+  }, 70000);
+  // The ADR-0015 default is preserved: an inherited entry the host left enabled is
+  // Hooknostic's to replace, so this is what a presence-only guard would break.
+  it("replaces a same-named projected MCP server the host left enabled", async () => {
+    const driver = fileURLToPath(new URL("../../../.capture/opencode-v2/drive.mjs", import.meta.url));
+    const result = await runProcess(
+      process.execPath,
+      ["--experimental-strip-types", driver, "project-components-host-enabled"],
+      {
+        cwd: fileURLToPath(new URL("../../..", import.meta.url)),
+        env: process.env,
+        timeoutMs: 60000,
+      },
+    );
+    expect(result.code, result.stdout + result.stderr).toBe(0);
+    const { root } = JSON.parse(result.stdout.split("\n").find((line) => line.startsWith('{"root"'))!);
+    await access(join(root, "project/portable/startup.json"));
+    await access(join(root, "project/portable/startup-other.json"));
+    const captured = (await readFile(join(root, "captured/events.jsonl"), "utf8"))
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line));
+    expect(captured.find((row) => row.hook === "skills").event).toContainEqual(
+      expect.objectContaining({ id: "greet" }),
+    );
+    expect(await readFile(join(root, "project/hooknostic-tool.txt"), "utf8")).toBe("hooknostic-rewritten");
+    const playback = JSON.parse(await readFile(join(root, "result.json"), "utf8"));
+    expect(playback.errors).toEqual([]);
+    expect(playback.code).toBe(0);
+  }, 70000);
   it.each(["rewrite", "block", "context", "output", "block-prompt"] as const)(
     "%s reaches its observable effect",
     async (effect) => {

@@ -296,6 +296,7 @@ function injectorSource(
       : [
           "    config.mcp = { ...(config.mcp ?? {}) };",
           "    for (const [name, server] of Object.entries(mcpServers)) {",
+          "      if (config.mcp[name]?.enabled === false) continue;",
           "      // defineProperty, not assignment: `config.mcp.__proto__ = ...`",
           "      // would reach the inherited setter instead of adding a server.",
           "      Object.defineProperty(config.mcp, name, {",

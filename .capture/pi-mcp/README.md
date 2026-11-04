@@ -200,6 +200,10 @@ platform's directory, or the one `HKN_PI_MCP_PLATFORM` names.
 - Whether a `.pi/mcp.json` entry holding only `exposure` overrides a
   registered server's exposure. The documentation describes such overrides
   for user-level servers only.
+- Whether a same-named `.pi/mcp.json` (or user-level) entry with
+  `enabled: false` suppresses a server an extension registered, and which
+  route wins. Untested; no Pi rule is claimed. The OpenCode equivalent is
+  [`../opencode-disabled-mcp`](../opencode-disabled-mcp/README.md).
 - Interactive and RPC modes. Only print mode was observed.
 - OAuth, `auth.provider`, resources, and `toolExposure`.
 - macOS.

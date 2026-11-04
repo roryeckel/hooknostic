@@ -86,6 +86,14 @@ V2 also verifies loading a scoped npm coordinate from a read-only loopback
 registry serving that tarball. This exercises OpenCode's own resolution and
 cache installation, including generated hooks, skills and local MCP.
 
+A host that launches OpenCode with its own configuration layer can switch a
+server off by name. Hooknostic leaves such an entry alone rather than replacing
+it, on both families: v2 reads the normalised entry's `disabled` flag from the
+MCP editor, v1 reads `enabled` from the config hook. The disabled server never
+starts, and the other projected servers, copied skills and generated hooks are
+unaffected. A same-named entry the host left enabled is still replaced, which
+is the ADR-0015 default. [Capture](../.capture/opencode-disabled-mcp/README.md).
+
 Tool classification covers captured file read/write/edit/glob/grep, webfetch,
 websearch and subagent names; shell normalization includes `workdir`. Websearch
 coverage is limited to admission. A foreground subagent now completes

@@ -58,7 +58,7 @@ const nativeOpenCodeV2ProjectProfiles: readonly AgentPluginProjectionProfile[] =
       "agent-plugin.mcp.stdio": {
         level: "emulated",
         rationale:
-          "A generated launcher resolves portable paths and environment; a v2 MCP transform registers the server.",
+          "A generated launcher resolves portable paths and environment; a v2 MCP transform registers the server, unless a host layer already disabled that name.",
       },
       "agent-plugin.mcp.streamable-http": {
         level: "exact",
@@ -83,6 +83,20 @@ const nativeOpenCodeV2ProjectProfiles: readonly AgentPluginProjectionProfile[] =
     source: {
       date: "2026-09-26",
       validatedOn: [
+        {
+          version: "2.2.0",
+          date: "2026-11-03",
+          method: "live-probe",
+          artifact: ".capture/opencode-disabled-mcp",
+          what: "Same procedure on 2.2.0: a host layer's enabled: false arrived at the v2 MCP editor as disabled: true for local and remote servers alike, get on an undeclared name returned undefined, and a projected server carrying the disabled name never started while its sibling projected server, the copied skill and the generated hook still worked.",
+        },
+        {
+          version: opencodeV2Harness.referenceVersion,
+          date: "2026-11-03",
+          method: "live-probe",
+          artifact: ".capture/opencode-disabled-mcp",
+          what: "On Windows with isolated state and a loopback model, a host layer's same-named entry with enabled: false reached the v2 MCP editor as disabled: true for remote and local servers alike, whether the layer was OPENCODE_CONFIG_CONTENT or a config file under XDG_CONFIG_HOME. The projected server never started while its sibling projected server, the copied skill and the generated hook still worked; a same-named host entry left enabled was still replaced.",
+        },
         {
           version: "2.0.20",
           date: "2026-10-04",
@@ -152,7 +166,13 @@ export default { id: "hooknostic.components" + suffix, async setup(ctx) {
   if (!serves(ctx.location.directory)) return;
   const config = {}; configure(config);
   await ctx.mcp.transform(editor => {
-    for (const [name, server] of Object.entries(config.mcp ?? {})) editor.set(name, nativeServer(server));
+    for (const [name, server] of Object.entries(config.mcp ?? {})) {
+      // A host that disabled this name owns it; replacing the entry would turn it back on (ADR-0015).
+      // \`get\` is synchronous and reports the normalised entry, whose config-side \`enabled\` is
+      // spelled \`disabled\` -- so that field, not \`enabled\`, is the one read here.
+      if (editor.get(name)?.disabled === true) continue;
+      editor.set(name, nativeServer(server));
+    }
   });
 } };\n`,
   );
@@ -194,9 +214,12 @@ ${conversion}
 const resolve = value => value.split(${JSON.stringify(RUNTIME_LAUNCHER)}).join(launcher).split(${JSON.stringify(RUNTIME_PLUGIN_ROOT)}).join(root);
 export default { id: ${JSON.stringify(`hooknostic.components.${source.manifest.name}`)}, async setup(ctx) {
   if (Object.keys(servers).length) await ctx.mcp.transform(editor => {
-    for (const [name, server] of Object.entries(servers)) editor.set(name, nativeServer(server.type === "local" ? {
-      ...server, command: server.command.map(resolve), cwd: resolve(server.cwd),
-    } : server));
+    for (const [name, server] of Object.entries(servers)) {
+      if (editor.get(name)?.disabled === true) continue;
+      editor.set(name, nativeServer(server.type === "local" ? {
+        ...server, command: server.command.map(resolve), cwd: resolve(server.cwd),
+      } : server));
+    }
   });
   const values = skills.map(skill => ({ id: skill.id, name: skill.name, description: skill.description,
     ...(skill.policy === undefined ? {} : { autoinvoke: skill.policy.allowImplicitInvocation }),

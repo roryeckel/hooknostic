@@ -78,7 +78,8 @@ unaffected servers remain available. Packaged remote declarations remain literal
 because the Agent Plugins standard prohibits environment expansion there. OpenCode performs its
 native interpolation before project plugin hooks, so its generated direct-source
 module resolves remote URL and header references itself. Project declarations
-replace same-named inherited OpenCode servers and preserve unrelated entries.
+replace same-named inherited OpenCode servers unless that entry disables them
+(the 2026-11-03 amendment below), and preserve unrelated entries.
 Claude project MCP expands set references in both remote URLs and headers. No
 lossless literal-preserving spelling across both fields was found in the live
 probe, so a package-origin remote declaration containing such a reference is
@@ -144,6 +145,40 @@ because Codex has no equivalent native field.
   root checkout and the file Codex reads there.
   For a project root below the worktree top, that file sits at the same
   relative directory in the root checkout. This mapping is source-derived.
+
+## Amendment — 2026-11-03: a host's disable is not overridden
+
+- **A project or package declaration replaces a same-named inherited OpenCode
+  server, except when that entry disables it.** A host that launches OpenCode
+  with its own configuration layer (`OPENCODE_CONFIG_CONTENT`, or a config file)
+  can switch a server off with `enabled: false`; the generated module wrote its
+  declaration over that entry, so the server ran. The v2 MCP editor reports a
+  same-named inherited entry as `{ disabled: true }` — for local and remote
+  entries alike — so the module reads `editor.get(name)` and skips that name
+  while registering the rest. Unrelated entries remain untouched.
+  (`.capture/opencode-disabled-mcp`.)
+- **This restores a native switch; it is not new vocabulary.** No environment
+  variable and no Hooknostic diagnostic: OpenCode itself reports the server as
+  disabled. Claude Code, Codex and Copilot never lost the equivalent, because
+  their switch acts on the static file Hooknostic writes (ADR-0033).
+- **Hooknostic's own disable still applies where it is the only switch.** A
+  direct remote declaration whose required variable is unset is still emitted
+  `enabled: false`, replacing an inherited enabled entry with a disabled one.
+  Reading the inherited entry, then deciding, then writing is what lets both
+  rules hold.
+- **v1 reads the same rule from the config hook.** The v1 `config` hook receives
+  a process-level host layer, in the config-side spelling `enabled: false`, and
+  it wins over a same-named project `opencode.json` entry. The v1 module
+  therefore skips a declaration whose inherited entry is `enabled: false`, in
+  whatever `config.mcp` its hook receives. Whether another plugin's earlier
+  `config` write is part of that document is not captured.
+- **Effect, not shape.** The `opencode-v2` playback lane runs both cases with
+  two projected stdio servers and each server's own startup witness: the
+  host-disabled one never starts while the other server, the copied skill and
+  the generated hook still work, and a same-named entry the host left enabled is
+  still replaced. The `opencode-v1` lane proves the same for the config hook.
+- **Pi is unchanged.** Its registration loses to a host file entry rather than
+  overriding one, and no capture covers a disabled collision.
 
 ## Boundaries
 

@@ -14,9 +14,12 @@ const nativeServer = (server) => {
 const resolve = value => value.split("__HOOKNOSTIC_LAUNCHER__").join(launcher).split("__HOOKNOSTIC_PLUGIN_ROOT__").join(root);
 export default { id: "hooknostic.components.combined-example", async setup(ctx) {
   if (Object.keys(servers).length) await ctx.mcp.transform(editor => {
-    for (const [name, server] of Object.entries(servers)) editor.set(name, nativeServer(server.type === "local" ? {
-      ...server, command: server.command.map(resolve), cwd: resolve(server.cwd),
-    } : server));
+    for (const [name, server] of Object.entries(servers)) {
+      if (editor.get(name)?.disabled === true) continue;
+      editor.set(name, nativeServer(server.type === "local" ? {
+        ...server, command: server.command.map(resolve), cwd: resolve(server.cwd),
+      } : server));
+    }
   });
   const values = skills.map(skill => ({ id: skill.id, name: skill.name, description: skill.description,
     ...(skill.policy === undefined ? {} : { autoinvoke: skill.policy.allowImplicitInvocation }),

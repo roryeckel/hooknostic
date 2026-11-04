@@ -28,6 +28,12 @@ module's native discovery. Its playback config contributes a same-named inherite
 server and an unrelated entry; the project server starts while a separate remote
 declaration with an unset variable is reported disabled.
 
+Follow-up (2026-11-03): that observation stands for a same-named inherited
+server the host leaves **enabled**, which is still replaced. A host entry that
+**disables** the name is now left alone instead — the shape both families
+report, and the effect in the playback lanes, are recorded in
+`../opencode-disabled-mcp` and in the 2026-11-03 amendment to ADR-0015.
+
 The initial capture left Codex project MCP unsupported. The follow-up in
 `../codex-project-mcp` now validates stdio and Streamable HTTP. Package MCP evidence alone does not
 establish project TOML merge or discovery behavior. No TOML writer is advertised.
@@ -71,7 +77,8 @@ after each run. Mutants cover ownership, missing output, formatting, derived
 timeouts, source-relative paths, runtime target identity, component omissions,
 initialization overwrite, lock exclusivity, rollback, recovery, nested hook
 bootstrap, direct exclusions/cwd containment, per-target MCP cloning/override translation, and OpenCode
-collision/missing-variable isolation. Follow-up mutants cover selected-target
+collision/missing-variable isolation, including the inherited-disable guard on both
+the v1 project module and the v1 package injector. Follow-up mutants cover selected-target
 validation, direct executable-file rejection, canonical symlink containment,
 URL-safe OpenCode wrapper imports, and Claude remote-reference omission and
 runtime expansion. Additional regressions cover named OpenCode target discovery,

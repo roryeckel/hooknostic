@@ -224,6 +224,31 @@ describe("OpenCode project components", () => {
     expect(config.mcp?.["inherited"]?.url).toBe("https://inherited.invalid/mcp");
   });
 
+  // The hook receives the host layer in its config-side spelling, not the
+  // editor's `disabled` (.capture/opencode-disabled-mcp). Three inherited names
+  // make the predicate discriminating: only the disabled one is left alone.
+  it("leaves a server the inherited configuration disabled", async () => {
+    process.env["HOOKNOSTIC_PROJECT_TOKEN"] = "project-token";
+    const path = await moduleFor(
+      "direct",
+      {},
+      {
+        remote: { type: "streamable-http", url: "https://example.invalid/${HOOKNOSTIC_PROJECT_TOKEN}/mcp" },
+        replaced: { type: "streamable-http", url: "https://example.invalid/${HOOKNOSTIC_PROJECT_TOKEN}/replaced" },
+        added: { type: "streamable-http", url: "https://added.invalid/mcp" },
+      },
+    );
+    const plugin = await (await import(pathToFileURL(path).href + "?inherited-disabled")).default();
+    const disabled = { url: "https://global.invalid/mcp", enabled: false };
+    const config: { mcp?: Record<string, { url?: string; enabled?: boolean }> } = {
+      mcp: { remote: disabled, replaced: { url: "https://inherited.invalid/mcp" } },
+    };
+    plugin.config(config);
+    expect(config.mcp?.["remote"]).toEqual(disabled);
+    expect(config.mcp?.["replaced"]?.url).toBe("https://example.invalid/project-token/replaced");
+    expect(config.mcp?.["added"]?.url).toBe("https://added.invalid/mcp");
+  });
+
   it("emits target-native MCP startup timeouts", async () => {
     process.env["HOOKNOSTIC_PROJECT_TOKEN"] = "project-token";
     const path = await moduleFor("direct", { mcpStartupTimeoutMs: { remote: 60_000 } });

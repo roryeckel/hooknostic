@@ -373,5 +373,53 @@
     "failedTests": [
       "complete project integration relinquishes copied skills when their native destination becomes the source"
     ]
+  },
+  {
+    "mutant": "remove the inherited-disable guard from the v1 project module",
+    "file": "packages/adapter-opencode/src/project.ts",
+    "exitCode": 1,
+    "failedTests": [
+      "OpenCode project components leaves a server the inherited configuration disabled"
+    ]
+  },
+  {
+    "mutant": "invert the inherited-disable guard in the v1 project module",
+    "file": "packages/adapter-opencode/src/project.ts",
+    "exitCode": 1,
+    "failedTests": [
+      "OpenCode project components leaves a server the inherited configuration disabled"
+    ]
+  },
+  {
+    "mutant": "make the v1 project guard a presence check",
+    "file": "packages/adapter-opencode/src/project.ts",
+    "exitCode": 1,
+    "failedTests": [
+      "OpenCode project components leaves a server the inherited configuration disabled"
+    ]
+  },
+  {
+    "mutant": "remove the inherited-disable guard from the v1 package injector",
+    "file": "packages/adapter-opencode/src/project-agent-plugin.ts",
+    "exitCode": 1,
+    "failedTests": [
+      "Agent Plugin to OpenCode projection leaves a package server the configuration disabled alone"
+    ]
+  },
+  {
+    "mutant": "invert the inherited-disable guard in the v1 package injector",
+    "file": "packages/adapter-opencode/src/project-agent-plugin.ts",
+    "exitCode": 1,
+    "failedTests": [
+      "Agent Plugin to OpenCode projection leaves a package server the configuration disabled alone"
+    ]
+  },
+  {
+    "mutant": "make the v1 package guard a presence check",
+    "file": "packages/adapter-opencode/src/project-agent-plugin.ts",
+    "exitCode": 1,
+    "failedTests": [
+      "Agent Plugin to OpenCode projection leaves a package server the configuration disabled alone"
+    ]
   }
 ]

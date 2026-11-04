@@ -114,6 +114,8 @@ ${directEnvironmentResolution}
 ${emitMcp ? "const configure = (config) => {" : "export default async () => ({ config(config) {"}
   const mcp = { ...(config.mcp ?? {}) };
   for (const [name, server] of declarations) {
+    // A host that disabled this name owns it; replacing the entry would turn it back on (ADR-0015).
+    if (mcp[name]?.enabled === false) continue;
     const value = server.type === "local" ? { ...server,
       command: server.command.map(arg => arg === ${JSON.stringify(RUNTIME_LAUNCHER)} ? resolve(root, ${JSON.stringify(output + "/mcp-launcher.mjs")}) : arg),
       cwd: server.cwd === ${JSON.stringify(RUNTIME_PLUGIN_ROOT)} ? resolve(root, ${JSON.stringify(sourceRoot)}) : server.cwd,
@@ -168,6 +170,13 @@ const nativeProjectComponentProfiles: readonly AgentPluginProjectionProfile[] = 
     source: {
       date: "2026-09-11",
       validatedOn: [
+        {
+          version: opencodeHarness.referenceVersion,
+          date: "2026-11-03",
+          method: "live-probe",
+          artifact: ".capture/opencode-disabled-mcp",
+          what: "On Windows with isolated state and a loopback model, the v1 config hook received a process-level host layer's same-named entry as enabled: false in that spelling, and the merged configuration kept it. A project-declared server carrying the disabled name never started, while a same-named inherited server the host left enabled was still replaced and the copied skill and generated hook still worked.",
+        },
         {
           version: "1.18.34",
           date: "2026-10-04",

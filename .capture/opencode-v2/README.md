@@ -72,6 +72,23 @@ Windows still discovers compatibility skills under the actual user home even
 with redirected HOME/USERPROFILE and XDG paths. Probes never call those skills;
 all model replies are scripted. Only scratch state is written.
 
+## Host-disabled projected servers (2.0.17 and 2.2.0, 2026-11-03)
+
+`project-components-host-disabled` projects two stdio servers (`greeter` and
+`other`), then launches OpenCode with an `OPENCODE_CONFIG_CONTENT` layer that
+declares `greeter` as a remote server with `enabled: false`. `greeter`'s startup
+witness is never written, `other`'s is, the copied `greet` skill is listed and
+the generated hook still rewrites the marker. `project-components-host-enabled`
+is the control: the same layer declares `greeter` enabled at its own URL, and
+the projection still replaces it, so `startup.json` is written.
+
+What the v2 MCP editor reports for such a host entry — and what the v1 config
+hook receives — is recorded in
+[`../opencode-disabled-mcp`](../opencode-disabled-mcp/README.md). The guard's
+mutants are `host-disabled-guard`, `host-disabled-inverted`,
+`host-disabled-presence` and `host-disabled-playback` in
+`verify-mutations.mjs`.
+
 ## Timeout diagnostics
 
 The driver prints its scratch root before setup and records each setup/native
