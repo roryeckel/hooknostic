@@ -1,83 +1,64 @@
-# A notice when a session opens, without the model seeing it
+# A host's disabled MCP server stays disabled on OpenCode
 
-0.10.0 adds `session.start.notify`. A hook can show the user a short message as
-a session opens — a required tool is missing, a policy is active, a check was
-skipped — and no harness puts that message in front of the model. The
-capability is a new scope for the existing `notify` effect, decided in
-[ADR-0036](decisions/0036-session-start-notify.md); text the model should read
-is still `session.start.context.add`. It is delivered on four of the five
-harnesses and stated as unsupported on the other two, where no user-only
-channel exists. See the versioned [harness support table](harness-support.md)
-for the builds behind each rating.
+0.10.1 is a fix release. A host that launches OpenCode with its own
+configuration layer (`OPENCODE_CONFIG_CONTENT` or a config file) can switch a
+project MCP server off with `enabled: false` again. Until now, Hooknostic's
+generated OpenCode module wrote its own declaration over that entry, and the
+server ran anyway. Claude Code, Codex and GitHub Copilot never lost their switch,
+because it acts on the static file Hooknostic writes. On OpenCode, Hooknostic's
+runtime registration had removed it. [ADR-0015](decisions/0015-project-integration.md)
+records the amended rule. The evidence is in
+`.capture/opencode-disabled-mcp`.
 
 ## What is included
 
-- **One capability, four harnesses.** Claude Code, Codex CLI, OpenCode v1 and
-  pi 1.x each deliver the notice, rated `approximate` with the loss named. The
-  contract is user-only: a channel the model reads does not qualify, so the
-  transcript routes `turn.stop.notify` accepts on OpenCode are refused at
-  session start.
-  - **Claude:** `systemMessage` on `SessionStart` renders in the interactive
-    TUI for startup, `/clear`, `/compact` and resume. A `-p` consumer loses it
-    except at `/compact`, and a resumed session redraws an earlier notice.
-  - **Codex:** `systemMessage` renders in the interactive TUI for every source.
-    `codex exec`, plain or `--json`, shows it nowhere. The TUI dispatches
-    `SessionStart` with the first submitted prompt, so the notice appears then,
-    not when the TUI opens.
-  - **OpenCode v1:** a TUI toast (`client.tui.showToast`) at `session.created`,
-    shown for 15 seconds when a TUI is attached, local or through `serve`. It is
-    inert under `opencode run`.
-  - **pi 1.x:** `ctx.ui.notify` at warning level, in the TUI and over RPC.
-    Print mode shows nothing, `--continue` can lose a notice, and pi's own
-    status line can replace it.
-- **Unsupported where it must be stated.** GitHub Copilot CLI drops a
-  `sessionStart` `systemMessage` at parse, and an OpenCode v2 server plugin has
-  no user-only route: only a companion `./tui` entry could show one, and it
-  would not reach OpenCode Desktop, so Hooknostic generates none. Both are
-  rated `unsupported` rather than silently dropped, so a build that requires
-  the capability fails there with a diagnostic.
-- **Declared like any other capability.** A hook declares
-  `capabilities: { notify: "optional" }` on its `session.start` hook and gates
-  on `ctx.capabilities.has("notify")`. A `required` declaration fails the build
-  for Copilot and OpenCode v2.
-- **Playback covers it.** The `session-start-notify` scenario runs on every
-  lane and asserts the two halves a lane can see: no model request carries the
-  notice, and headless output does not show it.
-- **Support evidence refreshed.** The playback lanes re-ran against Claude
-  2.1.310, Codex 0.164.0, OpenCode 1.19.4 and 2.1.4, and pi 1.4.0. The notice
-  probes add Claude 2.1.238 and 2.1.312, Codex 0.148.0 and 0.166.0, Copilot
-  1.0.102, OpenCode 1.18.18, 1.19.5, 2.0.17 and 2.2.0, and pi 1.3.0 and 1.4.0.
-  Recommended target ranges and reference builds are unchanged.
+- **A project or package declaration no longer re-enables a server the host
+  disabled.** It still replaces a same-named inherited server the host left
+  enabled, and unrelated inherited servers are still left untouched.
+  - **OpenCode v2:** the MCP editor reports the host's entry as
+    `disabled: true`, for local and remote entries alike. The project components
+    module and the package injector then skip that name and register the rest.
+  - **OpenCode v1:** the `config` hook receives the host's entry as
+    `enabled: false`. The project module and package injector skip it the same
+    way. The generated modules stay environment-free.
+- **No new vocabulary.** There is no environment variable and no Hooknostic
+  diagnostic: OpenCode itself reports the server as disabled. Hooknostic's own
+  `enabled: false`, for a remote declaration with an unset `${VAR}`, still
+  applies.
+- **Playback covers it.** The `opencode-v2` lane starts two projected stdio
+  servers. The one the host disabled never starts, while the other, the copied
+  skill and the generated hook still work. A same-named entry the host left
+  enabled is still replaced. The `opencode-v1` lane covers the host-layer case.
+- **Windows playback runs the build `PATH` selects.** The OpenCode v2 capture
+  drive used to run the global `opencode.exe` even when a reference build came
+  first on `PATH`. It now runs the selected build, fails loudly on a version
+  mismatch, and the mutation verifier refuses to count a mutant run on the wrong
+  build. A stalled Windows ancestry probe in Pi playback now retries.
+- **Support evidence.** Editor-shape and effect records were added for OpenCode
+  2.0.17 and 2.2.0, and config-hook records for 1.18.18. The playback lanes'
+  scheduled validations recorded Claude 2.1.316, Codex 0.166.0, Copilot 1.0.105,
+  OpenCode 1.19.5 and 2.2.5, and pi 1.5.0. Recommended target ranges, reference
+  builds and support levels are unchanged.
 
-## Upgrading from 0.9.0
+## Upgrading from 0.10.0
 
-- **Nothing changes for a hook that does not use it.** Artifacts, effects, exit
-  codes and diagnostics are the same as 0.9.0.
-- **New scope on an old effect.** `notify` returned from a `session.start` hook
-  is now licensed, so the SDK accepts what 0.9.0 rejected at compile time.
-  Declare the capability and keep it optional wherever the plugin is built for
-  more than the four harnesses above.
-- **Re-sync a project that adopts it.** The OpenCode shim and the pi extension
-  carry the call, so a package needs a rebuild to pick it up, and a
-  project-delivered install needs `sync` to rewrite the generated shim and
-  extension.
+- **Re-sync or rebuild to pick it up.** The fix is in generated output. A
+  project-delivered install needs `sync` to rewrite
+  `.opencode/plugins/hooknostic-components.js`, and an OpenCode package needs a
+  rebuild.
+- **A disabled host entry now wins.** If a host or a global OpenCode
+  configuration disables a server by name, the project's declaration of that
+  server no longer turns it back on. That is the intended change. Remove the
+  host entry, or set it to `enabled: true`, to use the project's server.
 
 ## Limits
 
-- **Best-effort, interactive.** A notice is not a delivery guarantee. Do not
-  rely on one for anything that has to reach the user; nothing in a probe
-  survived every launch mode.
-- **It can arrive late or more than once.** Codex dispatches `SessionStart`
-  with the first prompt. Claude fires it twice around `/compact` (`resume`, then
-  `compact`) and redraws earlier notices on resume. OpenCode v1 raises
-  `session.start` for every `session.created`, including a child session.
-- **One toast at a time on OpenCode v1.** A newer notice replaces an older one,
-  and a toast sent during plugin initialization is lost under the TUI.
-- **Headless and desktop surfaces.** `opencode run`, `codex exec`, print mode
-  and Claude's `-p` show nothing in most sources, and OpenCode Desktop cannot
-  show an OpenCode v2 notice at all.
-- **Only the pi 1.x line is rated.** The 0.84 line was not probed for session
-  start.
+- **Pi is unchanged.** Its registration loses to a host file entry rather than
+  overriding one, and no capture covers a disabled collision.
+- **Windows-only evidence.** The editor-shape, config-hook and effect captures
+  ran on native Windows. CI's playback lanes also run the new cases on Ubuntu.
+- **Not captured:** whether another plugin's earlier v1 `config` write is part
+  of the document the module reads.
 
 Start with the [README](../README.md); the [release runbook](releases.md)
 describes preparation, draft creation, and publication.
