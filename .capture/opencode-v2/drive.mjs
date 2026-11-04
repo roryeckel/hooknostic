@@ -15,7 +15,7 @@ console.log(JSON.stringify({ root, effect }));
 const { createPlaybackDiagnostics } = await import("../../packages/cli/test/playback-diagnostics.ts");
 const diagnostics = createPlaybackDiagnostics(root, effect);
 process.on("uncaughtExceptionMonitor", error => diagnostics.fail(error));
-const { startModelPlayback, buildPlaybackArtifact, runProcess } = await diagnostics.run(
+const { startModelPlayback, buildPlaybackArtifact, runProcess, resolveNativeExecutable } = await diagnostics.run(
   "load-playback-helpers", () => import("../../packages/cli/test/harness-playback.ts"),
 );
 async function runCaptureProcess(phase, command, args, options) {
@@ -315,8 +315,24 @@ snapshotTimer.unref();
 diagnostics.start("resolve-native-binary");
 let executable = process.env.HKN_OPENCODE_BINARY ?? "opencode";
 if (process.platform === "win32" && !process.env.HKN_OPENCODE_BINARY) {
-  const npmRoot = await runCaptureProcess("npm-root", "npm", ["root", "--global"], { cwd: project, env });
-  executable = join(npmRoot.stdout.trim(), "@opencode/cli/bin/opencode.exe");
+  // Run the build the playback test's own `opencode --version` check sees: the
+  // native executable behind what runProcess("opencode") launches. The npm
+  // global root can hold a different build than an isolated install earlier
+  // on PATH (#151); it is only the fallback when PATH has no opencode at all.
+  const native = await diagnostics.run("native-lookup", () => resolveNativeExecutable("opencode", env, project));
+  if (native) executable = native;
+  else {
+    const npmRoot = await runCaptureProcess("npm-root", "npm", ["root", "--global"], { cwd: project, env });
+    executable = join(npmRoot.stdout.trim(), "@opencode/cli/bin/opencode.exe");
+  }
+}
+if (process.env.HOOKNOSTIC_PLAYBACK === "opencode-v2") {
+  // Playback assertions are keyed to one build; a different binary must fail
+  // here rather than as a misleading behavior assertion (issue #151).
+  const { opencodeV2Harness } = await import("../../packages/adapter-opencode/src/index.ts");
+  const expected = `opencode v${process.env.HOOKNOSTIC_PLAYBACK_VERSION ?? opencodeV2Harness.referenceVersion}`;
+  const reported = (await runCaptureProcess("native-version", executable, ["--version"], { cwd: project, env })).stdout.trim();
+  if (reported !== expected) throw new Error(`opencode-v2 playback binary mismatch: ${executable} reports "${reported}", expected "${expected}"; set HKN_OPENCODE_BINARY to the intended build`);
 }
 diagnostics.complete("resolve-native-binary");
 if (effect === "nested") {

@@ -4,7 +4,7 @@ import type { ServerResponse } from "node:http";
 import { createServer } from "node:http";
 import { createRequire } from "node:module";
 import type { AddressInfo, Socket } from "node:net";
-import { join, normalize } from "node:path";
+import { dirname, join, normalize, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
 import { expect } from "vitest";
@@ -494,6 +494,30 @@ const cmdEscape = require("cross-spawn/lib/util/escape.js") as {
   command(value: string): string;
   argument(value: string, doubleEscape: boolean): string;
 };
+
+/**
+ * The native executable behind the file `runProcess(command)` launches on
+ * Windows, found by cross-spawn's PATH x PATHEXT lookup from `cwd`. An `.exe`
+ * is returned as is; a `.cmd` shim must name exactly one native `.exe` other
+ * than node.exe (npm `%dp0%` and pnpm `%~dp0` forms). Anything else throws
+ * rather than letting a caller substitute another binary. Undefined when
+ * nothing matches; always undefined off Windows, where no shim layer exists.
+ */
+export async function resolveNativeExecutable(
+  command: string,
+  env: NodeJS.ProcessEnv,
+  cwd: string,
+): Promise<string | undefined> {
+  if (process.platform !== "win32") return undefined;
+  const found = crossSpawn._parse(command, [], { env, cwd }).file;
+  if (found === undefined || /\.exe$/i.test(found)) return found;
+  const named = /\.cmd$/i.test(found)
+    ? [...new Set([...(await readFile(found, "utf8")).matchAll(/"%~?dp0%?\\([^"]+\.exe)"/gi)].map((m) => m[1]!))]
+    : [];
+  const native = named.filter((path) => !/(^|\\)node\.exe$/i.test(path));
+  if (native.length !== 1) throw new Error(`${found} names no single native ${command} executable`);
+  return resolve(dirname(found), native[0]!);
+}
 
 /**
  * Spawn without a shell splitting arguments. On Windows a harness CLI is usually
