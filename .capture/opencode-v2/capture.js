@@ -71,7 +71,7 @@ export default {
       await ctx.session.hook(hook, async (event) => {
         record(hook, event);
         if (
-          (effect === "components" || effect === "project-components" || effect.includes("remote") || effect.startsWith("package") || effect.startsWith("mcp-")) &&
+          (effect === "components" || effect === "project-components" || effect === "project-components-host-disabled" || effect === "project-components-host-enabled" || effect.includes("remote") || effect.startsWith("package") || effect.startsWith("mcp-")) &&
           hook === "prompt"
         ) {
           record(

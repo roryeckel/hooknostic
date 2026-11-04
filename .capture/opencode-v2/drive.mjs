@@ -52,6 +52,14 @@ const serverProbe = Buffer.concat([
     ),
   ),
 ]);
+// The two projected-server modes need a second witness file, so the two probes
+// are told apart by which record exists rather than by which port answered.
+const otherProbe = Buffer.from(
+  serverProbe
+    .toString("utf8")
+    .replace('new URL("./startup.json", import.meta.url)', 'new URL("./startup-other.json", import.meta.url)'),
+);
+const twoServers = effect === "project-components-host-disabled" || effect === "project-components-host-enabled";
 let packagePath, registry;
 diagnostics.complete("prepare-project");
 if (effect === "notifications") {
@@ -75,6 +83,8 @@ if (
   effect.startsWith("sessions") ||
   effect === "stop" ||
   effect === "project-components" ||
+  effect === "project-components-host-disabled" ||
+  effect === "project-components-host-enabled" ||
   (effect === "project-remote" || effect === "project-oauth") ||
   effect.startsWith("package")
 ) {
@@ -92,7 +102,7 @@ if (
   const output = effect.startsWith("package") ? join(root, "package-source") : project;
   diagnostics.complete("resolve-adapter");
   let components;
-  if (effect === "project-components" || (effect === "project-remote" || effect === "project-oauth")) {
+  if (effect === "project-components" || twoServers || (effect === "project-remote" || effect === "project-oauth")) {
     diagnostics.start("load-project-components");
     const { loadProjectComponents } = await import("../../packages/agent-plugin/src/index.ts");
     await mkdir(join(project, "portable/skills/greet"), { recursive: true });
@@ -101,6 +111,7 @@ if (
       "---\nname: greet\ndescription: Generated skill probe\n---\nGreet the user.\n",
     );
     await writeFile(join(project, "portable/server.mjs"), serverProbe);
+    if (twoServers) await writeFile(join(project, "portable/server-other.mjs"), otherProbe);
     await writeFile(
       join(project, "portable/mcp.json"),
       JSON.stringify({
@@ -114,6 +125,15 @@ if (
             env: { HKN_MCP_ENV: "${HKN_MISSING_PROBE_ENV:-project-marker}", HKN_MCP_ROOT: "${PLUGIN_ROOT}" },
             cwd: "${PLUGIN_ROOT}",
           },
+          ...(twoServers ? {
+            other: {
+              type: "stdio",
+              command: "node",
+              args: ["${PLUGIN_ROOT}/server-other.mjs"],
+              env: { HKN_MCP_ENV: "${HKN_MISSING_PROBE_ENV:-project-marker}", HKN_MCP_ROOT: "${PLUGIN_ROOT}" },
+              cwd: "${PLUGIN_ROOT}",
+            },
+          } : {}),
           }),
           ...(remote ? { missing: { type: "streamable-http", url: remote.url + "/missing", headers: { "x-missing": "${HKN_MISSING_REMOTE_HEADER}" } } } : {}),
         },
@@ -267,6 +287,20 @@ if (registry) {
 }
 for (const name of Object.keys(env)) {
   if (/API_KEY|AUTH_TOKEN|SECRET|TOKEN|OPENCODE/.test(name) && name !== "HKN_PLAYBACK_KEY") delete env[name];
+}
+// Applied after the strip, which removes every OPENCODE* name: a host layer that
+// switches one projected server off (or leaves it on at its own address).
+if (twoServers) {
+  env.OPENCODE_CONFIG_CONTENT = JSON.stringify({
+    $schema: "https://opencode.ai/config.json",
+    mcp: {
+      greeter: {
+        type: "remote",
+        url: `http://127.0.0.1:9/${effect === "project-components-host-disabled" ? "host-disabled" : "host-replaced"}`,
+        enabled: effect === "project-components-host-enabled",
+      },
+    },
+  });
 }
 diagnostics.complete("prepare-native-config");
 // Save loopback observations while the harness runs, before an outer timeout can kill this process.

@@ -629,6 +629,8 @@ interface DriveOptions {
   }) => Promise<void>;
   /** Extra provider-config keys for the opencode lanes (e.g. permission rules). */
   opencodeConfig?: { permission?: Record<string, string>; mcp?: Record<string, Record<string, unknown>> };
+  /** Extra environment for the opencode lanes (e.g. a host configuration layer). */
+  extraEnv?: NodeJS.ProcessEnv;
 }
 
 /** A message row from OpenCode's GET /session/:id/message (smoke-proven shape). */
@@ -859,6 +861,7 @@ async function runOpenCodePlayback(
             XDG_CONFIG_HOME: openCodePlaybackConfigHome(build.artifactDir),
             HOOKNOSTIC_PLAYBACK_TRACE: build.tracePath,
             ...(options.effects ? { HOOKNOSTIC_PLAYBACK_EFFECTS: options.effects.join(",") } : {}),
+            ...options.extraEnv,
           },
         },
       );
@@ -2075,6 +2078,18 @@ describe.skipIf(adapter === undefined)(`offline harness playback: ${selected || 
               ...(adapter!.id === "codex" || adapter!.id === "pi"
                 ? {}
                 : { localSse: { type: "sse" as const, url: transports.sseUrl } }),
+              // Named by the host layer below, which disables it.
+              ...(adapter!.id === "opencode"
+                ? {
+                    disabledProbe: {
+                      type: "stdio" as const,
+                      command: "node",
+                      args: ["${PLUGIN_ROOT}/plugin-mcp-env-fixture.mjs"],
+                      env: { CAPTURE_PATH: "${PLUGIN_ROOT}/mcp-disabled.json" },
+                      cwd: "${PLUGIN_ROOT}",
+                    },
+                  }
+                : {}),
             },
           },
         },
@@ -2120,6 +2135,20 @@ describe.skipIf(adapter === undefined)(`offline harness playback: ${selected || 
                   inheritedOnly: { type: "remote", url: "https://example.invalid/inherited", enabled: false },
                 },
               },
+              // The process-level host layer, beside the project file above: the
+              // layer the reported case used.
+              extraEnv: {
+                OPENCODE_CONFIG_CONTENT: JSON.stringify({
+                  $schema: "https://opencode.ai/config.json",
+                  mcp: {
+                    disabledProbe: {
+                      type: "remote",
+                      url: "http://127.0.0.1:9/host-disabled",
+                      enabled: false,
+                    },
+                  },
+                }),
+              },
             }
           : {}),
         capture: ({ stdout, stderr }) => {
@@ -2141,6 +2170,11 @@ describe.skipIf(adapter === undefined)(`offline harness playback: ${selected || 
               expect(await readFile(join(dir, ".codex/config.toml"), "utf8")).toContain(
                 '"HOOKNOSTIC_PLAYBACK_STDIO_UNSET"',
               );
+            }
+            // The host-disabled server never started; the same-named enabled one
+            // above was still replaced, so both layers were read.
+            if (adapter!.id === "opencode") {
+              await expect(access(join(source, "mcp-disabled.json"))).rejects.toMatchObject({ code: "ENOENT" });
             }
             expect(transports.counts.http).toBeGreaterThan(0);
             if (adapter!.id === "claude") {

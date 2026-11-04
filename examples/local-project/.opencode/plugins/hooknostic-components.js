@@ -28,6 +28,8 @@ const resolveRemote = (name, server) => {
 export default async () => ({ config(config) {
   const mcp = { ...(config.mcp ?? {}) };
   for (const [name, server] of declarations) {
+    // A host that disabled this name owns it; replacing the entry would turn it back on (ADR-0015).
+    if (mcp[name]?.enabled === false) continue;
     const value = server.type === "local" ? { ...server,
       command: server.command.map(arg => arg === "__HOOKNOSTIC_LAUNCHER__" ? resolve(root, ".hooknostic/artifacts/opencode/mcp-launcher.mjs") : arg),
       cwd: server.cwd === "__HOOKNOSTIC_PLUGIN_ROOT__" ? resolve(root, ".") : server.cwd,

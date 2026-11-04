@@ -671,6 +671,49 @@ describe("Agent Plugin to OpenCode projection", () => {
     }
   });
 
+  // A package server the merged configuration already disables is the host's,
+  // not this module's: writing it would switch the server back on (ADR-0015).
+  // The enabled same-named entry beside it is the control for the predicate.
+  it("leaves a package server the configuration disabled alone", async () => {
+    const plan = await project(
+      source({
+        srv: { type: "stdio", command: "node" },
+        enabledSrv: { type: "streamable-http", url: "https://example.invalid/enabled" },
+        api: { type: "streamable-http", url: "https://example.invalid/mcp" },
+      }),
+    );
+    const dir = await mkdtemp(join(tmpdir(), "hooknostic-opencode-injector-disabled-"));
+    try {
+      const modulePath = join(dir, "hooknostic-agent-plugin.mjs");
+      await writeFile(modulePath, injector(plan));
+      const config: { mcp?: Record<string, Record<string, unknown>> } = {
+        mcp: { srv: { enabled: false }, enabledSrv: { enabled: true } },
+      };
+      const plugin = await (await import(pathToFileURL(modulePath).href)).default();
+      plugin.config(config);
+      expect(config.mcp!["srv"]).toEqual({ enabled: false });
+      expect(config.mcp!["enabledSrv"]).toMatchObject({ type: "remote", url: "https://example.invalid/enabled" });
+      expect(config.mcp!["api"]).toMatchObject({ type: "remote", url: "https://example.invalid/mcp" });
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("replaces a package server the configuration left enabled", async () => {
+    const plan = await project(source({ srv: { type: "stdio", command: "node" } }));
+    const dir = await mkdtemp(join(tmpdir(), "hooknostic-opencode-injector-enabled-"));
+    try {
+      const modulePath = join(dir, "hooknostic-agent-plugin.mjs");
+      await writeFile(modulePath, injector(plan));
+      const config: { mcp?: Record<string, Record<string, unknown>> } = { mcp: { srv: { enabled: true } } };
+      const plugin = await (await import(pathToFileURL(modulePath).href)).default();
+      plugin.config(config);
+      expect(config.mcp!["srv"]!["cwd"]).toBe(join(dir, "package"));
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
   // U+2028 and U+2029 are JavaScript line terminators that JSON.stringify leaves
   // literal, and `description` and `version` are unconstrained strings in the
   // schema. Unescaped, a package's own metadata ends the generated `//` comment

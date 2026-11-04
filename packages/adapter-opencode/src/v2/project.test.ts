@@ -27,6 +27,7 @@ async function checkout(
   root: string,
   label: string,
   integrated = true,
+  extraServers: Record<string, unknown> = {},
 ): Promise<{ plugin: Plugin; components: Plugin }> {
   const artifact = ".opencode/plugins/hooknostic.js";
   await mkdir(join(root, output, ".opencode/plugins"), { recursive: true });
@@ -43,7 +44,10 @@ async function checkout(
         root: ".",
         config: {
           $schema: AGENT_PLUGIN_MCP_SCHEMA,
-          mcpServers: { probe: { type: "streamable-http", url: `https://${label}.invalid/mcp` } },
+          mcpServers: {
+            probe: { type: "streamable-http", url: `https://${label}.invalid/mcp` },
+            ...extraServers,
+          },
         },
       },
     },
@@ -80,17 +84,30 @@ async function layout(nestedIntegrated = true) {
   };
 }
 
-async function serve(copies: Plugin[], directory: string): Promise<string[]> {
+async function serve(
+  copies: Plugin[],
+  directory: string,
+  inherited: Record<string, { url?: string; disabled?: boolean }> = {},
+): Promise<{ urls: string[]; sets: string[] }> {
   const urls: string[] = [];
+  const sets: string[] = [];
   const ctx = {
     location: { directory },
     mcp: {
-      transform: async (edit: (editor: { set(name: string, server: { url: string }): void }) => void) =>
-        edit({ set: (_name, server) => urls.push(server.url) }),
+      transform: async (
+        edit: (editor: { get(name: string): unknown; set(name: string, server: { url: string }): void }) => void,
+      ) =>
+        edit({
+          get: (name) => inherited[name],
+          set: (name, server) => {
+            sets.push(name);
+            urls.push(server.url);
+          },
+        }),
     },
   };
   for (const copy of copies) await copy.setup(ctx);
-  return urls;
+  return { urls, sets };
 }
 
 describe("OpenCode v2 project wiring in nested checkouts", () => {
@@ -99,22 +116,55 @@ describe("OpenCode v2 project wiring in nested checkouts", () => {
     expect(outer.plugin.id).not.toBe(nested.plugin.id);
     expect(outer.components.id).not.toBe(nested.components.id);
     expect(outer.plugin.id).toMatch(/^hooknostic\.probe\.opencode\.[0-9a-f]{12}$/);
-    const urls = await serve([outer.plugin, nested.plugin, outer.components, nested.components], inside);
+    const { urls } = await serve([outer.plugin, nested.plugin, outer.components, nested.components], inside);
     expect(served).toEqual(["nested"]);
     expect(urls).toEqual(["https://nested.invalid/mcp"]);
   });
 
   it("leaves the outer checkout's own sessions to the outer copy", async () => {
     const { outer, nested, outerRoot } = await layout();
-    const urls = await serve([outer.plugin, nested.plugin, outer.components, nested.components], outerRoot);
+    const { urls } = await serve([outer.plugin, nested.plugin, outer.components, nested.components], outerRoot);
     expect(served).toEqual(["outer"]);
     expect(urls).toEqual(["https://outer.invalid/mcp"]);
   });
 
   it("falls back to the outer copy when the nested checkout has no integration", async () => {
     const { outer, inside } = await layout(false);
-    const urls = await serve([outer.plugin, outer.components], inside);
+    const { urls } = await serve([outer.plugin, outer.components], inside);
     expect(served).toEqual(["outer"]);
     expect(urls).toEqual(["https://outer.invalid/mcp"]);
+  });
+});
+
+describe("OpenCode v2 host-disabled MCP servers", () => {
+  async function one(label: string, extraServers: Record<string, unknown> = {}) {
+    const base = await mkdtemp(join(tmpdir(), "hooknostic-v2-host-"));
+    roots.push(base);
+    const { components } = await checkout(base, label, true, extraServers);
+    return { base, components };
+  }
+
+  it("leaves a server the host disabled alone and registers the other", async () => {
+    const { base, components } = await one("host", {
+      other: { type: "streamable-http", url: "https://other.invalid/mcp" },
+    });
+    const { sets } = await serve([components], base, { probe: { disabled: true } });
+    expect(sets).toEqual(["other"]);
+  });
+
+  it("replaces a same-named server the host left enabled", async () => {
+    const { base, components } = await one("enabled");
+    const { urls, sets } = await serve([components], base, {
+      probe: { url: "https://host.invalid/mcp", disabled: false },
+    });
+    expect(sets).toEqual(["probe"]);
+    expect(urls).toEqual(["https://enabled.invalid/mcp"]);
+  });
+
+  it("registers a server the host never declared", async () => {
+    const { base, components } = await one("absent");
+    const { urls, sets } = await serve([components], base);
+    expect(sets).toEqual(["probe"]);
+    expect(urls).toEqual(["https://absent.invalid/mcp"]);
   });
 });
