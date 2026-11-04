@@ -41,6 +41,7 @@ import {
   replayCommandFixtures,
   replayOpenCodeFixtures,
   replayPiFixtures,
+  resolveNativeExecutable,
   runProcess,
   scriptedTool,
   startModelPlayback,
@@ -447,6 +448,58 @@ describe("runProcess argument passing", () => {
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
+  });
+});
+
+// #151: the OpenCode v2 drive must run the build PATH selects, not the npm
+// global one. Shim texts are the forms npm and pnpm wrote on this machine.
+describe.skipIf(process.platform !== "win32")("resolveNativeExecutable", () => {
+  const name = "hkn-native-probe";
+  const npmShim = `@ECHO off\r\nCALL :find_dp0\r\n"%dp0%\\node_modules\\@probe\\cli\\bin\\${name}.exe"   %*\r\n`;
+  const pnpmShim = `@SETLOCAL\r\n@"%~dp0\\..\\.pnpm\\@probe+cli@1.0.0\\node_modules\\@probe\\cli\\bin\\${name}.exe"   %*\r\n`;
+  const nodeShim = `@IF EXIST "%~dp0\\node.exe" (\r\n  "%~dp0\\node.exe"  "%~dp0\\..\\probe\\cli.js" %*\r\n)\r\n`;
+  async function layout(files: Record<string, string>) {
+    const root = await mkdtemp(join(tmpdir(), "hooknostic native lookup "));
+    tempDirs.push(root);
+    for (const [path, text] of Object.entries(files)) {
+      await mkdir(join(root, path, ".."), { recursive: true });
+      await writeFile(join(root, path), text);
+    }
+    return root;
+  }
+  // Windows paths compare case-insensitively; node-which appends PATHEXT's case.
+  const lookup = async (root: string, path: string[], cwd = root) =>
+    (await resolveNativeExecutable(name, { ...process.env, PATH: path.join(";") }, cwd))?.toLowerCase();
+  const at = (root: string, path: string) => join(root, path).toLowerCase();
+
+  it("follows an npm global shim to the executable it names", async () => {
+    const root = await layout({ [`prefix/${name}.cmd`]: npmShim });
+    expect(await lookup(root, [join(root, "prefix")])).toBe(at(root, `prefix/node_modules/@probe/cli/bin/${name}.exe`));
+  });
+  it("follows a pnpm node_modules/.bin shim to the executable it names", async () => {
+    const root = await layout({ [`node_modules/.bin/${name}.cmd`]: pnpmShim });
+    expect(await lookup(root, [join(root, "node_modules/.bin")])).toBe(
+      at(root, `node_modules/.pnpm/@probe+cli@1.0.0/node_modules/@probe/cli/bin/${name}.exe`),
+    );
+  });
+  it("prefers a native executable in an earlier PATH entry", async () => {
+    const root = await layout({ [`exe/${name}.exe`]: "", [`prefix/${name}.cmd`]: npmShim });
+    expect(await lookup(root, [join(root, "exe"), join(root, "prefix")])).toBe(at(root, `exe/${name}.exe`));
+  });
+  it("accepts quoted and cwd-relative PATH entries", async () => {
+    const root = await layout({ [`spaced dir/${name}.exe`]: "", [`rel/${name}.exe`]: "" });
+    expect(await lookup(root, [`"${join(root, "spaced dir")}"`])).toBe(at(root, `spaced dir/${name}.exe`));
+    expect(await lookup(root, ["rel"])).toBe(at(root, `rel/${name}.exe`));
+  });
+  it("refuses an earlier match that names no single native executable", async () => {
+    const bat = await layout({ [`bat/${name}.bat`]: "@echo off\r\n", [`prefix/${name}.cmd`]: npmShim });
+    await expect(lookup(bat, [join(bat, "bat"), join(bat, "prefix")])).rejects.toThrow(/names no single native/);
+    const node = await layout({ [`node_modules/.bin/${name}.cmd`]: nodeShim });
+    await expect(lookup(node, [join(node, "node_modules/.bin")])).rejects.toThrow(/names no single native/);
+  });
+  it("returns undefined when PATH has no match", async () => {
+    const root = await layout({});
+    expect(await lookup(root, [root])).toBeUndefined();
   });
 });
 

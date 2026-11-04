@@ -3,8 +3,20 @@
 Question: which portable hook channels survive the v2 plugin API change?
 
 Run `node --experimental-strip-types .capture/opencode-v2/drive.mjs <effect>`
-from the repository root. Set `HKN_OPENCODE_BINARY` to the native executable
-on Windows. Each run creates a fresh OS-temp directory printed to stdout,
+from the repository root. On Windows the driver runs the native executable
+behind the file `runProcess("opencode")` launches, found by cross-spawn's PATH
+lookup (`resolveNativeExecutable` in `packages/cli/test/harness-playback.ts`): a
+native `.exe` runs directly, and an npm (`%dp0%`) or pnpm (`%~dp0`) `.cmd` shim
+runs the one `.exe` it names. Any other first match, such as a `.bat` or a
+Node-script shim, fails rather than being skipped. Only when PATH has no
+`opencode` does it fall back to the npm global root; `HKN_OPENCODE_BINARY`
+overrides all of this. Under
+`HOOKNOSTIC_PLAYBACK=opencode-v2` the driver fails with "opencode-v2 playback
+binary mismatch" unless that binary reports the expected build
+(`HOOKNOSTIC_PLAYBACK_VERSION` or `referenceVersion`): a global 2.2.5 once
+shadowed an isolated 2.0.17 on PATH and surfaced only as an unexpected
+custom-tool error (issue #151). `verify-mutations.mjs` treats that failure as
+an unexercised mutant, never a killed one. Each run creates a fresh OS-temp directory printed to stdout,
 containing `result.json`, `captured/events.jsonl`, and the scratch project.
 The driver strips model credentials, redirects all four XDG homes, and uses
 `run --standalone` with the loopback model server. It does not use the user's

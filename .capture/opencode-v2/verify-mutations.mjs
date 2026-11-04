@@ -140,6 +140,10 @@ for (const [name, path, before, after, file, pattern] of cases) {
       suite.assertionResults.filter((test) => test.status === "failed").map((test) => test.fullName),
     );
     console.log(JSON.stringify({ name, exit: result.status, failed }));
+    // The drive refuses a binary other than the expected build before exercising
+    // any mutant; that setup failure must not count as a killed mutant.
+    if (JSON.stringify(data.testResults).includes("opencode-v2 playback binary mismatch"))
+      throw new Error(`playback binary mismatch, mutant not exercised: ${name}`);
     if (result.status === 0 || !failed.length) throw new Error(`mutant survived: ${name}`);
   } finally {
     writeFileSync(path, original);
