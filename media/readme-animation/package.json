@@ -1,0 +1,26 @@
+{
+  "name": "hooknostic-readme-animation",
+  "private": true,
+  "description": "Remotion source for the animated README hero",
+  "type": "module",
+  "packageManager": "pnpm@12.15.0",
+  "scripts": {
+    "facts": "node scripts/extract-facts.mjs",
+    "studio": "remotion studio src/index.ts",
+    "render": "pnpm run render:dark && pnpm run render:light",
+    "render:dark": "remotion render src/index.ts HeroDark ../../docs/assets/hooknostic-hero-dark.gif",
+    "render:light": "remotion render src/index.ts HeroLight ../../docs/assets/hooknostic-hero-light.gif",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@remotion/cli": "4.0.538",
+    "@remotion/google-fonts": "4.0.538",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "remotion": "4.0.538"
+  },
+  "devDependencies": {
+    "@types/react": "19.3.0",
+    "typescript": "7.0.2"
+  }
+}
