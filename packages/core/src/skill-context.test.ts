@@ -135,6 +135,31 @@ describe.each(variants)("skill context on $id", (variant) => {
 
 describe("skill reference resolution", () => {
   it.each(["package", "project"] as const)(
+    "continues projection after an unclosed prefix for %s delivery",
+    async (delivery) => {
+      const f = await fixture(variants[0]!, delivery);
+      const prefix = "Reference syntax starts with `${SKILL_REF:`.\n";
+      await writeFile(
+        join(f.root, "skills/status/SKILL.md"),
+        manifest("status", prefix + 'Run node "${SKILL_DIR}/check.mjs" --harness ${HARNESS}; next ${SKILL_REF:setup}.'),
+      );
+      const built = await buildProject(f.options);
+      expect(built.ok, JSON.stringify(built.report.diagnostics)).toBe(true);
+      const plan = built.plan![0]!;
+      const files = delivery === "package" ? plan.artifacts : plan.integration!.files;
+      expect(contentsText(files.find(({ path }) => path.endsWith("status/SKILL.md"))!.contents)).toBe(
+        manifest(
+          "status",
+          prefix +
+            'Run node "${CLAUDE_SKILL_DIR}/check.mjs" --harness claude; next ' +
+            (delivery === "package" ? "/sample:setup" : "/setup") +
+            ".",
+        ),
+      );
+    },
+  );
+
+  it.each(["package", "project"] as const)(
     "reports multiline references through HN101 for %s delivery",
     async (delivery) => {
       const f = await fixture(variants[1]!, delivery);

@@ -95,6 +95,24 @@ describe("projectSkillText", () => {
     });
   });
 
+  it.each(["\n", " "])("continues scanning after an unclosed sibling prefix (%j)", (separator) => {
+    const prefix = "Reference syntax starts with `${SKILL_REF:`." + separator;
+    const text = prefix + "${SKILL_DIR}/check.mjs ${HARNESS} ${SKILL_REF:setup} ${SKILL_REF:missing} ${HOME}";
+    expect(projectSkillText(encode(text), contextual)).toEqual({
+      contents: encode(prefix + "./check.mjs example $sample:setup ${SKILL_REF:missing} ${HOME}"),
+      directoryDegradation: contextual.directoryDegradation,
+      unexpanded: ["${SKILL_REF:missing}"],
+    });
+    expect(projectSkillText(encode(text), contextual, { rewrite: false })).toEqual({
+      unexpanded: ["${SKILL_DIR}", "${HARNESS}", "${SKILL_REF:setup}", "${SKILL_REF:missing}"],
+    });
+    const frontmatter = '---\nname: status\ndescription: "' + prefix + '${HARNESS}"\n---\nPlain body.\n';
+    expect(projectSkillText(encode(frontmatter), contextual)).toEqual({
+      unexpanded: ["${HARNESS}"],
+      inFrontmatter: true,
+    });
+  });
+
   it("writes the target's skill directory for every ${SKILL_DIR} in the body", () => {
     const text =
       '---\nname: status\ndescription: Status\n---\nRun `node "${SKILL_DIR}/scripts/a.mjs"` or ${SKILL_DIR}/b.\n';

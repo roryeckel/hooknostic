@@ -83,7 +83,8 @@ function replaceReferences(text: string, replace: (reference: string, name: stri
         if (text[end] === "{") depth++;
         else if (text[end] === "}") depth--;
       }
-      if (depth > 0) break;
+      // Leave incomplete prefixes literal, but still process later references.
+      if (depth > 0) continue;
     }
     const reference = text.slice(match.index, end);
     parts.push(text.slice(offset, match.index), replace(reference, reference.slice(2, -1)));
