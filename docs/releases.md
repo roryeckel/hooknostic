@@ -65,11 +65,58 @@ using single-line prose for GitHub release rendering. It normalizes Markdown
 layout, leaves code examples unformatted, and preserves intentional line breaks.
 The source file can remain hand-wrapped.
 
-1. Run the **Release prepare** workflow with the version (no leading `v`,
+### Prepare one release PR
+
+Use a short-lived `codex/prepare-vX.Y.Z` branch based on current `master` for
+the highlights and any related release documentation. Commit and push those
+changes together, leaving all version carriers and generated example artifacts
+at the current release version. The workflow performs the bump and rebuild;
+its forward-version guard rejects a branch already bumped to the requested
+version. Local uncommitted changes are not available to Actions.
+
+For an agent, a request to prepare the next release follows this same flow:
+confirm the release version, write the highlights, validate and push the
+preparation branch, then dispatch **Release prepare** from that branch. A local
+version bump can be used as a rehearsal, but must stay out of the preparation
+commit. Let the workflow generate the final bump and artifacts.
+
+For example, replacing `X.Y.Z` with the chosen version:
+
+```powershell
+$version = "X.Y.Z"
+$prepareBranch = "codex/prepare-v$version"
+git fetch origin master
+git switch -c $prepareBranch origin/master
+# Update the release highlights and any related release documentation.
+git add -- docs/release-highlights.md docs/releases.md
+git commit -m "docs(release): prepare $version"
+git push -u origin $prepareBranch
+gh workflow run release-prepare.yml --repo roryeckel/hooknostic --ref $prepareBranch -f "version=$version" -f dry_run=false
+```
+
+The dispatch ref is also the checkout ref. The workflow creates
+`release/vX.Y.Z` from the pushed preparation commit, adds its automated changes,
+and opens a PR against `master`. That **single release PR** contains the
+highlights, related docs, version bump, and rebuilt artifacts. The preparation
+branch needs no separate PR or merge; keep it available until preparation has
+succeeded. Dispatch from `master` only when the intended highlights are already
+there and its version is still below the requested version.
+
+After preparation succeeds, add follow-up changes to the existing
+`release/vX.Y.Z` branch so they update the same release PR. The preparation
+branch and release branch are separate refs; pushing more preparation commits
+does not update the release PR. A second prepare run for the same version
+fails the duplicate-branch guard.
+
+1. Run the **Release prepare** workflow from the pushed preparation branch with
+   the version (no leading `v`,
    e.g. `0.2.0`; a `-rc.1` suffix marks a prerelease). It validates the
    version, guards against duplicates, bumps every carrier, syncs the
    lockfile, rebuilds both committed example artifacts from the repo root,
    and opens `Release vX.Y.Z` with a checklist.
+   In the GitHub UI, select the preparation branch in **Use workflow from**;
+   the version input alone does not select the source branch. The CLI command
+   above performs this step; do not dispatch it again in the UI.
    For a rehearsal, set `dry_run=true`: preparation uses the workflow token,
    needs no `RELEASE_PAT`, and never pushes a branch or opens a PR. Duplicate
    checks stop on authentication/service errors, and failure cleanup deletes
@@ -192,6 +239,7 @@ even when the checkout step would select a release tag.
 
 | Situation | Action |
 | --- | --- |
+| Prepare rejects an already-bumped version | Use a preparation branch containing the highlights and related docs at the previous release version; let the workflow bump it. Do not merge the local rehearsal bump first. |
 | Prepare failed midway | The cleanup step deletes the branch; if not: `git push origin --delete release/vX.Y.Z`, re-run |
 | Release PR is wrong | Close it, delete the branch, re-run prepare. No tag exists — nothing is public |
 | Draft notes are wrong | Edit the body in the UI |
