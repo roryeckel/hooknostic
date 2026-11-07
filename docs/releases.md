@@ -102,6 +102,12 @@ branch needs no separate PR or merge; keep it available until preparation has
 succeeded. Dispatch from `master` only when the intended highlights are already
 there and its version is still below the requested version.
 
+After preparation succeeds, add follow-up changes to the existing
+`release/vX.Y.Z` branch so they update the same release PR. The preparation
+branch and release branch are separate refs; pushing more preparation commits
+does not update the release PR. A second prepare run for the same version
+fails the duplicate-branch guard.
+
 1. Run the **Release prepare** workflow from the pushed preparation branch with
    the version (no leading `v`,
    e.g. `0.2.0`; a `-rc.1` suffix marks a prerelease). It validates the
