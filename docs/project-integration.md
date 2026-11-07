@@ -223,7 +223,19 @@ Never edit generated files. Update portable sources and run sync. For an existin
 unowned collision, move that content aside or remove it deliberately before sync;
 Hooknostic refuses automatic adoption even when bytes are equivalent. This also
 applies if `build` created unowned artifacts before the first sync: use sync as
-the normal project workflow. Missing owned files are repaired. Target removal
+the normal project workflow. `sync`, `sync --dry-run`, and `verify` report all
+whole generated-file ownership conflicts together, with paths relative to the
+project root. Preserve any needed edits, then move aside or deliberately remove
+the listed files. For the default `init --local` scaffold, you can move aside the
+whole `.hooknostic/artifacts` directory if it contains only disposable build
+output; custom output locations should follow the reported paths. Run `sync`
+with the same configuration, then `verify`. Verification writes nothing, so
+removing conflicts alone does not establish the integration it checks.
+Deleting `hooknostic-build.json` is optional cleanup: it is a build report,
+not an ownership record, and does not block synchronization. Retain an existing
+`.hooknostic/integration.json`; it records ownership of previously synced content.
+
+Missing owned files are repaired. Target removal
 keeps shared native documents and deletes only unchanged whole-file outputs.
 If a skill collection is reconfigured to use its native discovery destination,
 sync preserves the current files and relinquishes their previous generated-file

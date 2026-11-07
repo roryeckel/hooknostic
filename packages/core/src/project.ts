@@ -5,7 +5,13 @@ import { type BuildOptions, buildProject, type McpServerCommand } from "./build.
 import type { Diagnostic } from "./diagnostics.js";
 import { linkedWorktree } from "./git-worktree.js";
 import { loadConfig } from "./load.js";
-import { applyProject, type ProjectIntegration, reconcileProject, recoverProject } from "./project-files.js";
+import {
+  applyProject,
+  GeneratedFileConflictError,
+  type ProjectIntegration,
+  reconcileProject,
+  recoverProject,
+} from "./project-files.js";
 
 export interface ProjectCommandResult {
   ok: boolean;
@@ -158,7 +164,19 @@ export async function runProject(
     if (options.command === "sync" && !options.dryRun) await applyProject(root, owner, plan);
     result.ok = options.command !== "verify" || !result.drift;
   } catch (error) {
-    result.errors.push(error instanceof Error ? error.message : String(error));
+    if (error instanceof GeneratedFileConflictError) {
+      const recovery =
+        options.command === "verify"
+          ? "verify writes nothing. After resolving these files, run hooknostic sync with the same configuration, then rerun hooknostic verify."
+          : `After resolving these files, rerun hooknostic sync${options.dryRun ? " --dry-run" : ""} with the same configuration.`;
+      result.errors.push(
+        `${options.command} failed: ${error.paths.length} generated-file conflict${error.paths.length === 1 ? "" : "s"} (paths relative to the project root).\n` +
+          `${error.message}\n` +
+          "Existing generated files need matching ownership records in .hooknostic/integration.json; identical bytes alone do not establish ownership.\n" +
+          "If build created these files before the first sync, they have no ownership records. Preserve any needed edits, then move aside or deliberately remove the listed files.\n" +
+          recovery,
+      );
+    } else result.errors.push(error instanceof Error ? error.message : String(error));
   }
   return result;
 }

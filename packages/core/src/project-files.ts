@@ -317,6 +317,17 @@ function readManifest(raw: Buffer | null, config: string): Manifest {
   return value;
 }
 
+export class GeneratedFileConflictError extends Error {
+  readonly paths: readonly string[];
+
+  constructor(paths: readonly string[]) {
+    const sorted = [...new Set(paths)].sort();
+    super(sorted.map((path) => `unowned or modified generated file: ${path}`).join("\n"));
+    this.name = "GeneratedFileConflictError";
+    this.paths = sorted;
+  }
+}
+
 export async function reconcileProject(
   root: string,
   config: string,
@@ -432,8 +443,10 @@ export async function reconcileProject(
       if (path.toLowerCase() === other.toLowerCase() || other.toLowerCase().startsWith(path.toLowerCase() + "/"))
         throw new Error(`colliding project destinations: ${path} and ${other}`);
     }
-  const owned: Owned[] = [];
-  const changes: FileChange[] = [];
+  // Collect whole-file conflicts before structural reconciliation can hide later
+  // paths. Reuse these observations so planning uses the same bytes and modes.
+  const observations = [];
+  const conflicts: string[] = [];
   for (const path of [...paths].sort()) {
     const observed = await fileState(await projectPath(root, path));
     const before = observed.contents;
@@ -441,10 +454,6 @@ export async function reconcileProject(
     const nextEntries = [...desired.values()].filter((e) => e.path === path);
     const whole = nextEntries.find((e) => !("key" in e));
     const oldWhole = oldEntries.find((e) => e.key === undefined);
-    let after: Buffer | null = before;
-    const beforeMode = observed.mode ?? 0o644;
-    let mode = beforeMode;
-    let modeRequested = false;
     if (relinquished.has(path)) {
       if (oldEntries.some((entry) => entry.key !== undefined))
         throw new Error(`cannot relinquish structural ownership as a file: ${path}`);
@@ -459,9 +468,23 @@ export async function reconcileProject(
           fileHash(before) !== oldWhole.hash ||
           (process.platform !== "win32" &&
             oldWhole.mode !== undefined &&
-            !sameCommittedMode(beforeMode, oldWhole.mode)))
+            !sameCommittedMode(observed.mode ?? 0o644, oldWhole.mode)))
       )
-        throw new Error(`unowned or modified generated file: ${path}; move it aside before synchronizing`);
+        conflicts.push(path);
+    }
+    observations.push({ path, observed, oldEntries, nextEntries, whole, oldWhole });
+  }
+  if (conflicts.length > 0) throw new GeneratedFileConflictError(conflicts);
+
+  const owned: Owned[] = [];
+  const changes: FileChange[] = [];
+  for (const { path, observed, oldEntries, nextEntries, whole, oldWhole } of observations) {
+    const before = observed.contents;
+    let after: Buffer | null = before;
+    const beforeMode = observed.mode ?? 0o644;
+    let mode = beforeMode;
+    let modeRequested = false;
+    if (whole || oldWhole) {
       if (whole && "contents" in whole) {
         after = Buffer.from(whole.contents);
         mode = whole.mode ?? 0o644;
