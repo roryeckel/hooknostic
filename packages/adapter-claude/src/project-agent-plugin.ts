@@ -357,7 +357,12 @@ export async function projectAgentPluginToClaude(
       const contents = files.get(path)?.contents;
       return typeof contents === "string" ? new TextEncoder().encode(contents) : contents;
     },
-    CLAUDE_PLUGIN_SKILL_TEXT,
+    {
+      ...CLAUDE_PLUGIN_SKILL_TEXT,
+      // The canonical directory name remains loadable after a native name
+      // overlay (.capture/skill-invocation/claude-overlay-name.md).
+      skillReferences: new Map(source.skills.map(({ name }) => [name, `/${source.manifest.name}:${name}`])),
+    },
     "Claude Code",
   );
   for (const [path, contents] of skillTexts.rewritten) files.set(path, { ...files.get(path)!, contents });
@@ -588,12 +593,12 @@ const nativeClaudeAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
         "agent-plugin.skills": {
           level: "exact",
           rationale:
-            "Copied as authored, except that ${SKILL_DIR} in a SKILL.md body becomes ${CLAUDE_SKILL_DIR}, which Claude expands to the skill's absolute directory (ADR-0028).",
+            "Copied as authored, except that ${SKILL_DIR} in a SKILL.md body becomes ${CLAUDE_SKILL_DIR}, which Claude expands to the skill's absolute directory (ADR-0028). Owned skill bodies also project ${HARNESS} and available sibling ${SKILL_REF:name} references at build time (ADR-0037).",
           degradations: [
             {
               id: SKILL_REFERENCE_UNEXPANDED,
               summary:
-                "A SKILL.md that holds ${PLUGIN_ROOT} or ${PLUGIN_DATA} anywhere, or ${SKILL_DIR} or a CLAUDE_ variable in its frontmatter, reaches the model with that text as written: Claude expands only its own CLAUDE_ variables, and only in a skill's body, and the projection rewrites ${SKILL_DIR} in the body only.",
+                "A SKILL.md that holds ${PLUGIN_ROOT} or ${PLUGIN_DATA} anywhere, or ${SKILL_DIR} or a CLAUDE_ variable in its frontmatter, reaches the model with that text as written: Claude expands only its own CLAUDE_ variables, and only in a skill's body, and the projection rewrites ${SKILL_DIR} in the body only. Portable context tokens in frontmatter or in-place skills, and unresolved sibling references, also remain unexpanded (ADR-0037).",
               evidence: ".capture/skill-directory",
             },
           ],
@@ -637,6 +642,13 @@ const nativeClaudeAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
       source: {
         date: "2026-09-04",
         validatedOn: [
+          {
+            version: "2.1.238",
+            date: "2026-11-06",
+            method: "live-probe",
+            artifact: ".capture/skill-invocation/claude-overlay-name.md",
+            what: "On Windows with isolated state and a loopback model, a --plugin-dir skill at skills/setup with frontmatter name renamed delivered its body marker through scripted Skill calls to both context-probe:setup and context-probe:renamed. The canonical directory-based reference remains usable after this native overlay; no TUI picker or broader alias contract was probed.",
+          },
           {
             version: "2.1.285",
             date: "2026-09-30",

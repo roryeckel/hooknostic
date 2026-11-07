@@ -6,6 +6,7 @@ import {
   RELATIVE_SKILL_TEXT,
   SKILL_REFERENCE_UNEXPANDED,
   type SkillTextTarget,
+  unexpandedSkillReferenceReason,
 } from "./skill-text.js";
 
 const encode = (text: string) => new TextEncoder().encode(text);
@@ -18,6 +19,82 @@ const CLAUDE_LIKE: SkillTextTarget = {
 };
 
 describe("projectSkillText", () => {
+  const contextual: SkillTextTarget = {
+    ...RELATIVE_SKILL_TEXT,
+    harness: "example",
+    skillReferences: new Map([["setup", "$sample:setup"]]),
+    directoryDegradation: { id: "directory-shortfall", reason: "Directory needs substitution." },
+  };
+
+  it("projects harness and sibling tokens once, preserving surrounding bytes and directory policy", () => {
+    const frontmatter = '\uFEFF---\r\nname: status\r\ndescription: "${HARNESS} ${SKILL_REF:setup}"\r\n---\r\n';
+    const body =
+      '```sh\r\nnode "${SKILL_DIR}/x" --harness ${HARNESS}\r\n```\r\nUse ${SKILL_REF:setup}, then ${SKILL_REF:setup} on ${HARNESS}; ${HOME} ${VAR:-default} $HARNESS.\r\n';
+    const projected = projectSkillText(encode(frontmatter + body), contextual);
+    expect(decode(projected.contents)).toBe(
+      frontmatter +
+        '```sh\r\nnode "./x" --harness example\r\n```\r\nUse $sample:setup, then $sample:setup on example; ${HOME} ${VAR:-default} $HARNESS.\r\n',
+    );
+    expect(projected.unexpanded).toEqual(["${HARNESS}", "${SKILL_REF:setup}"]);
+    expect(projected.inFrontmatter).toBe(true);
+    expect(projected.directoryDegradation).toEqual(contextual.directoryDegradation);
+    expect(projectSkillText(encode("${HARNESS} ${SKILL_REF:setup}"), contextual)).toEqual({
+      contents: encode("example $sample:setup"),
+      unexpanded: [],
+    });
+    expect(projectSkillText(encode("${HARNESS}"), { ...contextual, harness: "${SKILL_DIR}" }).contents).toEqual(
+      encode("${SKILL_DIR}"),
+    );
+  });
+
+  it("reports missing context, invalid siblings and external references without guessing", () => {
+    const references = [
+      "${HARNESS}",
+      "${SKILL_REF:setup}",
+      "${SKILL_REF:missing}",
+      "${SKILL_REF:other/setup}",
+      "${SKILL_REF:}",
+      "${SKILL_REF:Bad Name}",
+      "${SKILL_REF}",
+    ];
+    const text = references.join(" ") + " ${SKILL_REF:missing}";
+    expect(projectSkillText(encode(text), RELATIVE_SKILL_TEXT)).toEqual({ unexpanded: references });
+    const projected = projectSkillText(encode(text), contextual);
+    expect(projected.unexpanded).toEqual(references.slice(2));
+    expect(decode(projected.contents)).toContain("example $sample:setup ${SKILL_REF:missing}");
+    expect(unexpandedSkillReferenceReason("status", projected.unexpanded, "Example")).toContain(
+      "native text in target-specific overlays",
+    );
+    expect(projectSkillText(encode(text), contextual, { rewrite: false })).toEqual({ unexpanded: references });
+    expect(unexpandedSkillReferenceReason("status", ["${HARNESS}"], "Example", { inPlace: true })).toContain(
+      "move the skill outside the destination",
+    );
+    expect(unexpandedSkillReferenceReason("status", ["${HARNESS}"], "Example")).toContain("projector must supply");
+    expect(
+      projectSkillText(encode("---\nname: status\ndescription: ${HARNESS} ${SKILL_REF:setup}\n---\nplain"), contextual),
+    ).toEqual({ unexpanded: references.slice(0, 2), inFrontmatter: true });
+  });
+
+  it.each(["\n", "\r\n", "\r"])("preserves and reports malformed multiline references (%j)", (newline) => {
+    const references = [
+      "${SKILL_REF:" + newline + "setup}",
+      "${SKILL_REF:" + newline + "${HARNESS}}",
+      "${SKILL_REF:" + newline + "${SKILL_REF:setup} ${SKILL_DIR}}",
+    ];
+    const malformed = references.join(newline);
+    const text = malformed + newline + "${HARNESS} ${SKILL_REF:setup} ${HOME} ${VAR:-default}";
+    expect(projectSkillText(encode(text), contextual)).toEqual({
+      contents: encode(malformed + newline + "example $sample:setup ${HOME} ${VAR:-default}"),
+      unexpanded: references,
+    });
+    expect(projectSkillText(encode(malformed), contextual, { rewrite: false })).toEqual({ unexpanded: references });
+    const frontmatter = '---\nname: status\ndescription: "' + references[1] + '"\n---\nPlain body.\n';
+    expect(projectSkillText(encode(frontmatter), contextual)).toEqual({
+      unexpanded: [references[1]],
+      inFrontmatter: true,
+    });
+  });
+
   it("writes the target's skill directory for every ${SKILL_DIR} in the body", () => {
     const text =
       '---\nname: status\ndescription: Status\n---\nRun `node "${SKILL_DIR}/scripts/a.mjs"` or ${SKILL_DIR}/b.\n';

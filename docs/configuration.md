@@ -107,6 +107,44 @@ anywhere, fails the build as the `<adapter>:skill-reference-unexpanded` degradat
 the command from the skill's directory, so pass the project to the script rather than
 relying on the working directory ([ADR-0028](decisions/0028-skill-directory-token.md)).
 
+### Identifying the target and naming sibling skills
+
+Use `${HARNESS}` to pass the build-time projection identifier to a script, and
+`${SKILL_REF:setup}` to name an available sibling skill:
+
+```markdown
+Run `node "${SKILL_DIR}/scripts/status.mjs" --harness ${HARNESS}`.
+If setup is needed, run ${SKILL_REF:setup} first.
+```
+
+The harness value is `claude`, `codex`, `copilot`, `opencode` (v1), `opencode-v2`,
+or `pi`. It identifies the intended projection; it does not inspect the running
+process or inherited environment. Both OpenCode families still use adapter
+`opencode` in configuration, selected by version.
+
+Sibling references resolve authored names within the selected package or direct
+skill set. For a package named `example`, `setup` becomes `/example:setup` on
+Claude and Copilot, `$example:setup` on Codex, `/example-setup` on OpenCode 1's
+default naming policy, `@example/setup` on OpenCode 2, and `/skill:setup` on Pi.
+Project delivery uses `/setup`, `$setup`, `/setup`, `@setup`, and `/skill:setup`
+respectively; package-sourced project skills follow those project rules too.
+OpenCode 1 references use the actual emitted name, respecting `skillNames` and
+rename fallbacks. A reference is prompt text, not a promise of invocation or a
+bypass of a skill's invocation policy.
+
+Both tokens are rewritten only in owned SKILL.md bodies. A missing or skipped
+sibling, malformed reference, frontmatter token, or token in a skill discovered
+in place remains literal and reports `skill-reference-unexpanded` (HN101).
+Successful substitutions have no degradation; `${SKILL_DIR}` keeps its separate
+directory-substitution policy. Scripts and other files are not rewritten.
+
+Use native text for arbitrary external plugins, in target-specific source files
+or supported package overlays; `${SKILL_REF:other-plugin/setup}` is unsupported.
+There is no external-reference configuration map. Native plugin overlays remain
+package-only. Different token replacements at a shared `.agents/skills` path
+cause combined project sync to fail before writing; separate package projections
+avoid that shared destination. See [ADR-0037](decisions/0037-skill-context-tokens.md).
+
 ## Dependencies and included files
 
 - Bundle a Node MCP server when it must run without an install-time package manager.

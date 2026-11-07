@@ -72,7 +72,10 @@ export async function projectComponents(
   options: ProjectComponentOptions = {},
 ): Promise<ProjectIntegration> {
   const result = projectSkillFiles(source, root, ".claude/skills", {
-    target: CLAUDE_PROJECT_SKILL_TEXT,
+    target: {
+      ...CLAUDE_PROJECT_SKILL_TEXT,
+      skillReferences: new Map(source.skills.map(({ name }) => [name, `/${name}`])),
+    },
     harness: "Claude Code",
   });
   if (source.mcp) {
@@ -134,12 +137,12 @@ const nativeProjectComponentProfiles: readonly AgentPluginProjectionProfile[] = 
       "agent-plugin.skills": {
         level: "exact",
         rationale:
-          "Copied into .claude/skills as authored, except that ${SKILL_DIR} in a SKILL.md body becomes ${CLAUDE_SKILL_DIR}, which Claude expands to the skill's absolute directory in a project skill too (ADR-0028). A skill already at its destination is discovered in place and not rewritten.",
+          "Copied into .claude/skills as authored, except that ${SKILL_DIR} in a SKILL.md body becomes ${CLAUDE_SKILL_DIR}, which Claude expands to the skill's absolute directory in a project skill too (ADR-0028). A skill already at its destination is discovered in place and not rewritten. Owned skill bodies also project ${HARNESS} and available sibling ${SKILL_REF:name} references at build time (ADR-0037).",
         degradations: [
           {
             id: SKILL_REFERENCE_UNEXPANDED,
             summary:
-              "A project skill that holds ${CLAUDE_PLUGIN_ROOT}, ${CLAUDE_PLUGIN_DATA}, ${PLUGIN_ROOT} or ${PLUGIN_DATA} anywhere, ${SKILL_DIR} or a CLAUDE_ variable in its frontmatter, or ${SKILL_DIR} at all when discovered in place, reaches the model with that text as written: outside a plugin Claude expands only ${CLAUDE_SKILL_DIR} and ${CLAUDE_SESSION_ID}, and only in a skill's body.",
+              "A project skill that holds ${CLAUDE_PLUGIN_ROOT}, ${CLAUDE_PLUGIN_DATA}, ${PLUGIN_ROOT} or ${PLUGIN_DATA} anywhere, ${SKILL_DIR} or a CLAUDE_ variable in its frontmatter, or ${SKILL_DIR} at all when discovered in place, reaches the model with that text as written: outside a plugin Claude expands only ${CLAUDE_SKILL_DIR} and ${CLAUDE_SESSION_ID}, and only in a skill's body. Portable context tokens in frontmatter or in-place skills, and unresolved sibling references, also remain unexpanded (ADR-0037).",
             evidence: ".capture/skill-directory",
           },
         ],

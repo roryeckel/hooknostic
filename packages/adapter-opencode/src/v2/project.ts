@@ -1,5 +1,9 @@
 import type { AgentPluginPackage, AgentPluginProjectionProfile, AgentPluginProjector } from "@hooknostic/agent-plugin";
-import { skillInvocationPolicyProfiles, withSkillInvocationPolicy } from "@hooknostic/agent-plugin";
+import {
+  RELATIVE_SKILL_TEXT,
+  skillInvocationPolicyProfiles,
+  withSkillInvocationPolicy,
+} from "@hooknostic/agent-plugin";
 import type { HarnessAdapter, TargetSpec } from "@hooknostic/core";
 
 import { projectComponents, projectIntegrationWith } from "../project.js";
@@ -175,6 +179,7 @@ export default { id: "hooknostic.components" + suffix, async setup(ctx) {
     }
   });
 } };\n`,
+    { target: { ...RELATIVE_SKILL_TEXT, harness: "opencode-v2" }, reference: (name) => `@${name}` },
   );
 
 export function v2PackageEntry({
@@ -231,7 +236,11 @@ export default { id: ${JSON.stringify(`hooknostic.components.${source.manifest.n
 }
 
 const nativeOpenCodeV2Projector: AgentPluginProjector<TargetSpec> = {
-  ...createOpenCodeAgentPluginProjector({ injector, entry: v2PackageEntry }),
+  ...createOpenCodeAgentPluginProjector({
+    injector,
+    entry: v2PackageEntry,
+    skillText: { harness: "opencode-v2", reference: (plugin, name) => `@${plugin}/${name}` },
+  }),
   qualifiesSkillNames: false,
   profiles: opencodeV2ProjectProfiles.map((profile) => ({
     ...profile,

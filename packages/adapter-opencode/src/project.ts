@@ -1,6 +1,6 @@
 import { realpath } from "node:fs/promises";
 
-import type { AgentPluginProjectionProfile } from "@hooknostic/agent-plugin";
+import type { AgentPluginProjectionProfile, SkillTextTarget } from "@hooknostic/agent-plugin";
 import type { ProjectComponents } from "@hooknostic/agent-plugin";
 import { RELATIVE_SKILL_TEXT, skillInvocationPolicyProfiles } from "@hooknostic/agent-plugin";
 import type { GeneratedArtifact, ProjectComponentOptions, ProjectIntegration } from "@hooknostic/core";
@@ -54,12 +54,19 @@ export async function projectComponents(
   _config: string,
   options: ProjectComponentOptions,
   emitMcp?: (body: string) => string,
+  skillText: { target: SkillTextTarget; reference: (name: string) => string } = {
+    target: { ...RELATIVE_SKILL_TEXT, harness: "opencode" },
+    reference: (name) => `/${name}`,
+  },
 ): Promise<ProjectIntegration> {
   // OpenCode discovers .agents/skills natively. Copy the loader's filtered
   // inventory there instead of naming its unfiltered source directory through
   // skills.paths, which would re-expose excluded files and rejected siblings.
   const result = projectSkillFiles(source, root, ".agents/skills", {
-    target: RELATIVE_SKILL_TEXT,
+    target: {
+      ...skillText.target,
+      skillReferences: new Map(source.skills.map(({ name }) => [name, skillText.reference(name)])),
+    },
     harness: "OpenCode",
   });
   const skillPolicies =

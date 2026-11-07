@@ -8,6 +8,10 @@ Amended 2026-10-19 after [issue #113](https://github.com/roryeckel/hooknostic/is
 Codex uses an explicit absolute-path placeholder with a conditional degradation for
 model-dependent substitution.
 
+Extended by [ADR-0037](0037-skill-context-tokens.md), which adds build-time
+`${HARNESS}` and sibling `${SKILL_REF:name}` tokens using the same body-only
+rewriting, ownership, and reporting rules.
+
 ## Context
 
 A skill that runs a script it ships has to tell the model where that script is.

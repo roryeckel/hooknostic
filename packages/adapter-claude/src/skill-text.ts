@@ -14,6 +14,7 @@ const CLAUDE_SKILL_DIR = "${CLAUDE_SKILL_DIR}";
  * Agent Plugins placeholders, `${PLUGIN_ROOT}` and `${PLUGIN_DATA}`, as written.
  */
 export const CLAUDE_PLUGIN_SKILL_TEXT: SkillTextTarget = {
+  harness: "claude",
   skillDirectory: CLAUDE_SKILL_DIR,
   leavesLiteral: (name) => AGENT_PLUGIN_PLACEHOLDER_NAMES.has(name),
 };
@@ -24,6 +25,7 @@ export const CLAUDE_PLUGIN_SKILL_TEXT: SkillTextTarget = {
  * expands `${CLAUDE_SKILL_DIR}` and `${CLAUDE_SESSION_ID}`.
  */
 export const CLAUDE_PROJECT_SKILL_TEXT: SkillTextTarget = {
+  harness: "claude",
   skillDirectory: CLAUDE_SKILL_DIR,
   leavesLiteral: (name) =>
     AGENT_PLUGIN_PLACEHOLDER_NAMES.has(name) || name === "CLAUDE_PLUGIN_ROOT" || name === "CLAUDE_PLUGIN_DATA",

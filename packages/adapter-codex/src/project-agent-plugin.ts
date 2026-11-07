@@ -517,12 +517,12 @@ const nativeCodexAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
         "agent-plugin.skills": {
           level: "exact",
           rationale:
-            "Copied as authored, except that ${SKILL_DIR} in a SKILL.md body becomes `<absolute path of the directory containing this SKILL.md>`. The model must substitute the installed skill directory from the supplied SKILL.md path; Codex expands nothing in skill text. Rewritten skills report skill-directory-model-substitution (ADR-0028, issue #113).",
+            "Copied as authored, except that ${SKILL_DIR} in a SKILL.md body becomes `<absolute path of the directory containing this SKILL.md>`. The model must substitute the installed skill directory from the supplied SKILL.md path; Codex expands nothing in skill text. Directory-token rewrites report skill-directory-model-substitution (ADR-0028, issue #113). Owned skill bodies also project ${HARNESS} and available sibling ${SKILL_REF:name} references at build time (ADR-0037).",
           degradations: [
             {
               id: SKILL_REFERENCE_UNEXPANDED,
               summary:
-                "A SKILL.md that holds a Claude Code variable such as ${CLAUDE_PLUGIN_ROOT}, ${PLUGIN_ROOT} or ${PLUGIN_DATA} anywhere, or ${SKILL_DIR} in its frontmatter, reaches the model with that text as written: Codex expands nothing in skill text, frontmatter included.",
+                "A SKILL.md that holds a Claude Code variable such as ${CLAUDE_PLUGIN_ROOT}, ${PLUGIN_ROOT} or ${PLUGIN_DATA} anywhere, or ${SKILL_DIR} in its frontmatter, reaches the model with that text as written: Codex expands nothing in skill text, frontmatter included. Portable context tokens in frontmatter or in-place skills, and unresolved sibling references, also remain unexpanded (ADR-0037).",
               evidence: ".capture/skill-directory",
             },
             codexSkillDirectoryDegradation,
@@ -795,7 +795,10 @@ const nativeCodexAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
     const skillTexts = projectPackageSkillTexts(
       source.skills,
       (path) => source.files.find((file) => file.path === path)?.contents,
-      CODEX_SKILL_TEXT,
+      {
+        ...CODEX_SKILL_TEXT,
+        skillReferences: new Map(source.skills.map(({ name }) => [name, `$${source.manifest.name}:${name}`])),
+      },
       "Codex",
     );
 

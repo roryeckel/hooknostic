@@ -9,6 +9,10 @@ retained below. The policy follow-ups establish projection evidence for
 
 ## Method
 
+The [Claude overlay-name follow-up](claude-overlay-name.md) checks whether a
+native package overlay changing frontmatter `name` invalidates the canonical
+directory-based sibling reference used by ADR-0037.
+
 Pi's later [feature probes](../pi/FEATURES.md) establish
 `disable-model-invocation` for `.pi/skills`, project/ancestor `.agents/skills`,
 and installed-package skills. A true gate hides the ordinary listing, false

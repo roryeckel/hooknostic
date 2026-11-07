@@ -13,6 +13,7 @@ export const codexSkillDirectoryDegradation: AgentPluginDegradationDeclaration =
 
 export const CODEX_SKILL_TEXT: SkillTextTarget = {
   ...RELATIVE_SKILL_TEXT,
+  harness: "codex",
   skillDirectory: "<absolute path of the directory containing this SKILL.md>",
   directoryDegradation: {
     id: codexSkillDirectoryDegradation.id,
