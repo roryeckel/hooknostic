@@ -17,6 +17,7 @@ export const copilotSkillDirectoryDegradation = {
 
 export const COPILOT_SKILL_TEXT: SkillTextTarget = {
   ...RELATIVE_SKILL_TEXT,
+  harness: "copilot",
   skillDirectory: "<absolute path of the directory containing this SKILL.md>",
   directoryDegradation: {
     id: copilotSkillDirectoryDegradation.id,

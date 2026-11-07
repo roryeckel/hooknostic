@@ -390,6 +390,7 @@ function packageManifest(
 export const SKILL_NAME_UNQUALIFIED = "skill-name-unqualified";
 
 export function createOpenCodeAgentPluginProjector(emitters?: {
+  skillText?: { harness: string; reference: (plugin: string, name: string) => string };
   injector: (source: AgentPluginPackage, servers: Record<string, OpenCodeServer>) => string;
   entry: (options: { hooks: boolean; components: boolean; name?: string }) => string;
 }): AgentPluginProjector<TargetSpec> {
@@ -662,7 +663,16 @@ export function createOpenCodeAgentPluginProjector(emitters?: {
       const skillTexts = projectPackageSkillTexts(
         source.skills,
         (path) => renamed.get(path) ?? source.files.find((file) => file.path === path)?.contents,
-        RELATIVE_SKILL_TEXT,
+        {
+          ...RELATIVE_SKILL_TEXT,
+          harness: emitters?.skillText?.harness ?? "opencode",
+          skillReferences: new Map(
+            source.skills.map(({ name }) => [
+              name,
+              emitters?.skillText?.reference(source.manifest.name, name) ?? `/${nativeNames.get(name)!}`,
+            ]),
+          ),
+        },
         "OpenCode",
       );
       degradations.push(...skillTexts.degradations);

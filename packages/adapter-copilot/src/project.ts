@@ -44,7 +44,7 @@ const COPILOT_DISCOVERY_FALLBACKS: NonNullable<ProjectIntegration["discoveryFall
 const SKILL_REFERENCE_DEGRADATION = {
   id: SKILL_REFERENCE_UNEXPANDED,
   summary:
-    "A SKILL.md that holds ${PLUGIN_ROOT}, ${PLUGIN_DATA}, a CLAUDE_ variable or $CLAUDE_SESSION_ID reaches the model with that text as written: Copilot expands nothing in skill text, and the projection rewrites ${SKILL_DIR} in the body only. The loaded skill context does carry a `Base directory for this skill` line.",
+    "A SKILL.md that holds ${PLUGIN_ROOT}, ${PLUGIN_DATA}, a CLAUDE_ variable or $CLAUDE_SESSION_ID reaches the model with that text as written: Copilot expands nothing in skill text, and the projection rewrites ${SKILL_DIR} in the body only. The loaded skill context does carry a `Base directory for this skill` line. Portable context tokens in frontmatter or in-place skills, and unresolved sibling references, also remain unexpanded (ADR-0037).",
   evidence: CAPTURE,
 } as const;
 
@@ -172,7 +172,10 @@ export async function projectComponents(
     }),
   };
   const result = projectSkillFiles(skillSource, root, ".agents/skills", {
-    target: COPILOT_SKILL_TEXT,
+    target: {
+      ...COPILOT_SKILL_TEXT,
+      skillReferences: new Map(source.skills.map(({ name }) => [name, `/${name}`])),
+    },
     harness: "GitHub Copilot CLI",
   });
   if (nativeSkills.size > 0 && result.degradations !== undefined) {
@@ -282,7 +285,7 @@ const nativeProjectComponentProfiles: readonly AgentPluginProjectionProfile[] = 
       "agent-plugin.skills": {
         level: "exact",
         rationale:
-          "Copied into .agents/skills as authored, except that ${SKILL_DIR} in a SKILL.md body becomes an explicit model-substituted placeholder; Copilot shows a loaded skill's body as written while supplying its Base directory. A skill already at its destination is discovered in place and not rewritten.",
+          "Copied into .agents/skills as authored, except that ${SKILL_DIR} in a SKILL.md body becomes an explicit model-substituted placeholder; Copilot shows a loaded skill's body as written while supplying its Base directory. A skill already at its destination is discovered in place and not rewritten. Owned skill bodies also project ${HARNESS} and available sibling ${SKILL_REF:name} references at build time (ADR-0037).",
         degradations: [SKILL_REFERENCE_DEGRADATION, copilotSkillDirectoryDegradation],
       },
       "agent-plugin.mcp.stdio": {

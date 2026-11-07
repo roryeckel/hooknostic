@@ -56,11 +56,12 @@ const piPackageComponents = (mcp: PiMcpCells): AgentPluginProjectionProfile["com
   "agent-plugin.skills": {
     level: "exact",
     rationale:
-      "Accepted skills are named explicitly in the pi manifest. ${SKILL_DIR} projects to `.` in the body: Pi leaves references literal and tells the model to resolve relative paths against the skill directory (ADR-0028).",
+      "Accepted skills are named explicitly in the pi manifest. ${SKILL_DIR} projects to `.` in the body: Pi leaves references literal and tells the model to resolve relative paths against the skill directory (ADR-0028). Owned skill bodies also project ${HARNESS} and available sibling ${SKILL_REF:name} references at build time (ADR-0037).",
     degradations: [
       {
         id: SKILL_REFERENCE_UNEXPANDED,
-        summary: "Pi leaves Claude and Agent Plugin placeholders literal; frontmatter references cannot be rewritten.",
+        summary:
+          "Pi leaves Claude and Agent Plugin placeholders literal; frontmatter references cannot be rewritten. Portable context tokens in frontmatter or in-place skills, and unresolved sibling references, also remain unexpanded (ADR-0037).",
         evidence: piFeatureValidation.artifact,
       },
     ],
@@ -154,7 +155,11 @@ const nativePiAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
     const skillTexts = projectPackageSkillTexts(
       source.skills,
       (path) => source.files.find((file) => file.path === path)?.contents,
-      RELATIVE_SKILL_TEXT,
+      {
+        ...RELATIVE_SKILL_TEXT,
+        harness: "pi",
+        skillReferences: new Map(source.skills.map(({ name }) => [name, `/skill:${name}`])),
+      },
       "Pi",
     );
 

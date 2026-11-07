@@ -98,7 +98,13 @@ export async function projectComponents(
   config: string,
   options: ProjectComponentOptions,
 ): Promise<ProjectIntegration> {
-  const result = projectSkillFiles(source, root, ".agents/skills", { target: CODEX_SKILL_TEXT, harness: "Codex" });
+  const result = projectSkillFiles(source, root, ".agents/skills", {
+    target: {
+      ...CODEX_SKILL_TEXT,
+      skillReferences: new Map(source.skills.map(({ name }) => [name, `$${name}`])),
+    },
+    harness: "Codex",
+  });
   const translated = translateMcp(
     source.mcp ? { mcp: source.mcp.config } : {},
     new Set(options.mcpProjectCwdServers),
@@ -152,12 +158,12 @@ const nativeProjectComponentProfiles: readonly AgentPluginProjectionProfile[] = 
       "agent-plugin.skills": {
         level: "exact",
         rationale:
-          "Copied into .agents/skills as authored, except that ${SKILL_DIR} in a SKILL.md body becomes `<absolute path of the directory containing this SKILL.md>`. The model must substitute the installed skill directory from the supplied SKILL.md path; Codex expands nothing in skill text. Rewritten skills report skill-directory-model-substitution (ADR-0028, issue #113). A skill already at its destination is discovered in place and not rewritten.",
+          "Copied into .agents/skills as authored, except that ${SKILL_DIR} in a SKILL.md body becomes `<absolute path of the directory containing this SKILL.md>`. The model must substitute the installed skill directory from the supplied SKILL.md path; Codex expands nothing in skill text. Directory-token rewrites report skill-directory-model-substitution (ADR-0028, issue #113). A skill already at its destination is discovered in place and not rewritten. Owned skill bodies also project ${HARNESS} and available sibling ${SKILL_REF:name} references at build time (ADR-0037).",
         degradations: [
           {
             id: SKILL_REFERENCE_UNEXPANDED,
             summary:
-              "A SKILL.md that holds a Claude Code variable such as ${CLAUDE_PLUGIN_ROOT}, ${PLUGIN_ROOT} or ${PLUGIN_DATA} anywhere, ${SKILL_DIR} in its frontmatter, or ${SKILL_DIR} at all in a skill discovered in place, reaches the model with that text as written: Codex expands nothing in skill text.",
+              "A SKILL.md that holds a Claude Code variable such as ${CLAUDE_PLUGIN_ROOT}, ${PLUGIN_ROOT} or ${PLUGIN_DATA} anywhere, ${SKILL_DIR} in its frontmatter, or ${SKILL_DIR} at all in a skill discovered in place, reaches the model with that text as written: Codex expands nothing in skill text. Portable context tokens in frontmatter or in-place skills, and unresolved sibling references, also remain unexpanded (ADR-0037).",
             evidence: ".capture/skill-directory",
           },
           codexSkillDirectoryDegradation,

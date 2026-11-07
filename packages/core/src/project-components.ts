@@ -17,7 +17,7 @@ import { portableRelative } from "./portable-path.js";
 import type { ProjectIntegration } from "./project-files.js";
 /**
  * Copy each skill into the project's `destination` tree, writing the target's
- * form of `${SKILL_DIR}` into its SKILL.md body (ADR-0028). A skill that
+ * portable tokens into its SKILL.md body (ADR-0028, ADR-0037). A skill that
  * already sits at its destination is discovered in place and left alone; its
  * references are only reported. Each skill whose text still holds a reference
  * the target shows as written is a `skill-reference-unexpanded` degradation.

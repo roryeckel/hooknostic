@@ -1,6 +1,6 @@
 /**
- * The skill-directory token, and the references in a SKILL.md a harness would
- * show the model as written (ADR-0028).
+ * Portable body tokens, and references a harness would show the model as
+ * written (ADR-0028, ADR-0037).
  *
  * A skill that runs a script it ships has to name it, and the harnesses do not
  * agree on how. Claude Code expands `${CLAUDE_SKILL_DIR}` in a skill's text to
@@ -8,8 +8,10 @@
  * the model to resolve relative paths against the skill's directory
  * (.capture/skill-directory). `${SKILL_DIR}` is the portable spelling:
  * projection writes each target's form in its place, in the body only.
+ * `${HARNESS}` and `${SKILL_REF:name}` use adapter-supplied projection context.
  */
 
+import { isAgentSkillName } from "./load.js";
 import type { AgentPluginDegradation, AgentPluginSkill } from "./types.js";
 
 export const SKILL_DIR_PLACEHOLDER = "${SKILL_DIR}";
@@ -19,6 +21,10 @@ export const SKILL_REFERENCE_UNEXPANDED = "skill-reference-unexpanded";
 
 /** How one target treats the text of a skill. */
 export interface SkillTextTarget {
+  /** Build-time projection identity, not runtime harness detection (ADR-0037). */
+  harness?: string;
+  /** Authored sibling names mapped to their final native prompt references. */
+  skillReferences?: ReadonlyMap<string, string>;
   /** What `${SKILL_DIR}` becomes in the body. */
   skillDirectory: string;
   /** A target-owned shortfall to report whenever the body token is rewritten. */
@@ -53,11 +59,40 @@ export const RELATIVE_SKILL_TEXT: SkillTextTarget = {
  * file as written (.capture/skill-directory). The projection never rewrites it.
  */
 function frontmatterLeavesLiteral(name: string): boolean {
-  return name === "SKILL_DIR" || AGENT_PLUGIN_PLACEHOLDER_NAMES.has(name) || name.startsWith("CLAUDE_");
+  return isBodyToken(name) || AGENT_PLUGIN_PLACEHOLDER_NAMES.has(name) || name.startsWith("CLAUDE_");
+}
+
+function isBodyToken(name: string): boolean {
+  return name === "SKILL_DIR" || name === "HARNESS" || name === "SKILL_REF" || name.startsWith("SKILL_REF:");
 }
 
 const FRONTMATTER = /^\uFEFF?---\r?\n[\s\S]*?\r?\n---(?:\r?\n|$)/;
-const REFERENCE = /\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g;
+const REFERENCE = /\$\{(SKILL_REF:|[A-Za-z_][A-Za-z0-9_]*\})/g;
+
+function replaceReferences(text: string, replace: (reference: string, name: string) => string): string {
+  const parts: string[] = [];
+  let offset = 0;
+  for (const match of text.matchAll(REFERENCE)) {
+    if (match.index < offset) continue;
+    let end = match.index + match[0].length;
+    if (match[1] === "SKILL_REF:") {
+      // Consume the whole reserved reference, even when malformed. Otherwise
+      // line breaks or nested tokens can hide a diagnostic or trigger a partial rewrite.
+      let depth = 1;
+      for (; end < text.length && depth > 0; end++) {
+        if (text[end] === "{") depth++;
+        else if (text[end] === "}") depth--;
+      }
+      // Leave incomplete prefixes literal, but still process later references.
+      if (depth > 0) continue;
+    }
+    const reference = text.slice(match.index, end);
+    parts.push(text.slice(offset, match.index), replace(reference, reference.slice(2, -1)));
+    offset = end;
+  }
+  parts.push(text.slice(offset));
+  return parts.join("");
+}
 
 export interface ProjectedSkillText {
   /** The rewritten file, or undefined when nothing changed and the bytes stand. */
@@ -76,8 +111,8 @@ export interface ProjectedSkillText {
 }
 
 /**
- * Write `target`'s skill directory for each `${SKILL_DIR}` in the body of a
- * SKILL.md, and list what the target will leave as written.
+ * Project portable tokens in a SKILL.md body using target-owned directory,
+ * harness and sibling-reference context, and list what remains as written.
  *
  * The frontmatter keeps its bytes: it is the harness's metadata, and a name or
  * description is not a place a harness resolves a path. Everything outside the
@@ -89,7 +124,7 @@ export function projectSkillText(
   options: {
     /**
      * False for a skill the target discovers where it is, which Hooknostic
-     * does not own and cannot rewrite: a body `${SKILL_DIR}` is then reported
+     * does not own and cannot rewrite: portable body tokens are then reported
      * as unexpanded instead.
      */
     rewrite?: boolean;
@@ -99,18 +134,34 @@ export function projectSkillText(
   const frontmatter = FRONTMATTER.exec(text)?.[0] ?? "";
   const body = text.slice(frontmatter.length);
   const unexpanded = new Set<string>();
-  for (const [reference, name] of frontmatter.matchAll(REFERENCE)) {
-    if (frontmatterLeavesLiteral(name!)) unexpanded.add(reference);
-  }
+  replaceReferences(frontmatter, (reference, name) => {
+    if (frontmatterLeavesLiteral(name)) unexpanded.add(reference);
+    return reference;
+  });
   const inFrontmatter = unexpanded.size > 0 ? ({ inFrontmatter: true } as const) : {};
   const rewrite = options.rewrite ?? true;
-  for (const [reference, name] of body.matchAll(REFERENCE)) {
-    if (name === "SKILL_DIR" ? !rewrite : target.leavesLiteral(name!)) unexpanded.add(reference);
-  }
-  if (!rewrite || !body.includes(SKILL_DIR_PLACEHOLDER)) return { unexpanded: [...unexpanded], ...inFrontmatter };
+  let directoryRewritten = false;
+  const projectedBody = replaceReferences(body, (reference, name) => {
+    if (isBodyToken(name)) {
+      let replacement: string | undefined;
+      if (rewrite) {
+        if (name === "SKILL_DIR") {
+          replacement = target.skillDirectory;
+          directoryRewritten = true;
+        } else if (name === "HARNESS") replacement = target.harness;
+        else if (name.startsWith("SKILL_REF:")) {
+          const sibling = name.slice("SKILL_REF:".length);
+          if (isAgentSkillName(sibling)) replacement = target.skillReferences?.get(sibling);
+        }
+      }
+      if (replacement !== undefined) return replacement;
+      unexpanded.add(reference);
+    } else if (target.leavesLiteral(name)) unexpanded.add(reference);
+    return reference;
+  });
   return {
-    contents: new TextEncoder().encode(frontmatter + body.split(SKILL_DIR_PLACEHOLDER).join(target.skillDirectory)),
-    ...(target.directoryDegradation ? { directoryDegradation: target.directoryDegradation } : {}),
+    ...(projectedBody === body ? {} : { contents: new TextEncoder().encode(frontmatter + projectedBody) }),
+    ...(directoryRewritten && target.directoryDegradation ? { directoryDegradation: target.directoryDegradation } : {}),
     unexpanded: [...unexpanded],
     ...inFrontmatter,
   };
@@ -125,13 +176,20 @@ export function unexpandedSkillReferenceReason(
 ): string {
   const listed = references.map((reference) => JSON.stringify(reference)).join(", ");
   const why = options.inPlace
-    ? references.includes(SKILL_DIR_PLACEHOLDER)
-      ? ` ${harness} discovers this skill where it is, so ${SKILL_DIR_PLACEHOLDER} cannot be rewritten; move the skill outside the destination for Hooknostic to own it.`
+    ? references.some((reference) => isBodyToken(reference.slice(2, -1)))
+      ? ` ${harness} discovers this skill where it is, so its portable body tokens cannot be rewritten; move the skill outside the destination for Hooknostic to own it.`
       : ""
     : options.inFrontmatter
-      ? " No harness expands a reference in the frontmatter, and ${SKILL_DIR} is rewritten in the body only."
+      ? " No harness expands a reference in the frontmatter, and portable tokens are rewritten in the body only."
       : "";
-  return `skill ${JSON.stringify(skill)} contains ${listed}, which ${harness} shows the model as written.${why}`;
+  const siblingHelp = references.some((reference) => reference.startsWith("${SKILL_REF"))
+    ? " Use ${SKILL_REF:name} with the authored name of an available sibling skill; use native text in target-specific overlays for external plugin references."
+    : "";
+  const harnessHelp =
+    references.includes("${HARNESS}") && !options.inPlace && !options.inFrontmatter
+      ? " The projector must supply the build-time harness identity."
+      : "";
+  return `skill ${JSON.stringify(skill)} contains ${listed}, which ${harness} shows the model as written.${why}${siblingHelp}${harnessHelp}`;
 }
 
 /**

@@ -371,6 +371,32 @@ on the model and keeps an informational diagnostic. A `${CLAUDE_PLUGIN_ROOT}` in
 skill reaches Codex and OpenCode as written, so it fails the build there as the
 `skill-reference-unexpanded` degradation.
 
+The same body can identify its projection and reference a sibling without
+hard-coding the target's syntax:
+
+```markdown
+Run `node "${SKILL_DIR}/scripts/status.mjs" --harness ${HARNESS}`.
+If initialization is missing, run ${SKILL_REF:setup} first.
+```
+
+`${HARNESS}` is `claude`, `codex`, `copilot`, `opencode`, `opencode-v2`, or `pi`.
+It names the build target, not the process that happens to read the skill.
+`${SKILL_REF:setup}` resolves `setup` within this package and emits a full prompt
+reference, such as `/example:setup` or `$example:setup` for a package named
+`example`. Project delivery uses project names instead. OpenCode's references
+follow the actual emitted names, including `skillNames: "authored"` and rename
+fallbacks. A missing sibling fails by default with `skill-reference-unexpanded`.
+These exact substitutions add no directory-substitution degradation of their own.
+
+Keep references to arbitrary third-party plugins as native text in target-specific
+source or supported package overlays; `${SKILL_REF:other-plugin/setup}` is not
+supported. Frontmatter and skills discovered in place are never rewritten. Shared
+project destinations reject differing projected bytes before sync writes anything.
+Prompt references do not guarantee invocation or bypass invocation policy. The
+[configuration guide](../configuration.md#identifying-the-target-and-naming-sibling-skills)
+lists the complete mapping and [ADR-0037](../decisions/0037-skill-context-tokens.md)
+records its evidence and limits.
+
 `accept` works the same way for a deviation you have reviewed. Accepted items
 are still reported, as information
 ([ADR-0022](../decisions/0022-shortfall-policy.md)).

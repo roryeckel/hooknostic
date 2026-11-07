@@ -43,6 +43,7 @@ Read these when you want to know *why* something works the way it does, not just
 | [0032 — An MCP tool's server and tool may come from what the harness states](0032-stated-mcp-identity.md) | Why does a pi `tool.before` hook see an MCP call without its server, and where does the server come from? |
 | [0033 — Each harness runs only the output generated for it](0033-no-cross-harness-compatibility-reads.md) | Why does Copilot ignore my `.claude/settings.json` hooks, and what happens when one harness reads another's files? |
 | [0036 — A session-start notification](0036-session-start-notify.md) | Why can a hook tell the user something when a session starts, and where does that not work? |
+| [0037 — Build-time harness and sibling skill references](0037-skill-context-tokens.md) | How can skill text identify its projection and name a sibling skill? |
 
 Each record is immutable once accepted; a change of course gets a new record that
 supersedes the old one rather than a silent edit.

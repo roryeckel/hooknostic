@@ -111,6 +111,10 @@ then.
 
 ## Consequences
 
+[ADR-0037](0037-skill-context-tokens.md) supersedes the sibling-reference guidance
+below: `${SKILL_REF:name}` now projects the actual emitted sibling name. External
+plugin references remain native text in target-specific source or overlays.
+
 - An OpenCode user invokes `alpha-status` where a Claude user invokes
   `alpha:status`. Skill text that tells the model to use another skill by
   its bare name would name the wrong one on OpenCode; authors should refer to
