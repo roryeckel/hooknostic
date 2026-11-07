@@ -252,10 +252,13 @@ const nativeProjectComponentProfiles: readonly AgentPluginProjectionProfile[] = 
     },
   },
 ];
-export const projectComponentProfiles = skillInvocationPolicyProfiles(
+const exclusionBaseProfiles = skillInvocationPolicyProfiles(
   nativeProjectComponentProfiles,
   claudeProjectSkillPolicyValidation,
   CLAUDE_SKILL_POLICY_RATIONALE,
   "exact",
   [claudeNewerSkillPolicyValidation],
 );
+
+import { projectExclusionProfiles } from "@hooknostic/agent-plugin";
+export const projectComponentProfiles = projectExclusionProfiles(exclusionBaseProfiles, ".capture/skill-invocation");

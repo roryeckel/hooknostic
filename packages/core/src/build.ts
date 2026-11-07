@@ -8,6 +8,7 @@ import { minimatch } from "minimatch";
 
 import {
   type AgentPluginComponentId,
+  agentPluginContentDigest,
   type AgentPluginDegradation,
   type AgentPluginDeviation,
   type AgentPluginFile,
@@ -15,6 +16,7 @@ import {
   type AgentPluginPackage,
   type AgentPluginProjectionSummary,
   classifyStdioCwd,
+  excludedByTarget,
   hasUnportableCommandPath,
   loadAgentPlugin,
   loadProjectComponents,
@@ -53,6 +55,7 @@ import { bundleHasMainModuleGuard, bundleRuntime } from "./bundle.js";
 import { commitStagedOutputs, existingKindProblem } from "./commit.js";
 import type { Diagnostic } from "./diagnostics.js";
 import { hasFatal } from "./diagnostics.js";
+import { authoredExclusionSources } from "./exclusion-observations.js";
 import type { PluginIR } from "./ir.js";
 import { buildPluginIR } from "./ir.js";
 import type { EvaluateOptions } from "./load.js";
@@ -68,7 +71,7 @@ import { isStrictDescendant, validateOutputLayout } from "./output-layout.js";
 import { effectiveCompatibility, effectiveRuntime } from "./policy.js";
 import type { ProjectIntegration } from "./project-files.js";
 import { projectPath } from "./project-files.js";
-import { planProjectSkillPolicies } from "./skill-policy.js";
+import { type AuthoredProjectSkill, planProjectSkillPolicies } from "./skill-policy.js";
 
 export const HOOKNOSTIC_VERSION = "0.10.1";
 
@@ -89,7 +92,22 @@ export interface BuildOptions {
 
 export { mcpAmbientCommands, type McpServerCommand } from "@hooknostic/agent-plugin";
 
+export interface AuthorExclusions {
+  patterns: string[];
+  matches: {
+    path: string;
+    component?: AgentPluginComponentId;
+    name?: string;
+    status: "omitted" | "exposed";
+    nativePath?: string;
+    reader?: string;
+    writer?: string;
+  }[];
+}
+
 export interface AgentPluginTargetReport {
+  authorExclusions?: AuthorExclusions;
+  sourceFiles?: string[];
   status: "success" | "failed" | "skipped";
   contentDigest?: string;
   copiedFileCount?: number;
@@ -113,6 +131,7 @@ export interface AgentPluginTargetReport {
 }
 
 export interface BuildTargetReport {
+  mcpServers?: McpServerCommand[];
   status: "success" | "failed" | "skipped";
   adapter: string;
   requestedVersion: string;
@@ -131,6 +150,8 @@ export interface BuildTargetReport {
   artifacts?: string[];
   projection?: AgentPluginTargetReport;
   project?: {
+    authorExclusions?: AuthorExclusions;
+    sourceFiles?: string[];
     components: AgentPluginTargetReport["components"];
     omissions: AgentPluginTargetReport["omissions"];
     deviations?: AgentPluginTargetReport["deviations"];
@@ -633,7 +654,77 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
   const configDir = dirname(configPath);
   const diagnostics: Diagnostic[] = [];
   const report: BuildReport = { schemaVersion: 2, hooknosticVersion: HOOKNOSTIC_VERSION, targets: {}, diagnostics };
-  const fail = (): BuildResult => ({ ok: false, report });
+  const packages = new Map<string, AgentPluginPackage>();
+  const sources = new Map<string, ProjectComponents>();
+  const exclusions = new Map<string, AuthorExclusions>();
+  const inventories = new Map<string, string[]>();
+  const decorateReport = () => {
+    for (const [id] of exclusions) {
+      const configured = config.targets[id]!;
+      const details = { components: {}, omissions: [] };
+      const target = (report.targets[id] ??= {
+        status: "failed",
+        adapter: configured.adapter ?? id,
+        requestedVersion: configured.version,
+        output: configured.output,
+        capabilities: { exact: 0, emulated: 0, approximate: 0, unsupported: 0 },
+      });
+      if (configured.delivery === "package") target.projection ??= { ...details, status: target.status };
+      else target.project ??= { ...details, guidance: [] };
+    }
+    if (sources.size) {
+      report.mcpServers = [
+        ...new Map(
+          [...sources.values()]
+            .flatMap((source) => mcpServerCommands(source.mcp?.config, source.origin))
+            .map((command) => [JSON.stringify(command), command]),
+        ).values(),
+      ];
+    }
+    for (const [id, target] of Object.entries(report.targets)) {
+      const details = target.projection ?? target.project;
+      if (details && exclusions.size) details.sourceFiles = inventories.get(id) ?? [];
+      if (details && exclusions.has(id)) {
+        const record = exclusions.get(id)!;
+        const servers = new Map(
+          [...sources.values()].flatMap((source) => Object.entries(source.mcp?.config.mcpServers ?? {})),
+        );
+        if (servers.size)
+          record.matches = record.matches.flatMap((match) =>
+            match.path === "mcp.json" && match.name === undefined
+              ? [...servers].map(([name, server]) => ({
+                  ...match,
+                  name,
+                  component: `agent-plugin.mcp.${server.type}` as AgentPluginComponentId,
+                }))
+              : [match],
+          );
+        for (const match of record.matches) {
+          const skill = /^(?:skills\/)?([^/]+)(?:\/|$)/.exec(match.path);
+          if (
+            skill &&
+            match.path !== "mcp.json" &&
+            [...sources.values()].some((source) => source.skills.some((item) => item.name === skill[1]))
+          ) {
+            match.component = "agent-plugin.skills";
+            match.name = skill[1]!;
+          }
+        }
+        record.matches.sort(
+          (a, b) => a.path.localeCompare(b.path) || (a.nativePath ?? "").localeCompare(b.nativePath ?? ""),
+        );
+        details.authorExclusions = exclusions.get(id)!;
+        details.sourceFiles = inventories.get(id) ?? [];
+      }
+      const source = sources.get(id);
+      if (source && exclusions.size) target.mcpServers = mcpServerCommands(source.mcp?.config, source.origin);
+    }
+  };
+  const finish = (result: BuildResult): BuildResult => {
+    decorateReport();
+    return result;
+  };
+  const fail = (): BuildResult => finish({ ok: false, report });
 
   const configResult = options.configResult ?? (await loadConfig(configPath, options.evaluate));
   diagnostics.push(...configResult.diagnostics);
@@ -654,8 +745,30 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
     ([id, target]) => selectedTargetIds.has(id) && componentTargetIds.has(id) && target.delivery === "project",
   );
 
+  const recordExcluded = (id: string, path: string) => {
+    const record = exclusions.get(id);
+    if (!record || !excludedByTarget(path, record.patterns, config.components?.root === undefined)) return;
+    if (!record.matches.some((entry) => entry.path === path)) record.matches.push({ path, status: "omitted" });
+  };
+  for (const id of selectedTargetIds) {
+    if (!componentTargetIds.has(id) || !config.targets[id]) continue;
+    const patterns = config.components?.excludeFor?.[id];
+    if (patterns !== undefined) exclusions.set(id, { patterns, matches: [] });
+  }
   let components: AgentPluginPackage | undefined;
   let materializedTrees: MaterializedPackageTree[] = [];
+  const targetTrees = (id: string) =>
+    materializedTrees
+      .map((tree) => ({
+        ...tree,
+        files: tree.files.filter((file) => {
+          const path = `${tree.into}/${file.path}`;
+          if (!excludedByTarget(path, config.components?.excludeFor?.[id])) return true;
+          recordExcluded(id, path);
+          return false;
+        }),
+      }))
+      .filter((tree) => tree.files.length > 0);
   let materializationDeclarations: PackageMaterializationConfig[] = [];
   let materializationRoots: string[] = [];
   if (config.components?.root !== undefined && (selectedPackageProjection || selectedProjectProjection)) {
@@ -679,46 +792,72 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
               ? []
               : (adapterFor(name)?.projectPaths ?? []).map((path) => resolve(configDir, config.project!.root, path)),
           );
-    const loaded = await loadAgentPlugin({
-      root: agentPluginRoot,
-      ...(config.components.executableFiles === undefined
-        ? {}
-        : { executableFiles: config.components.executableFiles }),
-      ...(materializationRoots.length === 0 || selectedProjectProjection
-        ? {}
-        : { deferredCommandRoots: materializationRoots }),
-      exclude: await projectionExcludes(
-        agentPluginRoot,
-        configPath,
-        config.entry,
-        // Or a build inventories the previous package as source: with
-        // `root: "."` a projector then copies it into the next one, nesting a
-        // level deeper every run until path validation fails.
-        Object.values(config.targets).map((target) => target.output),
-        nativeProjectPaths,
-        config.components.exclude ?? [],
-      ),
-    });
-    diagnostics.push(
-      ...diagnosticsFromAgentPluginIssues(loaded.issues, {
-        onInvalid: config.components.onInvalid ?? "error",
-      }),
-    );
-    if (!loaded.package || hasFatal(diagnostics)) return fail();
-    components = loaded.package;
+    for (const id of selectedTargetIds) {
+      if (!componentTargetIds.has(id) || !config.targets[id]) continue;
+      const loaded = await loadAgentPlugin({
+        ...(config.components.excludeFor?.[id] === undefined ? {} : { excludeFor: config.components.excludeFor[id] }),
+        onExclude: (path) => recordExcluded(id, path),
+        root: agentPluginRoot,
+        ...(config.components.executableFiles === undefined
+          ? {}
+          : { executableFiles: config.components.executableFiles }),
+        ...(materializationRoots.length === 0 || config.targets[id]!.delivery !== "package"
+          ? {}
+          : { deferredCommandRoots: materializationRoots }),
+        exclude: await projectionExcludes(
+          agentPluginRoot,
+          configPath,
+          config.entry,
+          // Or a build inventories the previous package as source: with
+          // `root: "."` a projector then copies it into the next one, nesting a
+          // level deeper every run until path validation fails.
+          Object.values(config.targets).map((target) => target.output),
+          nativeProjectPaths,
+          config.components.exclude ?? [],
+        ),
+      });
+      diagnostics.push(
+        ...diagnosticsFromAgentPluginIssues(loaded.issues, {
+          target: id,
+          onInvalid: config.components.onInvalid ?? "error",
+        }),
+      );
+      if (!loaded.package || hasFatal(diagnostics)) return fail();
+      components = loaded.package;
+      packages.set(id, components);
+      sources.set(id, packageComponents(components));
+      inventories.set(id, components.files.map((file) => file.path).sort());
+      for (const path of [config.components.runtimePackage?.manifest, config.components.runtimePackage?.lockfile]) {
+        if (path && excludedByTarget(path.replace(/^\.\//, ""), config.components.excludeFor?.[id]))
+          diagnostics.push({
+            code: "HN501",
+            severity: "error",
+            target: id,
+            message: `runtimePackage requires excluded input ${path}`,
+          });
+      }
+    }
+    if (!components) return fail();
+    const unionFiles = [
+      ...new Map(
+        [...packages.values()].flatMap((source) => source.files.map((file) => [file.path, file] as const)),
+      ).values(),
+    ].sort((a, b) => a.path.localeCompare(b.path));
     report.components = {
       root: relative(configDir, agentPluginRoot).replaceAll("\\", "/") || ".",
       specVersion: components.specVersion,
       targets: config.components.targets ?? Object.keys(config.targets),
-      sourceFileCount: components.files.length,
-      sourceFiles: components.files.map((file) => file.path).sort(),
-      contentDigest: components.contentDigest,
+      sourceFileCount: unionFiles.length,
+      sourceFiles: unionFiles.map((file) => file.path).sort(),
+      contentDigest: exclusions.size ? agentPluginContentDigest(unionFiles) : components.contentDigest,
     };
 
     // A name that matches no server forwards nothing. Warn rather than fail:
     // the usual cause is a server renamed in `mcp.json`, and a build that still
     // produces a working plugin for every other server should say so, not stop.
-    const declared = components.mcp?.mcpServers ?? {};
+    const declared = Object.fromEntries(
+      [...packages.values()].flatMap((source) => Object.entries(source.mcp?.mcpServers ?? {})),
+    );
     const inert = Object.keys(config.components.mcpEnvironment ?? {})
       .map((name) => {
         const server = Object.hasOwn(declared, name) ? declared[name] : undefined;
@@ -745,22 +884,78 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
   let componentSource: ProjectComponents | undefined;
   if (components) componentSource = packageComponents(components);
   else if (config.components && (selectedPackageProjection || selectedProjectProjection)) {
-    const loaded = await loadProjectComponents({
-      ...(config.components.skills === undefined
-        ? {}
-        : { skills: config.components.skills.map((p) => resolve(configDir, p)) }),
-      ...(config.components.mcp === undefined ? {} : { mcp: resolve(configDir, config.components.mcp) }),
-      ...(config.components.exclude === undefined ? {} : { exclude: config.components.exclude }),
-      ...(config.components.executableFiles === undefined
-        ? {}
-        : { executableFiles: config.components.executableFiles }),
-      ...(config.project === undefined ? {} : { projectRoot: resolve(configDir, config.project.root) }),
-    });
-    diagnostics.push(
-      ...diagnosticsFromAgentPluginIssues(loaded.issues, { onInvalid: config.components.onInvalid ?? "error" }),
-    );
-    if (hasFatal(diagnostics)) return fail();
-    componentSource = loaded.source;
+    for (const id of selectedTargetIds) {
+      if (!componentTargetIds.has(id) || !config.targets[id]) continue;
+      const loaded = await loadProjectComponents({
+        ...(config.components.excludeFor?.[id] === undefined ? {} : { excludeFor: config.components.excludeFor[id] }),
+        onExclude: (path) => recordExcluded(id, path),
+        ...(config.components.skills === undefined
+          ? {}
+          : { skills: config.components.skills.map((p) => resolve(configDir, p)) }),
+        ...(config.components.mcp === undefined ? {} : { mcp: resolve(configDir, config.components.mcp) }),
+        ...(config.components.exclude === undefined ? {} : { exclude: config.components.exclude }),
+        ...(config.components.executableFiles === undefined
+          ? {}
+          : { executableFiles: config.components.executableFiles }),
+        ...(config.project === undefined ? {} : { projectRoot: resolve(configDir, config.project.root) }),
+      });
+      diagnostics.push(
+        ...diagnosticsFromAgentPluginIssues(loaded.issues, {
+          target: id,
+          onInvalid: config.components.onInvalid ?? "error",
+        }),
+      );
+      if (hasFatal(diagnostics)) return fail();
+      componentSource = loaded.source;
+      sources.set(id, loaded.source);
+      inventories.set(
+        id,
+        [
+          ...loaded.source.skills.flatMap((skill) => skill.files.map((file) => `${skill.name}/${file.path}`)),
+          ...(loaded.source.mcp ? ["mcp.json"] : []),
+        ].sort(),
+      );
+    }
+  }
+  let authoredSkills: AuthoredProjectSkill[] = [];
+  if (sources.size) {
+    const all = [...sources.values()];
+    if (selectedProjectProjection && exclusions.size) {
+      try {
+        authoredSkills = await authoredExclusionSources(
+          resolve(configDir, config.project?.root ?? "."),
+          [...exclusions].flatMap(([id, exclusions]) => {
+            const policy = adapterFor(id)?.skillInvocationPolicy;
+            if (config.targets[id]?.delivery !== "project" || !policy) return [];
+            return [
+              {
+                directories: [policy.destination, ...(policy.discoveryDirectories ?? [])],
+                exclusions,
+                sourceRoots:
+                  config.components?.root === undefined
+                    ? (config.components?.skills ?? []).map((path) => resolve(configDir, path))
+                    : [resolve(configDir, config.components.root, "skills")],
+              },
+            ];
+          }),
+          all[0]!.origin,
+          relative(resolve(configDir, config.project?.root ?? "."), configPath).replaceAll("\\", "/"),
+        );
+      } catch (error) {
+        diagnostics.push({
+          code: "HN501",
+          severity: "error",
+          message: `could not inspect authored exclusions: ${errorMessage(error)}`,
+        });
+        return fail();
+      }
+    }
+    componentSource = {
+      ...all[0]!,
+      skills: [
+        ...new Map(all.flatMap((source) => source.skills.map((skill) => [skill.name, skill] as const))).values(),
+      ],
+    };
   }
   if (componentSource !== undefined && (selectedPackageProjection || selectedProjectProjection))
     report.mcpServers = mcpServerCommands(componentSource.mcp?.config, componentSource.origin);
@@ -824,6 +1019,7 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
   }
   const projectionResolutions = new Map<string, AgentPluginProjectionResolution>();
   for (const [id, target] of Object.entries(analysis.targets)) {
+    const components = packages.get(id);
     report.targets[id] = {
       status: target.ok ? "success" : "failed",
       adapter: target.adapter,
@@ -889,7 +1085,7 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
   for (const diagnostic of layout.diagnostics) {
     if (diagnostic.target && report.targets[diagnostic.target]) report.targets[diagnostic.target]!.status = "failed";
   }
-  if (!analysis.ok || hasFatal(diagnostics)) return { ok: false, report, analysis };
+  if (!analysis.ok || hasFatal(diagnostics)) return finish({ ok: false, report, analysis });
 
   const markUnbuilt = (status: "failed" | "skipped") => {
     for (const target of Object.values(report.targets)) {
@@ -918,8 +1114,10 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
       });
       for (const problem of result.problems) diagnostics.push({ code: "HN501", severity: "error", message: problem });
       materializedTrees = result.trees;
-      for (const problem of materializedSourceCollisionProblems(materializedTrees, components?.files ?? [])) {
-        diagnostics.push({ code: "HN501", severity: "error", message: problem });
+      for (const [id, source] of packages) {
+        if (config.targets[id]!.delivery !== "package") continue;
+        for (const problem of materializedSourceCollisionProblems(targetTrees(id), source.files))
+          diagnostics.push({ code: "HN501", severity: "error", target: id, message: problem });
       }
     } catch (error) {
       diagnostics.push({
@@ -932,7 +1130,7 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
             : "check the materializer provider and the system temporary directory, then retry.",
       });
       markUnbuilt("failed");
-      return { ok: false, report, analysis };
+      return finish({ ok: false, report, analysis });
     } finally {
       if (staging !== undefined) {
         try {
@@ -949,11 +1147,13 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
     }
     if (hasFatal(diagnostics)) {
       markUnbuilt("failed");
-      return { ok: false, report, analysis };
+      return finish({ ok: false, report, analysis });
     }
 
-    if (components?.mcp !== undefined) {
-      const materializedFiles: AgentPluginFile[] = materializedTrees.flatMap((tree) =>
+    for (const [id, components] of packages) {
+      if (config.targets[id]!.delivery !== "package") continue;
+      if (!components.mcp) continue;
+      const materializedFiles: AgentPluginFile[] = targetTrees(id).flatMap((tree) =>
         tree.files.map((file) => ({
           path: `${tree.into}/${file.path}`,
           contents: file.contents,
@@ -966,13 +1166,14 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
       });
       diagnostics.push(
         ...diagnosticsFromAgentPluginIssues(commandIssues, {
+          target: id,
           onInvalid: config.components?.onInvalid ?? "error",
         }),
       );
       report.mcpServers = mcpServerCommands(components.mcp, "package");
       if (hasFatal(diagnostics)) {
         markUnbuilt("failed");
-        return { ok: false, report, analysis };
+        return finish({ ok: false, report, analysis });
       }
     }
   }
@@ -983,6 +1184,8 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
   // tree, so warn-policy omissions cannot leave stale component reports.
   if (components !== undefined) {
     for (const [id] of Object.entries(analysis.targets)) {
+      const components = packages.get(id);
+      if (!components) continue;
       if (
         config.targets[id]!.delivery !== "package" ||
         !(config.components!.targets ?? Object.keys(config.targets)).includes(id) ||
@@ -1011,7 +1214,7 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
       if (hasFatal(resolution.diagnostics)) report.targets[id]!.status = "failed";
     }
   }
-  if (hasFatal(diagnostics)) return { ok: false, report, analysis };
+  if (hasFatal(diagnostics)) return finish({ ok: false, report, analysis });
 
   // A dry run (`hooknostic check`) performs every generation step — bundling,
   // compilation, Agent Plugin projection, artifact validation — in memory so
@@ -1031,9 +1234,9 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
   const failUncommitted = (): BuildResult => {
     // Under a dry run nothing would have been committed anyway; leave each
     // target's own verdict intact so `check` reports per-target results.
-    if (dryRun) return { ok: false, report, analysis };
+    if (dryRun) return finish({ ok: false, report, analysis });
     markUnbuilt("skipped");
-    return { ok: false, report, analysis };
+    return finish({ ok: false, report, analysis });
   };
 
   let stagingRoot: string | undefined;
@@ -1071,6 +1274,10 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
                   id,
                   adapter: adapter.id,
                   componentsSelected: (config.components?.targets ?? Object.keys(config.targets)).includes(id),
+                  ...(sources.get(id) === undefined ? {} : { source: sources.get(id)! }),
+                  ...(config.components?.excludeFor?.[id] === undefined
+                    ? {}
+                    : { exclude: config.components.excludeFor[id] }),
                   ...adapter.skillInvocationPolicy,
                   ...(matrix?.[SKILL_INVOCATION_POLICY] === undefined
                     ? {}
@@ -1080,10 +1287,12 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
             }),
             {
               onUnsupported: config.components?.onUnsupported ?? "error",
+              authoredSkills,
               ...(config.components?.accept === undefined ? {} : { accept: config.components.accept }),
             },
           );
     for (const id of Object.keys(analysis.targets)) {
+      const components = packages.get(id);
       const adapter = adapterFor(id)!;
       const targetConfig = config.targets[id]!;
       const spec: TargetSpec = targetSpecFromConfig(id, targetConfig);
@@ -1153,7 +1362,7 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
             target: spec,
             hookArtifacts,
             ...(runtimePackage === undefined ? {} : { runtimePackage }),
-            ...(materializedTrees.length === 0 ? {} : { materializedTrees }),
+            ...(materializedTrees.length === 0 ? {} : { materializedTrees: targetTrees(id) }),
             support: projectionResolutions.get(id)?.matrix ?? {},
             onUnsupported: config.components!.onUnsupported ?? "error",
             ...(config.components!.accept === undefined ? {} : { accept: config.components!.accept }),
@@ -1248,7 +1457,10 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
           if (componentSource && (componentsSelected || skillPolicyPlans.has(id))) {
             const policyPlan = skillPolicyPlans.get(id);
             const projectSource: ProjectComponents = componentsSelected
-              ? componentSource
+              ? {
+                  ...(sources.get(id) ?? componentSource),
+                  skills: policyPlan?.discovered ?? sources.get(id)?.skills ?? componentSource.skills,
+                }
               : {
                   origin: componentSource.origin,
                   skills:
@@ -1435,6 +1647,26 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
               ...(policyPlan === undefined ? {} : { invocationPolicies: policyPlan.invocationPolicies }),
             });
             projected.degradations = [...(projected.degradations ?? []), ...(policyPlan?.selection.degradations ?? [])];
+            for (const exposure of policyPlan?.exposures ?? []) {
+              const record = exclusions.get(id)!;
+              const existing = record.matches.find(
+                (match) => exposure.path === match.path || exposure.path.startsWith(match.path + "/"),
+              );
+              if (existing) existing.status = "exposed";
+              if (
+                !record.matches.some(
+                  (match) => match.path === exposure.path && match.nativePath === exposure.nativePath,
+                )
+              )
+                record.matches.push({ ...exposure, component: "agent-plugin.skills", status: "exposed", reader: id });
+              projected.degradations.push({
+                id: "skill-exclusion-unenforced",
+                component: "agent-plugin.skills",
+                name: exposure.name,
+                path: exposure.nativePath,
+                reason: `Target ${JSON.stringify(id)} excludes ${JSON.stringify(exposure.path)}, but discovers it at ${JSON.stringify(exposure.nativePath)} from ${JSON.stringify(exposure.writer)}.`,
+              });
+            }
             projected.omittedFiles = policyPlan?.omittedFiles ?? [];
             // Not an omission: the skill is delivered, in place, and counting
             // it as skipped would misreport a component that is present. Warn,
@@ -1681,6 +1913,7 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
     // The commit refuses to replace an output whose on-disk kind differs (a
     // regular file where a directory goes). Checked read-only here so a dry
     // run reports it too, instead of passing what `build` would refuse.
+    decorateReport();
     const reportOutput = {
       target: undefined,
       outputDir: join(configDir, "hooknostic-build.json"),
@@ -1749,7 +1982,7 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
         target.status = id === failure.failedTarget ? "failed" : "skipped";
         if (target.projection) target.projection.status = target.status;
       }
-      return { ok: false, report, analysis };
+      return finish({ ok: false, report, analysis });
     }
   } catch (error) {
     diagnostics.push({
@@ -1765,5 +1998,5 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
   }
 
   const reportPath = join(configDir, "hooknostic-build.json");
-  return { ok: true, report, analysis, reportPath };
+  return finish({ ok: true, report, analysis, reportPath });
 }

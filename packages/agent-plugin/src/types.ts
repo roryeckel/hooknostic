@@ -87,6 +87,9 @@ export interface AgentPluginPackage {
 
 export interface LoadAgentPluginOptions {
   root: string;
+  /** Target-specific rules, applied before discovery; excluded executable declarations are ignored. */
+  excludeFor?: string[];
+  onExclude?: (path: string) => void;
   /** Exact, case-sensitive POSIX paths of included files to emit as 0755; others use 0644. */
   executableFiles?: string[];
   /**

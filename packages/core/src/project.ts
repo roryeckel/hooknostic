@@ -1,7 +1,7 @@
 import { dirname, join, relative, resolve } from "node:path";
 
 import { resolveTargetAdapter, targetSpecFromConfig } from "./adapter.js";
-import { type BuildOptions, buildProject, type McpServerCommand } from "./build.js";
+import { type BuildOptions, buildProject, type BuildTargetReport, type McpServerCommand } from "./build.js";
 import type { Diagnostic } from "./diagnostics.js";
 import { linkedWorktree } from "./git-worktree.js";
 import { loadConfig } from "./load.js";
@@ -22,6 +22,7 @@ export interface ProjectCommandResult {
   diagnostics: Diagnostic[];
   /** How each stdio server's declared command is resolved. */
   mcpServers: McpServerCommand[];
+  targets?: Record<string, BuildTargetReport>;
 }
 export async function runProject(
   options: BuildOptions & { command: "sync" | "verify" | "recover" },
@@ -61,6 +62,7 @@ export async function runProject(
         ? undefined
         : await buildProject({ ...options, targets: projectTargets, configResult: loaded, dryRun: true });
     if (built !== undefined) {
+      result.targets = built.report.targets;
       result.diagnostics = built.report.diagnostics;
       result.mcpServers = built.report.mcpServers ?? [];
       if (!built.ok) throw new Error(built.report.diagnostics.map((d) => d.message).join("\n"));

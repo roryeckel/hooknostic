@@ -3,6 +3,7 @@ import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
 
 import {
   type AgentPluginComponentSupport,
+  excludedByTarget,
   type ProjectComponents,
   type ProjectSkill,
   selectSkillPolicies,
@@ -18,6 +19,13 @@ export interface ProjectSkillPolicyTarget {
   projectFiles?: SkillPolicyFileProjector;
   support?: AgentPluginComponentSupport;
   componentsSelected?: boolean;
+  source?: ProjectComponents;
+  exclude?: readonly string[];
+}
+
+export interface AuthoredProjectSkill extends ProjectSkill {
+  /** Unowned auxiliary files need a surviving generated manifest to be discoverable. */
+  ownedManifest: boolean;
 }
 
 export interface ProjectSkillPolicyPlan {
@@ -28,6 +36,7 @@ export interface ProjectSkillPolicyPlan {
   observed: { destination: string; skill: ProjectSkill; authored?: boolean }[];
   invocationPolicies: Readonly<Record<string, boolean>>;
   omittedFiles: string[];
+  exposures: { path: string; name: string; nativePath: string; writer: string }[];
 }
 
 /** Compose policy per physical destination, using every configured discovery reader. */
@@ -35,7 +44,11 @@ export function planProjectSkillPolicies(
   source: ProjectComponents,
   root: string,
   targets: readonly ProjectSkillPolicyTarget[],
-  options: { onUnsupported: "error" | "warn"; accept?: readonly string[] },
+  options: {
+    onUnsupported: "error" | "warn";
+    accept?: readonly string[];
+    authoredSkills?: readonly AuthoredProjectSkill[];
+  },
 ): Map<string, ProjectSkillPolicyPlan> {
   const destinations = [
     ...new Set(
@@ -64,6 +77,12 @@ export function planProjectSkillPolicies(
   const readers: ProjectSkillPolicyTarget[] = [];
   for (const target of targets) {
     let inventory = target.componentsSelected === false ? declaredSkills : source.skills;
+    const available = new Map(inventory.map((skill) => [skill.name, skill]));
+    // Owned manifests enter policy selection only through retained source views.
+    // Their unowned helpers cannot resurrect a skill scheduled for removal.
+    for (const skill of options.authoredSkills ?? [])
+      if (!skill.ownedManifest && !available.has(skill.name)) available.set(skill.name, skill);
+    inventory = [...available.values()];
     const nativeRoots: string[] = [];
     for (let ancestor = resolve(root); ; ancestor = dirname(ancestor)) {
       for (const directory of [
@@ -73,6 +92,12 @@ export function planProjectSkillPolicies(
         nativeRoots.push(resolve(ancestor, directory));
       if (dirname(ancestor) === ancestor) break;
     }
+    const isInPlace = (skill: ProjectSkill) =>
+      nativeRoots.some(
+        (directory) =>
+          contains(directory, skill.source) || canonical(resolve(directory, skill.name)) === canonical(skill.source),
+      );
+    const authored = (options.authoredSkills ?? []).filter((skill) => !skill.ownedManifest && isInPlace(skill));
     const inPlace = new Set(
       inventory
         .filter((skill) =>
@@ -87,6 +112,20 @@ export function planProjectSkillPolicies(
         )
         .map((skill) => skill.name),
     );
+    if (target.source)
+      inventory = inventory.filter(
+        (skill) =>
+          target.source!.skills.some((candidate) => candidate.name === skill.name) ||
+          inPlace.has(skill.name) ||
+          authored.some((candidate) => candidate.name === skill.name) ||
+          targets.some(
+            (writer) =>
+              writer.componentsSelected !== false &&
+              writer.destination !== undefined &&
+              reads(target, writer.destination) &&
+              (writer.source ?? source).skills.some((candidate) => candidate.name === skill.name),
+          ),
+      );
     if (
       target.componentsSelected === false &&
       !(declaredSkills.length && (destinations.some((destination) => reads(target, destination)) || inPlace.size))
@@ -102,18 +141,33 @@ export function planProjectSkillPolicies(
       inPlace,
     });
     plans.set(target.id, {
-      source: target.componentsSelected === false ? { origin: source.origin, skills: [] } : { ...source, skills: [] },
+      source:
+        target.componentsSelected === false
+          ? { origin: source.origin, skills: [] }
+          : { ...(target.source ?? source), skills: [] },
       discovered: inventory,
       selection,
-      observed: selection.skills
-        .filter((skill) => inPlace.has(skill.name))
-        .map((skill) => ({
-          destination: relative(root, dirname(skill.source)).replaceAll("\\", "/"),
-          skill,
-          authored: true,
-        })),
+      observed: [
+        ...new Map(
+          [
+            ...selection.skills.filter(
+              (skill) =>
+                inPlace.has(skill.name) &&
+                !options.authoredSkills?.some(
+                  (candidate) => candidate.ownedManifest && canonical(candidate.source) === canonical(skill.source),
+                ),
+            ),
+            ...authored.filter((skill) => selection.skills.some((candidate) => candidate.name === skill.name)),
+          ].map((skill) => [canonical(skill.source), skill]),
+        ).values(),
+      ].map((skill) => ({
+        destination: relative(root, dirname(skill.source)).replaceAll("\\", "/"),
+        skill,
+        authored: true,
+      })),
       invocationPolicies: {},
       omittedFiles: [],
+      exposures: [],
     });
   }
   const originalOmissions = new Map(
@@ -147,7 +201,22 @@ export function planProjectSkillPolicies(
     // native edits; the core knows neither their keys nor their semantics.
     for (const skill of source.skills) {
       if (omittedBy.has(skill.name)) continue;
-      let files = skill.files;
+      const writers = targets.filter(
+        (target) =>
+          target.componentsSelected !== false &&
+          target.destination === destination &&
+          (target.source ?? source).skills.some((candidate) => candidate.name === skill.name),
+      );
+      if (!writers.length) continue;
+      let files = [
+        ...new Map(
+          writers.flatMap((writer) =>
+            (writer.source ?? source).skills
+              .find((candidate) => candidate.name === skill.name)!
+              .files.map((file) => [file.path, file] as const),
+          ),
+        ).values(),
+      ];
       for (const target of group) {
         if (plans.get(target.id)!.selection.applied.has(skill.name) && target.projectFiles !== undefined) {
           try {
@@ -169,13 +238,51 @@ export function planProjectSkillPolicies(
         if (planned !== undefined) {
           const copy = { ...planned, files };
           plan.observed.push({ destination, skill: copy });
-          if (target.componentsSelected !== false && target.destination === destination) plan.source.skills.push(copy);
+          if (writers.some((writer) => writer.id === target.id)) plan.source.skills.push(copy);
         }
       }
     }
   }
   for (const target of readers) {
     const plan = plans.get(target.id)!;
+    for (const skill of options.authoredSkills ?? []) {
+      if (!skill.ownedManifest) continue;
+      const surviving = plan.observed.find(
+        (copy) =>
+          !copy.authored &&
+          canonical(resolve(root, copy.destination, copy.skill.name)) === canonical(skill.source) &&
+          copy.skill.files.some((file) => file.path === "SKILL.md"),
+      );
+      if (surviving) plan.observed.push({ destination: surviving.destination, skill, authored: true });
+    }
+    for (const copy of plan.observed) {
+      for (const file of copy.skill.files) {
+        const path = `${source.origin === "package" ? "skills/" : ""}${copy.skill.name}/${file.path}`;
+        if (!excludedByTarget(path, target.exclude, source.origin === "direct")) continue;
+        const writer = copy.authored
+          ? "authored"
+          : targets.find(
+              (candidate) =>
+                candidate.destination === copy.destination &&
+                (candidate.source ?? source).skills.some(
+                  (skill) => skill.name === copy.skill.name && skill.files.some((item) => item.path === file.path),
+                ),
+            )?.id;
+        plan.exposures.push({
+          path,
+          name: copy.skill.name,
+          nativePath: `${copy.destination}/${copy.skill.name}/${file.path}`,
+          writer: writer ?? "authored",
+        });
+      }
+    }
+    if (target.source) {
+      const names = new Set([
+        ...target.source.skills.map((skill) => skill.name),
+        ...plan.observed.map((copy) => copy.skill.name),
+      ]);
+      plan.discovered = plan.discovered.filter((skill) => names.has(skill.name));
+    }
     // Omission must also account for authored copies outside generated destinations.
     // Reconciliation checks these paths without acquiring ownership or deleting them.
     for (const directory of [target.destination, ...(target.discoveryDirectories ?? [])]) {

@@ -258,8 +258,11 @@ const nativeProjectComponentProfiles: readonly AgentPluginProjectionProfile[] = 
 import { skillInvocationPolicyProfiles } from "@hooknostic/agent-plugin";
 
 import { CODEX_SKILL_POLICY_RATIONALE, codexProjectSkillPolicyValidation } from "./skill-policy.js";
-export const projectComponentProfiles = skillInvocationPolicyProfiles(
+const exclusionBaseProfiles = skillInvocationPolicyProfiles(
   nativeProjectComponentProfiles,
   codexProjectSkillPolicyValidation,
   CODEX_SKILL_POLICY_RATIONALE,
 );
+
+import { projectExclusionProfiles } from "@hooknostic/agent-plugin";
+export const projectComponentProfiles = projectExclusionProfiles(exclusionBaseProfiles, ".capture/skill-invocation");

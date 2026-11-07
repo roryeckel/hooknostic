@@ -154,13 +154,15 @@ const nativeOpenCodeV2ProjectProfiles: readonly AgentPluginProjectionProfile[] =
     },
   },
 ];
-export const opencodeV2ProjectProfiles = skillInvocationPolicyProfiles(
+const exclusionBaseProfiles = skillInvocationPolicyProfiles(
   nativeOpenCodeV2ProjectProfiles,
   opencodeV2ProjectSkillPolicyValidation,
   OPENCODE_V2_SKILL_POLICY_RATIONALE,
   "exact",
   [opencodeV2NewerSkillPolicyValidation],
 );
+
+export const opencodeV2ProjectProfiles = projectExclusionProfiles(exclusionBaseProfiles, ".capture/skill-invocation");
 
 export const projectOpenCodeV2Components: NonNullable<HarnessAdapter["projectComponents"]> = (...args) =>
   projectComponents(
@@ -269,3 +271,5 @@ export const opencodeV2Projector = withSkillInvocationPolicy(
   "opencode",
   opencodeV2SkillPolicy,
 );
+
+import { projectExclusionProfiles } from "@hooknostic/agent-plugin";

@@ -611,6 +611,15 @@ delivery (`package.json` plus `exports["./server"]`); the emitted shape follows
 The report schema is versioned so CI tooling can consume it without parsing terminal
 text.
 
+Schema version 2 also permits `authorExclusions` on package and project target
+reports: `patterns` lists the target's configured rules, and `matches` records
+source `path`, `status` (`omitted` or `exposed`), and identifiable `component` and
+`name`. Exposure records include `nativePath`, `reader`, and `writer` (or
+`authored`). These records are separate from unsupported `omissions`. Target
+`sourceFiles` lists retained source input; top-level `components.sourceFiles`
+remains the aggregate inventory. Target `mcpServers` identifies retained MCP
+commands. Project-command JSON includes these target reports. See ADR-0038.
+
 ## 9. Diagnostics and developer experience
 
 ### 9.1 Compiler-style diagnostics

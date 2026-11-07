@@ -11,7 +11,10 @@ export function describeProjection(projection: AgentPluginTargetReport): string 
   const emitted = components.reduce((sum, component) => sum + (component?.emitted ?? 0), 0);
   const omitted = projection.omissions.length;
   const files = projection.copiedFileCount === undefined ? "" : `, ${projection.copiedFileCount} package files copied`;
-  return `Agent Plugin projection ${projection.status}: ${emitted} components emitted, ${omitted} omitted${files}`;
+  const excluded = new Set(
+    projection.authorExclusions?.matches.filter((match) => match.status === "omitted").map((match) => match.path),
+  ).size;
+  return `Agent Plugin projection ${projection.status}: ${emitted} components emitted, ${omitted} omitted${files}${excluded ? `, ${excluded} author exclusions` : ""}`;
 }
 
 /**
@@ -69,6 +72,10 @@ export async function runBuild(options: BuildCommandOptions): Promise<number> {
       `${target.status === "success" ? "BUILT" : "FAIL "}  ${id} → ${target.output}  (${target.adapter}, harness ${target.requestedVersion}) — ${counts.exact} exact, ${counts.emulated} emulated, ${counts.approximate} approximate, ${counts.unsupported} unsupported`,
     );
     if (target.projection !== undefined) options.io.stdout(`         ${describeProjection(target.projection)}`);
+    if (target.project?.authorExclusions)
+      options.io.stdout(
+        `         ${target.project.authorExclusions.matches.filter((match) => match.status === "omitted").length} author exclusions, ${target.project.authorExclusions.matches.filter((match) => match.status === "exposed").length} exposures`,
+      );
     for (const artifact of target.artifacts ?? []) {
       options.io.stdout(`         ${artifact}`);
     }

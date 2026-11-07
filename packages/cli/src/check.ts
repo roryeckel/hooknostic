@@ -4,6 +4,7 @@ import type {
   AdapterRegistry,
   AgentPluginTargetReport,
   AnalysisResult,
+  BuildTargetReport,
   Diagnostic,
   EvaluateOptions,
   McpServerCommand,
@@ -39,6 +40,8 @@ interface CheckReport {
       /** Paths `build` would generate for this target (no target artifacts are written by `check`). */
       artifacts?: string[];
       projection?: AgentPluginTargetReport;
+      project?: BuildTargetReport["project"];
+      mcpServers?: McpServerCommand[];
     }
   >;
   /** How each stdio server's declared command is resolved. */
@@ -100,6 +103,8 @@ export async function runCheck(options: CheckOptions): Promise<number> {
               resolutions: t.resolutions,
               ...(built?.artifacts === undefined ? {} : { artifacts: built.artifacts }),
               ...(built?.projection === undefined ? {} : { projection: built.projection }),
+              ...(built?.project === undefined ? {} : { project: built.project }),
+              ...(built?.mcpServers === undefined ? {} : { mcpServers: built.mcpServers }),
             },
           ];
         }),
@@ -123,6 +128,11 @@ export async function runCheck(options: CheckOptions): Promise<number> {
     );
     const projection = result.report.targets[id]?.projection;
     if (projection !== undefined) options.io.stdout(`      ${describeProjection(projection)}`);
+    const exclusions = result.report.targets[id]?.project?.authorExclusions;
+    if (exclusions)
+      options.io.stdout(
+        `      ${exclusions.matches.filter((match) => match.status === "omitted").length} author exclusions, ${exclusions.matches.filter((match) => match.status === "exposed").length} exposures`,
+      );
   }
   const commands = describeMcpCommands(result.report.mcpServers);
   if (commands.length > 0) {

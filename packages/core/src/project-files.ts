@@ -127,6 +127,11 @@ const STATE = ".hooknostic/integration.json";
 const JOURNAL = ".hooknostic/transaction.json";
 const LOCK = ".hooknostic/sync.lock";
 const RECOVERY_LOCK = ".hooknostic/recovery.lock";
+/** Whole-file ownership used when distinguishing authored discovery from stale generated copies. */
+export async function ownedProjectFiles(root: string, config: string): Promise<ReadonlySet<string>> {
+  const manifest = readManifest(await bytes(await projectPath(root, STATE)), config);
+  return new Set(manifest.owned.filter((entry) => entry.key === undefined).map((entry) => entry.path));
+}
 export const fileHash = (value: Uint8Array | string): string => createHash("sha256").update(value).digest("hex");
 function canonical(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;

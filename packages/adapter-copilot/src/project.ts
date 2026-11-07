@@ -324,7 +324,10 @@ const nativeProjectComponentProfiles: readonly AgentPluginProjectionProfile[] = 
   { inPlace: true },
 );
 
-export const projectComponentProfiles = nativeProjectComponentProfiles;
+const exclusionBaseProfiles = nativeProjectComponentProfiles;
 
 /** The native field this target would use when the policy cell is supported. */
 export const copilotProjectSkillPolicy = copilotSkillPolicy;
+
+import { projectExclusionProfiles } from "@hooknostic/agent-plugin";
+export const projectComponentProfiles = projectExclusionProfiles(exclusionBaseProfiles, ".capture/copilot/README.md");

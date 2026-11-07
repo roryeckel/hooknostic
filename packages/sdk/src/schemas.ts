@@ -223,6 +223,7 @@ export const hooknosticConfigSchema = z
         mcpOverrides: z.record(z.string().min(1), projectMcpTargetOverrideSchema).optional(),
         targets: z.array(z.string().min(1)).min(1).optional(),
         exclude: z.array(z.string().min(1)).optional(),
+        excludeFor: z.record(z.string().min(1), z.array(z.string().min(1))).optional(),
         executableFiles: z.array(z.string().min(1)).optional(),
         mcpEnvironment: mcpEnvironmentSchema.optional(),
         runtimePackage: z
@@ -367,6 +368,15 @@ export const hooknosticConfigSchema = z
             code: z.ZodIssueCode.custom,
             path: ["components", "targets"],
             message: `Agent Plugin projection target ${JSON.stringify(target)} is not configured`,
+          });
+        }
+      }
+      for (const target of Object.keys(config.components.excludeFor ?? {})) {
+        if (!configured.has(target) || !seen.has(target)) {
+          context.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ["components", "excludeFor", target],
+            message: `exclusion target ${JSON.stringify(target)} must be configured and receive components`,
           });
         }
       }

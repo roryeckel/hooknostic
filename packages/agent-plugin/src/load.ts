@@ -553,8 +553,29 @@ function loadSkills(
 // consumer. A deny-list that over-matches fails safe.
 const MATCH = { dot: true, nocase: true, nonegate: true, nocomment: true } as const;
 
-function excluded(path: string, patterns: readonly string[]): boolean {
+export function excluded(path: string, patterns: readonly string[]): boolean {
   return patterns.some((pattern) => minimatch(path, pattern, MATCH) || minimatch(`${path}/`, pattern, MATCH));
+}
+
+/** Match a file or a pruned ancestor using the inventory's exclusion semantics. */
+export function excludedByTarget(path: string, patterns: readonly string[] = [], directSkills = false): boolean {
+  const parts = path.split("/");
+  if (
+    /[\\:]/.test(path) ||
+    [...path].some((character) => character.charCodeAt(0) < 32) ||
+    parts.some((part) => part === "" || part === "." || part === "..")
+  )
+    return false;
+  for (let length = 1; length <= parts.length; length++) {
+    const ancestor = parts.slice(0, length).join("/");
+    if (excluded(ancestor, patterns)) return true;
+    if (
+      (directSkills ? length === 1 : length === 2 && parts[0] === "skills") &&
+      excluded(`${ancestor}/SKILL.md`, patterns)
+    )
+      return true;
+  }
+  return false;
 }
 
 interface InventoryResult {
@@ -570,6 +591,10 @@ async function inventory(
   root: string,
   patterns: readonly string[],
   issues: AgentPluginIssue[],
+  onExclude?: (path: string) => void,
+  directSkills = false,
+  readContents: (path: string) => boolean = () => true,
+  visitPath: (path: string) => boolean = () => true,
 ): Promise<InventoryResult | undefined> {
   const pending: { path: string; physical: string; mode: number }[] = [];
   const directories = new Set<string>();
@@ -606,7 +631,7 @@ async function inventory(
     // must not smuggle that content in under another name.
     if (logical !== "") {
       const canonicalLogical = relative(canonicalRoot, resolved).replaceAll("\\", "/");
-      if (canonicalLogical !== logical && excluded(canonicalLogical, patterns)) {
+      if (canonicalLogical !== logical && excludedByTarget(canonicalLogical, patterns, directSkills)) {
         throw new Error(`${logical} resolves to excluded path ${canonicalLogical}`);
       }
     }
@@ -619,7 +644,15 @@ async function inventory(
       const entries = await readdir(physical, { withFileTypes: true });
       for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
         const childLogical = logical ? `${logical}/${entry.name}` : entry.name;
-        if (excluded(childLogical, patterns) || excludedSkill(childLogical, patterns)) continue;
+        if (!visitPath(childLogical)) continue;
+        if (
+          excluded(childLogical, patterns) ||
+          (!directSkills && excludedSkill(childLogical, patterns)) ||
+          (directSkills && !childLogical.includes("/") && excluded(`${childLogical}/SKILL.md`, patterns))
+        ) {
+          onExclude?.(childLogical);
+          continue;
+        }
         await walk(canonicalRoot, resolve(physical, entry.name), childLogical, next);
       }
       return;
@@ -633,7 +666,11 @@ async function inventory(
     await walk(canonicalRoot, root, "", new Set());
     const files: AgentPluginFile[] = [];
     for (const file of pending) {
-      files.push({ path: file.path, contents: await readFile(file.physical), mode: file.mode });
+      files.push({
+        path: file.path,
+        contents: readContents(file.path) ? await readFile(file.physical) : new Uint8Array(),
+        mode: file.mode,
+      });
     }
     return { files, directories };
   } catch (error) {
@@ -647,7 +684,7 @@ async function inventory(
   }
 }
 
-function digest(files: readonly AgentPluginFile[]): string {
+export function agentPluginContentDigest(files: readonly AgentPluginFile[]): string {
   const hash = createHash("sha256");
   for (const file of files) {
     hash.update(file.path);
@@ -718,11 +755,45 @@ function applyExecutableFiles(
   return true;
 }
 
+async function validateExcludedExecutables(
+  paths: readonly string[] | undefined,
+  patterns: readonly string[] | undefined,
+  roots: readonly string[],
+  issues: AgentPluginIssue[],
+  directSkills = false,
+): Promise<void> {
+  for (const path of paths ?? []) {
+    if (!excludedByTarget(path, patterns, directSkills)) continue;
+    let found = false;
+    for (const root of roots) {
+      try {
+        const canonicalRoot = await realpath(root);
+        let parent = canonicalRoot;
+        for (const part of path.split("/")) {
+          if (!(await readdir(parent)).includes(part)) throw new Error("not an exact path");
+          parent = await realpath(resolve(parent, part));
+          if (!contained(canonicalRoot, parent)) throw new Error("outside source");
+        }
+        if ((await stat(parent)).isFile()) found = true;
+      } catch {
+        /* Another configured skill collection may own the declaration. */
+      }
+    }
+    if (!found)
+      issue(
+        issues,
+        "error",
+        "file",
+        `executableFiles entry ${JSON.stringify(path)} must name an exact, contained regular file even when excluded for a target.`,
+      );
+  }
+}
+
 /** Load an Agent Plugins 1.0 package without consulting network schemas. */
 export async function loadAgentPlugin(options: LoadAgentPluginOptions): Promise<LoadAgentPluginResult> {
   const root = resolve(options.root);
   const issues: AgentPluginIssue[] = [];
-  const patterns = [...DEFAULT_EXCLUDES, ...(options.exclude ?? [])];
+  const patterns = [...DEFAULT_EXCLUDES, ...(options.exclude ?? []), ...(options.excludeFor ?? [])];
   if (excluded("plugin.json", patterns)) {
     issue(
       issues,
@@ -734,9 +805,16 @@ export async function loadAgentPlugin(options: LoadAgentPluginOptions): Promise<
     return { issues };
   }
 
-  const inventoried = await inventory(root, patterns, issues);
+  const inventoried = await inventory(root, patterns, issues, options.onExclude);
   if (inventoried === undefined) return { issues };
-  if (!applyExecutableFiles(options.executableFiles, (path) => inventoried.files.find((e) => e.path === path), issues))
+  await validateExcludedExecutables(options.executableFiles, options.excludeFor, [root], issues);
+  if (
+    !applyExecutableFiles(
+      options.executableFiles?.filter((path) => !excludedByTarget(path, options.excludeFor)),
+      (path) => inventoried.files.find((e) => e.path === path),
+      issues,
+    )
+  )
     return { issues };
   const manifestFile = inventoried.files.find((file) => file.path === "plugin.json");
   if (manifestFile === undefined) {
@@ -787,7 +865,7 @@ export async function loadAgentPlugin(options: LoadAgentPluginOptions): Promise<
     ...(mcp === undefined ? {} : { mcp }),
     files,
     directories,
-    contentDigest: digest(files),
+    contentDigest: agentPluginContentDigest(files),
   };
   return { package: source, issues };
 }
@@ -817,10 +895,64 @@ export function packageComponents(source: AgentPluginPackage): ProjectComponents
     ...(source.mcp === undefined ? {} : { mcp: { root: source.root, config: source.mcp } }),
   };
 }
+
+/**
+ * Observe one native skill independently. The skill root
+ * may be a junction; links inside it still obey the usual containment checks.
+ * Matching native paths count, including default-excluded delivery files, but only
+ * SKILL.md contents are read. Auxiliary contents are empty observation markers
+ * and must never be used for writing a skill. Delivery loaders remain strict.
+ */
+export async function observeProjectSkill(
+  directory: string,
+  options: { logicalRoot: string; patterns: readonly string[]; directSkills: boolean },
+): Promise<{ skill?: ProjectSkill; issues: AgentPluginIssue[] }> {
+  const issues: AgentPluginIssue[] = [];
+  const source = resolve(directory);
+  const data = await inventory(
+    source,
+    [],
+    issues,
+    undefined,
+    false,
+    (path) => path === "SKILL.md",
+    (path) => {
+      if (path === "SKILL.md") return true;
+      const logical = `${options.logicalRoot}/${path}`;
+      return (
+        excludedByTarget(logical, options.patterns, options.directSkills) ||
+        options.patterns.some((pattern) => minimatch(logical, pattern, { ...MATCH, partial: true }))
+      );
+    },
+  );
+  if (!data) return { issues };
+  const prefix = `skills/${basename(source)}`;
+  const [parsed] = loadSkills(
+    {
+      files: data.files.map((file) => ({ ...file, path: `${prefix}/${file.path}` })),
+      directories: new Set(["skills", prefix]),
+    },
+    issues,
+    { allowAdditionalFields: true },
+  );
+  if (!parsed) return { issues };
+  return {
+    skill: {
+      name: parsed.name,
+      source,
+      files: data.files,
+      ...(parsed.policy === undefined ? {} : { policy: parsed.policy }),
+    },
+    issues,
+  };
+}
+
 export async function loadProjectComponents(options: {
   skills?: string[];
   mcp?: string;
   exclude?: string[];
+  excludeFor?: string[];
+  onExclude?: (path: string) => void;
   executableFiles?: string[];
   projectRoot?: string;
 }): Promise<{ source: ProjectComponents; issues: AgentPluginIssue[] }> {
@@ -828,7 +960,13 @@ export async function loadProjectComponents(options: {
   const source: ProjectComponents = { origin: "direct", skills: [] };
   const names = new Set<string>();
   for (const directory of options.skills ?? []) {
-    const data = await inventory(resolve(directory), [...DEFAULT_EXCLUDES, ...(options.exclude ?? [])], issues);
+    const data = await inventory(
+      resolve(directory),
+      [...DEFAULT_EXCLUDES, ...(options.exclude ?? []), ...(options.excludeFor ?? [])],
+      issues,
+      options.onExclude,
+      true,
+    );
     if (!data) continue;
     const nested: InventoryResult = {
       files: data.files.map((file) => ({ ...file, path: "skills/" + file.path })),
@@ -862,8 +1000,9 @@ export async function loadProjectComponents(options: {
   // loaded, so one declaration can name files across all of them, and so a
   // duplicate skill name is rejected first rather than silently deciding which
   // of two files an entry meant.
+  await validateExcludedExecutables(options.executableFiles, options.excludeFor, options.skills ?? [], issues, true);
   applyExecutableFiles(
-    options.executableFiles,
+    options.executableFiles?.filter((path) => !excludedByTarget(path, options.excludeFor, true)),
     (path) => {
       const separator = path.indexOf("/");
       if (separator <= 0) return undefined;
@@ -872,7 +1011,9 @@ export async function loadProjectComponents(options: {
     },
     issues,
   );
-  if (options.mcp) {
+  const mcpExcluded = excluded("mcp.json", [...(options.exclude ?? []), ...(options.excludeFor ?? [])]);
+  if (options.mcp && mcpExcluded) options.onExclude?.("mcp.json");
+  if (options.mcp && !mcpExcluded) {
     const requested = resolve(options.mcp);
     let direct: { path: string; contents: Buffer } | undefined;
     try {
