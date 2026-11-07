@@ -279,6 +279,13 @@ directory, or its required `SKILL.md` removes that component without an unsuppor
 component warning; excluding an auxiliary skill file keeps the skill and omits only
 that file. The mandatory `plugin.json` cannot be excluded.
 
+`components.excludeFor: { example: ["mcp.json", "server/**"] }` adds rules only
+for the configured target `example`. Other targets retain those files. The rules
+also filter materializer output under `into`, without suppressing provider
+execution. Target reports record `authorExclusions` separately from unsupported
+omissions and list retained `sourceFiles`. Retained MCP commands must still have
+their required executables after filtering.
+
 ## Hookless packages
 
 `entry` is optional. A skills-only or MCP-only package can use:

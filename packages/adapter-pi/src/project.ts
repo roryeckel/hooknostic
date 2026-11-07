@@ -230,7 +230,7 @@ const projectComponentProfile: AgentPluginProjectionProfile = {
   },
 };
 
-export const projectComponentProfiles = [
+const exclusionBaseProfiles = [
   ...skillInvocationPolicyProfiles(
     [legacyProjectComponentProfile],
     piLegacyProjectSkillPolicyValidation,
@@ -242,3 +242,6 @@ export const projectComponentProfiles = [
     PI_SKILL_POLICY_RATIONALE,
   ),
 ];
+
+import { projectExclusionProfiles } from "@hooknostic/agent-plugin";
+export const projectComponentProfiles = projectExclusionProfiles(exclusionBaseProfiles, ".capture/skill-invocation");

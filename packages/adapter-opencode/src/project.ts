@@ -216,7 +216,7 @@ const nativeProjectComponentProfiles: readonly AgentPluginProjectionProfile[] = 
     },
   },
 ];
-export const projectComponentProfiles = skillInvocationPolicyProfiles(
+const exclusionBaseProfiles = skillInvocationPolicyProfiles(
   nativeProjectComponentProfiles,
   opencodeProjectSkillPolicyValidation,
   OPENCODE_SKILL_POLICY_RATIONALE,
@@ -228,3 +228,6 @@ export const projectComponentProfiles = skillInvocationPolicyProfiles(
     opencodeNumericPermissionValidation,
   ],
 );
+
+import { projectExclusionProfiles } from "@hooknostic/agent-plugin";
+export const projectComponentProfiles = projectExclusionProfiles(exclusionBaseProfiles, ".capture/skill-invocation");

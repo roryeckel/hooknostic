@@ -143,6 +143,13 @@ export async function runCli(argv: string[], options?: RunCliOptions): Promise<n
         else {
           for (const diagnostic of result.diagnostics)
             io.stdout(`${diagnostic.code} ${diagnostic.severity}: ${diagnostic.message}`);
+          for (const [id, target] of Object.entries(result.targets ?? {})) {
+            const exclusions = target.project?.authorExclusions;
+            if (exclusions)
+              io.stdout(
+                `${id}: ${exclusions.matches.filter((match) => match.status === "omitted").length} author exclusions, ${exclusions.matches.filter((match) => match.status === "exposed").length} exposures`,
+              );
+          }
           for (const path of result.changes) io.stdout(`${command === "verify" ? "DRIFT" : "UPDATE"} ${path}`);
           for (const message of result.guidance) io.stdout(message);
           for (const message of result.errors) io.stderr(message);

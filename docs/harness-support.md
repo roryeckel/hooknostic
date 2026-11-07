@@ -121,6 +121,7 @@ Known degradations, reported as `HN101`:
 | Degradation | Component | Behavior | Evidence |
 | --- | --- | --- | --- |
 | `claude:skill-reference-unexpanded` | `agent-plugin.skills` | A project skill that holds ${CLAUDE_PLUGIN_ROOT}, ${CLAUDE_PLUGIN_DATA}, ${PLUGIN_ROOT} or ${PLUGIN_DATA} anywhere, ${SKILL_DIR} or a CLAUDE_ variable in its frontmatter, or ${SKILL_DIR} at all when discovered in place, reaches the model with that text as written: outside a plugin Claude expands only ${CLAUDE_SKILL_DIR} and ${CLAUDE_SESSION_ID}, and only in a skill's body. Portable context tokens in frontmatter or in-place skills, and unresolved sibling references, also remain unexpanded (ADR-0037). | `.capture/skill-directory` |
+| `claude:skill-exclusion-unenforced` | `agent-plugin.skills` | An excluded skill or auxiliary file remains discoverable through a shared or authored project copy. | `.capture/skill-invocation` |
 | `claude:skill-implicit-invocation-unenforced` | `agent-plugin.skills.invocation-policy` | The declared implicit-invocation policy cannot be applied; the skill is emitted only by explicit acceptance. | `.capture/skill-invocation` |
 | `claude:skill-policy-in-place` | `agent-plugin.skills.invocation-policy` | A skill discovered in place is authored input, so Hooknostic cannot own or verify its invocation policy. | `.capture/skill-invocation` |
 
@@ -164,6 +165,7 @@ Known degradations, reported as `HN101`:
 | Degradation | Component | Behavior | Evidence |
 | --- | --- | --- | --- |
 | `claude:skill-reference-unexpanded` | `agent-plugin.skills` | A project skill that holds ${CLAUDE_PLUGIN_ROOT}, ${CLAUDE_PLUGIN_DATA}, ${PLUGIN_ROOT} or ${PLUGIN_DATA} anywhere, ${SKILL_DIR} or a CLAUDE_ variable in its frontmatter, or ${SKILL_DIR} at all when discovered in place, reaches the model with that text as written: outside a plugin Claude expands only ${CLAUDE_SKILL_DIR} and ${CLAUDE_SESSION_ID}, and only in a skill's body. Portable context tokens in frontmatter or in-place skills, and unresolved sibling references, also remain unexpanded (ADR-0037). | `.capture/skill-directory` |
+| `claude:skill-exclusion-unenforced` | `agent-plugin.skills` | An excluded skill or auxiliary file remains discoverable through a shared or authored project copy. | `.capture/skill-invocation` |
 | `claude:skill-implicit-invocation-unenforced` | `agent-plugin.skills.invocation-policy` | The declared implicit-invocation policy cannot be applied; the skill is emitted only by explicit acceptance. | `.capture/skill-invocation` |
 | `claude:skill-policy-in-place` | `agent-plugin.skills.invocation-policy` | A skill discovered in place is authored input, so Hooknostic cannot own or verify its invocation policy. | `.capture/skill-invocation` |
 
@@ -371,6 +373,7 @@ Known degradations, reported as `HN101`:
 | --- | --- | --- | --- |
 | `codex:skill-reference-unexpanded` | `agent-plugin.skills` | A SKILL.md that holds a Claude Code variable such as ${CLAUDE_PLUGIN_ROOT}, ${PLUGIN_ROOT} or ${PLUGIN_DATA} anywhere, ${SKILL_DIR} in its frontmatter, or ${SKILL_DIR} at all in a skill discovered in place, reaches the model with that text as written: Codex expands nothing in skill text. Portable context tokens in frontmatter or in-place skills, and unresolved sibling references, also remain unexpanded (ADR-0037). | `.capture/skill-directory` |
 | `codex:skill-directory-model-substitution` | `agent-plugin.skills` | A ${SKILL_DIR} in a SKILL.md body becomes `<absolute path of the directory containing this SKILL.md>`. The model must substitute the installed skill directory before execution; Codex does not expand this text. The explicit placeholder improved the measured command bodies, but substitution remains model-dependent (ADR-0028, issue #113). | `.capture/skill-directory` |
+| `codex:skill-exclusion-unenforced` | `agent-plugin.skills` | An excluded skill or auxiliary file remains discoverable through a shared or authored project copy. | `.capture/skill-invocation` |
 | `codex:skill-implicit-invocation-unenforced` | `agent-plugin.skills.invocation-policy` | The declared implicit-invocation policy cannot be applied; the skill is emitted only by explicit acceptance. | `.capture/skill-invocation` |
 | `codex:skill-policy-in-place` | `agent-plugin.skills.invocation-policy` | A skill discovered in place is authored input, so Hooknostic cannot own or verify its invocation policy. | `.capture/skill-invocation` |
 
@@ -620,6 +623,7 @@ Known degradations, reported as `HN101`:
 | --- | --- | --- | --- |
 | `copilot:skill-reference-unexpanded` | `agent-plugin.skills` | A SKILL.md that holds ${PLUGIN_ROOT}, ${PLUGIN_DATA}, a CLAUDE_ variable or $CLAUDE_SESSION_ID reaches the model with that text as written: Copilot expands nothing in skill text, and the projection rewrites ${SKILL_DIR} in the body only. The loaded skill context does carry a `Base directory for this skill` line. Portable context tokens in frontmatter or in-place skills, and unresolved sibling references, also remain unexpanded (ADR-0037). | `.capture/copilot/README.md` |
 | `copilot:skill-directory-model-substitution` | `agent-plugin.skills` | A ${SKILL_DIR} in a SKILL.md body becomes `<absolute path of the directory containing this SKILL.md>`. The model must substitute the skill directory from the Base directory line Copilot supplies; Copilot performs no expansion in the body. | `.capture/copilot/README.md` |
+| `copilot:skill-exclusion-unenforced` | `agent-plugin.skills` | An excluded skill or auxiliary file remains discoverable through a shared or authored project copy. | `.capture/copilot/README.md` |
 | `copilot:skill-policy-in-place` | `agent-plugin.skills.invocation-policy` | A skill discovered in place is authored input, so Hooknostic cannot own or verify its invocation policy. | `.capture/copilot/README.md` |
 
 Project delivery validation records:
@@ -779,6 +783,7 @@ Known degradations, reported as `HN101`:
 | Degradation | Component | Behavior | Evidence |
 | --- | --- | --- | --- |
 | `opencode:skill-reference-unexpanded` | `agent-plugin.skills` | A SKILL.md that holds a Claude Code variable such as ${CLAUDE_PLUGIN_ROOT}, ${PLUGIN_ROOT} or ${PLUGIN_DATA} anywhere, ${SKILL_DIR} in its frontmatter, or ${SKILL_DIR} at all in a project skill discovered in place, reaches the model with that text as written: OpenCode expands nothing in skill text. Portable context tokens in frontmatter or in-place skills, and unresolved sibling references, also remain unexpanded (ADR-0037). | `.capture/skill-directory` |
+| `opencode:skill-exclusion-unenforced` | `agent-plugin.skills` | An excluded skill or auxiliary file remains discoverable through a shared or authored project copy. | `.capture/skill-invocation` |
 | `opencode:skill-implicit-invocation-unenforced` | `agent-plugin.skills.invocation-policy` | The declared implicit-invocation policy cannot be applied; the skill is emitted only by explicit acceptance. | `.capture/skill-invocation` |
 | `opencode:skill-policy-in-place` | `agent-plugin.skills.invocation-policy` | A skill discovered in place is authored input, so Hooknostic cannot own or verify its invocation policy. | `.capture/skill-invocation` |
 
@@ -815,6 +820,7 @@ Known degradations, reported as `HN101`:
 | Degradation | Component | Behavior | Evidence |
 | --- | --- | --- | --- |
 | `opencode:skill-reference-unexpanded` | `agent-plugin.skills` | A SKILL.md that holds a Claude Code variable such as ${CLAUDE_PLUGIN_ROOT}, ${PLUGIN_ROOT} or ${PLUGIN_DATA} anywhere, ${SKILL_DIR} in its frontmatter, or ${SKILL_DIR} at all in a project skill discovered in place, reaches the model with that text as written: OpenCode expands nothing in skill text. Portable context tokens in frontmatter or in-place skills, and unresolved sibling references, also remain unexpanded (ADR-0037). | `.capture/skill-directory` |
+| `opencode:skill-exclusion-unenforced` | `agent-plugin.skills` | An excluded skill or auxiliary file remains discoverable through a shared or authored project copy. | `.capture/skill-invocation` |
 | `opencode:skill-implicit-invocation-unenforced` | `agent-plugin.skills.invocation-policy` | The declared implicit-invocation policy cannot be applied; the skill is emitted only by explicit acceptance. | `.capture/skill-invocation` |
 | `opencode:skill-policy-in-place` | `agent-plugin.skills.invocation-policy` | A skill discovered in place is authored input, so Hooknostic cannot own or verify its invocation policy. | `.capture/skill-invocation` |
 
@@ -1011,6 +1017,7 @@ Known degradations, reported as `HN101`:
 | Degradation | Component | Behavior | Evidence |
 | --- | --- | --- | --- |
 | `opencode:skill-reference-unexpanded` | `agent-plugin.skills` | A SKILL.md that holds a Claude Code variable such as ${CLAUDE_PLUGIN_ROOT}, ${PLUGIN_ROOT} or ${PLUGIN_DATA} anywhere, ${SKILL_DIR} in its frontmatter, or ${SKILL_DIR} at all in a project skill discovered in place, reaches the model with that text as written: OpenCode expands nothing in skill text. Portable context tokens in frontmatter or in-place skills, and unresolved sibling references, also remain unexpanded (ADR-0037). | `.capture/skill-directory` |
+| `opencode:skill-exclusion-unenforced` | `agent-plugin.skills` | An excluded skill or auxiliary file remains discoverable through a shared or authored project copy. | `.capture/skill-invocation` |
 | `opencode:skill-implicit-invocation-unenforced` | `agent-plugin.skills.invocation-policy` | The declared implicit-invocation policy cannot be applied; the skill is emitted only by explicit acceptance. | `.capture/skill-invocation` |
 | `opencode:skill-policy-in-place` | `agent-plugin.skills.invocation-policy` | A skill discovered in place is authored input, so Hooknostic cannot own or verify its invocation policy. | `.capture/skill-invocation` |
 
@@ -1136,6 +1143,7 @@ Known degradations, reported as `HN101`:
 | Degradation | Component | Behavior | Evidence |
 | --- | --- | --- | --- |
 | `pi:skill-reference-unexpanded` | `agent-plugin.skills` | Pi leaves Claude and Agent Plugin placeholders literal; frontmatter references and an in-place ${SKILL_DIR} cannot be rewritten. Portable context tokens in frontmatter or in-place skills, and unresolved sibling references, also remain unexpanded (ADR-0037). | `.capture/pi/FEATURES.md` |
+| `pi:skill-exclusion-unenforced` | `agent-plugin.skills` | An excluded skill or auxiliary file remains discoverable through a shared or authored project copy. | `.capture/skill-invocation` |
 | `pi:skill-implicit-invocation-unenforced` | `agent-plugin.skills.invocation-policy` | The declared implicit-invocation policy cannot be applied; the skill is emitted only by explicit acceptance. | `.capture/skill-invocation` |
 | `pi:skill-policy-in-place` | `agent-plugin.skills.invocation-policy` | A skill discovered in place is authored input, so Hooknostic cannot own or verify its invocation policy. | `.capture/skill-invocation` |
 
@@ -1175,6 +1183,7 @@ Known degradations, reported as `HN101`:
 | Degradation | Component | Behavior | Evidence |
 | --- | --- | --- | --- |
 | `pi:skill-reference-unexpanded` | `agent-plugin.skills` | Pi leaves Claude and Agent Plugin placeholders literal; frontmatter references and an in-place ${SKILL_DIR} cannot be rewritten. Portable context tokens in frontmatter or in-place skills, and unresolved sibling references, also remain unexpanded (ADR-0037). | `.capture/pi/FEATURES.md` |
+| `pi:skill-exclusion-unenforced` | `agent-plugin.skills` | An excluded skill or auxiliary file remains discoverable through a shared or authored project copy. | `.capture/skill-invocation` |
 | `pi:skill-implicit-invocation-unenforced` | `agent-plugin.skills.invocation-policy` | The declared implicit-invocation policy cannot be applied; the skill is emitted only by explicit acceptance. | `.capture/skill-invocation` |
 | `pi:skill-policy-in-place` | `agent-plugin.skills.invocation-policy` | A skill discovered in place is authored input, so Hooknostic cannot own or verify its invocation policy. | `.capture/skill-invocation` |
 

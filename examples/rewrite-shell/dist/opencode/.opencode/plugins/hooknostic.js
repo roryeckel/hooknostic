@@ -4623,6 +4623,7 @@ var hooknosticConfigSchema = external_exports.object({
     mcpOverrides: external_exports.record(external_exports.string().min(1), projectMcpTargetOverrideSchema).optional(),
     targets: external_exports.array(external_exports.string().min(1)).min(1).optional(),
     exclude: external_exports.array(external_exports.string().min(1)).optional(),
+    excludeFor: external_exports.record(external_exports.string().min(1), external_exports.array(external_exports.string().min(1))).optional(),
     executableFiles: external_exports.array(external_exports.string().min(1)).optional(),
     mcpEnvironment: mcpEnvironmentSchema.optional(),
     runtimePackage: external_exports.object({
@@ -4726,6 +4727,15 @@ var hooknosticConfigSchema = external_exports.object({
           code: external_exports.ZodIssueCode.custom,
           path: ["components", "targets"],
           message: `Agent Plugin projection target ${JSON.stringify(target)} is not configured`
+        });
+      }
+    }
+    for (const target of Object.keys(config.components.excludeFor ?? {})) {
+      if (!configured.has(target) || !seen.has(target)) {
+        context.addIssue({
+          code: external_exports.ZodIssueCode.custom,
+          path: ["components", "excludeFor", target],
+          message: `exclusion target ${JSON.stringify(target)} must be configured and receive components`
         });
       }
     }

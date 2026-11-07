@@ -349,6 +349,15 @@ describe("compile-time config contracts", () => {
       components: { root: ".", targets: ["claude", "codex"], onInvalid: "warn" },
       targets: { claude, codex },
     });
+    defineConfig({
+      components: { root: ".", excludeFor: { claude: ["mcp.json"] } },
+      targets: { claude },
+    });
+    defineConfig({
+      // @ts-expect-error exclusions name configured targets, not arbitrary adapters
+      components: { root: ".", excludeFor: { missing: [] } },
+      targets: { claude },
+    });
     const direct = defineConfig({
       project: { root: "." },
       components: {

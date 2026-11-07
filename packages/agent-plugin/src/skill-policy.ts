@@ -34,6 +34,35 @@ export const SKILL_POLICY_DEGRADATIONS = [
 
 export type SkillPolicyValidation = AgentPluginProjectionProfile["source"]["validatedOn"][number];
 
+/** Project-only shortfall: native discovery can expose another target's retained files. */
+export function projectExclusionProfiles(
+  profiles: readonly AgentPluginProjectionProfile[],
+  evidence: string,
+): AgentPluginProjectionProfile[] {
+  return profiles.map((profile) => {
+    const skills = profile.components["agent-plugin.skills"];
+    if (!skills || skills.level === "unsupported") return profile;
+    return {
+      ...profile,
+      components: {
+        ...profile.components,
+        "agent-plugin.skills": {
+          ...skills,
+          degradations: [
+            ...(skills.degradations ?? []),
+            {
+              id: "skill-exclusion-unenforced",
+              summary:
+                "An excluded skill or auxiliary file remains discoverable through a shared or authored project copy.",
+              evidence,
+            },
+          ],
+        },
+      },
+    };
+  });
+}
+
 /** Decline uncaptured older builds, retaining every pre-existing component claim. */
 export function skillInvocationPolicyProfiles(
   profiles: readonly AgentPluginProjectionProfile[],

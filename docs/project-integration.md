@@ -1,5 +1,18 @@
 # Repository-local integration
 
+Per-target `components.excludeFor` rules apply before component validation and
+integration. Direct skill paths use `<skill>/<path>`; direct MCP uses the logical
+name `mcp.json`. Packaged sources use package-relative paths. Sync removes obsolete
+owned files and restores them when exclusions are removed.
+
+A shared or authored skill copy can remain discoverable despite an exclusion.
+This is reported as `<adapter>:skill-exclusion-unenforced` under `onDegraded`
+(error by default). Warning or named acceptance preserves the other target's
+files and records exposure rather than claiming omission. Authored files are
+never deleted. Existing shared MCP disable settings enforce server omission
+where supported. `sync` and `verify` JSON include target reports with
+`authorExclusions`; ownership and drift conflicts remain fatal.
+
 A project keeps portable sources and lets Hooknostic maintain its native wiring.
 The configuration is the single owner of the integration beneath `project.root`.
 Paths resolve from the configuration file; invoke commands from any directory

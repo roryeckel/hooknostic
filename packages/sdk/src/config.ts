@@ -214,6 +214,8 @@ interface ComponentPolicy<TTarget extends string> {
    * `entry`, every target output, the build report, and staging directories.
    */
   exclude?: string[];
+  /** Additional source-relative exclusions keyed by configured target name. */
+  excludeFor?: Partial<Record<TTarget, string[]>>;
   /** Optional runtime dependency input for projectors that support it. */
   runtimePackage?: AgentPluginRuntimePackageConfig;
   /**

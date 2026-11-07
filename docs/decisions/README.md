@@ -44,6 +44,7 @@ Read these when you want to know *why* something works the way it does, not just
 | [0033 — Each harness runs only the output generated for it](0033-no-cross-harness-compatibility-reads.md) | Why does Copilot ignore my `.claude/settings.json` hooks, and what happens when one harness reads another's files? |
 | [0036 — A session-start notification](0036-session-start-notify.md) | Why can a hook tell the user something when a session starts, and where does that not work? |
 | [0037 — Build-time harness and sibling skill references](0037-skill-context-tokens.md) | How can skill text identify its projection and name a sibling skill? |
+| [0038 — Per-target component exclusions](0038-per-target-component-exclusions.md) | How does one config intentionally omit content on a target, including when project discovery is shared? |
 
 Each record is immutable once accepted; a change of course gets a new record that
 supersedes the old one rather than a silent edit.

@@ -154,6 +154,13 @@ avoid that shared destination. See [ADR-0037](decisions/0037-skill-context-token
   It is not a portable dependency installer. See [runtime dependencies](installing-artifacts.md#the-npm-case).
 - `components.exclude` adds exclusions to the built-in filters for repository data,
   secrets files, source config/hooks, dependency directories, and target output.
+- `components.excludeFor` adds exclusions for configured target names, including
+  aliases, on package and project delivery. For example,
+  `excludeFor: { example: ["mcp.json", "server/**"] }` omits MCP and its server
+  tree only there. Package paths are relative to `root`; direct skill paths use
+  `<skill>/<path>`, and direct MCP uses `mcp.json` regardless of its filename.
+  Rules also filter materialized output under `into`; they do not suppress
+  providers or remove compiled hooks. Empty lists and unmatched globs are valid.
 - `executableFiles` explicitly assigns portable executable permission; other files use 0644.
 - Packaged MCP declarations keep the standard's placeholder rules. Direct project
   sources have separate environment handling. `mcpEnvironment` declares ambient variable
@@ -161,6 +168,13 @@ avoid that shared destination. See [ADR-0037](decisions/0037-skill-context-token
 
 Materializers are trusted build programs and can use network or persistent caches.
 `check` and `verify` do not promise to suppress those provider side effects.
+
+Exclusions precede validation and support analysis. `plugin.json` remains mandatory.
+Excluded runtime-package inputs and retained MCP commands missing their excluded
+executables are errors. Shared project discovery can prevent skill exclusions:
+`<adapter>:skill-exclusion-unenforced` (HN101) fails by default. `onDegraded: "warn"`
+or named acceptance permits the exposure, preserving the other target's copy and
+recording what remains visible. See [ADR-0038](decisions/0038-per-target-component-exclusions.md).
 
 ## Commands
 
