@@ -25,7 +25,7 @@ catalog:
   "esbuild": "^0.28.2"
   "eslint": "^10.14.0"
   "eslint-plugin-simple-import-sort": "^14.0.0"
-  "minimatch": "^10.2.6"
+  "minimatch": "^11.0.0"
   "node-pty": "^1.1.0"
   "npm-package-arg": "^14.0.0"
   "prettier": "^3.9.10"
@@ -44,3 +44,6 @@ catalogs:
     "zod": "^3.25.76"
   zod4:
     "zod": "^4.6.7"
+minimumReleaseAgeExclude:
+  # Renovate security update: minimatch@11.0.1
+  - minimatch@11.0.1
