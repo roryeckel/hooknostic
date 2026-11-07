@@ -1,6 +1,6 @@
 {
   "name": "@hooknostic/adapter-pi",
-  "version": "0.10.1",
+  "version": "0.11.0",
   "private": true,
   "description": "Hooknostic adapter for the pi coding agent",
   "type": "module",
