@@ -116,8 +116,8 @@ export const claudeCapabilityProfiles: CapabilityProfile[] = [
         // .capture/harness-playback/README.md. Keep field order stable.
         // scheduled-playback:begin
         {
-          version: "2.1.316",
-          date: "2026-11-02",
+          version: "2.1.319",
+          date: "2026-11-09",
           method: "live-probe",
           artifact: ".capture/harness-playback",
           what: "scheduled model-free playback vs a newer build: artifact discovery, rewrite/block markers, and lifecycle events verified",
