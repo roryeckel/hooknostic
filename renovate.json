@@ -3,7 +3,7 @@
   "timezone": "America/Chicago",
   "schedule": ["* 6-11 * * 1"],
   "automerge": false,
-  "dependencyDashboard": true,
+  "dependencyDashboard": { "enabled": true },
   "branchPrefix": "renovate/",
   "gitIgnoredAuthors": ["16675082+roryeckel@users.noreply.github.com"],
   "rangeStrategy": "bump",
