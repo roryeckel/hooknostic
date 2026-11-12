@@ -112,6 +112,18 @@ file, Action/container reference, and LiteLLM requirement. Missing or unexpected
 the check. Embedded Node, pnpm, or LiteLLM pins and disconnected tooling files
 also fail the ownership check.
 
+The hosted app upgrades independently of the CI image. Enable the dashboard with
+the built-in [`:dependencyDashboard` preset](https://docs.renovatebot.com/presets-default/#dependencydashboard), which each runtime resolves using its
+own supported schema. A direct boolean needs migration in newer validators; a
+direct `{ "enabled": true }` object is rejected by older hosted runtimes
+([#169](https://github.com/roryeckel/hooknostic/issues/169)).
+The `renovate-compatibility` CI job runs strict validation against a fixed older
+schema baseline, alongside the maintained current validator in `dependency-policy`.
+Its image is deliberately excluded from Renovate updates; it is not a claim about
+the hosted app's exact version. After a configuration change lands, confirm that
+the hosted app processes the default branch and clears any configuration issue;
+local validation alone does not establish that hosted processing succeeded.
+
 To reproduce using the Renovate CLI version from CI (install it in a scratch
 directory, with its supported Node runtime; it is not a workspace dependency):
 
