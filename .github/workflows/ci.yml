@@ -56,8 +56,8 @@ jobs:
     timeout-minutes: 10
     permissions:
       contents: read
-    # The hosted app maintains its runtime. This image supplies the matching
-    # validator CLI without adding Renovate's Node floor to workspace engines.
+    # The hosted app upgrades independently. This image validates the current
+    # CLI; the compatibility job also checks the older dashboard schema.
     container:
       image: ghcr.io/renovatebot/renovate:44.235.1
       options: --user 0
@@ -82,6 +82,23 @@ jobs:
         run: renovate --platform=local --dry-run=extract --require-config=required --onboarding=false
       - name: Compare discovery with the authoritative inventory
         run: node scripts/check-dependencies.mjs "$RUNNER_TEMP/renovate-extraction.ndjson"
+
+  renovate-compatibility:
+    needs: renovate-ready
+    if: ${{ !cancelled() && (needs.renovate-ready.result == 'success' || needs.renovate-ready.result == 'skipped') }}
+    name: Renovate configuration compatibility
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    # A fixed schema baseline, not a claim about the hosted app's exact version.
+    # renovate.json deliberately excludes this image version from updates.
+    container:
+      image: ghcr.io/renovatebot/renovate:44.206.2
+      options: --user 0
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - run: renovate-config-validator --strict renovate.json
 
   test:
     needs: renovate-ready

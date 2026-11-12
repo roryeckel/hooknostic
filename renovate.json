@@ -3,7 +3,7 @@
   "timezone": "America/Chicago",
   "schedule": ["* 6-11 * * 1"],
   "automerge": false,
-  "dependencyDashboard": { "enabled": true },
+  "extends": [":dependencyDashboard"],
   "branchPrefix": "renovate/",
   "gitIgnoredAuthors": ["16675082+roryeckel@users.noreply.github.com"],
   "rangeStrategy": "bump",
@@ -13,6 +13,14 @@
     "managerFilePatterns": ["/^\\.github/requirements/[^/]+\\.txt$/"]
   },
   "packageRules": [
+    {
+      "description": "Keep the older dashboard-schema compatibility validator as a fixed baseline",
+      "matchManagers": ["github-actions"],
+      "matchFileNames": [".github/workflows/ci.yml"],
+      "matchPackageNames": ["ghcr.io/renovatebot/renovate"],
+      "matchCurrentValue": "44.206.2",
+      "enabled": false
+    },
     {
       "description": "Node declarations stay on the oldest supported runtime major",
       "matchManagers": ["npm"],
