@@ -25,21 +25,21 @@ catalog:
   "esbuild": "^0.28.2"
   "eslint": "^10.14.0"
   "eslint-plugin-simple-import-sort": "^14.0.0"
-  "minimatch": "^11.0.1"
+  "minimatch": "^11.0.7"
   "node-pty": "^1.1.0"
   "npm-package-arg": "^14.0.0"
   "prettier": "^3.9.10"
   "typescript": "npm:@typescript/typescript6@~6.0.2"
   "@typescript/native": "npm:typescript@~7.0.2"
-  "typescript-eslint": "^8.72.1"
+  "typescript-eslint": "^8.72.2"
   "validate-npm-package-name": "^8.0.0"
-  "vitest": "^5.0.5"
+  "vitest": "^5.1.0"
   "yaml": "^2.9.1"
 catalogs:
   semver-runtime:
-    "semver": "^7.8.5"
+    "semver": "^7.8.6"
   semver-tooling:
-    "semver": "^7.8.5"
+    "semver": "^7.8.6"
   zod3:
     "zod": "^3.25.76"
   zod4:
