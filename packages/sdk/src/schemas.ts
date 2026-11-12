@@ -1,4 +1,4 @@
-import { z } from "zod";
+import { z } from "zod/v3";
 
 import { ALL_CAPABILITY_IDS } from "./capabilities.js";
 import type { PackageMaterializer } from "./config.js";

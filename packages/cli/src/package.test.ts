@@ -24,6 +24,7 @@ interface Manifest {
   files: string[];
   exports: Record<string, unknown>;
   dependencies?: Record<string, string>;
+  peerDependencies?: Record<string, string>;
 }
 
 async function manifestOf(packageDir: string): Promise<Manifest> {
@@ -173,7 +174,7 @@ describe("simulated registry install", () => {
       ];
       const published = new Set(installs.map(([manifest]) => manifest.name));
       for (const [manifest, consumerDir, installRoot] of installs) {
-        for (const dependency of Object.keys(manifest.dependencies ?? {})) {
+        for (const dependency of Object.keys({ ...manifest.dependencies, ...manifest.peerDependencies })) {
           if (published.has(dependency)) continue;
           // Everything else must exist on the registry: no unpublished workspace packages.
           expect(dependency, `${manifest.name} depends on ${dependency}`).not.toMatch(/^@hooknostic\//);

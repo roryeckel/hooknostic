@@ -110,7 +110,6 @@ it("tolerates the versionless setup-node placeholder but not a literal Node pin"
 it("keeps intentional catalog lines and the manual Node floor outside automatic major migrations", () => {
   const config = JSON.parse(readFileSync(new URL("../renovate.json", import.meta.url), "utf8"));
   const ruleFor = (type) => config.packageRules.find((rule) => rule.matchDepTypes?.includes(type));
-  expect(ruleFor("pnpm.catalog.zod3").allowedVersions).toBe(">=3 <4");
   expect(ruleFor("pnpm.catalog.zod4").allowedVersions).toBe(">=4 <5");
   expect(ruleFor("pnpm.catalog.semver-runtime").allowedVersions).toBe(">=7 <8");
   expect(ruleFor("pnpm.catalog.semver-tooling").allowedVersions).toBe(">=7 <8");

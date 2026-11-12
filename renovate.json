@@ -79,10 +79,11 @@
       "enabled": false
     },
     {
+      "description": "The SDK's cross-major Zod peer range is a manual compatibility contract",
       "matchManagers": ["npm"],
-      "matchDepTypes": ["pnpm.catalog.zod3"],
+      "matchDepTypes": ["pnpm.catalog.zod-sdk-peer"],
       "matchPackageNames": ["zod"],
-      "allowedVersions": ">=3 <4"
+      "enabled": false
     },
     {
       "matchManagers": ["npm"],
