@@ -5,7 +5,7 @@ in TypeScript. Compile hooks, skills, and MCP for supported
 coding-agent harnesses with the `hooknostic` CLI. Requires Node.js `^22.22.2 || ^24.15.0 || >=26.0.0`.
 
 ```sh
-npm install --save-dev @hooknostic/sdk hooknostic zod@^4.6.7
+npm install --save-dev @hooknostic/sdk hooknostic
 ```
 
 ```ts
