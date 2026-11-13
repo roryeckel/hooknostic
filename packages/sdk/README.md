@@ -5,7 +5,7 @@ in TypeScript. Compile hooks, skills, and MCP for supported
 coding-agent harnesses with the `hooknostic` CLI. Requires Node.js `^22.22.2 || ^24.15.0 || >=26.0.0`.
 
 ```sh
-npm install --save-dev @hooknostic/sdk hooknostic
+npm install --save-dev @hooknostic/sdk hooknostic zod@^4.6.7
 ```
 
 ```ts
@@ -33,3 +33,12 @@ and [harness support](https://github.com/roryeckel/hooknostic/blob/master/docs/h
 for the supported events and effects. Licensed under Apache-2.0.
 
 `defineConfig` also selects Agent Plugins 1.0 inputs or direct project components. See the [configuration reference](https://github.com/roryeckel/hooknostic/blob/master/docs/configuration.md). Hookless builds need configuration but no `definePlugin` entry.
+
+## Zod 4 migration
+
+The SDK's exported runtime schemas use Zod 4 Classic. Install the `zod` peer at
+`^4.6.7` and compose schemas using `zod/v4` (or the root entry of Zod 4).
+This is a breaking SDK change: Zod 3 schema composition and error types are no
+longer supported. Use `ZodError.issues` in place of `.errors`.
+See the [migration guide](https://github.com/roryeckel/hooknostic/blob/master/docs/migration-zod-v4.md)
+for before/after examples and validation changes.

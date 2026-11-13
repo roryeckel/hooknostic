@@ -4,6 +4,17 @@ import { block, definePlugin, hook, replaceInput } from "@hooknostic/sdk";
 
 import { buildPluginIR, hookAppliesToTarget } from "./ir.js";
 
+it("reports a symbol-keyed capability as an HN501 diagnostic instead of throwing", () => {
+  const result = buildPluginIR({
+    name: "symbol-capability",
+    hooks: [{ event: "tool.before", id: "probe", capabilities: { [Symbol("bad")]: "required" }, run() {} }],
+  });
+  expect(result.ir).toBeUndefined();
+  expect(result.diagnostics).toEqual([
+    expect.objectContaining({ code: "HN501", message: expect.stringContaining("hooks.0.capabilities.Symbol(bad)") }),
+  ]);
+});
+
 function examplePlugin() {
   return definePlugin({
     name: "example",

@@ -27,13 +27,12 @@ belong in subsequent reviewed PRs. Contribution scope remains in
 ## Catalogs and lockfiles
 
 The default catalog holds shared external requirements. `zod4` serves core, the
-MCP example and SDK development. The SDK explicitly imports `zod/v3` to retain its
-public Zod 3 schema API. Its `zod-sdk-peer` catalog lets consumers provide their
-existing Zod instance: `^3.25.76 || ^4.6.7`. This follows the
-[upstream library guidance](https://zod.dev/library-authors#how-to-configure-peer-dependencies)
-and avoids incompatible duplicate schema types. The cross-major peer range is a
-manual compatibility contract; Renovate updates the workspace's patched V4 pin
-without rewriting that range.
+MCP example and the SDK. The SDK exports native Zod 4 Classic schemas from
+`zod/v4`, with `zod` as a peer and development dependency on the same `^4.6.7`
+catalog. This follows the [upstream peer dependency guidance](https://zod.dev/library-authors#how-to-configure-peer-dependencies)
+and lets schema types resolve against the consumer's instance. Zod 3 peers and
+V3 schema composition are no longer supported. See the
+[SDK migration guide](migration-zod-v4.md) for this breaking change.
 `semver-runtime` preserves the library
 and CLI requirement, while `semver-tooling` preserves the root tooling's higher
 minimum. Their names encode intentional differences, even when a lockfile
@@ -87,29 +86,24 @@ lockfile. Intentional duplicates — the TypeScript compiler and its API line,
 or packages whose ranges do not overlap —
 are not reported.
 
-### Zod security compatibility: 2026-11-12
+### Zod security migration: 2026-11-12
 
 [Dependabot alert #31](https://github.com/roryeckel/hooknostic/security/dependabot/31)
 flags the complete Zod 3.25.76 package, which also ships an affected V4 entry point.
 The [upstream fix](https://github.com/colinhacks/zod/commit/a0ebf970f2d752e5f58527cd2942ff48be4f46bd)
-rejects oversized V4 collections before parsing their elements. Core and SDK
-development now share the existing `^4.6.7` catalog with the MCP example, removing
-the old package from the repository lockfile. The SDK uses a Zod peer dependency
-and the supported V3 entry point so its exported schema types resolve against the
-consumer's instance. A direct dependency on V4 caused TypeScript recursion errors
-when composing those schemas with a consumer's existing V3 schemas.
-This does not migrate exported schemas to the V4 API or add collection limits to
-Hooknostic's inputs. Legacy V3 peers remain supported for their V3 API; consumers
-using a V4 entry point must use the patched V4 package rather than the V4 copy in
-an old V3 distribution.
-Regression tests exercise the patched V4 array bounds and the retained V3 schema
-composition and error shape. The old dependency visits all eight invalid elements
-before reporting the bound; the patched dependency visits none.
-The Node compatibility CI job also runs `node scripts/check-sdk-zod-peers.mjs`
-after building: it packs the SDK and installs an isolated consumer at each peer
-range's minimum, then checks TypeScript composition and runtime error identity.
-The versions derive from `zod-sdk-peer`; this check needs registry access and
-disables dependency install scripts.
+rejects oversized V4 collections before parsing their elements. All workspace
+users now share the patched `^4.6.7` catalog, removing the old package from the
+repository lockfile. Exported SDK schemas migrate to native V4 as an explicit
+SDK breaking change; no V3 compatibility entry point remains in runtime code.
+This does not add collection limits to Hooknostic's inputs.
+
+Regression tests check native V4 composition and errors, and exercise the patched
+array bounds. The old dependency visits all eight invalid elements before
+reporting the bound; the patched dependency visits none. The Node compatibility
+CI job runs `node scripts/check-sdk-zod-peers.mjs` after building: it packs the
+SDK and installs an isolated consumer at the V4 peer floor, then checks TypeScript
+composition and runtime error identity. The version derives from `zod4`; this
+check needs registry access and disables dependency install scripts.
 
 Monthly lockfile maintenance intentionally refreshes transitive resolutions
 within the declared ranges in both lockfiles. The example plugin's generated `package-lock.json`

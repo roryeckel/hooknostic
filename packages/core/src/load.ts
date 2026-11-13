@@ -118,7 +118,7 @@ export async function loadConfig(
       diagnostics.push({
         code: "HN501",
         severity: "error",
-        message: `invalid configuration: ${issue.path.join(".") || "<root>"}: ${issue.message}`,
+        message: `invalid configuration: ${issue.path.map(String).join(".") || "<root>"}: ${issue.message}`,
         location: { file: configPath },
         remediation: "see docs/design.md §8.1 for the configuration shape.",
       });

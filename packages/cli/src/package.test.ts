@@ -249,7 +249,7 @@ describe("simulated registry install", () => {
         // Self-contained: no bare workspace specifier survives bundling…
         expect(code, artifact).not.toMatch(/(from\s+|import\(|require\()["']@hooknostic\//);
         // …and the shim shared the project's SDK instead of bundling a second zod.
-        expect((code.match(/^\/\/ .*\/zod\/v3\/ZodError\.js$/gm) ?? []).length, artifact).toBe(1);
+        expect((code.match(/^\/\/ .*\/zod\/v4\/core\/errors\.js$/gm) ?? []).length, artifact).toBe(1);
         // …and nothing dragged a CommonJS build-time dependency in with it.
         expect(code, artifact).not.toContain('Dynamic require of "');
       }

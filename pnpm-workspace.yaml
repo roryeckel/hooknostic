@@ -42,8 +42,6 @@ catalogs:
     "semver": "^7.8.6"
   zod4:
     "zod": "^4.6.7"
-  zod-sdk-peer:
-    "zod": "^3.25.76 || ^4.6.7"
 minimumReleaseAgeExclude:
   # Renovate security update: minimatch@11.0.1
   - minimatch@11.0.1

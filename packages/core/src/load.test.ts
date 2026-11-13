@@ -26,6 +26,22 @@ afterAll(async () => {
 });
 
 describe("loadConfig", () => {
+  it("reports a symbol-keyed target as an HN501 diagnostic instead of throwing", async () => {
+    const dir = await fixtureDir();
+    const file = join(dir, "config.ts");
+    await writeFile(
+      file,
+      `export default { entry: "hooks.ts", targets: {
+        [Symbol("target")]: { version: "1", delivery: "package", output: "out" }
+      } };`,
+    );
+    const result = await loadConfig(file);
+    expect(result.config).toBeUndefined();
+    expect(result.diagnostics).toEqual([
+      expect.objectContaining({ code: "HN501", message: expect.stringContaining("targets.Symbol(target)") }),
+    ]);
+  });
+
   it("evaluates CommonJS dependencies requiring Node builtins at module initialization", async () => {
     const dir = await fixtureDir();
     await writeFile(

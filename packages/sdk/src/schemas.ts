@@ -1,4 +1,4 @@
-import { z } from "zod/v3";
+import * as z from "zod/v4";
 
 import { ALL_CAPABILITY_IDS } from "./capabilities.js";
 import type { PackageMaterializer } from "./config.js";
@@ -120,7 +120,7 @@ export const jsonValueSchema = z.unknown().superRefine((value, ctx) => {
   const path = findNonJsonPath(value);
   if (path !== undefined) {
     ctx.addIssue({
-      code: z.ZodIssueCode.custom,
+      code: "custom",
       message: `payload is not a JSON value (at ${path}): only null, booleans, finite numbers, strings, arrays and plain objects are allowed.`,
     });
   }
@@ -185,22 +185,28 @@ const projectMcpTargetOverrideSchema = z
   })
   .strict();
 
-const mcpEnvironmentRecordSchema = z.record(z.string().min(1), z.array(z.string().min(1)));
+const mcpEnvironmentValueSchema = z.array(z.string().min(1));
+const mcpEnvironmentRecordSchema = z.record(z.string().min(1), mcpEnvironmentValueSchema);
 
 const mcpEnvironmentSchema = z.unknown().transform((value, context): Record<string, string[]> => {
   const parsed = mcpEnvironmentRecordSchema.safeParse(value);
   if (!parsed.success) {
-    for (const issue of parsed.error.issues) context.addIssue(issue);
+    for (const issue of parsed.error.issues) context.addIssue({ ...issue });
     return z.NEVER;
   }
 
   const entries = Object.entries(parsed.data);
-  // Zod 3 validates an enumerable own `__proto__` record entry, then
-  // deliberately omits it while merging into a plain output object. Rebuild
-  // with Object.fromEntries so the server name remains an own data property
-  // without invoking Object.prototype's inherited setter.
+  // Zod 4 skips `__proto__` record entries, including their validation. Parse
+  // that own entry explicitly, then rebuild with Object.fromEntries so the
+  // server name survives without invoking Object.prototype's inherited setter.
   if (typeof value === "object" && value !== null && Object.prototype.propertyIsEnumerable.call(value, "__proto__")) {
-    entries.push(["__proto__", (value as Record<string, string[]>)["__proto__"]!]);
+    const prototypeEntry = mcpEnvironmentValueSchema.safeParse((value as Record<string, unknown>)["__proto__"]);
+    if (!prototypeEntry.success) {
+      for (const issue of prototypeEntry.error.issues)
+        context.addIssue({ ...issue, path: ["__proto__", ...issue.path] });
+      return z.NEVER;
+    }
+    entries.push(["__proto__", prototypeEntry.data]);
   }
   return Object.fromEntries(entries);
 });
@@ -259,7 +265,7 @@ export const hooknosticConfigSchema = z
   .superRefine((config, context) => {
     if (config.entry === undefined && config.components === undefined) {
       context.addIssue({
-        code: z.ZodIssueCode.custom,
+        code: "custom",
         message: "at least one of entry or components is required",
       });
     }
@@ -268,7 +274,7 @@ export const hooknosticConfigSchema = z
       if (config.project === undefined || target.delivery !== "project") continue;
       const adapter = target.adapter ?? name;
       if (projectAdapters.has(adapter))
-        context.addIssue({ code: z.ZodIssueCode.custom, message: `duplicate project delivery for adapter ${adapter}` });
+        context.addIssue({ code: "custom", message: `duplicate project delivery for adapter ${adapter}` });
       projectAdapters.add(adapter);
     }
     for (const [name, target] of Object.entries(config.targets)) {
@@ -276,7 +282,7 @@ export const hooknosticConfigSchema = z
       // a coordinate to name, so the setting could only read as a promise.
       if (target.npmName !== undefined && target.delivery !== "package") {
         context.addIssue({
-          code: z.ZodIssueCode.custom,
+          code: "custom",
           path: ["targets", name, "npmName"],
           message: `npmName requires package delivery`,
         });
@@ -285,7 +291,7 @@ export const hooknosticConfigSchema = z
       // their authored names on every harness; there is nothing to choose.
       if (target.skillNames !== undefined && target.delivery !== "package") {
         context.addIssue({
-          code: z.ZodIssueCode.custom,
+          code: "custom",
           path: ["targets", name, "skillNames"],
           message: `skillNames requires package delivery`,
         });
@@ -299,7 +305,7 @@ export const hooknosticConfigSchema = z
         ([name, target]) => componentTargets.has(name) && target.delivery === "project",
       )
     ) {
-      context.addIssue({ code: z.ZodIssueCode.custom, message: "project component delivery requires project.root" });
+      context.addIssue({ code: "custom", message: "project component delivery requires project.root" });
     }
     if (config.components) {
       if (
@@ -307,13 +313,13 @@ export const hooknosticConfigSchema = z
         (config.components.skills !== undefined || config.components.mcp !== undefined)
       ) {
         context.addIssue({
-          code: z.ZodIssueCode.custom,
+          code: "custom",
           message: "components.root is mutually exclusive with direct skills/mcp sources",
         });
       }
       if (config.components.root !== undefined && config.components.mcpOverrides !== undefined) {
         context.addIssue({
-          code: z.ZodIssueCode.custom,
+          code: "custom",
           message: "components.mcpOverrides is only valid with a direct MCP source",
         });
       }
@@ -327,20 +333,20 @@ export const hooknosticConfigSchema = z
         config.components.executableFiles !== undefined
       ) {
         context.addIssue({
-          code: z.ZodIssueCode.custom,
+          code: "custom",
           path: ["components", "executableFiles"],
           message: "components.executableFiles requires components.root or components.skills",
         });
       }
       if (config.components.mcp === undefined && config.components.mcpOverrides !== undefined) {
-        context.addIssue({ code: z.ZodIssueCode.custom, message: "components.mcpOverrides requires components.mcp" });
+        context.addIssue({ code: "custom", message: "components.mcpOverrides requires components.mcp" });
       }
       // Packages only. A direct MCP source already resolves `${NAME}` from the
       // launch environment, so it says what it needs in the declaration itself;
       // a package may not, which is the whole reason this exists (ADR-0018).
       if (config.components.root === undefined && config.components.mcpEnvironment !== undefined) {
         context.addIssue({
-          code: z.ZodIssueCode.custom,
+          code: "custom",
           path: ["components", "mcpEnvironment"],
           message: "components.mcpEnvironment requires components.root",
         });
@@ -350,14 +356,14 @@ export const hooknosticConfigSchema = z
         config.components.skills === undefined &&
         config.components.mcp === undefined
       ) {
-        context.addIssue({ code: z.ZodIssueCode.custom, message: "components requires root, skills, or mcp" });
+        context.addIssue({ code: "custom", message: "components requires root, skills, or mcp" });
       }
       const configured = new Set(Object.keys(config.targets));
       const seen = new Set<string>();
       for (const target of config.components.targets ?? Object.keys(config.targets)) {
         if (seen.has(target)) {
           context.addIssue({
-            code: z.ZodIssueCode.custom,
+            code: "custom",
             path: ["components", "targets"],
             message: `duplicate Agent Plugin projection target ${JSON.stringify(target)}`,
           });
@@ -365,7 +371,7 @@ export const hooknosticConfigSchema = z
         seen.add(target);
         if (!configured.has(target)) {
           context.addIssue({
-            code: z.ZodIssueCode.custom,
+            code: "custom",
             path: ["components", "targets"],
             message: `Agent Plugin projection target ${JSON.stringify(target)} is not configured`,
           });
@@ -374,7 +380,7 @@ export const hooknosticConfigSchema = z
       for (const target of Object.keys(config.components.excludeFor ?? {})) {
         if (!configured.has(target) || !seen.has(target)) {
           context.addIssue({
-            code: z.ZodIssueCode.custom,
+            code: "custom",
             path: ["components", "excludeFor", target],
             message: `exclusion target ${JSON.stringify(target)} must be configured and receive components`,
           });
@@ -383,19 +389,19 @@ export const hooknosticConfigSchema = z
       for (const target of Object.keys(config.components.mcpOverrides ?? {})) {
         if (!configured.has(target)) {
           context.addIssue({
-            code: z.ZodIssueCode.custom,
+            code: "custom",
             path: ["components", "mcpOverrides", target],
             message: `MCP override target ${JSON.stringify(target)} is not configured`,
           });
         } else if (!seen.has(target)) {
           context.addIssue({
-            code: z.ZodIssueCode.custom,
+            code: "custom",
             path: ["components", "mcpOverrides", target],
             message: `MCP override target ${JSON.stringify(target)} does not receive components`,
           });
         } else if (config.targets[target]?.delivery !== "project") {
           context.addIssue({
-            code: z.ZodIssueCode.custom,
+            code: "custom",
             path: ["components", "mcpOverrides", target],
             message: `MCP override target ${JSON.stringify(target)} must use project delivery`,
           });
@@ -403,7 +409,7 @@ export const hooknosticConfigSchema = z
       }
       if (config.components.materialize !== undefined && config.components.root === undefined) {
         context.addIssue({
-          code: z.ZodIssueCode.custom,
+          code: "custom",
           path: ["components", "materialize"],
           message: "components.materialize requires components.root",
         });
@@ -413,7 +419,7 @@ export const hooknosticConfigSchema = z
         ![...componentTargets].some((target) => config.targets[target]?.delivery === "package")
       ) {
         context.addIssue({
-          code: z.ZodIssueCode.custom,
+          code: "custom",
           path: ["components", "materialize"],
           message: "components.materialize requires at least one package-delivery component target",
         });
@@ -423,7 +429,7 @@ export const hooknosticConfigSchema = z
         for (const target of configured) {
           if (!projected.has(target)) {
             context.addIssue({
-              code: z.ZodIssueCode.custom,
+              code: "custom",
               path: ["components", "targets"],
               message: `hookless builds must project configured target ${JSON.stringify(target)}`,
             });
@@ -460,7 +466,9 @@ export const hookDefinitionSchema = z
     // 0 out, which would not fall back through `hook.timeoutMs ?? policy...`
     // and would time the hook out permanently.
     timeoutMs: z.number().int().positive().max(MAX_TIMER_DELAY_MS).optional(),
-    capabilities: z.record(capabilityIdSchema, requirementLevelSchema),
+    // Validate string keys before the enum: V4's enum-record error formatter
+    // cannot render an unexpected symbol key. The pipe keeps capability typing.
+    capabilities: z.partialRecord(z.string().pipe(capabilityIdSchema), requirementLevelSchema),
     fields: z.array(eventFieldIdSchema).optional(),
     run: z.custom<(...args: never[]) => unknown>((v) => typeof v === "function", {
       message: "run must be a function",

@@ -66,7 +66,7 @@ export function buildPluginIR(spec: unknown): BuildIRResult {
       diagnostics.push({
         code: "HN501",
         severity: "error",
-        message: `invalid plugin source: ${issue.path.join(".") || "<root>"}: ${issue.message}`,
+        message: `invalid plugin source: ${issue.path.map(String).join(".") || "<root>"}: ${issue.message}`,
         remediation: "export default definePlugin({...}) built from hook() calls in the entry module.",
       });
     }

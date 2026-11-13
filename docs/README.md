@@ -32,6 +32,8 @@ Step-by-step walkthroughs, each built on a runnable project in [`examples/`](../
 
 ## 🛠 Guides
 
+Upgrading an existing SDK consumer? See the [Zod 4 migration guide](migration-zod-v4.md).
+
 | Guide | When to read it |
 | --- | --- |
 | [Installing built output](installing-artifacts.md) | You ran `hooknostic build` and want each agent to actually load the result — including the common case of a repo consuming its own hooks |

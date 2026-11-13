@@ -11,6 +11,14 @@ else in `packages/` is bundled into the CLI at build time — internal package
 versions are metadata only, so the whole workspace versions **in lockstep**:
 one release version everywhere, written by `scripts/set-versions.mjs`.
 
+## Pending SDK breaking change
+
+The next release containing [the Zod 4 migration](migration-zod-v4.md) must be
+announced as an SDK breaking release. Exported schemas use native V4 and require
+a `zod` V4 peer; V3 composition and error APIs are removed. Include the migration
+guide in the release notes. This change does not itself bump or publish a version;
+version selection remains part of the release preparation workflow below.
+
 ## The routine pipeline: three stages, two human decisions
 
 ```

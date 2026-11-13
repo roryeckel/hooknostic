@@ -13,30 +13,28 @@ import { inventory } from "./check-dependencies.mjs";
 const root = fileURLToPath(new URL("../", import.meta.url));
 const require = createRequire(import.meta.url);
 const compiler = resolve(dirname(require.resolve("@typescript/native/package.json")), "bin/tsc");
-const range = inventory().find(
-  (dep) => dep.depType === "pnpm.catalog.zod-sdk-peer" && dep.depName === "zod",
-)?.currentValue;
-assert.ok(range, "SDK Zod peer catalog is missing");
+const range = inventory().find((dep) => dep.depType === "pnpm.catalog.zod4" && dep.depName === "zod")?.currentValue;
+assert.ok(range, "Zod 4 catalog is missing");
 const versions = range.split("||").map((part) => {
   const minimum = semver.minVersion(part.trim());
   assert.ok(minimum, `Invalid Zod peer range: ${part}`);
   return minimum.version;
 });
 
-const consumer = `import { z } from "zod/v3";
+const consumer = `import { z } from "zod/v4";
 import { effectSchema, toolInvocationSchema } from "@hooknostic/sdk";
 
-const legacySchema: z.ZodTypeAny = toolInvocationSchema;
+const sdkSchema: z.ZodType = toolInvocationSchema;
 const nested = z.object({ tool: toolInvocationSchema.extend({ label: z.string() }), effect: effectSchema });
 const value = nested.parse({
   tool: { kind: "other", nativeName: "probe", input: null, label: "ok" },
   effect: { kind: "block", reason: "example" },
 });
-if (value.tool.label !== "ok" || !legacySchema.safeParse({ kind: "other", nativeName: "probe", input: null }).success)
+if (value.tool.label !== "ok" || !sdkSchema.safeParse({ kind: "other", nativeName: "probe", input: null }).success)
   throw new Error("Schema composition changed");
 const failed = toolInvocationSchema.safeParse({ kind: "other", nativeName: 1, input: null });
-if (failed.success || !(failed.error instanceof z.ZodError) || failed.error.errors !== failed.error.issues ||
-    failed.error.issues[0]?.code !== "invalid_type") throw new Error("V3 error compatibility changed");
+if (failed.success || !(failed.error instanceof z.ZodError) || "errors" in failed.error ||
+    failed.error.issues[0]?.code !== "invalid_type") throw new Error("V4 error compatibility changed");
 `;
 
 async function run(command, args, cwd) {
@@ -71,7 +69,7 @@ try {
     await run("pnpm", ["install", "--ignore-scripts"], project);
     await run(process.execPath, [compiler, "-p", join(project, "tsconfig.json")], root);
     await run(process.execPath, [join(project, "out/consumer.js")], project);
-    console.log(`Packed SDK with Zod ${version}: types, composition and V3 errors passed`);
+    console.log(`Packed SDK with Zod ${version}: types, composition and V4 errors passed`);
   }
 } finally {
   await rm(directory, { recursive: true, force: true });
