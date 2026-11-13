@@ -60,6 +60,14 @@ workspace override to TypeScript 6.0, the supported linter API line; Renovate
 retains that line. Both catalog aliases and the override are compared against
 Renovate's extracted target package and version range.
 
+An override may instead reference a catalog (`catalog:` or `catalog:<name>`), as
+the lint tooling's `minimatch` overrides do (see the dated record below). It then
+follows the catalog entry Renovate maintains. Renovate extracts such an override
+as a versionless `catalog:` reference and skips it, as it does for manifest
+catalog references, so `pnpm check:dependencies` does not expect it in the
+extraction. Instead, the check fails unless the override's target package has an
+entry in the named catalog.
+
 The standalone runtime pair formerly named `runtime.package.json` and
 `runtime.package-lock.json` now lives under `examples/agent-plugin/runtime/`
 using npm's standard filenames, so Renovate can update both requirements and
@@ -111,6 +119,60 @@ CI job runs `node scripts/check-sdk-zod-peers.mjs` after building: it packs the
 SDK and installs an isolated consumer at the V4 peer floor, then checks TypeScript
 composition and runtime error identity. The version derives from `zod-peer`; this
 check needs registry access and disables dependency install scripts.
+
+### Minimatch lint-tooling override: 2026-11-13
+
+[Dependabot alert #33](https://github.com/roryeckel/hooknostic/security/dependabot/33)
+([GHSA-g3hv-75wg-m249](https://github.com/advisories/GHSA-g3hv-75wg-m249),
+globparts amplification DoS) affects minimatch `>=7.0.0 <11.0.1`. The product
+packages already used `minimatch` 11 through the default catalog. The lockfile
+still kept `minimatch@10.2.6`, used only by development lint tooling:
+`eslint@10.14.0` (`^10.2.6`), `@eslint/config-array@0.23.5` (`^10.2.4`) and
+`@typescript-eslint/typescript-estree@8.72.2` (`^10.2.2`). Those were the latest
+releases of each, and the 10.x line has no patched release.
+
+Three scoped overrides in `pnpm-workspace.yaml` (`eslint>minimatch`,
+`@eslint/config-array>minimatch` and
+`@typescript-eslint/typescript-estree>minimatch`) set each package's
+minimatch requirement to `catalog:`. Only these three parents move; nothing else
+requests minimatch 10. Through the catalog, the lint tooling shares the product's
+patched `minimatch` resolution, so the lockfile keeps one copy and the dedupe
+check stays clean. A future catalog bump moves both together, and the lint gate
+validates the result. No generated example changes, because lint tooling is not
+bundled.
+
+Compatibility evidence:
+
+- The [11.0 changelog](https://github.com/isaacs/minimatch/blob/main/changelog.md)
+  removes `makeRe()`, `Minimatch#regexp`, `AST`, `debug`, `matchOne()`,
+  `slashSplit()`, `levelTwoFileOptimize()` and `maxExtglobRecursion`. The installed
+  consumers use none of them. ESLint and config-array construct `Minimatch` with
+  `dot` (config-array also with `flipNegate`), and then call `match(path)`,
+  `match(path, true)` (partial) and read `pattern`. typescript-estree calls
+  `minimatch(path, pattern, { dot: true })` for `allowDefaultProject`. All of
+  these remain in 11.x, which still ships CommonJS and ESM entry points.
+- minimatch 11 requires Node `20 || >=22`, which covers the supported
+  `^22.22.2 || ^24.15.0 || >=26.0.0` range.
+- Under the override, ESLint still reports a deliberate violation in a linted
+  file. It still ignores a file matched by `fixtures/**`, both when named
+  directly and during a full-tree run. A `files` glob (`scripts/**/*.mjs`) still
+  applies its globals: the same `process` reference outside that glob reports
+  `no-undef`. This repository does not configure `projectService`, so lint does
+  not reach typescript-estree's call. A direct call through its resolution
+  matched the expected paths, including dot directories.
+- Renovate 44.235.1's local extraction reports each override with
+  `currentValue: "catalog:"` and `skipReason: "unspecified-version"`. Before
+  `check-dependencies.mjs` learned catalog overrides, that real extraction failed
+  the comparison with `Missing extracted dependency`.
+
+Regression tests check that the overrides resolve through the catalog, that the
+captured extraction passes, and that an unresolvable catalog override fails. A
+separate test fails if the lockfile resolves any minimatch below 11.0.1.
+
+Remove the overrides once ESLint, `@eslint/config-array` and
+`@typescript-eslint/typescript-estree` all declare a minimatch 11 (or later)
+requirement. Then confirm that `pnpm why minimatch -r` still shows only patched
+versions.
 
 Monthly lockfile maintenance intentionally refreshes transitive resolutions
 within the declared ranges in both lockfiles. The example plugin's generated `package-lock.json`
