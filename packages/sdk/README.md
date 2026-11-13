@@ -33,3 +33,10 @@ and [harness support](https://github.com/roryeckel/hooknostic/blob/master/docs/h
 for the supported events and effects. Licensed under Apache-2.0.
 
 `defineConfig` also selects Agent Plugins 1.0 inputs or direct project components. See the [configuration reference](https://github.com/roryeckel/hooknostic/blob/master/docs/configuration.md). Hookless builds need configuration but no `definePlugin` entry.
+
+## Upgrading
+
+The SDK's exported runtime schemas use Zod 4 Classic and require the `zod` peer
+at `^4.6.7`; Zod 3 schema composition is no longer supported. See the
+[upgrading guides](https://github.com/roryeckel/hooknostic/blob/master/docs/upgrading/README.md)
+for this and other breaking changes.

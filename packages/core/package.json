@@ -22,7 +22,7 @@
     "minimatch": "catalog:",
     "semver": "catalog:semver-runtime",
     "toml-eslint-parser": "catalog:",
-    "zod": "catalog:zod3"
+    "zod": "catalog:zod4"
   },
   "devDependencies": {
     "@types/semver": "catalog:",

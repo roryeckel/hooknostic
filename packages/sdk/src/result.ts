@@ -1,4 +1,4 @@
-import { z } from "zod";
+import * as z from "zod/v4";
 
 import type { Effect } from "./effects.js";
 import { EFFECT_KINDS } from "./effects.js";

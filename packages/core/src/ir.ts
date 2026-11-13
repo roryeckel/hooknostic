@@ -10,6 +10,7 @@ import type {
 import { fieldEvent, isToolScopedEvent, pluginSpecSchema } from "@hooknostic/sdk";
 
 import type { Diagnostic } from "./diagnostics.js";
+import { formatSchemaIssue } from "./schema-issues.js";
 
 /**
  * Normalized, serializable plugin representation. The IR carries hook
@@ -66,7 +67,7 @@ export function buildPluginIR(spec: unknown): BuildIRResult {
       diagnostics.push({
         code: "HN501",
         severity: "error",
-        message: `invalid plugin source: ${issue.path.join(".") || "<root>"}: ${issue.message}`,
+        message: `invalid plugin source: ${formatSchemaIssue(issue)}`,
         remediation: "export default definePlugin({...}) built from hook() calls in the entry module.",
       });
     }

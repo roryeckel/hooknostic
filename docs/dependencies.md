@@ -26,8 +26,21 @@ belong in subsequent reviewed PRs. Contribution scope remains in
 
 ## Catalogs and lockfiles
 
-The default catalog holds shared external requirements. `zod3` serves the SDK
-and core; `zod4` serves the MCP example. `semver-runtime` preserves the library
+The default catalog holds shared external requirements. `zod4` serves core, the
+MCP example and the SDK's development dependency. The SDK exports native Zod 4
+Classic schemas from `zod/v4`, with `zod` as a peer from the separate `zod-peer`
+catalog. Renovate bumps `zod4` like any other range but replaces `zod-peer` only
+when a release falls outside it: the published peer floor is a compatibility
+decision raised deliberately, such as for a security fix, not on every Zod
+release. The published CLI also takes `zod` from `zod-peer`, as a regular
+dependency: it loads the SDK at runtime, so it supplies the SDK's peer itself
+instead of relying on package managers that auto-install peers. Sharing the
+catalog keeps that dependency equal to the peer range. All resolve to one
+installed copy. This follows the [upstream peer dependency guidance](https://zod.dev/library-authors#how-to-configure-peer-dependencies)
+and lets schema types resolve against the consumer's instance. Zod 3 peers and
+V3 schema composition are no longer supported. See the
+[Zod 4 upgrading guide](upgrading/zod-4.md) for this breaking change.
+`semver-runtime` preserves the library
 and CLI requirement, while `semver-tooling` preserves the root tooling's higher
 minimum. Their names encode intentional differences, even when a lockfile
 resolves the two semver requirements to the same package. Renovate retains each
@@ -76,9 +89,28 @@ the examples. Any other nonzero status is operational — registry access,
 configuration, or the release-age policy — and is not a dedupe finding. The
 check compares the lockfile pnpm's dedupe would produce, so it applies to the
 root pnpm lockfile only and says nothing about the standalone runtime's npm
-lockfile. Intentional duplicates — the `zod` 3 and 4 catalog lines, the
-TypeScript compiler and its API line, or packages whose ranges do not overlap —
+lockfile. Intentional duplicates — the TypeScript compiler and its API line,
+or packages whose ranges do not overlap —
 are not reported.
+
+### Zod security migration: 2026-11-12
+
+[Dependabot alert #31](https://github.com/roryeckel/hooknostic/security/dependabot/31)
+flags the complete Zod 3.25.76 package, which also ships an affected V4 entry point.
+The [upstream fix](https://github.com/colinhacks/zod/commit/a0ebf970f2d752e5f58527cd2942ff48be4f46bd)
+rejects oversized V4 collections before parsing their elements. All workspace
+users now share the patched `^4.6.7` catalog, removing the old package from the
+repository lockfile. Exported SDK schemas migrate to native V4 as an explicit
+SDK breaking change; no V3 compatibility entry point remains in runtime code.
+This does not add collection limits to Hooknostic's inputs.
+
+Regression tests check native V4 composition and errors, and exercise the patched
+array bounds. The old dependency visits all eight invalid elements before
+reporting the bound; the patched dependency visits none. The Node compatibility
+CI job runs `node scripts/check-sdk-zod-peers.mjs` after building: it packs the
+SDK and installs an isolated consumer at the V4 peer floor, then checks TypeScript
+composition and runtime error identity. The version derives from `zod-peer`; this
+check needs registry access and disables dependency install scripts.
 
 Monthly lockfile maintenance intentionally refreshes transitive resolutions
 within the declared ranges in both lockfiles. The example plugin's generated `package-lock.json`

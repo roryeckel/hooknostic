@@ -11,6 +11,14 @@ else in `packages/` is bundled into the CLI at build time — internal package
 versions are metadata only, so the whole workspace versions **in lockstep**:
 one release version everywhere, written by `scripts/set-versions.mjs`.
 
+## Pending SDK breaking change
+
+The next release containing [the Zod 4 migration](upgrading/zod-4.md) must be
+announced as an SDK breaking release. Exported schemas use native V4 and require
+a `zod` V4 peer; V3 composition and error APIs are removed. Link the guide from
+the release highlights and set its release in the [upgrading index](upgrading/README.md). This change does not itself bump or publish a version;
+version selection remains part of the release preparation workflow below.
+
 ## The routine pipeline: three stages, two human decisions
 
 ```
@@ -59,6 +67,10 @@ Before preparation, update [release highlights](release-highlights.md) with the
 scope, migration steps, and limits for the upcoming release. The notes generator
 places these before the family-specific harness support table. Review or replace
 them for each release so older announcements are not repeated.
+
+A breaking change whose upgrade steps need more than a few highlight bullets gets
+a topic-named guide under [`upgrading/`](upgrading/README.md). Record the release
+version in that index during preparation and link the guide from the highlights.
 
 The generator formats the copied highlights with Prettier's Markdown parser,
 using single-line prose for GitHub release rendering. It normalizes Markdown

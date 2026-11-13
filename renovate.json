@@ -80,15 +80,17 @@
     },
     {
       "matchManagers": ["npm"],
-      "matchDepTypes": ["pnpm.catalog.zod3"],
-      "matchPackageNames": ["zod"],
-      "allowedVersions": ">=3 <4"
-    },
-    {
-      "matchManagers": ["npm"],
       "matchDepTypes": ["pnpm.catalog.zod4"],
       "matchPackageNames": ["zod"],
       "allowedVersions": ">=4 <5"
+    },
+    {
+      "description": "The SDK peer floor is a manual compatibility decision: replace only a range a release leaves, never bump it",
+      "matchManagers": ["npm"],
+      "matchDepTypes": ["pnpm.catalog.zod-peer"],
+      "matchPackageNames": ["zod"],
+      "allowedVersions": ">=4 <5",
+      "rangeStrategy": "replace"
     },
     {
       "description": "The standalone npm runtime shares the example's Zod major line",

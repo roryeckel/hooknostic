@@ -218,6 +218,8 @@ jobs:
           HOOKNOSTIC_PLAYBACK: ""
           HOOKNOSTIC_SMOKE: ""
           HOOKNOSTIC_PACK: "1"
+      - name: Check packed SDK with the supported Zod 4 peer floor
+        run: node scripts/check-sdk-zod-peers.mjs
 
   harness-playback:
     needs: renovate-ready

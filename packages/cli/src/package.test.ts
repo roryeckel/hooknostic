@@ -24,6 +24,7 @@ interface Manifest {
   files: string[];
   exports: Record<string, unknown>;
   dependencies?: Record<string, string>;
+  peerDependencies?: Record<string, string>;
 }
 
 async function manifestOf(packageDir: string): Promise<Manifest> {
@@ -172,12 +173,28 @@ describe("simulated registry install", () => {
         [await publish(sdkDir, project), sdkDir, project],
       ];
       const published = new Set(installs.map(([manifest]) => manifest.name));
+      // Install only declared dependencies: Yarn 1, and pnpm without
+      // auto-install-peers, never add a missing peer. The project declares the
+      // SDK's zod peer itself, as the Zod 4 upgrading guide instructs.
+      const declared = new Map<string, Set<string>>([
+        [cliRoot, new Set()],
+        [project, new Set(["zod"])],
+      ]);
+      await linkThirdParty("zod", sdkDir, project);
       for (const [manifest, consumerDir, installRoot] of installs) {
         for (const dependency of Object.keys(manifest.dependencies ?? {})) {
+          declared.get(installRoot)!.add(dependency);
           if (published.has(dependency)) continue;
           // Everything else must exist on the registry: no unpublished workspace packages.
           expect(dependency, `${manifest.name} depends on ${dependency}`).not.toMatch(/^@hooknostic\//);
           await linkThirdParty(dependency, consumerDir, installRoot);
+        }
+      }
+      // A peer must come from a package that shares its install root, or the
+      // published package resolves it only where a client auto-installs peers.
+      for (const [manifest, , installRoot] of installs) {
+        for (const peer of Object.keys(manifest.peerDependencies ?? {})) {
+          expect(declared.get(installRoot)!.has(peer), `${manifest.name}'s peer ${peer} in ${installRoot}`).toBe(true);
         }
       }
       const installedAgentPlugin = await import(
@@ -248,7 +265,7 @@ describe("simulated registry install", () => {
         // Self-contained: no bare workspace specifier survives bundling…
         expect(code, artifact).not.toMatch(/(from\s+|import\(|require\()["']@hooknostic\//);
         // …and the shim shared the project's SDK instead of bundling a second zod.
-        expect((code.match(/^\/\/ .*\/zod\/v3\/ZodError\.js$/gm) ?? []).length, artifact).toBe(1);
+        expect((code.match(/^\/\/ .*\/zod\/v4\/core\/errors\.js$/gm) ?? []).length, artifact).toBe(1);
         // …and nothing dragged a CommonJS build-time dependency in with it.
         expect(code, artifact).not.toContain('Dynamic require of "');
       }

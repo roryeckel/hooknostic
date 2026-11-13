@@ -4,6 +4,31 @@ import { block, definePlugin, hook, replaceInput } from "@hooknostic/sdk";
 
 import { buildPluginIR, hookAppliesToTarget } from "./ir.js";
 
+it("reports a symbol-keyed capability as an HN501 diagnostic instead of throwing", () => {
+  const result = buildPluginIR({
+    name: "symbol-capability",
+    hooks: [{ event: "tool.before", id: "probe", capabilities: { [Symbol("bad")]: "required" }, run() {} }],
+  });
+  expect(result.ir).toBeUndefined();
+  expect(result.diagnostics).toEqual([
+    expect.objectContaining({ code: "HN501", message: expect.stringContaining("hooks.0.capabilities.Symbol(bad)") }),
+  ]);
+});
+
+it("names the accepted capability ids when an authored capability key is unknown", () => {
+  const result = buildPluginIR({
+    name: "misspelled-capability",
+    hooks: [{ event: "tool.before", id: "probe", capabilities: { "tool.before.blok": "required" }, run() {} }],
+  });
+  expect(result.ir).toBeUndefined();
+  expect(result.diagnostics).toHaveLength(1);
+  const [diagnostic] = result.diagnostics;
+  expect(diagnostic).toMatchObject({ code: "HN501" });
+  expect(diagnostic!.message).toContain("hooks.0.capabilities.tool.before.blok: ");
+  expect(diagnostic!.message).toContain('"tool.before.block"');
+  expect(diagnostic!.message).not.toContain("Invalid key in record");
+});
+
 function examplePlugin() {
   return definePlugin({
     name: "example",

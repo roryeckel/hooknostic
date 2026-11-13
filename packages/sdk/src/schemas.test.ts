@@ -558,7 +558,7 @@ describe("effect payload JSON rule", () => {
     );
     expect(findNonJsonPath(hostile)).toBe("$");
     expect(isJsonValue(hostile)).toBe(false);
-    expect(() => effectSchema.safeParse(replaceInput(hostile))).toThrow("not inspectable");
+    expect(effectSchema.safeParse(replaceInput(hostile)).success).toBe(false);
   });
 });
 

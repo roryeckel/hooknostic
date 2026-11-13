@@ -26,6 +26,22 @@ afterAll(async () => {
 });
 
 describe("loadConfig", () => {
+  it("reports a symbol-keyed target as an HN501 diagnostic instead of throwing", async () => {
+    const dir = await fixtureDir();
+    const file = join(dir, "config.ts");
+    await writeFile(
+      file,
+      `export default { entry: "hooks.ts", targets: {
+        [Symbol("target")]: { version: "1", delivery: "package", output: "out" }
+      } };`,
+    );
+    const result = await loadConfig(file);
+    expect(result.config).toBeUndefined();
+    expect(result.diagnostics).toEqual([
+      expect.objectContaining({ code: "HN501", message: expect.stringContaining("targets.Symbol(target)") }),
+    ]);
+  });
+
   it("evaluates CommonJS dependencies requiring Node builtins at module initialization", async () => {
     const dir = await fixtureDir();
     await writeFile(
@@ -101,6 +117,23 @@ describe("loadConfig", () => {
       contextCharLimit: 16_000,
       notifyCharLimit: 2_000,
     });
+  });
+
+  it("explains why an empty target name is invalid", async () => {
+    const dir = await fixtureDir();
+    const file = join(dir, "config.ts");
+    await writeFile(
+      file,
+      `export default { entry: "hooks.ts", targets: { "": { version: "1", delivery: "package", output: "out" } } };`,
+    );
+    const result = await loadConfig(file);
+    expect(result.config).toBeUndefined();
+    expect(result.diagnostics).toHaveLength(1);
+    const [diagnostic] = result.diagnostics;
+    expect(diagnostic).toMatchObject({ code: "HN501" });
+    expect(diagnostic!.message).toContain("targets.: ");
+    expect(diagnostic!.message).toContain(">=1 characters");
+    expect(diagnostic!.message).not.toContain("Invalid key in record");
   });
 
   it("reports invalid configuration as HN501", async () => {
