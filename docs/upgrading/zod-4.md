@@ -4,7 +4,7 @@ The SDK now exports native Zod 4 Classic schemas and requires `zod: ^4.6.7`
 as a peer dependency. This is an explicit SDK breaking change. It replaces the
 Zod 3 schema API exported by earlier releases, including when those schemas
 were composed with a consumer's own Zod 3 instance. The package version is
-selected separately through the [release workflow](releases.md).
+selected separately through the [release workflow](../releases.md).
 
 ## Upgrade and compose schemas
 

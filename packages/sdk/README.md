@@ -34,11 +34,9 @@ for the supported events and effects. Licensed under Apache-2.0.
 
 `defineConfig` also selects Agent Plugins 1.0 inputs or direct project components. See the [configuration reference](https://github.com/roryeckel/hooknostic/blob/master/docs/configuration.md). Hookless builds need configuration but no `definePlugin` entry.
 
-## Zod 4 migration
+## Upgrading
 
-The SDK's exported runtime schemas use Zod 4 Classic. Install the `zod` peer at
-`^4.6.7` and compose schemas using `zod/v4` (or the root entry of Zod 4).
-This is a breaking SDK change: Zod 3 schema composition and error types are no
-longer supported. Use `ZodError.issues` in place of `.errors`.
-See the [migration guide](https://github.com/roryeckel/hooknostic/blob/master/docs/migration-zod-v4.md)
-for before/after examples and validation changes.
+The SDK's exported runtime schemas use Zod 4 Classic and require the `zod` peer
+at `^4.6.7`; Zod 3 schema composition is no longer supported. See the
+[upgrading guides](https://github.com/roryeckel/hooknostic/blob/master/docs/upgrading/README.md)
+for this and other breaking changes.

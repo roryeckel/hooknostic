@@ -35,7 +35,7 @@ decision raised deliberately, such as for a security fix, not on every Zod
 release. Both resolve to one installed copy. This follows the [upstream peer dependency guidance](https://zod.dev/library-authors#how-to-configure-peer-dependencies)
 and lets schema types resolve against the consumer's instance. Zod 3 peers and
 V3 schema composition are no longer supported. See the
-[SDK migration guide](migration-zod-v4.md) for this breaking change.
+[Zod 4 upgrading guide](upgrading/zod-4.md) for this breaking change.
 `semver-runtime` preserves the library
 and CLI requirement, while `semver-tooling` preserves the root tooling's higher
 minimum. Their names encode intentional differences, even when a lockfile
