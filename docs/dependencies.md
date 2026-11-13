@@ -32,7 +32,11 @@ Classic schemas from `zod/v4`, with `zod` as a peer from the separate `zod-peer`
 catalog. Renovate bumps `zod4` like any other range but replaces `zod-peer` only
 when a release falls outside it: the published peer floor is a compatibility
 decision raised deliberately, such as for a security fix, not on every Zod
-release. Both resolve to one installed copy. This follows the [upstream peer dependency guidance](https://zod.dev/library-authors#how-to-configure-peer-dependencies)
+release. The published CLI also takes `zod` from `zod-peer`, as a regular
+dependency: it loads the SDK at runtime, so it supplies the SDK's peer itself
+instead of relying on package managers that auto-install peers. Sharing the
+catalog keeps that dependency equal to the peer range. All resolve to one
+installed copy. This follows the [upstream peer dependency guidance](https://zod.dev/library-authors#how-to-configure-peer-dependencies)
 and lets schema types resolve against the consumer's instance. Zod 3 peers and
 V3 schema composition are no longer supported. See the
 [Zod 4 upgrading guide](upgrading/zod-4.md) for this breaking change.

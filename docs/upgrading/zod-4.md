@@ -15,6 +15,8 @@ pnpm add -D @hooknostic/sdk hooknostic zod@^4.6.7
 ```
 
 Use regular dependencies instead if your application imports the SDK at runtime.
+The `hooknostic` CLI depends on a compatible Zod itself, so a global CLI
+install needs no separate Zod; a project that imports the SDK declares its own.
 Keep the SDK and CLI on the same Hooknostic release. Refresh your lockfile and
 rebuild generated Hooknostic artifacts with that CLI.
 

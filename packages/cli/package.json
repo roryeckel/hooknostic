@@ -50,7 +50,8 @@
   "dependencies": {
     "@hooknostic/sdk": "workspace:*",
     "cross-spawn": "catalog:",
-    "esbuild": "catalog:"
+    "esbuild": "catalog:",
+    "zod": "catalog:zod-peer"
   },
   "devDependencies": {
     "@hooknostic/agent-plugin": "workspace:*",

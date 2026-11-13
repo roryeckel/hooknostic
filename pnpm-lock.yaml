@@ -241,6 +241,10 @@ catalogs:
     semver:
       specifier: ^7.8.6
       version: 7.8.6
+  zod-peer:
+    zod:
+      specifier: ^4.6.7
+      version: 4.6.7
   zod4:
     zod:
       specifier: ^4.6.7
@@ -457,6 +461,9 @@ importers:
       esbuild:
         specifier: 'catalog:'
         version: 0.28.2
+      zod:
+        specifier: catalog:zod-peer
+        version: 4.6.7
     devDependencies:
       '@hooknostic/adapter-claude':
         specifier: workspace:*
