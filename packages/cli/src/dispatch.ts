@@ -6,6 +6,7 @@ import type {
   FieldMatrix,
   HarnessAdapter,
   NativeHookResult,
+  SchemaIssue,
   StagedUserModule,
 } from "@hooknostic/core";
 import {
@@ -14,6 +15,7 @@ import {
   effectiveCompatibility,
   effectiveRuntime,
   formatDiagnostics,
+  formatSchemaIssue,
   hookPluginRoot,
   levelsFromMatrix,
   loadConfig,
@@ -72,8 +74,8 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-function describeIssues(issues: readonly { path: readonly PropertyKey[]; message: string }[]): string {
-  return issues.map((issue) => `${issue.path.map(String).join(".") || "<root>"}: ${issue.message}`).join("; ");
+function describeIssues(issues: readonly SchemaIssue[]): string {
+  return issues.map(formatSchemaIssue).join("; ");
 }
 
 type FieldCheck = (value: unknown) => string | undefined;

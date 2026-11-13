@@ -27,9 +27,12 @@ belong in subsequent reviewed PRs. Contribution scope remains in
 ## Catalogs and lockfiles
 
 The default catalog holds shared external requirements. `zod4` serves core, the
-MCP example and the SDK. The SDK exports native Zod 4 Classic schemas from
-`zod/v4`, with `zod` as a peer and development dependency on the same `^4.6.7`
-catalog. This follows the [upstream peer dependency guidance](https://zod.dev/library-authors#how-to-configure-peer-dependencies)
+MCP example and the SDK's development dependency. The SDK exports native Zod 4
+Classic schemas from `zod/v4`, with `zod` as a peer from the separate `zod-peer`
+catalog. Renovate bumps `zod4` like any other range but replaces `zod-peer` only
+when a release falls outside it: the published peer floor is a compatibility
+decision raised deliberately, such as for a security fix, not on every Zod
+release. Both resolve to one installed copy. This follows the [upstream peer dependency guidance](https://zod.dev/library-authors#how-to-configure-peer-dependencies)
 and lets schema types resolve against the consumer's instance. Zod 3 peers and
 V3 schema composition are no longer supported. See the
 [SDK migration guide](migration-zod-v4.md) for this breaking change.
@@ -102,7 +105,7 @@ array bounds. The old dependency visits all eight invalid elements before
 reporting the bound; the patched dependency visits none. The Node compatibility
 CI job runs `node scripts/check-sdk-zod-peers.mjs` after building: it packs the
 SDK and installs an isolated consumer at the V4 peer floor, then checks TypeScript
-composition and runtime error identity. The version derives from `zod4`; this
+composition and runtime error identity. The version derives from `zod-peer`; this
 check needs registry access and disables dependency install scripts.
 
 Monthly lockfile maintenance intentionally refreshes transitive resolutions

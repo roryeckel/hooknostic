@@ -10,6 +10,7 @@ import { hooknosticConfigSchema } from "@hooknostic/sdk";
 
 import { createRequireBanner } from "./bundle-support.mjs";
 import type { Diagnostic } from "./diagnostics.js";
+import { formatSchemaIssue } from "./schema-issues.js";
 
 export interface EvaluateOptions {
   /**
@@ -118,7 +119,7 @@ export async function loadConfig(
       diagnostics.push({
         code: "HN501",
         severity: "error",
-        message: `invalid configuration: ${issue.path.map(String).join(".") || "<root>"}: ${issue.message}`,
+        message: `invalid configuration: ${formatSchemaIssue(issue)}`,
         location: { file: configPath },
         remediation: "see docs/design.md §8.1 for the configuration shape.",
       });

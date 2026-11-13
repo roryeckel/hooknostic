@@ -210,9 +210,11 @@ export async function dispatch(
 
   /**
    * Validate one value a handler returned as an effect. A throw during
-   * validation (zod can trip a hostile proxy's traps before jsonValueSchema
-   * rejects it) is itself an HN401: validation is part of the handler boundary
-   * and must not break the fail-open contract.
+   * validation -- a throwing getter, or a proxy trap that schema inspection
+   * reaches before jsonValueSchema can reject the value -- is itself an HN401:
+   * validation is part of the handler boundary and must not break the
+   * fail-open contract. (Zod 4 reports the hostile proxy in schemas.test.ts as
+   * an ordinary failed parse; other traps can still throw.)
    */
   const parseReturned = (hookId: string, value: unknown): { effect: Effect } | { error: HandlerError } => {
     let parsed: ReturnType<typeof effectSchema.safeParse>;

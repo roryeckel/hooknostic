@@ -13,8 +13,8 @@ import { inventory } from "./check-dependencies.mjs";
 const root = fileURLToPath(new URL("../", import.meta.url));
 const require = createRequire(import.meta.url);
 const compiler = resolve(dirname(require.resolve("@typescript/native/package.json")), "bin/tsc");
-const range = inventory().find((dep) => dep.depType === "pnpm.catalog.zod4" && dep.depName === "zod")?.currentValue;
-assert.ok(range, "Zod 4 catalog is missing");
+const range = inventory().find((dep) => dep.depType === "pnpm.catalog.zod-peer" && dep.depName === "zod")?.currentValue;
+assert.ok(range, "Zod peer catalog is missing");
 const versions = range.split("||").map((part) => {
   const minimum = semver.minVersion(part.trim());
   assert.ok(minimum, `Invalid Zod peer range: ${part}`);

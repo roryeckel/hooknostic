@@ -23,3 +23,4 @@ export * from "./project-mcp-bootstrap.js";
 export * from "./portable-path.js";
 export * from "./mcp-identity.js";
 export * from "./remote-environment.js";
+export * from "./schema-issues.js";
