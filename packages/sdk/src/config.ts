@@ -45,6 +45,19 @@ export interface RuntimePolicy {
    * translates the budget into each harness's native timeout.
    */
   timeoutMs?: number;
+  /**
+   * Time the harness's native deadline gets for what is not a handler: process
+   * start, stdin read, decode and stdout flush. Build-time only (ADR-0039): it
+   * sizes each native timeout, and the bundled dispatcher never reads it.
+   *
+   * One event's native timeout is
+   * `ceil((sum of its hooks' budgets + processAllowanceMs) / 1000)` seconds. A
+   * harness that caps an event's timeout gets as much of the allowance as fits,
+   * never less than zero. Raise it where starting the hook process is slow --
+   * a contended host has spent seconds there, which a handler budget cannot
+   * cover.
+   */
+  processAllowanceMs?: number;
   /** Conservative cap on accumulated model-visible context per dispatch. */
   contextCharLimit?: number;
   /**
@@ -58,6 +71,11 @@ export interface RuntimePolicy {
 export const DEFAULT_RUNTIME: Required<RuntimePolicy> = {
   onHookError: "continue",
   timeoutMs: 5_000,
+  // Covers a loaded Windows host's hook start, which `.capture/codex-hook-failure`
+  // measured at 1.5-2.0s by the harness's clock against under 200ms inside Node.
+  // The extreme in that capture, ~9s, came from 96 busy loops on 32 cores and is
+  // out of reach by default; processAllowanceMs is the escape hatch.
+  processAllowanceMs: 5_000,
   contextCharLimit: 16_000,
   notifyCharLimit: 2_000,
 };

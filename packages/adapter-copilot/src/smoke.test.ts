@@ -184,7 +184,13 @@ describe.skipIf(!enabled)("Copilot real-harness smoke", () => {
       alias: ALIAS,
     });
     const artifacts = generateCopilotArtifacts(ir!, target, bundle, {
-      runtime: { onHookError: "continue", timeoutMs: 10_000, contextCharLimit: 4_000_000, notifyCharLimit: 4_000 },
+      runtime: {
+        onHookError: "continue",
+        timeoutMs: 10_000,
+        processAllowanceMs: 5_000,
+        contextCharLimit: 4_000_000,
+        notifyCharLimit: 4_000,
+      },
     });
     for (const artifact of artifacts) {
       const path = join(SMOKE_DIR, artifact.path);

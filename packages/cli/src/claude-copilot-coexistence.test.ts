@@ -30,7 +30,15 @@ function claudeProjectEntries() {
     ir!,
     { id: "claude", version: ">=2.1 <3", delivery: "project", output: ".hooknostic/artifacts/claude" },
     { code: "// runtime\n" },
-    { runtime: { onHookError: "continue", timeoutMs: 5_000, contextCharLimit: 16_000, notifyCharLimit: 2_000 } },
+    {
+      runtime: {
+        onHookError: "continue",
+        timeoutMs: 5_000,
+        processAllowanceMs: 5_000,
+        contextCharLimit: 16_000,
+        notifyCharLimit: 2_000,
+      },
+    },
   );
   const integration = claudeAdapter().projectIntegration!(
     artifacts,

@@ -32,7 +32,11 @@ import { requirePackageSupport } from "../../../scripts/verify-marketplaces.mjs"
 import { defaultAdapterRegistry } from "../src/registry.js";
 import {
   buildPlaybackArtifact,
+  codexFailedHooks,
+  codexHookTimeouts,
   expectOpenCodeShellDialect,
+  hookProcessRecorderEnv,
+  hookProcessReport,
   openCodePlaybackConfigHome,
   openCodeShellDialectExpectation,
   playbackModelInfo,
@@ -785,91 +789,116 @@ async function runCodexPlayback(
   options: DriveOptions = {},
 ): Promise<void> {
   const server = await startModelPlayback("openai-responses", scenario, options.script);
+  // `codex exec` prints only `hook: <Event> Failed` for a failed hook: no exit
+  // code, no stderr, not even a timeout (.capture/codex-hook-failure). Every
+  // hook process records itself here, and any failure below carries that
+  // record beside the events Codex said failed.
+  const hookLog = join(build.artifactDir, "hook-processes.jsonl");
+  const output = { text: "" };
   try {
-    await runProcess("git", ["init"], {
-      cwd: build.artifactDir,
-      env: process.env,
-      timeoutMs: 30_000,
-    });
-    const result = await runProcess(
-      "codex",
-      [
-        "exec",
-        "-",
-        "--dangerously-bypass-hook-trust",
-        "--color",
-        "never",
-        "-c",
-        'model="hooknostic-playback"',
-        "-c",
-        'model_provider="hooknostic_playback"',
-        "-c",
-        'approval_policy="never"',
-        "-c",
-        // Playback exercises hooks, not Codex's host sandbox. A sandboxed
-        // spawn failure makes the block scenario pass vacuously.
-        'sandbox_mode="danger-full-access"',
-        "-c",
-        'model_providers.hooknostic_playback.name="Hooknostic Playback"',
-        "-c",
-        `model_providers.hooknostic_playback.base_url=${tomlLiteral(`${server.baseUrl}/v1`)}`,
-        "-c",
-        'model_providers.hooknostic_playback.wire_api="responses"',
-        "-c",
-        "model_providers.hooknostic_playback.requires_openai_auth=false",
-        "-c",
-        "model_providers.hooknostic_playback.request_max_retries=0",
-        "-c",
-        "model_providers.hooknostic_playback.stream_max_retries=0",
-        "-c",
-        `projects={${tomlLiteral(build.artifactDir)}={trust_level=${tomlLiteral("trusted")}}}`,
-        ...(options.modelCatalog ? ["-c", `model_catalog_json=${tomlLiteral(options.modelCatalog)}`] : []),
-        ...(options.mcpServerPath
-          ? [
-              // MCP tool calls trip an approval gate under approval_policy
-              // "never" (verified on codex 0.151.0: the gate is bypassed by
-              // the approvals-and-sandbox bypass, not by a feature flag).
-              "--dangerously-bypass-approvals-and-sandbox",
-              "-c",
-              `mcp_servers.hooknostic_fixture.command=${tomlLiteral("node")}`,
-              "-c",
-              `mcp_servers.hooknostic_fixture.args=[${tomlLiteral(options.mcpServerPath)}]`,
-            ]
-          : []),
-      ],
-      {
-        cwd: options.harnessCwd ?? build.artifactDir,
-        input: options.prompt ?? playbackPrompt(scenario),
-        timeoutMs: 90_000,
-        env: {
-          ...withoutCredentials(),
-          HOOKNOSTIC_PLAYBACK_TRACE: build.tracePath,
-          ...(options.effects ? { HOOKNOSTIC_PLAYBACK_EFFECTS: options.effects.join(",") } : {}),
-        },
-      },
-    );
-    expect(
-      options.expectedExitCodes ?? [0],
-      `codex exit ${result.code}: ${result.stdout}\n${result.stderr}\nserverErrors: ${JSON.stringify(server.errors)}\nurls: ${JSON.stringify((server.urls ?? []).slice(0, 10))}`,
-    ).toContain(result.code);
-    options.capture?.({ stdout: result.stdout, stderr: result.stderr, code: result.code });
-    expect(server.errors).toEqual([]);
-    if (options.requireAgentRequest === false) {
-      await options.verify?.({ server, dir: build.artifactDir });
-      return;
+    await runCodexPlaybackDrive(build, scenario, server, hookLog, options, output);
+  } catch (error) {
+    if (error instanceof Error) {
+      error.message += `\n\n${codexFailedHooks(output.text)}\n${await codexHookTimeouts(build.artifactDir)}\n${await hookProcessReport(hookLog)}`;
     }
-    expect(
-      server.requests.some((request) => request !== null && typeof request === "object" && "tools" in request),
-      JSON.stringify(server.requests, null, 2),
-    ).toBe(true);
-    expect(
-      await traceEvents(build.tracePath),
-      `${result.stdout}\n${result.stderr}\nrequests: ${JSON.stringify(server.requests, null, 2)}`,
-    ).toContain("tool.before");
-    await options.verify?.({ server, dir: build.artifactDir });
+    throw error;
   } finally {
     await server.close();
   }
+}
+
+async function runCodexPlaybackDrive(
+  build: Awaited<ReturnType<typeof buildPlaybackArtifact>>,
+  scenario: PlaybackScenario,
+  server: Awaited<ReturnType<typeof startModelPlayback>>,
+  hookLog: string,
+  options: DriveOptions,
+  output: { text: string },
+): Promise<void> {
+  await runProcess("git", ["init"], {
+    cwd: build.artifactDir,
+    env: process.env,
+    timeoutMs: 30_000,
+  });
+  const result = await runProcess(
+    "codex",
+    [
+      "exec",
+      "-",
+      "--dangerously-bypass-hook-trust",
+      "--color",
+      "never",
+      "-c",
+      'model="hooknostic-playback"',
+      "-c",
+      'model_provider="hooknostic_playback"',
+      "-c",
+      'approval_policy="never"',
+      "-c",
+      // Playback exercises hooks, not Codex's host sandbox. A sandboxed
+      // spawn failure makes the block scenario pass vacuously.
+      'sandbox_mode="danger-full-access"',
+      "-c",
+      'model_providers.hooknostic_playback.name="Hooknostic Playback"',
+      "-c",
+      `model_providers.hooknostic_playback.base_url=${tomlLiteral(`${server.baseUrl}/v1`)}`,
+      "-c",
+      'model_providers.hooknostic_playback.wire_api="responses"',
+      "-c",
+      "model_providers.hooknostic_playback.requires_openai_auth=false",
+      "-c",
+      "model_providers.hooknostic_playback.request_max_retries=0",
+      "-c",
+      "model_providers.hooknostic_playback.stream_max_retries=0",
+      "-c",
+      `projects={${tomlLiteral(build.artifactDir)}={trust_level=${tomlLiteral("trusted")}}}`,
+      ...(options.modelCatalog ? ["-c", `model_catalog_json=${tomlLiteral(options.modelCatalog)}`] : []),
+      ...(options.mcpServerPath
+        ? [
+            // MCP tool calls trip an approval gate under approval_policy
+            // "never" (verified on codex 0.151.0: the gate is bypassed by
+            // the approvals-and-sandbox bypass, not by a feature flag).
+            "--dangerously-bypass-approvals-and-sandbox",
+            "-c",
+            `mcp_servers.hooknostic_fixture.command=${tomlLiteral("node")}`,
+            "-c",
+            `mcp_servers.hooknostic_fixture.args=[${tomlLiteral(options.mcpServerPath)}]`,
+          ]
+        : []),
+    ],
+    {
+      cwd: options.harnessCwd ?? build.artifactDir,
+      input: options.prompt ?? playbackPrompt(scenario),
+      timeoutMs: 90_000,
+      env: {
+        ...withoutCredentials(),
+        ...hookProcessRecorderEnv(hookLog),
+        HOOKNOSTIC_PLAYBACK_TRACE: build.tracePath,
+        ...(options.effects ? { HOOKNOSTIC_PLAYBACK_EFFECTS: options.effects.join(",") } : {}),
+      },
+    },
+  );
+  // `hook:` status lines go to stderr; read both streams.
+  output.text = `${result.stdout}\n${result.stderr}`;
+  expect(
+    options.expectedExitCodes ?? [0],
+    `codex exit ${result.code}: ${result.stdout}\n${result.stderr}\nserverErrors: ${JSON.stringify(server.errors)}\nurls: ${JSON.stringify((server.urls ?? []).slice(0, 10))}`,
+  ).toContain(result.code);
+  options.capture?.({ stdout: result.stdout, stderr: result.stderr, code: result.code });
+  expect(server.errors).toEqual([]);
+  if (options.requireAgentRequest === false) {
+    await options.verify?.({ server, dir: build.artifactDir });
+    return;
+  }
+  expect(
+    server.requests.some((request) => request !== null && typeof request === "object" && "tools" in request),
+    JSON.stringify(server.requests, null, 2),
+  ).toBe(true);
+  expect(
+    await traceEvents(build.tracePath),
+    `${result.stdout}\n${result.stderr}\nrequests: ${JSON.stringify(server.requests, null, 2)}`,
+  ).toContain("tool.before");
+  await options.verify?.({ server, dir: build.artifactDir });
 }
 
 async function runOpenCodePlayback(
@@ -3349,36 +3378,35 @@ export default definePlugin({ name: "pi-sync-playback", hooks: [
       const catalog = join(dir, "model-catalog.json");
       await writeFile(catalog, JSON.stringify({ models: [playbackModelInfo({ tool_mode: "code_mode_only" })] }));
 
-      let requests: readonly unknown[] = [];
+      // Asserted inside `verify` so a failure carries the drive's hook-process
+      // report (runCodexPlayback), which names why a guard did not answer.
       await runInstalledHarness(build, scenario, {
         modelCatalog: catalog,
         script: [{ kind: "code", disposition: scenario }, { kind: "text" }],
         verify: async ({ server }) => {
-          requests = server.requests;
+          // Code Mode was actually in force: the model was offered `exec` and no
+          // direct exec_command, so no direct call can have satisfied the drive.
+          const offered = (
+            server.requests.find((request) => Array.isArray((request as { tools?: unknown }).tools)) as {
+              tools: { type?: string; name?: string }[];
+            }
+          ).tools.map((tool) => `${tool.type}:${tool.name}`);
+          expect(offered).toContain("custom:exec");
+          expect(offered).not.toContain("function:exec_command");
+
+          if (scenario === "block") {
+            await expect(access(join(dir, "hooknostic-blocked.txt"))).rejects.toMatchObject({ code: "ENOENT" });
+          } else {
+            expect(await readFile(join(dir, "hooknostic-tool.txt"), "utf8")).toBe("hooknostic-rewritten");
+          }
+          const toolBefore = (await readFile(build.tracePath, "utf8"))
+            .split("\n")
+            .filter(Boolean)
+            .map((line) => JSON.parse(line) as { event: string; toolKind?: string; toolNativeName?: string })
+            .filter((entry) => entry.event === "tool.before");
+          expect(toolBefore).toEqual([expect.objectContaining({ toolKind: "shell", toolNativeName: "Bash" })]);
         },
       });
-
-      // Code Mode was actually in force: the model was offered `exec` and no
-      // direct exec_command, so no direct call can have satisfied the drive.
-      const offered = (
-        requests.find((request) => Array.isArray((request as { tools?: unknown }).tools)) as {
-          tools: { type?: string; name?: string }[];
-        }
-      ).tools.map((tool) => `${tool.type}:${tool.name}`);
-      expect(offered).toContain("custom:exec");
-      expect(offered).not.toContain("function:exec_command");
-
-      if (scenario === "block") {
-        await expect(access(join(dir, "hooknostic-blocked.txt"))).rejects.toMatchObject({ code: "ENOENT" });
-      } else {
-        expect(await readFile(join(dir, "hooknostic-tool.txt"), "utf8")).toBe("hooknostic-rewritten");
-      }
-      const toolBefore = (await readFile(build.tracePath, "utf8"))
-        .split("\n")
-        .filter(Boolean)
-        .map((line) => JSON.parse(line) as { event: string; toolKind?: string; toolNativeName?: string })
-        .filter((entry) => entry.event === "tool.before");
-      expect(toolBefore).toEqual([expect.objectContaining({ toolKind: "shell", toolNativeName: "Bash" })]);
     },
   );
 

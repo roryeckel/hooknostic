@@ -157,7 +157,13 @@ describe.skipIf(!enabled)("Codex smoke (real harness)", () => {
       { id: "codex", version: codexHarness.recommendedRange, delivery: "project", output: SMOKE_DIR },
       bundle,
       {
-        runtime: { onHookError: "continue", timeoutMs: 5_000, contextCharLimit: 16_000, notifyCharLimit: 2_000 },
+        runtime: {
+          onHookError: "continue",
+          timeoutMs: 5_000,
+          processAllowanceMs: 5_000,
+          contextCharLimit: 16_000,
+          notifyCharLimit: 2_000,
+        },
       },
     );
     for (const artifact of artifacts) {

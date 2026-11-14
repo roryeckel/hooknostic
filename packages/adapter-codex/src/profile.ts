@@ -167,6 +167,16 @@ export const codexCapabilityProfiles: CapabilityProfile[] = [
           artifact: "fixtures/codex/0.148",
           what: "apply_patch (add, update with move, delete, multi-file) and view_image PreToolUse payloads over the loopback model (.capture/file-tools): apply_patch reaches hooks as tool_input.command holding the raw patch text, view_image as tool_input.path",
         },
+        {
+          version: "0.156.1",
+          date: "2026-11-13",
+          method: "live-probe",
+          artifact: ".capture/codex-hook-failure",
+          what:
+            "A hooks.json timeout covers the hook's process start, and a PreToolUse that times out is non-blocking: on a CPU-contended " +
+            "Windows host, Code Mode deny drives with a 2s native timeout failed open in 2 of 15 (hook timed out after 2s, command ran) " +
+            "while the hook's own code took at most 264ms; with 11s, 0 of 15. codex exec prints only 'hook: <Event> Failed', with no cause.",
+        },
         // scheduled-playback: at most one rolling live-probe record, rewritten
         // in place by scripts/record-playback-validation.mjs (harness-watch
         // workflow). Git history is the audit trail; see ADR-0009 and

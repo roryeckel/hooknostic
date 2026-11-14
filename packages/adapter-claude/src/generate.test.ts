@@ -15,7 +15,13 @@ const TARGET = {
 };
 const BUNDLE = { code: "// bundled runtime placeholder\n" };
 const OPTIONS = {
-  runtime: { onHookError: "continue" as const, timeoutMs: 5_000, contextCharLimit: 16_000, notifyCharLimit: 2_000 },
+  runtime: {
+    onHookError: "continue" as const,
+    timeoutMs: 5_000,
+    processAllowanceMs: 5_000,
+    contextCharLimit: 16_000,
+    notifyCharLimit: 2_000,
+  },
 };
 
 function exampleIR() {
@@ -84,13 +90,14 @@ describe("generateClaudeArtifacts", () => {
       command: "node",
       args: ["${CLAUDE_PLUGIN_ROOT}/runtime/hooknostic.mjs"],
       // Two hooks reach PreToolUse and the dispatcher runs both, each under its
-      // own budget -- so the native ceiling covers the pair (2 x 5s + 1), not
-      // one of them. Sized for a single hook, the harness killed the process
-      // mid-dispatch and the response was not partial but absent.
-      timeout: 11,
+      // own budget -- so the native ceiling covers the pair (2 x 5s) plus the
+      // process allowance (5s), not one of them. Sized for a single hook, the
+      // harness killed the process mid-dispatch and the response was not
+      // partial but absent.
+      timeout: 15,
     });
     // SessionStart has one hook, so it keeps the single-hook ceiling.
-    expect(hooksJson.hooks.SessionStart[0].hooks[0].timeout).toBe(6);
+    expect(hooksJson.hooks.SessionStart[0].hooks[0].timeout).toBe(10);
 
     expect(artifacts[2]!.contents).toBe(BUNDLE.code);
   });
@@ -110,15 +117,26 @@ describe("generateClaudeArtifacts", () => {
 
   // PreToolUse carries two hooks in this fixture, so the ceiling is the pair.
   it.each([
-    [1, 2],
-    [1_000, 3],
-    [61_000, 123],
+    [1, 6],
+    [1_000, 7],
+    [61_000, 127],
   ])("covers every hook on the event: runtime %ims -> native %is", (timeoutMs, expected) => {
     const artifacts = generateClaudeArtifacts(exampleIR(), TARGET, BUNDLE, {
       runtime: { ...OPTIONS.runtime, timeoutMs },
     });
     const hooksJson = JSON.parse(artifacts[1]!.contents as string);
     expect(hooksJson.hooks.PreToolUse[0].hooks[0].timeout).toBe(expected);
+  });
+
+  it("does not spend Claude's SessionEnd cap as extra allowance", () => {
+    // Claude lets SessionEnd ask up to 60s. A 5s handler takes the policy's 5s
+    // allowance, not the 55s the cap would leave, or a wedged teardown would
+    // hold the exit for a minute.
+    const ir = exampleIR();
+    ir.hooks.push({ index: ir.hooks.length, event: "session.end", id: "teardown", capabilities: {} });
+    const artifacts = generateClaudeArtifacts(ir, TARGET, BUNDLE, OPTIONS);
+    const hooksJson = JSON.parse(artifacts[1]!.contents as string);
+    expect(hooksJson.hooks.SessionEnd[0].hooks[0].timeout).toBe(10);
   });
 
   it("lets one slow hook raise its own ceiling without inflating its neighbours", () => {
@@ -130,10 +148,10 @@ describe("generateClaudeArtifacts", () => {
     ir.hooks[0]!.timeoutMs = 120_000;
     const artifacts = generateClaudeArtifacts(ir, TARGET, BUNDLE, OPTIONS);
     const hooksJson = JSON.parse(artifacts[1]!.contents as string);
-    // 120s for the slow hook + 5s for its neighbour, + 1.
-    expect(hooksJson.hooks.PreToolUse[0].hooks[0].timeout).toBe(126);
+    // 120s for the slow hook + 5s for its neighbour, plus the 5s process allowance.
+    expect(hooksJson.hooks.PreToolUse[0].hooks[0].timeout).toBe(130);
     // The event it does not touch is unchanged.
-    expect(hooksJson.hooks.SessionStart[0].hooks[0].timeout).toBe(6);
+    expect(hooksJson.hooks.SessionStart[0].hooks[0].timeout).toBe(10);
   });
 });
 

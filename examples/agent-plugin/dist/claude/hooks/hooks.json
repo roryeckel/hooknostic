@@ -11,7 +11,7 @@
             "args": [
               "${CLAUDE_PLUGIN_ROOT}/runtime/hooknostic.mjs"
             ],
-            "timeout": 11
+            "timeout": 15
           }
         ]
       }

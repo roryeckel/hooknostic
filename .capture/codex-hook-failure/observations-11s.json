@@ -1,0 +1,637 @@
+[
+  {
+    "index": 0,
+    "version": "0.156.1",
+    "preToolUseTimeoutSeconds": 11,
+    "blockedFileWritten": false,
+    "hookRuns": [
+      {
+        "eventName": "sessionStart",
+        "status": "completed",
+        "statusMessage": null,
+        "durationMs": 3011,
+        "entries": []
+      },
+      {
+        "eventName": "userPromptSubmit",
+        "status": "completed",
+        "statusMessage": null,
+        "durationMs": 1965,
+        "entries": []
+      },
+      {
+        "eventName": "preToolUse",
+        "status": "blocked",
+        "statusMessage": null,
+        "durationMs": 1837,
+        "entries": [
+          {
+            "kind": "feedback",
+            "text": "blocked by harness playback"
+          }
+        ]
+      },
+      {
+        "eventName": "stop",
+        "status": "completed",
+        "statusMessage": null,
+        "durationMs": 1907,
+        "entries": []
+      }
+    ],
+    "hookProcesses": "hook processes (4):\nSessionStart pid 23744: exit 0 after 184ms (node boot 163ms, stdin read by 181ms, started 2026-11-13T14:01:14.253Z)\n  stdout: <empty>\n  stderr: <empty>\nUserPromptSubmit pid 53780: exit 0 after 210ms (node boot 189ms, stdin read by 207ms, started 2026-11-13T14:01:17.594Z)\n  stdout: <empty>\n  stderr: <empty>\nPreToolUse pid 69140: exit 0 after 233ms (node boot 211ms, stdin read by 230ms, started 2026-11-13T14:01:20.083Z)\n  stdout: \"{\\\"hookSpecificOutput\\\":{\\\"hookEventName\\\":\\\"PreToolUse\\\",\\\"permissionDecision\\\":\\\"deny\\\",\\\"permissionDecisionReason\\\":\\\"blocked by harness playback\\\"}}\"\n  stderr: <empty>\nStop pid 66816: exit 0 after 208ms (node boot 187ms, stdin read by 206ms, started 2026-11-13T14:01:22.046Z)\n  stdout: <empty>\n  stderr: <empty>"
+  },
+  {
+    "index": 1,
+    "version": "0.156.1",
+    "preToolUseTimeoutSeconds": 11,
+    "blockedFileWritten": false,
+    "hookRuns": [
+      {
+        "eventName": "sessionStart",
+        "status": "completed",
+        "statusMessage": null,
+        "durationMs": 1450,
+        "entries": []
+      },
+      {
+        "eventName": "userPromptSubmit",
+        "status": "completed",
+        "statusMessage": null,
+        "durationMs": 1828,
+        "entries": []
+      },
+      {
+        "eventName": "preToolUse",
+        "status": "blocked",
+        "statusMessage": null,
+        "durationMs": 1786,
+        "entries": [
+          {
+            "kind": "feedback",
+            "text": "blocked by harness playback"
+          }
+        ]
+      },
+      {
+        "eventName": "stop",
+        "status": "completed",
+        "statusMessage": null,
+        "durationMs": 1676,
+        "entries": []
+      }
+    ],
+    "hookProcesses": "hook processes (4):\nSessionStart pid 10848: exit 0 after 201ms (node boot 180ms, stdin read by 198ms, started 2026-11-13T14:01:48.201Z)\n  stdout: <empty>\n  stderr: <empty>\nUserPromptSubmit pid 58964: exit 0 after 202ms (node boot 182ms, stdin read by 200ms, started 2026-11-13T14:01:50.088Z)\n  stdout: <empty>\n  stderr: <empty>\nPreToolUse pid 61124: exit 0 after 181ms (node boot 160ms, stdin read by 178ms, started 2026-11-13T14:01:52.524Z)\n  stdout: \"{\\\"hookSpecificOutput\\\":{\\\"hookEventName\\\":\\\"PreToolUse\\\",\\\"permissionDecision\\\":\\\"deny\\\",\\\"permissionDecisionReason\\\":\\\"blocked by harness playback\\\"}}\"\n  stderr: <empty>\nStop pid 43832: exit 0 after 164ms (node boot 144ms, stdin read by 162ms, started 2026-11-13T14:01:54.324Z)\n  stdout: <empty>\n  stderr: <empty>"
+  },
+  {
+    "index": 2,
+    "version": "0.156.1",
+    "preToolUseTimeoutSeconds": 11,
+    "blockedFileWritten": false,
+    "hookRuns": [
+      {
+        "eventName": "sessionStart",
+        "status": "completed",
+        "statusMessage": null,
+        "durationMs": 1564,
+        "entries": []
+      },
+      {
+        "eventName": "userPromptSubmit",
+        "status": "completed",
+        "statusMessage": null,
+        "durationMs": 1714,
+        "entries": []
+      },
+      {
+        "eventName": "preToolUse",
+        "status": "blocked",
+        "statusMessage": null,
+        "durationMs": 1709,
+        "entries": [
+          {
+            "kind": "feedback",
+            "text": "blocked by harness playback"
+          }
+        ]
+      },
+      {
+        "eventName": "stop",
+        "status": "completed",
+        "statusMessage": null,
+        "durationMs": 2112,
+        "entries": []
+      }
+    ],
+    "hookProcesses": "hook processes (4):\nSessionStart pid 62744: exit 0 after 159ms (node boot 138ms, stdin read by 156ms, started 2026-11-13T14:02:21.720Z)\n  stdout: <empty>\n  stderr: <empty>\nUserPromptSubmit pid 12624: exit 0 after 233ms (node boot 212ms, stdin read by 230ms, started 2026-11-13T14:02:23.483Z)\n  stdout: <empty>\n  stderr: <empty>\nPreToolUse pid 67388: exit 0 after 199ms (node boot 178ms, stdin read by 196ms, started 2026-11-13T14:02:25.756Z)\n  stdout: \"{\\\"hookSpecificOutput\\\":{\\\"hookEventName\\\":\\\"PreToolUse\\\",\\\"permissionDecision\\\":\\\"deny\\\",\\\"permissionDecisionReason\\\":\\\"blocked by harness playback\\\"}}\"\n  stderr: <empty>\nStop pid 69716: exit 0 after 184ms (node boot 163ms, stdin read by 181ms, started 2026-11-13T14:02:28.004Z)\n  stdout: <empty>\n  stderr: <empty>"
+  },
+  {
+    "index": 3,
+    "version": "0.156.1",
+    "preToolUseTimeoutSeconds": 11,
+    "blockedFileWritten": false,
+    "hookRuns": [
+      {
+        "eventName": "sessionStart",
+        "status": "completed",
+        "statusMessage": null,
+        "durationMs": 1481,
+        "entries": []
+      },
+      {
+        "eventName": "userPromptSubmit",
+        "status": "completed",
+        "statusMessage": null,
+        "durationMs": 1631,
+        "entries": []
+      },
+      {
+        "eventName": "preToolUse",
+        "status": "blocked",
+        "statusMessage": null,
+        "durationMs": 1735,
+        "entries": [
+          {
+            "kind": "feedback",
+            "text": "blocked by harness playback"
+          }
+        ]
+      },
+      {
+        "eventName": "stop",
+        "status": "completed",
+        "statusMessage": null,
+        "durationMs": 1769,
+        "entries": []
+      }
+    ],
+    "hookProcesses": "hook processes (4):\nSessionStart pid 37972: exit 0 after 157ms (node boot 137ms, stdin read by 154ms, started 2026-11-13T14:02:49.316Z)\n  stdout: <empty>\n  stderr: <empty>\nUserPromptSubmit pid 31396: exit 0 after 172ms (node boot 152ms, stdin read by 170ms, started 2026-11-13T14:02:50.934Z)\n  stdout: <empty>\n  stderr: <empty>\nPreToolUse pid 4088: exit 0 after 197ms (node boot 175ms, stdin read by 194ms, started 2026-11-13T14:02:53.289Z)\n  stdout: \"{\\\"hookSpecificOutput\\\":{\\\"hookEventName\\\":\\\"PreToolUse\\\",\\\"permissionDecision\\\":\\\"deny\\\",\\\"permissionDecisionReason\\\":\\\"blocked by harness playback\\\"}}\"\n  stderr: <empty>\nStop pid 32940: exit 0 after 190ms (node boot 170ms, stdin read by 188ms, started 2026-11-13T14:02:55.144Z)\n  stdout: <empty>\n  stderr: <empty>"
+  },
+  {
+    "index": 4,
+    "version": "0.156.1",
+    "preToolUseTimeoutSeconds": 11,
+    "blockedFileWritten": false,
+    "hookRuns": [
+      {
+        "eventName": "sessionStart",
+        "status": "completed",
+        "statusMessage": null,
+        "durationMs": 1717,
+        "entries": []
+      },
+      {
+        "eventName": "userPromptSubmit",
+        "status": "completed",
+        "statusMessage": null,
+        "durationMs": 1679,
+        "entries": []
+      },
+      {
+        "eventName": "preToolUse",
+        "status": "blocked",
+        "statusMessage": null,
+        "durationMs": 1827,
+        "entries": [
+          {
+            "kind": "feedback",
+            "text": "blocked by harness playback"
+          }
+        ]
+      },
+      {
+        "eventName": "stop",
+        "status": "completed",
+        "statusMessage": null,
+        "durationMs": 1772,
+        "entries": []
+      }
+    ],
+    "hookProcesses": "hook processes (4):\nSessionStart pid 52228: exit 0 after 195ms (node boot 175ms, stdin read by 193ms, started 2026-11-13T14:03:17.586Z)\n  stdout: <empty>\n  stderr: <empty>\nUserPromptSubmit pid 69296: exit 0 after 172ms (node boot 151ms, stdin read by 170ms, started 2026-11-13T14:03:19.301Z)\n  stdout: <empty>\n  stderr: <empty>\nPreToolUse pid 43968: exit 0 after 225ms (node boot 203ms, stdin read by 221ms, started 2026-11-13T14:03:21.814Z)\n  stdout: \"{\\\"hookSpecificOutput\\\":{\\\"hookEventName\\\":\\\"PreToolUse\\\",\\\"permissionDecision\\\":\\\"deny\\\",\\\"permissionDecisionReason\\\":\\\"blocked by harness playback\\\"}}\"\n  stderr: <empty>\nStop pid 29004: exit 0 after 213ms (node boot 192ms, stdin read by 210ms, started 2026-11-13T14:03:23.663Z)\n  stdout: <empty>\n  stderr: <empty>"
+  },
+  {
+    "index": 5,
+    "version": "0.156.1",
+    "preToolUseTimeoutSeconds": 11,
+    "blockedFileWritten": false,
+    "hookRuns": [
+      {
+        "eventName": "sessionStart",
+        "status": "completed",
+        "statusMessage": null,
+        "durationMs": 1904,
+        "entries": []
+      },
+      {
+        "eventName": "userPromptSubmit",
+        "status": "failed",
+        "statusMessage": null,
+        "durationMs": 11040,
+        "entries": [
+          {
+            "kind": "error",
+            "text": "hook timed out after 11s"
+          }
+        ]
+      },
+      {
+        "eventName": "preToolUse",
+        "status": "blocked",
+        "statusMessage": null,
+        "durationMs": 2094,
+        "entries": [
+          {
+            "kind": "feedback",
+            "text": "blocked by harness playback"
+          }
+        ]
+      },
+      {
+        "eventName": "stop",
+        "status": "completed",
+        "statusMessage": null,
+        "durationMs": 1898,
+        "entries": []
+      }
+    ],
+    "hookProcesses": "hook processes (4):\nSessionStart pid 57232: exit 0 after 195ms (node boot 176ms, stdin read by 193ms, started 2026-11-13T14:03:43.418Z)\n  stdout: <empty>\n  stderr: <empty>\nUserPromptSubmit pid 19328: exit 0 after 194ms (node boot 174ms, stdin read by 192ms, started 2026-11-13T14:03:54.460Z)\n  stdout: <empty>\n  stderr: <empty>\nPreToolUse pid 20844: exit 0 after 214ms (node boot 193ms, stdin read by 210ms, started 2026-11-13T14:03:57.311Z)\n  stdout: \"{\\\"hookSpecificOutput\\\":{\\\"hookEventName\\\":\\\"PreToolUse\\\",\\\"permissionDecision\\\":\\\"deny\\\",\\\"permissionDecisionReason\\\":\\\"blocked by harness playback\\\"}}\"\n  stderr: <empty>\nStop pid 3928: exit 0 after 204ms (node boot 183ms, stdin read by 202ms, started 2026-11-13T14:03:59.353Z)\n  stdout: <empty>\n  stderr: <empty>"
+  },
+  {
+    "index": 6,
+    "version": "0.156.1",
+    "preToolUseTimeoutSeconds": 11,
+    "blockedFileWritten": false,
+    "hookRuns": [
+      {
+        "eventName": "sessionStart",
+        "status": "completed",
+        "statusMessage": null,
+        "durationMs": 1746,
+        "entries": []
+      },
+      {
+        "eventName": "userPromptSubmit",
+        "status": "completed",
+        "statusMessage": null,
+        "durationMs": 1713,
+        "entries": []
+      },
+      {
+        "eventName": "preToolUse",
+        "status": "blocked",
+        "statusMessage": null,
+        "durationMs": 1842,
+        "entries": [
+          {
+            "kind": "feedback",
+            "text": "blocked by harness playback"
+          }
+        ]
+      },
+      {
+        "eventName": "stop",
+        "status": "completed",
+        "statusMessage": null,
+        "durationMs": 1970,
+        "entries": []
+      }
+    ],
+    "hookProcesses": "hook processes (4):\nSessionStart pid 52900: exit 0 after 205ms (node boot 184ms, stdin read by 202ms, started 2026-11-13T14:04:25.510Z)\n  stdout: <empty>\n  stderr: <empty>\nUserPromptSubmit pid 49580: exit 0 after 171ms (node boot 150ms, stdin read by 169ms, started 2026-11-13T14:04:27.227Z)\n  stdout: <empty>\n  stderr: <empty>\nPreToolUse pid 44096: exit 0 after 210ms (node boot 189ms, stdin read by 206ms, started 2026-11-13T14:04:29.678Z)\n  stdout: \"{\\\"hookSpecificOutput\\\":{\\\"hookEventName\\\":\\\"PreToolUse\\\",\\\"permissionDecision\\\":\\\"deny\\\",\\\"permissionDecisionReason\\\":\\\"blocked by harness playback\\\"}}\"\n  stderr: <empty>\nStop pid 49540: exit 0 after 190ms (node boot 167ms, stdin read by 188ms, started 2026-11-13T14:04:31.798Z)\n  stdout: <empty>\n  stderr: <empty>"
+  },
+  {
+    "index": 7,
+    "version": "0.156.1",
+    "preToolUseTimeoutSeconds": 11,
+    "blockedFileWritten": false,
+    "hookRuns": [
+      {
+        "eventName": "sessionStart",
+        "status": "completed",
+        "statusMessage": null,
+        "durationMs": 1893,
+        "entries": []
+      },
+      {
+        "eventName": "userPromptSubmit",
+        "status": "completed",
+        "statusMessage": null,
+        "durationMs": 1811,
+        "entries": []
+      },
+      {
+        "eventName": "preToolUse",
+        "status": "blocked",
+        "statusMessage": null,
+        "durationMs": 1718,
+        "entries": [
+          {
+            "kind": "feedback",
+            "text": "blocked by harness playback"
+          }
+        ]
+      },
+      {
+        "eventName": "stop",
+        "status": "completed",
+        "statusMessage": null,
+        "durationMs": 1963,
+        "entries": []
+      }
+    ],
+    "hookProcesses": "hook processes (4):\nSessionStart pid 77200: exit 0 after 171ms (node boot 151ms, stdin read by 169ms, started 2026-11-13T14:05:00.874Z)\n  stdout: <empty>\n  stderr: <empty>\nUserPromptSubmit pid 65232: exit 0 after 199ms (node boot 178ms, stdin read by 196ms, started 2026-11-13T14:05:02.719Z)\n  stdout: <empty>\n  stderr: <empty>\nPreToolUse pid 74660: exit 0 after 201ms (node boot 179ms, stdin read by 197ms, started 2026-11-13T14:05:05.058Z)\n  stdout: \"{\\\"hookSpecificOutput\\\":{\\\"hookEventName\\\":\\\"PreToolUse\\\",\\\"permissionDecision\\\":\\\"deny\\\",\\\"permissionDecisionReason\\\":\\\"blocked by harness playback\\\"}}\"\n  stderr: <empty>\nStop pid 35464: exit 0 after 188ms (node boot 167ms, stdin read by 185ms, started 2026-11-13T14:05:07.033Z)\n  stdout: <empty>\n  stderr: <empty>"
+  },
+  {
+    "index": 8,
+    "version": "0.156.1",
+    "preToolUseTimeoutSeconds": 11,
+    "blockedFileWritten": false,
+    "hookRuns": [
+      {
+        "eventName": "sessionStart",
+        "status": "completed",
+        "statusMessage": null,
+        "durationMs": 1543,
+        "entries": []
+      },
+      {
+        "eventName": "userPromptSubmit",
+        "status": "completed",
+        "statusMessage": null,
+        "durationMs": 1738,
+        "entries": []
+      },
+      {
+        "eventName": "preToolUse",
+        "status": "blocked",
+        "statusMessage": null,
+        "durationMs": 1655,
+        "entries": [
+          {
+            "kind": "feedback",
+            "text": "blocked by harness playback"
+          }
+        ]
+      },
+      {
+        "eventName": "stop",
+        "status": "completed",
+        "statusMessage": null,
+        "durationMs": 1683,
+        "entries": []
+      }
+    ],
+    "hookProcesses": "hook processes (4):\nSessionStart pid 66408: exit 0 after 220ms (node boot 200ms, stdin read by 218ms, started 2026-11-13T14:05:25.167Z)\n  stdout: <empty>\n  stderr: <empty>\nUserPromptSubmit pid 70012: exit 0 after 190ms (node boot 170ms, stdin read by 188ms, started 2026-11-13T14:05:26.967Z)\n  stdout: <empty>\n  stderr: <empty>\nPreToolUse pid 76488: exit 0 after 191ms (node boot 169ms, stdin read by 187ms, started 2026-11-13T14:05:29.126Z)\n  stdout: \"{\\\"hookSpecificOutput\\\":{\\\"hookEventName\\\":\\\"PreToolUse\\\",\\\"permissionDecision\\\":\\\"deny\\\",\\\"permissionDecisionReason\\\":\\\"blocked by harness playback\\\"}}\"\n  stderr: <empty>\nStop pid 73428: exit 0 after 133ms (node boot 114ms, stdin read by 131ms, started 2026-11-13T14:05:30.923Z)\n  stdout: <empty>\n  stderr: <empty>"
+  },
+  {
+    "index": 9,
+    "version": "0.156.1",
+    "preToolUseTimeoutSeconds": 11,
+    "blockedFileWritten": false,
+    "hookRuns": [
+      {
+        "eventName": "sessionStart",
+        "status": "completed",
+        "statusMessage": null,
+        "durationMs": 1674,
+        "entries": []
+      },
+      {
+        "eventName": "userPromptSubmit",
+        "status": "completed",
+        "statusMessage": null,
+        "durationMs": 5246,
+        "entries": []
+      },
+      {
+        "eventName": "preToolUse",
+        "status": "blocked",
+        "statusMessage": null,
+        "durationMs": 1824,
+        "entries": [
+          {
+            "kind": "feedback",
+            "text": "blocked by harness playback"
+          }
+        ]
+      },
+      {
+        "eventName": "stop",
+        "status": "completed",
+        "statusMessage": null,
+        "durationMs": 1743,
+        "entries": []
+      }
+    ],
+    "hookProcesses": "hook processes (4):\nSessionStart pid 45392: exit 0 after 224ms (node boot 204ms, stdin read by 222ms, started 2026-11-13T14:05:49.640Z)\n  stdout: <empty>\n  stderr: <empty>\nUserPromptSubmit pid 13656: exit 0 after 234ms (node boot 213ms, stdin read by 232ms, started 2026-11-13T14:05:54.636Z)\n  stdout: <empty>\n  stderr: <empty>\nPreToolUse pid 64704: exit 0 after 197ms (node boot 175ms, stdin read by 193ms, started 2026-11-13T14:05:57.234Z)\n  stdout: \"{\\\"hookSpecificOutput\\\":{\\\"hookEventName\\\":\\\"PreToolUse\\\",\\\"permissionDecision\\\":\\\"deny\\\",\\\"permissionDecisionReason\\\":\\\"blocked by harness playback\\\"}}\"\n  stderr: <empty>\nStop pid 34808: exit 0 after 214ms (node boot 194ms, stdin read by 212ms, started 2026-11-13T14:05:59.080Z)\n  stdout: <empty>\n  stderr: <empty>"
+  },
+  {
+    "index": 10,
+    "version": "0.156.1",
+    "preToolUseTimeoutSeconds": 11,
+    "blockedFileWritten": false,
+    "hookRuns": [
+      {
+        "eventName": "sessionStart",
+        "status": "completed",
+        "statusMessage": null,
+        "durationMs": 1289,
+        "entries": []
+      },
+      {
+        "eventName": "userPromptSubmit",
+        "status": "completed",
+        "statusMessage": null,
+        "durationMs": 1723,
+        "entries": []
+      },
+      {
+        "eventName": "preToolUse",
+        "status": "blocked",
+        "statusMessage": null,
+        "durationMs": 864,
+        "entries": [
+          {
+            "kind": "feedback",
+            "text": "blocked by harness playback"
+          }
+        ]
+      },
+      {
+        "eventName": "stop",
+        "status": "completed",
+        "statusMessage": null,
+        "durationMs": 8533,
+        "entries": []
+      }
+    ],
+    "hookProcesses": "hook processes (4):\nSessionStart pid 2772: exit 0 after 184ms (node boot 163ms, stdin read by 182ms, started 2026-11-13T14:06:17.220Z)\n  stdout: <empty>\n  stderr: <empty>\nUserPromptSubmit pid 32272: exit 0 after 202ms (node boot 181ms, stdin read by 199ms, started 2026-11-13T14:06:18.947Z)\n  stdout: <empty>\n  stderr: <empty>\nPreToolUse pid 25284: exit 0 after 203ms (node boot 182ms, stdin read by 199ms, started 2026-11-13T14:06:20.442Z)\n  stdout: \"{\\\"hookSpecificOutput\\\":{\\\"hookEventName\\\":\\\"PreToolUse\\\",\\\"permissionDecision\\\":\\\"deny\\\",\\\"permissionDecisionReason\\\":\\\"blocked by harness playback\\\"}}\"\n  stderr: <empty>\nStop pid 44192: exit 0 after 188ms (node boot 167ms, stdin read by 185ms, started 2026-11-13T14:06:28.611Z)\n  stdout: <empty>\n  stderr: <empty>"
+  },
+  {
+    "index": 11,
+    "version": "0.156.1",
+    "preToolUseTimeoutSeconds": 11,
+    "blockedFileWritten": false,
+    "hookRuns": [
+      {
+        "eventName": "sessionStart",
+        "status": "completed",
+        "statusMessage": null,
+        "durationMs": 616,
+        "entries": []
+      },
+      {
+        "eventName": "userPromptSubmit",
+        "status": "completed",
+        "statusMessage": null,
+        "durationMs": 1018,
+        "entries": []
+      },
+      {
+        "eventName": "preToolUse",
+        "status": "blocked",
+        "statusMessage": null,
+        "durationMs": 9255,
+        "entries": [
+          {
+            "kind": "feedback",
+            "text": "blocked by harness playback"
+          }
+        ]
+      },
+      {
+        "eventName": "stop",
+        "status": "completed",
+        "statusMessage": null,
+        "durationMs": 2030,
+        "entries": []
+      }
+    ],
+    "hookProcesses": "hook processes (4):\nSessionStart pid 78496: exit 0 after 38ms (node boot 18ms, stdin read by 35ms, started 2026-11-13T14:06:48.876Z)\n  stdout: <empty>\n  stderr: <empty>\nUserPromptSubmit pid 27292: exit 0 after 180ms (node boot 160ms, stdin read by 178ms, started 2026-11-13T14:06:49.892Z)\n  stdout: <empty>\n  stderr: <empty>\nPreToolUse pid 65600: exit 0 after 220ms (node boot 198ms, stdin read by 216ms, started 2026-11-13T14:06:58.587Z)\n  stdout: \"{\\\"hookSpecificOutput\\\":{\\\"hookEventName\\\":\\\"PreToolUse\\\",\\\"permissionDecision\\\":\\\"deny\\\",\\\"permissionDecisionReason\\\":\\\"blocked by harness playback\\\"}}\"\n  stderr: <empty>\nStop pid 35384: exit 0 after 191ms (node boot 171ms, stdin read by 189ms, started 2026-11-13T14:07:01.379Z)\n  stdout: <empty>\n  stderr: <empty>"
+  },
+  {
+    "index": 12,
+    "version": "0.156.1",
+    "preToolUseTimeoutSeconds": 11,
+    "blockedFileWritten": false,
+    "hookRuns": [
+      {
+        "eventName": "sessionStart",
+        "status": "completed",
+        "statusMessage": null,
+        "durationMs": 1237,
+        "entries": []
+      },
+      {
+        "eventName": "userPromptSubmit",
+        "status": "completed",
+        "statusMessage": null,
+        "durationMs": 1771,
+        "entries": []
+      },
+      {
+        "eventName": "preToolUse",
+        "status": "blocked",
+        "statusMessage": null,
+        "durationMs": 1724,
+        "entries": [
+          {
+            "kind": "feedback",
+            "text": "blocked by harness playback"
+          }
+        ]
+      },
+      {
+        "eventName": "stop",
+        "status": "completed",
+        "statusMessage": null,
+        "durationMs": 1909,
+        "entries": []
+      }
+    ],
+    "hookProcesses": "hook processes (4):\nSessionStart pid 57212: exit 0 after 255ms (node boot 234ms, stdin read by 253ms, started 2026-11-13T14:07:24.025Z)\n  stdout: <empty>\n  stderr: <empty>\nUserPromptSubmit pid 63316: exit 0 after 119ms (node boot 99ms, stdin read by 117ms, started 2026-11-13T14:07:25.789Z)\n  stdout: <empty>\n  stderr: <empty>\nPreToolUse pid 70440: exit 0 after 220ms (node boot 197ms, stdin read by 216ms, started 2026-11-13T14:07:28.141Z)\n  stdout: \"{\\\"hookSpecificOutput\\\":{\\\"hookEventName\\\":\\\"PreToolUse\\\",\\\"permissionDecision\\\":\\\"deny\\\",\\\"permissionDecisionReason\\\":\\\"blocked by harness playback\\\"}}\"\n  stderr: <empty>\nStop pid 38804: exit 0 after 206ms (node boot 184ms, stdin read by 203ms, started 2026-11-13T14:07:30.186Z)\n  stdout: <empty>\n  stderr: <empty>"
+  },
+  {
+    "index": 13,
+    "version": "0.156.1",
+    "preToolUseTimeoutSeconds": 11,
+    "blockedFileWritten": false,
+    "hookRuns": [
+      {
+        "eventName": "sessionStart",
+        "status": "completed",
+        "statusMessage": null,
+        "durationMs": 1341,
+        "entries": []
+      },
+      {
+        "eventName": "userPromptSubmit",
+        "status": "completed",
+        "statusMessage": null,
+        "durationMs": 1639,
+        "entries": []
+      },
+      {
+        "eventName": "preToolUse",
+        "status": "blocked",
+        "statusMessage": null,
+        "durationMs": 6883,
+        "entries": [
+          {
+            "kind": "feedback",
+            "text": "blocked by harness playback"
+          }
+        ]
+      },
+      {
+        "eventName": "stop",
+        "status": "completed",
+        "statusMessage": null,
+        "durationMs": 2232,
+        "entries": []
+      }
+    ],
+    "hookProcesses": "hook processes (4):\nSessionStart pid 28372: exit 0 after 155ms (node boot 134ms, stdin read by 152ms, started 2026-11-13T14:07:49.910Z)\n  stdout: <empty>\n  stderr: <empty>\nUserPromptSubmit pid 5732: exit 0 after 204ms (node boot 184ms, stdin read by 203ms, started 2026-11-13T14:07:51.611Z)\n  stdout: <empty>\n  stderr: <empty>\nPreToolUse pid 63716: exit 0 after 234ms (node boot 212ms, stdin read by 231ms, started 2026-11-13T14:07:58.491Z)\n  stdout: \"{\\\"hookSpecificOutput\\\":{\\\"hookEventName\\\":\\\"PreToolUse\\\",\\\"permissionDecision\\\":\\\"deny\\\",\\\"permissionDecisionReason\\\":\\\"blocked by harness playback\\\"}}\"\n  stderr: <empty>\nStop pid 43424: exit 0 after 192ms (node boot 171ms, stdin read by 189ms, started 2026-11-13T14:08:01.437Z)\n  stdout: <empty>\n  stderr: <empty>"
+  },
+  {
+    "index": 14,
+    "version": "0.156.1",
+    "preToolUseTimeoutSeconds": 11,
+    "blockedFileWritten": false,
+    "hookRuns": [
+      {
+        "eventName": "sessionStart",
+        "status": "completed",
+        "statusMessage": null,
+        "durationMs": 9299,
+        "entries": []
+      },
+      {
+        "eventName": "userPromptSubmit",
+        "status": "completed",
+        "statusMessage": null,
+        "durationMs": 1877,
+        "entries": []
+      },
+      {
+        "eventName": "preToolUse",
+        "status": "blocked",
+        "statusMessage": null,
+        "durationMs": 1913,
+        "entries": [
+          {
+            "kind": "feedback",
+            "text": "blocked by harness playback"
+          }
+        ]
+      },
+      {
+        "eventName": "stop",
+        "status": "completed",
+        "statusMessage": null,
+        "durationMs": 1947,
+        "entries": []
+      }
+    ],
+    "hookProcesses": "hook processes (4):\nSessionStart pid 38516: exit 0 after 192ms (node boot 171ms, stdin read by 190ms, started 2026-11-13T14:08:30.047Z)\n  stdout: <empty>\n  stderr: <empty>\nUserPromptSubmit pid 5584: exit 0 after 203ms (node boot 182ms, stdin read by 200ms, started 2026-11-13T14:08:32.104Z)\n  stdout: <empty>\n  stderr: <empty>\nPreToolUse pid 49580: exit 0 after 211ms (node boot 188ms, stdin read by 206ms, started 2026-11-13T14:08:34.734Z)\n  stdout: \"{\\\"hookSpecificOutput\\\":{\\\"hookEventName\\\":\\\"PreToolUse\\\",\\\"permissionDecision\\\":\\\"deny\\\",\\\"permissionDecisionReason\\\":\\\"blocked by harness playback\\\"}}\"\n  stderr: <empty>\nStop pid 42316: exit 0 after 211ms (node boot 191ms, stdin read by 208ms, started 2026-11-13T14:08:36.737Z)\n  stdout: <empty>\n  stderr: <empty>"
+  }
+]

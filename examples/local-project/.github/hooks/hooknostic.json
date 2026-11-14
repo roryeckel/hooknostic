@@ -9,7 +9,7 @@
           ".hooknostic/artifacts/copilot/runtime/hooknostic.mjs",
           "preToolUse"
         ],
-        "timeoutSec": 6
+        "timeoutSec": 10
       }
     ]
   }

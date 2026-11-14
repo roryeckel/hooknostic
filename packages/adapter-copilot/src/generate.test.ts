@@ -17,7 +17,13 @@ const PACKAGE_TARGET = {
 const PROJECT_TARGET = { ...PACKAGE_TARGET, delivery: "project" as const };
 const BUNDLE = { code: "// bundled runtime placeholder\n" };
 const OPTIONS = {
-  runtime: { onHookError: "continue" as const, timeoutMs: 5_000, contextCharLimit: 16_000, notifyCharLimit: 2_000 },
+  runtime: {
+    onHookError: "continue" as const,
+    timeoutMs: 5_000,
+    processAllowanceMs: 5_000,
+    contextCharLimit: 16_000,
+    notifyCharLimit: 2_000,
+  },
 };
 
 function exampleIR() {
@@ -74,10 +80,11 @@ describe("generateCopilotArtifacts", () => {
       type: "command",
       exec: "node",
       args: ["${PLUGIN_ROOT}/runtime/hooknostic.mjs", "preToolUse"],
-      // Two hooks reach preToolUse, each with its own 5s budget, plus one.
-      timeoutSec: 11,
+      // Two hooks reach preToolUse, each with its own 5s budget, plus the 5s
+      // process allowance.
+      timeoutSec: 15,
     });
-    expect(hooks.hooks.sessionStart[0].timeoutSec).toBe(6);
+    expect(hooks.hooks.sessionStart[0].timeoutSec).toBe(10);
     expect(artifacts[2]!.contents).toBe(BUNDLE.code);
   });
 

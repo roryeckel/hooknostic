@@ -24,7 +24,7 @@
         "PreToolUse"
       ],
       "kind": "array",
-      "hash": "e7cc53cb779c83ba184658db1fd11daa4f62466a376ec626b7fe9a9e7c1d60f1",
+      "hash": "c549a1b03a353209742acf01c9e15b35030d0653b0d839e825350f225b773e02",
       "context": []
     },
     {
@@ -59,12 +59,12 @@
         "PreToolUse"
       ],
       "kind": "array",
-      "hash": "ebf61b0f7070e0f05dc068dc420ea7793dcd0129f12243077b963fea4bf405e8",
+      "hash": "6a8cf9815fef5816ed8b1eea024f5f87a0a20bc5013f49eec6de49c4b95cbc5f",
       "context": []
     },
     {
       "path": ".github/hooks/hooknostic.json",
-      "hash": "8b7603a787b2d689e2b061b5e470297ef690630c9ddb253818add65ef29fb404",
+      "hash": "de08c38e7bd00df203fed0d14f11fe1ab29ed757a5598b52a93047f8cc9c56ef",
       "mode": 420
     },
     {
@@ -84,7 +84,7 @@
     },
     {
       "path": ".hooknostic/artifacts/claude/hooks/hooks.json",
-      "hash": "8547853e03bc214e26cc775b8e92c336355208b1617372f5222398da0cfb2048",
+      "hash": "3caaa45b89c1bc49a8d5fe949f94416530b4712576c8c7bda6a3c34f09e8333b",
       "mode": 420
     },
     {
@@ -99,17 +99,17 @@
     },
     {
       "path": ".hooknostic/artifacts/claude/runtime/hooknostic.mjs",
-      "hash": "5ed1b8e6dbb0f90de59dded361e59573e8dd53230f252ec3ce9a92ebca0c68ea",
+      "hash": "2e106c2884484f5175478dfcfd78e085e3df328cd4f636cbe020b5c88a1db8d5",
       "mode": 420
     },
     {
       "path": ".hooknostic/artifacts/codex/.codex/hooknostic/hooknostic.mjs",
-      "hash": "4731a8c725d512206784306fe2a669d7ede0b4805a72135e4a734f5502be4251",
+      "hash": "941924b9ce37b1e85fe361b0044e879b8ce726853170e8e93027f235ac495e5d",
       "mode": 420
     },
     {
       "path": ".hooknostic/artifacts/codex/.codex/hooks.json",
-      "hash": "36dd0f17970e5c99b5ac258f3a8a7d6181ccb7fdfababfb6097e8b17ad7528ff",
+      "hash": "0c9bcd228b7f703c73b24a1bbf33e168dbb0070ecbff2e383cae1b051a040cdf",
       "mode": 420
     },
     {
@@ -134,7 +134,7 @@
     },
     {
       "path": ".hooknostic/artifacts/copilot/hooks/hooknostic.json",
-      "hash": "dedc2f1e716829b2c72467b9d9e91720fc971febdb67467566c2fef825b0b7cf",
+      "hash": "f3aee2241ef7ca37f474c3b1d74362cf55949b508b4e2c4c42234561f849270a",
       "mode": 420
     },
     {
@@ -149,7 +149,7 @@
     },
     {
       "path": ".hooknostic/artifacts/copilot/runtime/hooknostic.mjs",
-      "hash": "cb268065215a1d4adc7b2b81ebde7a90a5467a44123a795568f60cbca95c7418",
+      "hash": "1ebfc141a5f6ef3b53698bff33f93d524e1abdfc812e47dab3875dd660061412",
       "mode": 420
     },
     {
@@ -159,7 +159,7 @@
     },
     {
       "path": ".hooknostic/artifacts/opencode/.opencode/plugins/hooknostic.js",
-      "hash": "79659a03f4cfeff51c6fae8b7a4417b8be506dde01d9ff747ba7661f6b7b7f0f",
+      "hash": "69638a64b7af5107b6e564f027ca3da5e9cc6e913f5e60fde063e427595cb826",
       "mode": 420
     },
     {
@@ -179,7 +179,7 @@
     },
     {
       "path": ".hooknostic/artifacts/pi/.pi/extensions/hooknostic.js",
-      "hash": "f64d1c964e80fc77f9337acc99734c76feea771cc2d20b094d5dcf54aa322a58",
+      "hash": "70daf19ab97319756c42b84927346dbc515375547f535e3e8ceea84deb230c27",
       "mode": 420
     },
     {

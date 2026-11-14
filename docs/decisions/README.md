@@ -45,6 +45,7 @@ Read these when you want to know *why* something works the way it does, not just
 | [0036 — A session-start notification](0036-session-start-notify.md) | Why can a hook tell the user something when a session starts, and where does that not work? |
 | [0037 — Build-time harness and sibling skill references](0037-skill-context-tokens.md) | How can skill text identify its projection and name a sibling skill? |
 | [0038 — Per-target component exclusions](0038-per-target-component-exclusions.md) | How does one config intentionally omit content on a target, including when project discovery is shared? |
+| [0039 — A native deadline has two parts](0039-process-allowance.md) | Why does a hook budget not cover starting the hook process, and what does? |
 
 Each record is immutable once accepted; a change of course gets a new record that
 supersedes the old one rather than a silent edit.

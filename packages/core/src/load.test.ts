@@ -114,6 +114,7 @@ describe("loadConfig", () => {
     expect(effectiveRuntime(config)).toEqual({
       onHookError: "continue",
       timeoutMs: 5_000,
+      processAllowanceMs: 5_000,
       contextCharLimit: 16_000,
       notifyCharLimit: 2_000,
     });

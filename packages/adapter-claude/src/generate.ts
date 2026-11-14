@@ -74,7 +74,11 @@ function claudeNativeTimeout(
   reaching: Parameters<typeof nativeTimeoutSeconds>[0],
   runtime: Parameters<typeof nativeTimeoutSeconds>[1],
 ): number {
-  const seconds = nativeTimeoutSeconds(reaching, runtime);
+  const seconds = nativeTimeoutSeconds(reaching, runtime, {
+    ...(CLAUDE_NATIVE_TIMEOUT_CEILING_SECONDS[nativeEvent] === undefined
+      ? {}
+      : { ceilingSeconds: CLAUDE_NATIVE_TIMEOUT_CEILING_SECONDS[nativeEvent] }),
+  });
   assertNativeTimeoutFits(nativeEvent, seconds, CLAUDE_NATIVE_TIMEOUT_CEILING_SECONDS, "Claude Code");
   return seconds;
 }

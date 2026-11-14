@@ -15,7 +15,13 @@ const TARGET = {
 };
 const BUNDLE = { code: "// bundled runtime placeholder\n" };
 const OPTIONS = {
-  runtime: { onHookError: "continue" as const, timeoutMs: 5_000, contextCharLimit: 16_000, notifyCharLimit: 2_000 },
+  runtime: {
+    onHookError: "continue" as const,
+    timeoutMs: 5_000,
+    processAllowanceMs: 5_000,
+    contextCharLimit: 16_000,
+    notifyCharLimit: 2_000,
+  },
 };
 
 function exampleIR() {
@@ -47,7 +53,7 @@ describe("generateCodexArtifacts", () => {
     expect(hooksJson.hooks.PreToolUse[0].hooks[0]).toEqual({
       type: "command",
       command: "node .codex/hooknostic/hooknostic.mjs",
-      timeout: 6,
+      timeout: 10,
     });
   });
 
@@ -117,7 +123,7 @@ describe("generateCodexArtifacts", () => {
     });
     const artifacts = generateCodexArtifacts(ir, TARGET, BUNDLE, OPTIONS);
     const hooksJson = JSON.parse(artifacts.find((a) => a.path.endsWith("hooks.json"))!.contents as string);
-    expect(hooksJson.hooks.PreToolUse[0].hooks[0].timeout).toBe(11);
+    expect(hooksJson.hooks.PreToolUse[0].hooks[0].timeout).toBe(15);
 
     // codex-cli clamps SessionEnd to 3s, so the 5s default cannot fit and the
     // build must say so rather than emit a manifest asking for time it will not
@@ -137,7 +143,7 @@ describe("generateCodexArtifacts", () => {
       runtime: { ...OPTIONS.runtime, timeoutMs: 61_000 },
     });
     const hooksJson = JSON.parse(artifacts[0]!.contents as string);
-    expect(hooksJson.hooks.PreToolUse[0].hooks[0].timeout).toBe(62);
+    expect(hooksJson.hooks.PreToolUse[0].hooks[0].timeout).toBe(66);
   });
 });
 

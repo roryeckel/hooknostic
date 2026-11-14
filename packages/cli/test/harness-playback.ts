@@ -4,7 +4,7 @@ import type { ServerResponse } from "node:http";
 import { createServer } from "node:http";
 import { createRequire } from "node:module";
 import type { AddressInfo, Socket } from "node:net";
-import { dirname, join, normalize, resolve } from "node:path";
+import { basename, dirname, join, normalize, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
 import { expect } from "vitest";
@@ -12,22 +12,33 @@ import { expect } from "vitest";
 import { dialectOfStatedShell } from "@hooknostic/adapter-opencode";
 import type { ProjectComponents } from "@hooknostic/agent-plugin";
 import type { HarnessAdapter, ProjectComponentOptions, TargetSpec } from "@hooknostic/core";
-import { applyProject, reconcileProject } from "@hooknostic/core";
+import { applyProject, dispatcherRuntimePolicy, reconcileProject } from "@hooknostic/core";
 import { buildPluginIR, bundleRuntime } from "@hooknostic/core";
-import type { CapabilityId, EventFieldId, HookEventName, ShellDialect } from "@hooknostic/sdk";
-import { definePlugin, hook, HOOK_EVENT_NAMES } from "@hooknostic/sdk";
+import type { CapabilityId, EventFieldId, HookEventName, RuntimePolicy, ShellDialect } from "@hooknostic/sdk";
+import { DEFAULT_RUNTIME, definePlugin, hook, HOOK_EVENT_NAMES } from "@hooknostic/sdk";
 // The fixtures entry, not the package index: the capture drivers import this
 // module under plain Node, where the contract suite's vitest import fails.
 import { declinedFixtures } from "@hooknostic/testkit/fixtures";
 
-const RUNTIME_POLICY = {
-  onHookError: "continue" as const,
-  // Codex caps SessionEnd at three seconds. Keep the portable budget at one
-  // second so generated native timeouts fit every validated harness.
-  timeoutMs: 1_000,
-  contextCharLimit: 16_000,
-  notifyCharLimit: 2_000,
-};
+// The product defaults, spread rather than copied: a lane that restated them
+// would drift the moment DEFAULT_RUNTIME changed, which is the divergence
+// ADR-0039 removed. Each native deadline is the hooks' budgets plus the process
+// allowance, which is what gives a contended host time to start `cmd.exe` and
+// `node.exe` (.capture/codex-hook-failure).
+const RUNTIME_POLICY: Required<RuntimePolicy> = { ...DEFAULT_RUNTIME };
+
+/**
+ * A playback hook's own handler budget, or undefined to inherit the policy's.
+ *
+ * SessionEnd declares 2s because Codex clamps that event to 3s: the allowance
+ * shrinks to the 1s that is left, and asking for the 5s default would leave the
+ * dispatcher's budget itself above the cap, which the build refuses. Every other
+ * hook inherits the product default; a capture reproducing a tighter native
+ * timeout overrides `hookTimeoutMs` and `processAllowanceMs` together.
+ */
+function playbackHookTimeoutMs(event: HookEventName, override?: number): number | undefined {
+  return event === "session.end" ? 2_000 : override;
+}
 
 const require = createRequire(import.meta.url);
 
@@ -81,6 +92,17 @@ export interface PlaybackTargetOverride {
    * exercises. The default hook matches every tool and emits no matcher.
    */
   shellMatch?: boolean;
+  /**
+   * Every hook's handler budget except session.end's, replacing the inherited
+   * policy budget. For a capture that reproduces a tighter native timeout:
+   * set `processAllowanceMs` too, since the deadline is their sum.
+   */
+  hookTimeoutMs?: number;
+  /**
+   * The process allowance for this build, replacing the product default. The
+   * native deadline is the hooks' budgets plus this.
+   */
+  processAllowanceMs?: number;
 }
 
 function targetFor(adapter: HarnessAdapter, output: string, override: PlaybackTargetOverride = {}) {
@@ -158,6 +180,7 @@ function playbackPluginSource(
   fields: readonly EventFieldId[],
   label?: string,
   shellMatch = false,
+  timeoutMsFor: (event: HookEventName) => number | undefined = (event) => playbackHookTimeoutMs(event),
 ): string {
   const definitions = events.map((event) => {
     const capabilities = [
@@ -262,9 +285,11 @@ function playbackPluginSource(
           });
         }`;
 
+    const timeoutMs = timeoutMsFor(event);
+    const timeoutMsLine = timeoutMs === undefined ? "" : `\n      timeoutMs: ${timeoutMs},`;
     return `
     hook(${JSON.stringify(event)}, {
-      id: ${JSON.stringify(`playback-${event}`)},${shellMatch && event === "tool.before" ? `\n      match: { kind: "shell" },` : ""}
+      id: ${JSON.stringify(`playback-${event}`)},${timeoutMsLine}${shellMatch && event === "tool.before" ? `\n      match: { kind: "shell" },` : ""}
       ${turnFields}${capabilityBlock}
       async run(event) {
         appendFileSync(tracePath, JSON.stringify({
@@ -334,9 +359,19 @@ export async function buildPlaybackArtifact(
   const entryPath = join(artifactDir, "playback-hooks.ts");
   const tracePath = join(artifactDir, "hook-trace.jsonl");
   await mkdir(artifactDir, { recursive: true });
+  // The source the runtime bundles and the IR the native timeout is derived
+  // from must carry the same budgets.
+  const timeoutMsFor = (event: HookEventName): number | undefined =>
+    playbackHookTimeoutMs(event, override.hookTimeoutMs);
+  // The allowance is build-time, so it stays out of the policy the shim
+  // receives (ADR-0039).
+  const buildRuntime: Required<RuntimePolicy> = {
+    ...RUNTIME_POLICY,
+    ...(override.processAllowanceMs === undefined ? {} : { processAllowanceMs: override.processAllowanceMs }),
+  };
   await writeFile(
     entryPath,
-    playbackPluginSource(events, contextAdd, fields, override.label, override.shellMatch),
+    playbackPluginSource(events, contextAdd, fields, override.label, override.shellMatch, timeoutMsFor),
     "utf8",
   );
 
@@ -351,8 +386,10 @@ export async function buildPlaybackArtifact(
   // `hook()`; the full-id declarations go straight onto the erased definition,
   // which is the form hook() itself produces.
   const hooks = events.map((event) => {
+    const ownTimeoutMs = timeoutMsFor(event);
     const definition = hook(event, {
       id: `playback-${event}`,
+      ...(ownTimeoutMs === undefined ? {} : { timeoutMs: ownTimeoutMs }),
       ...(override.shellMatch && event === "tool.before" ? { match: { kind: "shell" as const } } : {}),
       async run() {},
     });
@@ -404,7 +441,7 @@ export async function buildPlaybackArtifact(
       entryImportPath: entryPath.replaceAll("\\", "/"),
       capabilities,
       minimumCapabilityLevel: "approximate",
-      policy: RUNTIME_POLICY,
+      policy: dispatcherRuntimePolicy(buildRuntime),
       harnessVersion: override.version ?? adapter.harness.referenceVersion,
       // As buildProject does: the shim settles version-line facts from it.
       targetRange: target.version,
@@ -418,7 +455,7 @@ export async function buildPlaybackArtifact(
       "@hooknostic/sdk": require.resolve("@hooknostic/sdk"),
     },
   });
-  const artifacts = await adapter.compile(ir, target, bundle, { runtime: RUNTIME_POLICY });
+  const artifacts = await adapter.compile(ir, target, bundle, { runtime: buildRuntime });
   const prefix = override.project ? `.hooknostic/artifacts/${adapter.id}` : "";
   if (override.project) {
     if (!adapter.projectIntegration) throw new Error("missing project integrator");
@@ -1418,6 +1455,128 @@ async function readTrace(path: string): Promise<{ event: HookEventName }[]> {
 
 export async function traceEvents(path: string): Promise<HookEventName[]> {
   return (await readTrace(path)).map((entry) => entry.event);
+}
+
+const HOOK_PROCESS_RECORDER = pathToFileURL(require.resolve("./hook-process-recorder.mjs")).href;
+
+/**
+ * Environment that makes every generated hook process record its own start,
+ * exit code, wall time, stdout and stderr to `logPath`, through a test-only
+ * Node preload (`hook-process-recorder.mjs`). Codex 0.156.1 reports a failed
+ * hook as `hook: <Event> Failed` and nothing else, so this is how a failed
+ * drive names its cause. Existing NODE_OPTIONS are kept.
+ */
+export function hookProcessRecorderEnv(logPath: string, base: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
+  // A file URL percent-encodes spaces and has no backslashes, so it needs no
+  // quoting in NODE_OPTIONS, which splits on spaces.
+  const preload = `--import ${HOOK_PROCESS_RECORDER}`;
+  const existing = base["NODE_OPTIONS"];
+  return {
+    HOOKNOSTIC_PLAYBACK_HOOK_LOG: logPath,
+    NODE_OPTIONS: existing ? `${existing} ${preload}` : preload,
+  };
+}
+
+interface HookProcessRecord {
+  pid: number;
+  phase: "start" | "stdin" | "uncaught" | "exit";
+  atMs?: number;
+  startedAt?: number;
+  bootMs?: number;
+  nativeEvent?: string;
+  code?: number;
+  durationMs?: number;
+  stdout?: string;
+  stderr?: string;
+  origin?: string;
+  error?: string;
+  writeErrors?: string[];
+}
+
+/**
+ * One block per hook process from a recorder log, in start order: native event,
+ * exit code, wall time from process start, and its stdout and stderr. A process
+ * with no exit record is called out, because that is a hook killed or aborted
+ * before Node could run its exit handlers.
+ */
+export async function hookProcessReport(logPath: string): Promise<string> {
+  // The recorder writes `<logPath>.<pid>.jsonl`, one file per hook process.
+  let contents = "";
+  try {
+    const prefix = `${basename(logPath)}.`;
+    for (const name of await readdir(dirname(logPath))) {
+      if (name.startsWith(prefix) && name.endsWith(".jsonl")) {
+        contents += await readFile(join(dirname(logPath), name), "utf8");
+      }
+    }
+  } catch (error) {
+    return `hook processes: recorder logs unreadable at ${logPath} (${error instanceof Error ? error.message : String(error)})`;
+  }
+  const byPid = new Map<number, HookProcessRecord[]>();
+  for (const line of contents.split("\n").filter(Boolean)) {
+    let parsed: HookProcessRecord;
+    try {
+      parsed = JSON.parse(line) as HookProcessRecord;
+    } catch {
+      continue;
+    }
+    byPid.set(parsed.pid, [...(byPid.get(parsed.pid) ?? []), parsed]);
+  }
+  const blocks = [...byPid.entries()]
+    .map(([pid, records]) => {
+      const start = records.find((record) => record.phase === "start");
+      const exit = records.find((record) => record.phase === "exit");
+      const input = records.find((record) => record.phase === "stdin");
+      const uncaught = records.filter((record) => record.phase === "uncaught");
+      const startedAt = start?.startedAt === undefined ? "?" : new Date(start.startedAt).toISOString();
+      const progress = input ? `stdin read by ${input.atMs}ms` : "stdin never fully read";
+      const head = exit
+        ? `${exit.nativeEvent ?? "<event unread>"} pid ${pid}: exit ${exit.code} after ${exit.durationMs}ms (node boot ${start?.bootMs ?? "?"}ms, ${progress}, started ${startedAt})`
+        : `${input?.nativeEvent ?? "<event unread>"} pid ${pid}: NO EXIT RECORD -- killed or aborted before exit handlers ran (node boot ${start?.bootMs ?? "?"}ms, ${progress}, started ${startedAt})`;
+      const lines = [head];
+      for (const record of uncaught) lines.push(`  uncaught (${record.origin}): ${record.error}`);
+      const writeErrors = records.at(-1)?.writeErrors;
+      if (writeErrors?.length) lines.push(`  recorder write retries: ${writeErrors.join("; ")}`);
+      if (exit) {
+        lines.push(`  stdout: ${exit.stdout === "" ? "<empty>" : JSON.stringify(exit.stdout)}`);
+        lines.push(`  stderr: ${exit.stderr === "" ? "<empty>" : JSON.stringify(exit.stderr)}`);
+      }
+      return { startedAt: start?.startedAt ?? 0, text: lines.join("\n") };
+    })
+    .sort((a, b) => a.startedAt - b.startedAt);
+  return blocks.length === 0
+    ? "hook processes: none recorded (no generated hook reached JavaScript)"
+    : `hook processes (${blocks.length}):\n${blocks.map((block) => block.text).join("\n")}`;
+}
+
+/**
+ * The events `codex exec` reported as failed, from its stdout and stderr.
+ *
+ * A failed event with no recorded process of its own never reached JavaScript:
+ * on 0.156.1 that was a hook killed at its hooks.json timeout while its process
+ * was still starting (.capture/codex-hook-failure). Codex prints no cause.
+ */
+export function codexFailedHooks(output: string): string {
+  if (output.trim() === "") return "codex produced no output; no hook status was reported";
+  const failed = [...output.matchAll(/^hook: (\w+) Failed\s*$/gm)].map((match) => match[1]);
+  return failed.length === 0
+    ? "codex reported no failed hook"
+    : `codex reported failed hooks: ${failed.join(", ")} (Codex prints no cause; compare the hook processes below)`;
+}
+
+/** The native `timeout` per event in the drive's generated hooks.json. */
+export async function codexHookTimeouts(artifactDir: string): Promise<string> {
+  try {
+    const hooksJson = JSON.parse(await readFile(join(artifactDir, ".codex/hooks.json"), "utf8")) as {
+      hooks: Record<string, { hooks: { timeout?: number }[] }[]>;
+    };
+    const timeouts = Object.entries(hooksJson.hooks).map(
+      ([event, groups]) => `${event}=${groups.flatMap((group) => group.hooks.map((hook) => hook.timeout)).join("/")}s`,
+    );
+    return `hooks.json timeouts: ${timeouts.join(", ")}`;
+  } catch (error) {
+    return `hooks.json timeouts: unreadable (${error instanceof Error ? error.message : String(error)})`;
+  }
 }
 
 /**
