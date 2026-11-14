@@ -15,4 +15,4 @@ When upgrading:
 
 | Guide | Release | Who is affected |
 | --- | --- | --- |
-| [Zod 4 schemas](zod-4.md) | First release after 0.11.0 | SDK consumers who compose exported schemas, annotate Zod types, or handle `ZodError` |
+| [Zod 4 schemas](zod-4.md) | 0.12.0 | SDK consumers who compose exported schemas, annotate Zod types, or handle `ZodError` |
