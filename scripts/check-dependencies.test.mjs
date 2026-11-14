@@ -1,10 +1,15 @@
 import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
 import { expect, it } from "vitest";
 
 import { checkEngines, checkExtraction, inventory } from "./check-dependencies.mjs";
+
+const workspaceRequire = createRequire(new URL("../packages/agent-plugin/package.json", import.meta.url));
+const { parseAllDocuments } = workspaceRequire("yaml");
+const semver = workspaceRequire("semver");
 
 it("aligns Renovate npm release ages with the explicit pnpm install guard", () => {
   const workspace = readFileSync(new URL("../pnpm-workspace.yaml", import.meta.url), "utf8");
@@ -176,6 +181,77 @@ it("inventories the compiler API override on the linter-supported minor line", (
     npmPackageAlias: true,
     packageName: "typescript",
   });
+});
+
+// Renovate 44.235.1's extraction of this repository's catalog overrides, as logged by
+// `renovate --platform=local --dry-run=extract` on 2026-11-13.
+const minimatchOverrides = [
+  "eslint>minimatch",
+  "@eslint/config-array>minimatch",
+  "@typescript-eslint/typescript-estree>minimatch",
+];
+const extractedCatalogOverride = (depName) => ({
+  depName,
+  packageName: "minimatch",
+  depType: "pnpm-workspace.overrides",
+  currentValue: "catalog:",
+  skipReason: "unspecified-version",
+});
+
+it("follows catalog overrides through the catalog entry Renovate maintains", () => {
+  const expected = inventory();
+  for (const depName of minimatchOverrides) expect(expected.find((dep) => dep.depName === depName)).toBeUndefined();
+  const catalogEntry = expected.find((dep) => dep.depName === "minimatch" && dep.depType === "pnpm.catalog.default");
+  // GHSA-g3hv-75wg-m249 is fixed in 11.0.1; the overrides inherit this floor.
+  expect(semver.gte(semver.minVersion(catalogEntry.currentValue), "11.0.1")).toBe(true);
+  const packageFiles = {};
+  for (const dep of expected) (packageFiles[dep.manager] ??= []).push({ packageFile: dep.packageFile, deps: [dep] });
+  packageFiles.npm.push({ packageFile: "pnpm-workspace.yaml", deps: minimatchOverrides.map(extractedCatalogOverride) });
+  expect(() => checkExtraction(expected, packageFiles)).not.toThrow();
+});
+
+it("rejects a catalog override that does not resolve to a catalog entry for its target", () => {
+  const root = mkdtempSync(join(tmpdir(), "hooknostic-overrides-"));
+  try {
+    for (const path of [
+      ".github",
+      "package.json",
+      "examples/agent-plugin/runtime/package.json",
+      "examples/agent-plugin/runtime/package-lock.json",
+    ]) {
+      mkdirSync(dirname(join(root, path)), { recursive: true });
+      cpSync(new URL(`../${path}`, import.meta.url), join(root, path), { recursive: true });
+    }
+    mkdirSync(join(root, "packages"));
+    const { engines } = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
+    writeFileSync(join(root, "examples/agent-plugin/package.json"), JSON.stringify({ engines }));
+    const workspace = readFileSync(new URL("../pnpm-workspace.yaml", import.meta.url), "utf8");
+    const write = (source) => writeFileSync(join(root, "pnpm-workspace.yaml"), source);
+    write(workspace);
+    expect(() => inventory(root)).not.toThrow();
+    for (const broken of [
+      ['"eslint>minimatch": "catalog:"', '"eslint>minimatch": "catalog:semver-runtime"'],
+      ['"eslint>minimatch": "catalog:"', '"eslint>minimatch": "catalog:missing"'],
+      ['"eslint>minimatch": "catalog:"', '"eslint>brace-expansion": "catalog:"'],
+    ]) {
+      expect(workspace).toContain(broken[0]);
+      write(workspace.replace(...broken));
+      expect(() => inventory(root)).toThrow("must resolve through a workspace catalog");
+    }
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+it("resolves no minimatch affected by GHSA-g3hv-75wg-m249", () => {
+  // pnpm writes its own environment lockfile as a leading YAML document.
+  const documents = parseAllDocuments(readFileSync(new URL("../pnpm-lock.yaml", import.meta.url), "utf8"));
+  const versions = documents
+    .flatMap((document) => Object.keys(document.toJS().packages ?? {}))
+    .map((key) => /^minimatch@(\d[^(]*)$/.exec(key)?.[1])
+    .filter(Boolean);
+  expect(versions.length).toBeGreaterThan(0);
+  for (const version of versions) expect(semver.gte(version, "11.0.1"), `minimatch@${version}`).toBe(true);
 });
 
 it("inventories workspace members, not the scratch copies build tests keep beside the examples", () => {

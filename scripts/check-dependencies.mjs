@@ -59,6 +59,16 @@ export function inventory(root = repoRoot) {
   ];
   for (const [depType, dependencies] of declarations) {
     for (const [dep, range] of Object.entries(dependencies)) {
+      if (depType === "pnpm-workspace.overrides" && range.startsWith("catalog:")) {
+        // A catalog override follows the catalog entry Renovate maintains;
+        // Renovate extracts it as a versionless `catalog:` reference, like a
+        // manifest's. Its target is the last selector, without a version.
+        const target = /(?:^|>)((?:@[^/@>]+\/)?[^@>]+)(?:@[^>]*)?$/.exec(dep)?.[1];
+        if (!target || !catalogs[range.slice(8) || "default"]?.[target]) {
+          throw new Error(`pnpm-workspace.yaml: override ${dep} must resolve through a workspace catalog`);
+        }
+        continue;
+      }
       // Renovate extracts an npm alias as its local name, target package and
       // version range, rather than leaving the npm: prefix in currentValue.
       const alias = /^npm:((?:@[^/]+\/)?[^@]+)@(.+)$/.exec(range);
