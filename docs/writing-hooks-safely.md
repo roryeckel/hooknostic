@@ -226,3 +226,11 @@ Each hook runs under a timeout (`timeoutMs`, or the global runtime policy). A ha
 that outlives it is abandoned and reported on stderr, and dispatch carries on — so a
 guard that times out does not block. Size the budget for the slowest thing the hook
 actually waits on, and keep string-scanning guards fast.
+
+That budget covers the handler, not the harness starting the hook process. The
+generated native deadline adds `runtime.processAllowanceMs` (5 seconds by default) for
+process start, stdin, decode and stdout flush, so a harness never kills a hook that was
+merely slow to start; raise it on a host where starting Node is slow
+([ADR-0039](decisions/0039-process-allowance.md)). A hook that declares a small
+`timeoutMs` still gets that same allowance on top, and a harness that caps an event's
+timeout takes the smaller of the two.

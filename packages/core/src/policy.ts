@@ -23,3 +23,21 @@ export function effectiveCompatibility(
 export function effectiveRuntime(config: Pick<HooknosticConfig, "runtime">): Required<RuntimePolicy> {
   return { ...DEFAULT_RUNTIME, ...config.runtime };
 }
+
+/**
+ * The part of the runtime policy the bundled dispatcher reads.
+ *
+ * `processAllowanceMs` is build-time only (ADR-0039): it sizes each native
+ * deadline, and nothing in the dispatcher reads it. Passing the whole policy
+ * would suggest otherwise.
+ */
+export function dispatcherRuntimePolicy(
+  runtime: Required<RuntimePolicy>,
+): Omit<Required<RuntimePolicy>, "processAllowanceMs"> {
+  return {
+    onHookError: runtime.onHookError,
+    timeoutMs: runtime.timeoutMs,
+    contextCharLimit: runtime.contextCharLimit,
+    notifyCharLimit: runtime.notifyCharLimit,
+  };
+}

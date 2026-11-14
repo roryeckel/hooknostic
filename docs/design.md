@@ -759,6 +759,7 @@ composed HookResult
 runtime: {
   onHookError: "continue",     // default for a general SDK
   timeoutMs: 5_000,
+  processAllowanceMs: 5_000,   // build-time: time for the harness to start the process
   contextCharLimit: 16_000,    // accumulated model-visible context per dispatch
   notifyCharLimit: 2_000,      // accumulated user-visible notification text
 }
@@ -767,6 +768,13 @@ runtime: {
 Fail-open by default; security-sensitive users may opt into `onHookError: "block"` only
 for events where the adapter can reliably block. The runtime provides an `AbortSignal`
 and translates the timeout to native hook timeout settings where possible.
+
+Each native deadline is `ceil((sum of the event's handler budgets + processAllowanceMs) / 1000)`
+seconds: the handler budgets bound what the dispatcher runs, and the allowance covers what
+is not a handler — process start, stdin, decode and stdout flush. A harness that caps an
+event's timeout gets as much of the allowance as fits, never less than zero, so only the
+handler budgets themselves can make a build refuse (ADR-0039). The allowance is build-time;
+the bundled dispatcher does not read it.
 
 ### 10.4 Process lifetime and state
 

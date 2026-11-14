@@ -29,9 +29,11 @@ function withoutCredentials(): NodeJS.ProcessEnv {
 const toml = (value: string) => `'${value.replaceAll("'", "''")}'`;
 const RUNS = Number(process.env["HOOKNOSTIC_PROBE_RUNS"] ?? "1");
 const OUT = process.env["HOOKNOSTIC_PROBE_OUT"];
-// The playback budget the CI failure ran with (1s, so a 2s native timeout).
-// Set it to the drives' current budget to compare.
+// The playback budget the CI failure ran with: a 1s allowance on every hook, so
+// a 2s native timeout at the 1s handler budget below. Set both to the drives'
+// current values to compare (ADR-0039).
 const HOOK_TIMEOUT_MS = Number(process.env["HOOKNOSTIC_PROBE_HOOK_TIMEOUT_MS"] ?? "1000");
+const PROCESS_ALLOWANCE_MS = Number(process.env["HOOKNOSTIC_PROBE_PROCESS_ALLOWANCE_MS"] ?? "1000");
 
 interface HookRun {
   eventName: string;
@@ -125,6 +127,7 @@ async function drive(index: number) {
       version: version!,
       shellMatch: true,
       hookTimeoutMs: HOOK_TIMEOUT_MS,
+      processAllowanceMs: PROCESS_ALLOWANCE_MS,
     });
     const preToolUseTimeout = (
       JSON.parse(await readFile(join(dir, ".codex/hooks.json"), "utf8")) as {

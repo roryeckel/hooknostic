@@ -153,6 +153,7 @@ export const runtimePolicySchema = z
   .object({
     onHookError: z.enum(["continue", "block"]).optional(),
     timeoutMs: z.number().int().positive().max(MAX_TIMER_DELAY_MS).optional(),
+    processAllowanceMs: z.number().int().positive().max(MAX_TIMER_DELAY_MS).optional(),
     contextCharLimit: z.number().int().positive().optional(),
     notifyCharLimit: z.number().int().positive().optional(),
   })

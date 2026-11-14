@@ -7,7 +7,7 @@
           {
             "type": "command",
             "command": "node .codex/hooknostic/hooknostic.mjs",
-            "timeout": 6
+            "timeout": 10
           }
         ]
       }

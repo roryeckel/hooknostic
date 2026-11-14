@@ -23,7 +23,15 @@ installed harness binaries and no model credentials.
    Claude's interactive permission prompt in a real pseudo-terminal (see the
    pty lane below). `session.end` is asserted for the command-hook harnesses;
    OpenCode's approximate session end maps to session deletion, which
-   `opencode run` does not perform.
+   `opencode run` does not perform. Playback hooks carry the product's own
+   budgets, so each command-hook harness's deadline is its handlers plus
+   `runtime.processAllowanceMs` (ADR-0039) — except `session.end`, which
+   declares 2s so Codex's 3s cap still fits. A run therefore exercises the
+   timeouts a consumer's artifact carries rather than a lane-only value. On
+   Codex each generated hook process also loads a test-only Node preload that
+   records its exit code, wall time, stdout and stderr without altering any of
+   them, and a failed drive prints those records beside the events Codex said
+   failed (`.capture/codex-hook-failure`).
 3. **Opt-in live smoke tests** remain available through
    `HOOKNOSTIC_SMOKE=<harness> pnpm test`. They use a real model and are for
    deliberate recapture or behavioral validation only, never normal CI.

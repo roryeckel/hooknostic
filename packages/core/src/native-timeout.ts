@@ -47,8 +47,18 @@ export function hooksByNativeEvent(
  * cannot both fire, so the true worst case is usually smaller. Over-estimating
  * costs a longer ceiling on a path that already has per-handler timeouts.
  *
- * The `+ 1` second absorbs process start, stdin read, decode and stdout flush,
- * none of which sit inside a handler budget.
+ * The process allowance (`runtime.processAllowanceMs`) is the other half of the
+ * harness's deadline: process start, stdin read, decode and stdout flush, none
+ * of which sit inside a handler budget. It is added once per native event, not
+ * once per hook, because one dispatcher process serves them all (ADR-0039).
+ *
+ * Some native events carry a cap the harness enforces regardless of the ask
+ * (`ceilingSeconds`). There the allowance is the policy's, or less when the cap
+ * leaves less room: taking all the headroom would turn the deadline into the cap
+ * itself, holding a wedged process for the harness's maximum instead of the
+ * budget we chose. Shrinking the allowance still leaves the handler budgets
+ * fitting, so nothing is hidden; what remains over the cap is a real overrun,
+ * and `assertNativeTimeoutFits` refuses it.
  *
  * Note what this deliberately does *not* do: clamp the result up to
  * `runtime.timeoutMs`. That looks like a harmless zero-guard and is in fact a
@@ -57,9 +67,17 @@ export function hooksByNativeEvent(
  * per-hook budgets inert in the lowering direction, which is the direction they
  * exist for. The schema keeps budgets positive, so no clamp is needed.
  */
-export function nativeTimeoutSeconds(reaching: HookIR[], runtime: Required<RuntimePolicy>): number {
+export function nativeTimeoutSeconds(
+  reaching: HookIR[],
+  runtime: Required<RuntimePolicy>,
+  options: { ceilingSeconds?: number } = {},
+): number {
   const totalMs = reaching.reduce((sum, hook) => sum + (hook.timeoutMs ?? runtime.timeoutMs), 0);
-  return Math.ceil(totalMs / 1000) + 1;
+  const allowanceMs =
+    options.ceilingSeconds === undefined
+      ? runtime.processAllowanceMs
+      : Math.min(runtime.processAllowanceMs, Math.max(0, options.ceilingSeconds * 1000 - totalMs));
+  return Math.ceil((totalMs + allowanceMs) / 1000);
 }
 
 /**
@@ -76,6 +94,11 @@ export function nativeTimeoutSeconds(reaching: HookIR[], runtime: Required<Runti
  * Clamping instead would be the silent option. The budget the dispatcher uses
  * lives in the bundle, not in the manifest, so lowering only the manifest value
  * leaves the mismatch in place and hides it.
+ *
+ * The one value that may be reduced to fit is the process allowance, because it
+ * is not part of what the dispatcher needs: `nativeTimeoutSeconds` takes what
+ * the cap leaves, and only an overrun of the handler budgets themselves reaches
+ * this refusal.
  */
 export function assertNativeTimeoutFits(
   nativeEvent: string,

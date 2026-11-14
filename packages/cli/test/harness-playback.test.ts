@@ -32,6 +32,8 @@ import { requirePackageSupport } from "../../../scripts/verify-marketplaces.mjs"
 import { defaultAdapterRegistry } from "../src/registry.js";
 import {
   buildPlaybackArtifact,
+  codexFailedHooks,
+  codexHookTimeouts,
   expectOpenCodeShellDialect,
   hookProcessRecorderEnv,
   hookProcessReport,
@@ -802,33 +804,6 @@ async function runCodexPlayback(
     throw error;
   } finally {
     await server.close();
-  }
-}
-
-/**
- * The events `codex exec` reported as failed. A failed event with no recorded
- * process of its own never reached JavaScript: on 0.156.1 that was a hook
- * killed at its hooks.json timeout while its process was still starting.
- */
-function codexFailedHooks(output: string): string {
-  const failed = [...output.matchAll(/^hook: (\w+) Failed\s*$/gm)].map((match) => match[1]);
-  return failed.length === 0
-    ? "codex reported no failed hook"
-    : `codex reported failed hooks: ${failed.join(", ")} (Codex prints no cause; compare the hook processes below)`;
-}
-
-/** The native `timeout` per event in the drive's generated hooks.json. */
-async function codexHookTimeouts(artifactDir: string): Promise<string> {
-  try {
-    const hooksJson = JSON.parse(await readFile(join(artifactDir, ".codex/hooks.json"), "utf8")) as {
-      hooks: Record<string, { hooks: { timeout?: number }[] }[]>;
-    };
-    const timeouts = Object.entries(hooksJson.hooks).map(
-      ([event, groups]) => `${event}=${groups.flatMap((group) => group.hooks.map((hook) => hook.timeout)).join("/")}s`,
-    );
-    return `hooks.json timeouts: ${timeouts.join(", ")}`;
-  } catch (error) {
-    return `hooks.json timeouts: unreadable (${error instanceof Error ? error.message : String(error)})`;
   }
 }
 

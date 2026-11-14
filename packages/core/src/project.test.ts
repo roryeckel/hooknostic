@@ -162,7 +162,7 @@ describe("complete project integration", () => {
     expect((await runProject({ ...options, command: "verify" })).ok).toBe(true);
     expect(await readFile(join(root, ".hooknostic/.gitattributes"), "utf8")).toBe("** -text\n");
     const codex = JSON.parse(await readFile(join(root, ".codex/hooks.json"), "utf8"));
-    expect(codex.hooks.PreToolUse[0].hooks[0].timeout).toBe(5);
+    expect(codex.hooks.PreToolUse[0].hooks[0].timeout).toBe(9);
     await mkdir(join(root, "backend/nested"), { recursive: true });
     const hookRun = spawnSync(codex.hooks.PreToolUse[0].hooks[0].command, {
       cwd: join(root, "backend/nested"),
@@ -188,7 +188,7 @@ describe("complete project integration", () => {
     expect((await runProject({ ...options, command: "sync" })).ok).toBe(true);
     expect(
       JSON.parse(await readFile(join(root, ".codex/hooks.json"), "utf8")).hooks.PreToolUse[0].hooks[0].timeout,
-    ).toBe(10);
+    ).toBe(14);
   });
   it("honors a named target at runtime", async () => {
     const adapter = registry.claude!;
@@ -1415,7 +1415,7 @@ describe("complete project integration", () => {
     expect((await runProject({ ...options, command: "sync" })).ok).toBe(true);
     const path = join(root, ".codex/hooks.json");
     const before = await readFile(path, "utf8");
-    await writeFile(path, before.replace('"timeout": 5', '"timeout": 1'));
+    await writeFile(path, before.replace('"timeout": 9', '"timeout": 1'));
     expect((await runProject({ ...options, command: "verify" })).errors.join()).toContain("modified");
     await writeFile(path, before);
     await writeFile(join(root, ".hooknostic/artifacts/codex/.codex/hooknostic/hooknostic.mjs"), "tampered");

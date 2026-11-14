@@ -99,7 +99,13 @@ function hookArtifacts() {
     target,
     { code: "// runtime\n" },
     {
-      runtime: { onHookError: "continue", timeoutMs: 5_000, contextCharLimit: 16_000, notifyCharLimit: 2_000 },
+      runtime: {
+        onHookError: "continue",
+        timeoutMs: 5_000,
+        processAllowanceMs: 5_000,
+        contextCharLimit: 16_000,
+        notifyCharLimit: 2_000,
+      },
     },
   ).map((artifact) => ({
     path: artifact.path,

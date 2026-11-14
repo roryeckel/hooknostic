@@ -71,11 +71,12 @@ export function claimProtocolStdout(): ProtocolStdout {
   };
 }
 
-// Well inside the 1s process allowance nativeTimeoutSeconds adds to every hook budget.
+// Well inside the process allowance nativeTimeoutSeconds adds to every event's
+// handler budgets (runtime.processAllowanceMs, ADR-0039).
 const RELEASE_BOUND_MS = 500;
 
-// The rest of that allowance, for the fallback below. A shim that drains on its
-// own never waits it out.
+// Drain time inside that allowance, for the fallback below. A shim that drains
+// on its own never waits it out.
 const DRAIN_GRACE_MS = 250;
 
 /**

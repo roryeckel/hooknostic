@@ -12,37 +12,32 @@ import { expect } from "vitest";
 import { dialectOfStatedShell } from "@hooknostic/adapter-opencode";
 import type { ProjectComponents } from "@hooknostic/agent-plugin";
 import type { HarnessAdapter, ProjectComponentOptions, TargetSpec } from "@hooknostic/core";
-import { applyProject, reconcileProject } from "@hooknostic/core";
+import { applyProject, dispatcherRuntimePolicy, reconcileProject } from "@hooknostic/core";
 import { buildPluginIR, bundleRuntime } from "@hooknostic/core";
-import type { CapabilityId, EventFieldId, HookEventName, ShellDialect } from "@hooknostic/sdk";
-import { definePlugin, hook, HOOK_EVENT_NAMES } from "@hooknostic/sdk";
+import type { CapabilityId, EventFieldId, HookEventName, RuntimePolicy, ShellDialect } from "@hooknostic/sdk";
+import { DEFAULT_RUNTIME, definePlugin, hook, HOOK_EVENT_NAMES } from "@hooknostic/sdk";
 // The fixtures entry, not the package index: the capture drivers import this
 // module under plain Node, where the contract suite's vitest import fails.
 import { declinedFixtures } from "@hooknostic/testkit/fixtures";
 
-const RUNTIME_POLICY = {
-  onHookError: "continue" as const,
-  // The default for any hook without its own budget. Every playback hook sets
-  // one (playbackHookTimeoutMs), so this only has to fit Codex's SessionEnd cap.
-  timeoutMs: 1_000,
-  contextCharLimit: 16_000,
-  notifyCharLimit: 2_000,
-};
+// The product defaults, spread rather than copied: a lane that restated them
+// would drift the moment DEFAULT_RUNTIME changed, which is the divergence
+// ADR-0039 removed. Each native deadline is the hooks' budgets plus the process
+// allowance, which is what gives a contended host time to start `cmd.exe` and
+// `node.exe` (.capture/codex-hook-failure).
+const RUNTIME_POLICY: Required<RuntimePolicy> = { ...DEFAULT_RUNTIME };
 
 /**
- * Each playback hook's own budget. A command harness's native timeout is this
- * plus one second (`nativeTimeoutSeconds`), and it covers the hook's process
- * start as well as its handler. On a contended Windows host, starting the hook
- * process (`cmd.exe` and then `node.exe`) has taken longer than the handler's
- * few milliseconds by orders of magnitude. Codex 0.156.1 measured 1.5-2.0s per
- * hook against under 200ms inside Node, and timed hooks out at the former
- * two-second ceiling (.capture/codex-hook-failure). A timed-out PreToolUse fails
- * open, so a deny drive then fails on the environment, not the adapter. The
- * drives assert effects, not latency, so the budget leaves start-up its room.
- * Codex caps SessionEnd at three seconds, so that event keeps 2s + 1s.
+ * A playback hook's own handler budget, or undefined to inherit the policy's.
+ *
+ * SessionEnd declares 2s because Codex clamps that event to 3s: the allowance
+ * shrinks to the 1s that is left, and asking for the 5s default would leave the
+ * dispatcher's budget itself above the cap, which the build refuses. Every other
+ * hook inherits the product default; a capture reproducing a tighter native
+ * timeout overrides `hookTimeoutMs` and `processAllowanceMs` together.
  */
-function playbackHookTimeoutMs(event: HookEventName): number {
-  return event === "session.end" ? 2_000 : 10_000;
+function playbackHookTimeoutMs(event: HookEventName, override?: number): number | undefined {
+  return event === "session.end" ? 2_000 : override;
 }
 
 const require = createRequire(import.meta.url);
@@ -98,11 +93,16 @@ export interface PlaybackTargetOverride {
    */
   shellMatch?: boolean;
   /**
-   * Every hook's budget except session.end's, replacing playbackHookTimeoutMs.
-   * For a capture that reproduces a tighter native timeout; drives keep the
-   * default.
+   * Every hook's handler budget except session.end's, replacing the inherited
+   * policy budget. For a capture that reproduces a tighter native timeout:
+   * set `processAllowanceMs` too, since the deadline is their sum.
    */
   hookTimeoutMs?: number;
+  /**
+   * The process allowance for this build, replacing the product default. The
+   * native deadline is the hooks' budgets plus this.
+   */
+  processAllowanceMs?: number;
 }
 
 function targetFor(adapter: HarnessAdapter, output: string, override: PlaybackTargetOverride = {}) {
@@ -180,7 +180,7 @@ function playbackPluginSource(
   fields: readonly EventFieldId[],
   label?: string,
   shellMatch = false,
-  timeoutMsFor: (event: HookEventName) => number = playbackHookTimeoutMs,
+  timeoutMsFor: (event: HookEventName) => number | undefined = (event) => playbackHookTimeoutMs(event),
 ): string {
   const definitions = events.map((event) => {
     const capabilities = [
@@ -285,10 +285,11 @@ function playbackPluginSource(
           });
         }`;
 
+    const timeoutMs = timeoutMsFor(event);
+    const timeoutMsLine = timeoutMs === undefined ? "" : `\n      timeoutMs: ${timeoutMs},`;
     return `
     hook(${JSON.stringify(event)}, {
-      id: ${JSON.stringify(`playback-${event}`)},
-      timeoutMs: ${timeoutMsFor(event)},${shellMatch && event === "tool.before" ? `\n      match: { kind: "shell" },` : ""}
+      id: ${JSON.stringify(`playback-${event}`)},${timeoutMsLine}${shellMatch && event === "tool.before" ? `\n      match: { kind: "shell" },` : ""}
       ${turnFields}${capabilityBlock}
       async run(event) {
         appendFileSync(tracePath, JSON.stringify({
@@ -360,10 +361,14 @@ export async function buildPlaybackArtifact(
   await mkdir(artifactDir, { recursive: true });
   // The source the runtime bundles and the IR the native timeout is derived
   // from must carry the same budgets.
-  const timeoutMsFor = (event: HookEventName): number =>
-    override.hookTimeoutMs !== undefined && event !== "session.end"
-      ? override.hookTimeoutMs
-      : playbackHookTimeoutMs(event);
+  const timeoutMsFor = (event: HookEventName): number | undefined =>
+    playbackHookTimeoutMs(event, override.hookTimeoutMs);
+  // The allowance is build-time, so it stays out of the policy the shim
+  // receives (ADR-0039).
+  const buildRuntime: Required<RuntimePolicy> = {
+    ...RUNTIME_POLICY,
+    ...(override.processAllowanceMs === undefined ? {} : { processAllowanceMs: override.processAllowanceMs }),
+  };
   await writeFile(
     entryPath,
     playbackPluginSource(events, contextAdd, fields, override.label, override.shellMatch, timeoutMsFor),
@@ -381,9 +386,10 @@ export async function buildPlaybackArtifact(
   // `hook()`; the full-id declarations go straight onto the erased definition,
   // which is the form hook() itself produces.
   const hooks = events.map((event) => {
+    const ownTimeoutMs = timeoutMsFor(event);
     const definition = hook(event, {
       id: `playback-${event}`,
-      timeoutMs: timeoutMsFor(event),
+      ...(ownTimeoutMs === undefined ? {} : { timeoutMs: ownTimeoutMs }),
       ...(override.shellMatch && event === "tool.before" ? { match: { kind: "shell" as const } } : {}),
       async run() {},
     });
@@ -435,7 +441,7 @@ export async function buildPlaybackArtifact(
       entryImportPath: entryPath.replaceAll("\\", "/"),
       capabilities,
       minimumCapabilityLevel: "approximate",
-      policy: RUNTIME_POLICY,
+      policy: dispatcherRuntimePolicy(buildRuntime),
       harnessVersion: override.version ?? adapter.harness.referenceVersion,
       // As buildProject does: the shim settles version-line facts from it.
       targetRange: target.version,
@@ -449,7 +455,7 @@ export async function buildPlaybackArtifact(
       "@hooknostic/sdk": require.resolve("@hooknostic/sdk"),
     },
   });
-  const artifacts = await adapter.compile(ir, target, bundle, { runtime: RUNTIME_POLICY });
+  const artifacts = await adapter.compile(ir, target, bundle, { runtime: buildRuntime });
   const prefix = override.project ? `.hooknostic/artifacts/${adapter.id}` : "";
   if (override.project) {
     if (!adapter.projectIntegration) throw new Error("missing project integrator");
@@ -1541,6 +1547,36 @@ export async function hookProcessReport(logPath: string): Promise<string> {
   return blocks.length === 0
     ? "hook processes: none recorded (no generated hook reached JavaScript)"
     : `hook processes (${blocks.length}):\n${blocks.map((block) => block.text).join("\n")}`;
+}
+
+/**
+ * The events `codex exec` reported as failed, from its stdout and stderr.
+ *
+ * A failed event with no recorded process of its own never reached JavaScript:
+ * on 0.156.1 that was a hook killed at its hooks.json timeout while its process
+ * was still starting (.capture/codex-hook-failure). Codex prints no cause.
+ */
+export function codexFailedHooks(output: string): string {
+  if (output.trim() === "") return "codex produced no output; no hook status was reported";
+  const failed = [...output.matchAll(/^hook: (\w+) Failed\s*$/gm)].map((match) => match[1]);
+  return failed.length === 0
+    ? "codex reported no failed hook"
+    : `codex reported failed hooks: ${failed.join(", ")} (Codex prints no cause; compare the hook processes below)`;
+}
+
+/** The native `timeout` per event in the drive's generated hooks.json. */
+export async function codexHookTimeouts(artifactDir: string): Promise<string> {
+  try {
+    const hooksJson = JSON.parse(await readFile(join(artifactDir, ".codex/hooks.json"), "utf8")) as {
+      hooks: Record<string, { hooks: { timeout?: number }[] }[]>;
+    };
+    const timeouts = Object.entries(hooksJson.hooks).map(
+      ([event, groups]) => `${event}=${groups.flatMap((group) => group.hooks.map((hook) => hook.timeout)).join("/")}s`,
+    );
+    return `hooks.json timeouts: ${timeouts.join(", ")}`;
+  } catch (error) {
+    return `hooks.json timeouts: unreadable (${error instanceof Error ? error.message : String(error)})`;
+  }
 }
 
 /**

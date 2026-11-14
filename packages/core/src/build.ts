@@ -68,7 +68,7 @@ import {
   validateMaterializationDeclarations,
 } from "./materialize.js";
 import { isStrictDescendant, validateOutputLayout } from "./output-layout.js";
-import { effectiveCompatibility, effectiveRuntime } from "./policy.js";
+import { dispatcherRuntimePolicy, effectiveCompatibility, effectiveRuntime } from "./policy.js";
 import type { ProjectIntegration } from "./project-files.js";
 import { projectPath } from "./project-files.js";
 import { type AuthoredProjectSkill, planProjectSkillPolicies } from "./skill-policy.js";
@@ -1330,7 +1330,7 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
               entryImportPath: entryPath.replaceAll("\\", "/"),
               capabilities: levelsFromMatrix(resolved.matrix ?? {}),
               minimumCapabilityLevel: compatibility.minimum,
-              policy: runtimePolicy,
+              policy: dispatcherRuntimePolicy(runtimePolicy),
               targetRange: spec.version,
               ...(pluginRootOffset === undefined ? {} : { pluginRootOffset }),
             }),

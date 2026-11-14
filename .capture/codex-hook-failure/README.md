@@ -46,7 +46,13 @@ app-server notification instead.
 ```sh
 pnpm run bundle
 HOOKNOSTIC_PROBE_RUNS=15 HOOKNOSTIC_PROBE_HOOK_TIMEOUT_MS=1000 \
+  HOOKNOSTIC_PROBE_PROCESS_ALLOWANCE_MS=1000 \
   HOOKNOSTIC_PROBE_OUT=observations-2s.json \
+  pnpm exec vitest run --config .capture/codex-hook-failure/vitest.config.ts
+
+HOOKNOSTIC_PROBE_RUNS=15 HOOKNOSTIC_PROBE_HOOK_TIMEOUT_MS=10000 \
+  HOOKNOSTIC_PROBE_PROCESS_ALLOWANCE_MS=1000 \
+  HOOKNOSTIC_PROBE_OUT=observations-11s.json \
   pnpm exec vitest run --config .capture/codex-hook-failure/vitest.config.ts
 ```
 
@@ -62,9 +68,14 @@ written. It also records each hook process's own record from
 of the committed ES module since; both preload before the hook runtime). Codex passes `NODE_OPTIONS` to hook processes: every drive's
 hooks loaded it.
 
-`HOOKNOSTIC_PROBE_HOOK_TIMEOUT_MS` sets every hook's budget except session.end.
-The native timeout is that budget plus one second. 1000 is the configuration CI
-failed with; 10000 is the playback lane's budget after this capture.
+`HOOKNOSTIC_PROBE_HOOK_TIMEOUT_MS` sets every hook's budget except session.end,
+and `HOOKNOSTIC_PROBE_PROCESS_ALLOWANCE_MS` sets the start-up allowance that the
+deadline adds to it (ADR-0039). 1000 + 1000 is the 2s native timeout CI failed
+with, and 10000 + 1000 is the 11s one. The allowance override postdates these
+observations: the code at capture time hardcoded the same one second, which
+`HOOKNOSTIC_PROBE_PROCESS_ALLOWANCE_MS=1000` reproduces. The playback lane after
+this capture uses the product policy instead: 5s handler budget + 5s allowance,
+so 10s native, with session.end at 2s + 1s inside Codex's 3s cap.
 
 The host had to be contended, because an idle host never timed out. A side
 process ran 96 busy-loop Node processes on the 32 logical processors for each
@@ -98,20 +109,24 @@ CI's frequency, from the Actions API: in 286 completed runs of this job since
 
 ## Consequences
 
-- The playback lane gives each hook a 10s budget (`playbackHookTimeoutMs` in
-  `packages/cli/test/harness-playback.ts`), so 11s native, except session.end,
-  which keeps 2s + 1s inside Codex's 3s SessionEnd cap. The drives assert
+- The playback lane runs the product policy: the 5s default handler budget plus
+  the 5s `runtime.processAllowanceMs`, so 10s native, except session.end, whose
+  2s budget leaves 1s of the allowance inside Codex's 3s cap. The drives assert
   effects, not latency. A deny must still deny.
 - A failed Codex playback drive now reports the events Codex said failed, the
   hooks.json timeouts, and each hook process's exit code, wall time, stdout and
   stderr, from the same preload. A failed event with no process record is one
   killed before Node ran.
-- **Product risk, not fixed here.** A generated Codex guard fails open whenever
-  process start plus its handler exceeds the native timeout, which is
-  `ceil(sum of budgets) + 1` seconds. With the default 5s runtime budget that is
-  6s. A hook declaring a small `timeoutMs` gets as little as 2s, the
-  configuration that failed here. hooknostic cannot make Codex treat a failed
-  PreToolUse as a block.
+- **Product risk, addressed by ADR-0039.** A generated Codex guard fails open
+  whenever process start plus its handler exceeds the native timeout. That
+  deadline is now the handlers' budgets plus `runtime.processAllowanceMs`
+  (5s by default), and a harness cap shrinks only the allowance: at defaults a
+  PreToolUse deadline is 10s instead of 6s, and a consumer on a slower host can
+  raise the allowance. A hook that declares a small `timeoutMs` still gets a
+  deadline of only its own budget plus the allowance -- 6s for a 1s budget at
+  defaults -- so the 2s deadline that failed here is no longer expressible by a
+  handler budget alone; the probe overrides the allowance too. hooknostic cannot
+  make Codex treat a failed PreToolUse as a block.
 
 ## Limits
 

@@ -101,7 +101,11 @@ function codexNativeTimeout(
   reaching: Parameters<typeof nativeTimeoutSeconds>[0],
   runtime: Parameters<typeof nativeTimeoutSeconds>[1],
 ): number {
-  const seconds = nativeTimeoutSeconds(reaching, runtime);
+  const seconds = nativeTimeoutSeconds(reaching, runtime, {
+    ...(CODEX_NATIVE_TIMEOUT_CEILING_SECONDS[nativeEvent] === undefined
+      ? {}
+      : { ceilingSeconds: CODEX_NATIVE_TIMEOUT_CEILING_SECONDS[nativeEvent] }),
+  });
   assertNativeTimeoutFits(nativeEvent, seconds, CODEX_NATIVE_TIMEOUT_CEILING_SECONDS, "codex-cli");
   return seconds;
 }

@@ -74,6 +74,11 @@ var init_config = __esm({
     DEFAULT_RUNTIME = {
       onHookError: "continue",
       timeoutMs: 5e3,
+      // Covers a loaded Windows host's hook start, which `.capture/codex-hook-failure`
+      // measured at 1.5-2.0s by the harness's clock against under 200ms inside Node.
+      // The extreme in that capture, ~9s, came from 96 busy loops on 32 cores and is
+      // out of reach by default; processAllowanceMs is the escape hatch.
+      processAllowanceMs: 5e3,
       contextCharLimit: 16e3,
       notifyCharLimit: 2e3
     };
@@ -7125,6 +7130,7 @@ var init_schemas3 = __esm({
     runtimePolicySchema = object({
       onHookError: _enum(["continue", "block"]).optional(),
       timeoutMs: number2().int().positive().max(MAX_TIMER_DELAY_MS).optional(),
+      processAllowanceMs: number2().int().positive().max(MAX_TIMER_DELAY_MS).optional(),
       contextCharLimit: number2().int().positive().optional(),
       notifyCharLimit: number2().int().positive().optional()
     }).strict();

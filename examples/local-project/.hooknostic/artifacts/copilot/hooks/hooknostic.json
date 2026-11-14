@@ -9,7 +9,7 @@
           "runtime/hooknostic.mjs",
           "preToolUse"
         ],
-        "timeoutSec": 6
+        "timeoutSec": 10
       }
     ]
   }

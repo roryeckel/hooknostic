@@ -9,7 +9,7 @@
           "${PLUGIN_ROOT}/runtime/hooknostic.mjs",
           "preToolUse"
         ],
-        "timeoutSec": 11
+        "timeoutSec": 15
       }
     ]
   }
