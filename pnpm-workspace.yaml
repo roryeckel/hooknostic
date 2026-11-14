@@ -6,9 +6,14 @@ allowBuilds:
   esbuild: true
   node-pty: true
 
-# The compatibility package otherwise permits any TypeScript 6.x API.
 overrides:
+  # The compatibility package otherwise permits any TypeScript 6.x API.
   "@typescript/typescript6>@typescript/old": "npm:typescript@~6.0.3"
+  # GHSA-g3hv-75wg-m249: lint tooling still requests minimatch 10, which has no
+  # patched release. Move it onto the workspace's patched minimatch line.
+  "eslint>minimatch": "catalog:"
+  "@eslint/config-array>minimatch": "catalog:"
+  "@typescript-eslint/typescript-estree>minimatch": "catalog:"
 
 # Shared external requirements. Intentional differences have named catalogs.
 catalog:
