@@ -7954,8 +7954,8 @@ export {
 /*!
 Bundled package notices
 
-@hooknostic/adapter-pi@0.11.0
-@hooknostic/runtime@0.11.0
+@hooknostic/adapter-pi@0.12.0
+@hooknostic/runtime@0.12.0
 LICENSE
 Apache License
                            Version 2.0, January 2004
@@ -8163,8 +8163,8 @@ Apache License
 /*!
 Bundled package notices
 
-@hooknostic/sdk@0.11.0
-hooknostic@0.11.0
+@hooknostic/sdk@0.12.0
+hooknostic@0.12.0
 LICENSE
 Apache License
                            Version 2.0, January 2004
