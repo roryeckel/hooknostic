@@ -7842,7 +7842,7 @@ function createHooknosticHooks(plugin, options, pluginInput) {
     }
   };
   let statedShell;
-  class HooknosticBlock extends Error {
+  class HooknosticBlock2 extends Error {
   }
   const run = async (native) => {
     const enrichment = {
@@ -7902,14 +7902,14 @@ function createHooknosticHooks(plugin, options, pluginInput) {
     await showToast(application);
     await replyPermission(event, native, application);
     if (application.throwMessage !== void 0) {
-      throw new HooknosticBlock(application.throwMessage);
+      throw new HooknosticBlock2(application.throwMessage);
     }
   };
   const runFailingOpen = async (native) => {
     try {
       await run(native);
     } catch (error2) {
-      if (error2 instanceof HooknosticBlock) throw error2;
+      if (error2 instanceof HooknosticBlock2) throw error2;
     }
   };
   const postPrompts = async (event, application) => {
