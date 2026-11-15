@@ -7467,6 +7467,7 @@ var init_hooks = __esm({
 // ../../packages/cli/dist/shims/claude.mjs
 init_dist();
 import { Console } from "node:console";
+import { writeSync } from "node:fs";
 import { syncBuiltinESMExports } from "node:module";
 import { Writable } from "node:stream";
 init_dist();
@@ -7900,6 +7901,106 @@ function finishCommandShim(exitCode, exit = process.exit) {
   process.exitCode = exitCode;
   setTimeout(() => exit(exitCode), DRAIN_GRACE_MS).unref();
 }
+var HookSourceExitError = class extends Error {
+  code;
+  constructor(code) {
+    super(`the hook source called process.exit(${exitCodeText(code)})`);
+    this.name = "HookSourceExitError";
+    this.code = code;
+  }
+};
+function exitCodeText(code) {
+  try {
+    return code === void 0 ? "" : String(code);
+  } catch {
+    return "?";
+  }
+}
+function guardCommandShim(describe2) {
+  const exit = process.exit;
+  const stderr = process.stderr;
+  let decided;
+  let midLine = false;
+  let cannotUnwind = false;
+  const reported = /* @__PURE__ */ new Set();
+  const write = async (text) => {
+    if (text === "") return;
+    midLine = !text.endsWith("\n");
+    try {
+      if (stderr.writableEnded || stderr.destroyed) return;
+      await new Promise((resolve) => {
+        stderr.write(text, () => resolve());
+      });
+    } catch {
+    }
+  };
+  const line = (error2) => {
+    try {
+      return `${midLine ? "\n" : ""}${describe2(error2)}
+`;
+    } catch {
+      return void 0;
+    }
+  };
+  const firstTime = (key) => {
+    if (reported.has(key)) return false;
+    reported.add(key);
+    return true;
+  };
+  const report = async (error2) => {
+    if (!firstTime(error2)) return;
+    const text = line(error2);
+    if (text !== void 0) await write(text);
+  };
+  const reportNow = (error2, key) => {
+    if (!firstTime(key)) return;
+    const text = line(error2);
+    if (text === void 0) return;
+    midLine = false;
+    try {
+      writeSync(2, text);
+    } catch {
+    }
+  };
+  const pin = () => {
+    try {
+      process.exitCode = decided ?? 0;
+    } catch {
+    }
+  };
+  process.prependListener("uncaughtException", () => {
+    cannotUnwind = true;
+    queueMicrotask(() => {
+      cannotUnwind = false;
+    });
+  });
+  process.on("uncaughtException", (error2, origin) => {
+    if (origin !== "unhandledRejection") void report(error2);
+  });
+  process.on("unhandledRejection", (reason) => {
+    void report(reason);
+  });
+  process.exit = function exitFromHookSource(code) {
+    const error2 = new HookSourceExitError(code);
+    if (!cannotUnwind && decided === void 0) throw error2;
+    reportNow(error2, `exit:${exitCodeText(code)}`);
+    return exit(decided ?? 0);
+  };
+  process.prependListener("exit", () => {
+    cannotUnwind = true;
+  });
+  process.on("exit", pin);
+  return {
+    write,
+    report,
+    finish(exitCode) {
+      decided = exitCode;
+      process.off("exit", pin);
+      process.on("exit", pin);
+      finishCommandShim(exitCode, exit);
+    }
+  };
+}
 function bounded(work) {
   let timer;
   return Promise.race([
@@ -8167,17 +8268,14 @@ function statedHook(payload) {
   const name = payload?.hook_event_name;
   return typeof name === "string" ? name : void 0;
 }
-async function writeStream(stream, contents) {
-  if (stream.writableEnded || stream.destroyed) return;
-  await new Promise((resolve) => {
-    stream.write(contents, () => resolve());
-  });
-}
 async function runClaudeCommandShim(source, options) {
+  let hook2;
+  const guard = guardCommandShim(
+    (error2) => formatInternalError(error2, { ...hook2 !== void 0 ? { hook: hook2 } : {}, stack: debugEnabled() })
+  );
   let exitCode = 0;
   const stdout = claimProtocolStdout();
   const trace = debugTracer();
-  let hook2;
   try {
     let nativeEvent;
     try {
@@ -8206,26 +8304,24 @@ async function runClaudeCommandShim(source, options) {
     trace?.(describeHookResult(result));
     const native = await applyClaude(result, nativeEvent, invocation);
     if (native.body !== void 0) await stdout.writeReply(JSON.stringify(native.body));
-    if (native.stderr !== void 0) await writeStream(process.stderr, native.stderr);
+    if (native.stderr !== void 0) await guard.write(native.stderr);
     const diagnostics = formatHandlerErrors(result);
     if (diagnostics !== void 0) {
       const separator = native.stderr !== void 0 && !native.stderr.endsWith("\n") ? "\n" : "";
-      await writeStream(process.stderr, `${separator}${diagnostics}
+      await guard.write(`${separator}${diagnostics}
 `);
     }
     exitCode = native.exitCode ?? 0;
   } catch (error2) {
     if (isInstance(error2, ClaudeDecodeError)) trace?.(`ignored payload: ${error2.message}`);
     else {
-      const line = formatInternalError(error2, { ...hook2 !== void 0 ? { hook: hook2 } : {}, stack: debugEnabled() });
-      await writeStream(process.stderr, `${line}
-`);
+      await guard.report(error2);
     }
     exitCode = 0;
   }
   await stdout.release().catch(() => {
   });
-  finishCommandShim(exitCode);
+  guard.finish(exitCode);
 }
 
 // hooknostic-shim-entry.ts

@@ -7,9 +7,9 @@ import {
   describeDecodedEvent,
   describeHookResult,
   dispatch,
-  finishCommandShim,
   formatHandlerErrors,
   formatInternalError,
+  guardCommandShim,
   isInstance,
   loadCommandPlugin,
 } from "@hooknostic/runtime";
@@ -46,14 +46,6 @@ function statedHook(payload: unknown): string | undefined {
   return typeof name === "string" ? name : undefined;
 }
 
-/** Write and wait for the flush. A stream a handler ended or destroyed is skipped, not fatal. */
-async function writeStream(stream: NodeJS.WriteStream, contents: string): Promise<void> {
-  if (stream.writableEnded || stream.destroyed) return;
-  await new Promise<void>((resolve) => {
-    stream.write(contents, () => resolve());
-  });
-}
-
 /**
  * Command-hook entry point executed by Claude Code: JSON event on stdin →
  * decode → portable dispatch → encode structured JSON stdout / exit code.
@@ -61,10 +53,15 @@ async function writeStream(stream: NodeJS.WriteStream, contents: string): Promis
  * block the user's session.
  */
 export async function runClaudeCommandShim(source: CommandPluginSource, options: ClaudeShimOptions): Promise<void> {
+  let hook: string | undefined;
+  // First: an async rejection or a process.exit from the hook source must not
+  // decide the exit code, and exit 2 is a block on Claude Code (#186).
+  const guard = guardCommandShim((error) =>
+    formatInternalError(error, { ...(hook !== undefined ? { hook } : {}), stack: debugEnabled() }),
+  );
   let exitCode = 0;
   const stdout = claimProtocolStdout();
   const trace = debugTracer();
-  let hook: string | undefined;
   try {
     let nativeEvent: unknown;
     try {
@@ -97,7 +94,7 @@ export async function runClaudeCommandShim(source: CommandPluginSource, options:
     trace?.(describeHookResult(result));
     const native = await applyClaude(result, nativeEvent, invocation);
     if (native.body !== undefined) await stdout.writeReply(JSON.stringify(native.body));
-    if (native.stderr !== undefined) await writeStream(process.stderr, native.stderr);
+    if (native.stderr !== undefined) await guard.write(native.stderr);
     // Handler failures go to stderr on the exit-0 path. Both harnesses capture
     // it, and it must not go in the JSON body: Codex's wire schemas are
     // additionalProperties:false, so an unknown field is a hard vendor error.
@@ -107,20 +104,19 @@ export async function runClaudeCommandShim(source: CommandPluginSource, options:
       // not end in a newline, and concatenating onto it would corrupt the
       // machine-greppable "hooknostic HNxxx" prefix.
       const separator = native.stderr !== undefined && !native.stderr.endsWith("\n") ? "\n" : "";
-      await writeStream(process.stderr, `${separator}${diagnostics}\n`);
+      await guard.write(`${separator}${diagnostics}\n`);
     }
     exitCode = native.exitCode ?? 0;
   } catch (error) {
     if (isInstance(error, ClaudeDecodeError)) trace?.(`ignored payload: ${error.message}`);
     else {
       // A Hooknostic defect, not a hook's: the same line the in-process shims report.
-      const line = formatInternalError(error, { ...(hook !== undefined ? { hook } : {}), stack: debugEnabled() });
-      await writeStream(process.stderr, `${line}\n`);
+      await guard.report(error);
     }
     exitCode = 0; // fail-open
   }
   await stdout.release().catch(() => {});
-  finishCommandShim(exitCode);
+  guard.finish(exitCode);
 }
 
 // The generated entry resolves `pluginRoot` with this; it imports only the

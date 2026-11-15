@@ -7,9 +7,9 @@ import {
   describeDecodedEvent,
   describeHookResult,
   dispatch,
-  finishCommandShim,
   formatHandlerErrors,
   formatInternalError,
+  guardCommandShim,
   isInstance,
   loadCommandPlugin,
 } from "@hooknostic/runtime";
@@ -47,13 +47,6 @@ function statedHook(payload: unknown): string | undefined {
   return typeof name === "string" ? name : undefined;
 }
 
-async function writeStream(stream: NodeJS.WriteStream, contents: string): Promise<void> {
-  if (stream.writableEnded || stream.destroyed) return;
-  await new Promise<void>((resolve) => {
-    stream.write(contents, () => resolve());
-  });
-}
-
 /**
  * Command-hook entry point executed by GitHub Copilot CLI: JSON event on stdin
  * → decode → portable dispatch → encode JSON stdout. The registered native
@@ -62,10 +55,15 @@ async function writeStream(stream: NodeJS.WriteStream, contents: string): Promis
  * must never block the user's session.
  */
 export async function runCopilotCommandShim(source: CommandPluginSource, options: CopilotShimOptions): Promise<void> {
+  let hook = process.argv[2];
+  // First: an async rejection or a process.exit from the hook source must not
+  // end the process with a code preToolUse reads as a denial (#186).
+  const guard = guardCommandShim((error) =>
+    formatInternalError(error, { ...(hook !== undefined ? { hook } : {}), stack: debugEnabled() }),
+  );
   let exitCode = 0;
   const stdout = claimProtocolStdout();
   const trace = debugTracer();
-  let hook = process.argv[2];
   try {
     let nativeEvent: unknown;
     try {
@@ -98,26 +96,25 @@ export async function runCopilotCommandShim(source: CommandPluginSource, options
     trace?.(describeHookResult(result));
     const native = await applyCopilot(result, nativeEvent, invocation);
     if (native.body !== undefined) await stdout.writeReply(JSON.stringify(native.body));
-    if (native.stderr !== undefined) await writeStream(process.stderr, native.stderr);
+    if (native.stderr !== undefined) await guard.write(native.stderr);
     // Handler failures go to stderr on the exit-0 path. Copilot surfaces hook
     // stderr, and nothing machine-readable belongs in the JSON body.
     const diagnostics = formatHandlerErrors(result);
     if (diagnostics !== undefined) {
       const separator = native.stderr !== undefined && !native.stderr.endsWith("\n") ? "\n" : "";
-      await writeStream(process.stderr, `${separator}${diagnostics}\n`);
+      await guard.write(`${separator}${diagnostics}\n`);
     }
     exitCode = native.exitCode ?? 0;
   } catch (error) {
     if (isInstance(error, CopilotDecodeError)) trace?.(`ignored payload: ${error.message}`);
     else {
       // A Hooknostic defect, not a hook's: the same line the in-process shims report.
-      const line = formatInternalError(error, { ...(hook !== undefined ? { hook } : {}), stack: debugEnabled() });
-      await writeStream(process.stderr, `${line}\n`);
+      await guard.report(error);
     }
     exitCode = 0; // fail-open
   }
   await stdout.release().catch(() => {});
-  finishCommandShim(exitCode);
+  guard.finish(exitCode);
 }
 
 // The generated entry resolves `pluginRoot` with this; it imports only the shim
