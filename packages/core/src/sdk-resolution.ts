@@ -189,18 +189,24 @@ interface ReachedZod {
   range: string;
 }
 
+/** "the SDK's zod import reached zod@<version> at <path>" */
+function reachedText(reached: { path: string; version?: string }): string {
+  const found = reached.version === undefined ? "a zod package with no readable version" : `zod@${reached.version}`;
+  return `the SDK's zod import reached ${found} at ${reached.path}`;
+}
+
 /** HN109 for one substituted Zod. */
 function substitutionDiagnostic(substitution: ZodSubstitution): Diagnostic {
-  const found =
-    substitution.foundVersion === undefined
-      ? "a zod package with no readable version"
-      : `zod@${substitution.foundVersion}`;
+  const reached = reachedText({
+    path: substitution.foundPath,
+    ...(substitution.foundVersion === undefined ? {} : { version: substitution.foundVersion }),
+  });
   const own = substitution.ownVersion === undefined ? "zod" : `zod@${substitution.ownVersion}`;
   return {
     code: "HN109",
     severity: "warn",
     message:
-      `the SDK's zod import reached ${found} at ${substitution.foundPath}, outside the SDK's zod peer range ` +
+      `${reached}, outside the SDK's zod peer range ` +
       `${substitution.range}; the runtime bundles Hooknostic's own ${own} from ${substitution.ownPath} instead, ` +
       "while user code that imports zod still bundles the project's copy.",
     remediation: `install a zod that satisfies ${substitution.range} in the project, so the SDK and user code share one copy.`,
@@ -319,8 +325,15 @@ export function sdkZodFallbackPlugin(onSubstitution: (diagnostic: Diagnostic) =>
         const own = await resolveOwn(build, args.path, options, !optionsResolveFirst);
         if (own.errors.length > 0) {
           // With an out-of-range Zod, never bundle it: a CLI that cannot
-          // resolve its own dependency is broken.
-          if (found !== undefined) return { errors: own.errors };
+          // resolve its own dependency is broken. Say which Zod needed it.
+          if (found !== undefined) {
+            const note = {
+              text:
+                `${reachedText(found)}, outside the SDK's zod peer range ${found.range}, ` +
+                "and Hooknostic's own zod, which would replace it, did not resolve.",
+            };
+            return { errors: own.errors.map((error) => ({ ...error, notes: [...error.notes, note] })) };
+          }
           // With no Zod at all, report the project-side failure: that is the
           // resolution a reader can act on.
           direct ??= await build.resolve(args.path, { ...options, resolveDir: args.resolveDir });

@@ -584,6 +584,36 @@ describe("an SDK installed without its optional Zod peer", () => {
         await rm(root, { recursive: true, force: true });
       }
     });
+
+    it("names the reached Zod when an alias leaves Hooknostic's own unresolvable", async () => {
+      // esbuild applies an alias to every resolve, Hooknostic's own included, so
+      // nothing can supply zod/v4: the build fails, and says why.
+      const { root, sdkEntry } = await project();
+      try {
+        const vendored = join(root, "vendor", "zod");
+        await writeZod(vendored, "3.24.4", { v4: false });
+        const failure: unknown = await bundleRecorded(root, sdkEntry, { alias: { zod: vendored } }).then(
+          () => undefined,
+          (error: unknown) => error,
+        );
+        expect(failure).toMatchObject({
+          errors: [
+            {
+              text: 'Could not resolve "zod/v4"',
+              notes: expect.arrayContaining([
+                expect.objectContaining({
+                  text:
+                    `the SDK's zod import reached zod@3.24.4 at ${vendored}, outside the SDK's zod peer range ` +
+                    `${PEER}, and Hooknostic's own zod, which would replace it, did not resolve.`,
+                }),
+              ]),
+            },
+          ],
+        });
+      } finally {
+        await rm(root, { recursive: true, force: true });
+      }
+    });
   });
 });
 
