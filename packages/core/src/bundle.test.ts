@@ -901,6 +901,28 @@ describe("a Yarn Plug'n'Play install outside Yarn's runtime (#183)", () => {
     expect(ownZodNeedsProjectInstall(true, installed)).toBe(false);
     expect(ownZodNeedsProjectInstall(false, join(dlx, "dist"))).toBe(false);
   });
+
+  it("formats the other errors of the same failure into HN504", async () => {
+    const root = await zodFreeTemporaryDirectory("hooknostic-pnp-");
+    try {
+      const roots = await writeSyntheticPnpProject(root, "app", [sdk(false)]);
+      const failure: unknown = await bundleRuntime({
+        source: `${SOURCE} import "hooknostic-missing-package";`,
+        resolveDir: root,
+      }).then(
+        () => undefined,
+        (error: unknown) => error,
+      );
+      expect(failure).toBeInstanceOf(PnpRuntimeRequiredError);
+      expect((failure as PnpRuntimeRequiredError).diagnostic.message).toBe(
+        `Yarn Plug'n'Play serves ${join(roots["@hooknostic/sdk"]!, "dist", "schemas.js")} from its install ` +
+          `(${join(root, ".pnp.data.json")}), and this process cannot read it: Hooknostic is running without ` +
+          "Yarn's PnP runtime (and 1 other error).",
+      );
+    } finally {
+      await removePnpProject(root);
+    }
+  });
 });
 
 describe("reachableZod", () => {

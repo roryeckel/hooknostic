@@ -43,9 +43,10 @@ export class PnpRuntimeRequiredError extends Error {
 /**
  * HN504 for an esbuild failure that any PnP guard error is part of. Other
  * errors in the same failure, such as an import esbuild could not resolve
- * because the SDK's alias pointed into a zip, follow from the same cause.
+ * because the SDK's alias pointed into a zip, most often follow from the same
+ * cause; the message counts them rather than hide that there were any.
  */
-function pnpRuntimeFailure(error: unknown): PnpRuntimeRequiredError | undefined {
+export function pnpRuntimeFailure(error: unknown): PnpRuntimeRequiredError | undefined {
   const errors = (error as { errors?: unknown } | null)?.errors;
   if (!Array.isArray(errors)) return undefined;
   // The first in a stable order, so every target of one build reports the same.
@@ -53,10 +54,14 @@ function pnpRuntimeFailure(error: unknown): PnpRuntimeRequiredError | undefined 
     .filter((message) => message.detail === PNP_RUNTIME_REQUIRED)
     .sort((a, b) => a.text.localeCompare(b.text));
   if (first === undefined) return undefined;
+  const others = errors.length - 1;
   return new PnpRuntimeRequiredError({
     code: "HN504",
     severity: "error",
-    message: first.text,
+    message:
+      others === 0
+        ? first.text
+        : `${first.text.replace(/\.$/, "")} (and ${others} other error${others === 1 ? "" : "s"}).`,
     ...(first.notes[0] === undefined ? {} : { remediation: first.notes[0].text }),
   });
 }

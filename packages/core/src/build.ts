@@ -1256,6 +1256,8 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
 
   const mainGuardTargets: string[] = [];
   const bundleMessages = new Set<string>();
+  // HN504 has one cause for every target, though each may name another module.
+  let pnpRuntimeReported = false;
   try {
     const skillPolicyPlans: ReturnType<typeof planProjectSkillPolicies> =
       componentSource === undefined
@@ -1846,10 +1848,9 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
         staged.push({ key: id, target: id, stagingDir, outputDir: outputFor(id)!.outputDir });
       } catch (error) {
         if (error instanceof PnpRuntimeRequiredError) {
-          // One cause for every target: report it once per build, like a Zod
-          // substitution, keyed by code since each target may name another module.
-          if (!bundleMessages.has(error.diagnostic.code)) {
-            bundleMessages.add(error.diagnostic.code);
+          // Report it once per build, like a Zod substitution.
+          if (!pnpRuntimeReported) {
+            pnpRuntimeReported = true;
             diagnostics.push(error.diagnostic);
           }
         } else {
