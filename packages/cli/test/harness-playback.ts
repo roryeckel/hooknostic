@@ -192,6 +192,8 @@ export const PLAYBACK_HANDLER_ERROR_LINE = new RegExp(
 
 /** The line the OpenCode v2 shim reports when the `internal-error` rewrite cannot be applied. */
 export const PLAYBACK_INTERNAL_ERROR_LINE = /^hooknostic internal \[execute\.before\]: /m;
+/** Any other internal report, such as one from the subscription as the host shuts down. */
+export const PLAYBACK_STRAY_INTERNAL_ERROR_LINE = /^hooknostic internal(?! \[execute\.before\]: )/m;
 
 function playbackPluginSource(
   events: readonly HookEventName[],

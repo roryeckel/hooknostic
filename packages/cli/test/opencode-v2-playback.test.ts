@@ -20,6 +20,7 @@ import {
   openCodeShellDialectExpectation,
   PLAYBACK_HANDLER_ERROR_LINE,
   PLAYBACK_INTERNAL_ERROR_LINE,
+  PLAYBACK_STRAY_INTERNAL_ERROR_LINE,
   runProcess,
   startModelPlayback,
   traceEvents,
@@ -915,7 +916,12 @@ describe.skipIf(!enabled)("OpenCode v2 offline playback", () => {
           );
         // #175: in-process, the report's channel is console.error.
         if (effect === "handler-error") expect(result.stderr).toMatch(PLAYBACK_HANDLER_ERROR_LINE);
-        if (effect === "internal-error") expect(result.stderr).toMatch(PLAYBACK_INTERNAL_ERROR_LINE);
+        if (effect === "internal-error") {
+          expect(result.stderr).toMatch(PLAYBACK_INTERNAL_ERROR_LINE);
+          // Only the constructed failure: nothing else, such as the subscription
+          // ending as the host shuts down, may be reported as a defect.
+          expect(result.stderr).not.toMatch(PLAYBACK_STRAY_INTERNAL_ERROR_LINE);
+        }
         if (effect === "context")
           expect(
             model.requests.every((request) =>
