@@ -7976,12 +7976,14 @@ function guardCommandShim(describe2) {
   };
   process.on("uncaughtExceptionMonitor", holdUnwind);
   process.prependListener("beforeExit", holdUnwind);
-  process.on("uncaughtException", (error2, origin) => {
-    if (origin !== "unhandledRejection") void report(error2);
-  });
-  process.on("unhandledRejection", (reason) => {
+  const onRejection = (reason) => {
     void report(reason);
+  };
+  process.on("uncaughtException", (error2, origin) => {
+    if (origin !== "unhandledRejection" || !process.listeners("unhandledRejection").includes(onRejection))
+      void report(error2);
   });
+  process.on("unhandledRejection", onRejection);
   process.exit = function exitFromHookSource(code) {
     const error2 = new HookSourceExitError(code);
     if (!cannotUnwind && decided === void 0) throw error2;

@@ -180,6 +180,16 @@ describe("guardCommandShim", () => {
     expect(written).toEqual(["hooknostic internal [Test]: plain reason\n"]);
   });
 
+  it("reports a rejection raised as an uncaught exception once the hook source removed the rejection listener", () => {
+    guardCommandShim(describeError);
+    process.removeAllListeners("unhandledRejection");
+
+    // With no listener left, Node raises the rejection as an uncaught exception only.
+    emitUncaught(new Error("rejected with no listener left"), "unhandledRejection");
+
+    expect(written).toEqual(["hooknostic internal [Test]: rejected with no listener left\n"]);
+  });
+
   it("reports each error once", async () => {
     const guard = guardCommandShim(describeError);
     const error = new Error("rejected twice over");

@@ -323,6 +323,19 @@ describe("Copilot command shim with a hook source that owns the process", () => 
     expect(result.stderr).toMatch(/^hooknostic internal \[preToolUse\]: timer threw\n/m);
   });
 
+  it("reports a rejection once when the hook source removed every unhandledRejection listener", async () => {
+    const result = await run(
+      hostileSource({
+        top: `process.removeAllListeners("unhandledRejection");
+          Promise.reject(new Error("rejected with no listener left"));`,
+      }),
+    );
+    expect(result.code, result.stderr).toBe(0);
+    expect(JSON.parse(result.stdout)).toEqual(REPLY);
+    expect(result.stderr.match(INTERNAL)).toHaveLength(1);
+    expect(result.stderr).toMatch(/^hooknostic internal \[preToolUse\]: rejected with no listener left\n/m);
+  });
+
   it("fails open when the hook source prepends an uncaughtException listener that exits", async () => {
     const result = await run(
       hostileSource({

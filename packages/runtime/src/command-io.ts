@@ -229,14 +229,17 @@ export function guardCommandShim(describe: (error: unknown) => string): CommandS
   // Before the decision, beforeExit means the shim's own await can never
   // settle: a throw here would only empty the loop again, so leave instead.
   process.prependListener("beforeExit", holdUnwind);
+  const onRejection = (reason: unknown): void => {
+    void report(reason);
+  };
   process.on("uncaughtException", (error, origin) => {
     // Under --unhandled-rejections=strict a rejection is raised here first,
-    // then emitted as one; report it there, once.
-    if (origin !== "unhandledRejection") void report(error);
+    // then emitted as one; report it there, once. If the hook source removed
+    // that listener, this is the only sight of it.
+    if (origin !== "unhandledRejection" || !process.listeners("unhandledRejection").includes(onRejection))
+      void report(error);
   });
-  process.on("unhandledRejection", (reason) => {
-    void report(reason);
-  });
+  process.on("unhandledRejection", onRejection);
   process.exit = function exitFromHookSource(code?: number | string | null): never {
     const error = new HookSourceExitError(code);
     if (!cannotUnwind && decided === undefined) throw error;
