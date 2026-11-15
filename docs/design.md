@@ -677,11 +677,13 @@ the message names the root checkout (ADR-0015). **HN108** a hook declares an opt
 event field (`fields`) that the target produces below exact: an error where the field
 is never produced, the `onBelowMinimum` severity where its level is below
 `compatibility.minimum`, information otherwise or when accepted by id in
-`compatibility.accept` (ADR-0027). **HN109** the Zod that the SDK's schemas
-resolve is outside the SDK's `zod` peer range, or has no readable version, so
+`compatibility.accept` (ADR-0027). **HN109** the zod package the SDK's `zod/v4`
+import reaches (the first on its `node_modules` path, whether or not it provides
+`zod/v4`) is outside the SDK's `zod` peer range, or has no readable version, so
 the runtime bundles Hooknostic's own Zod instead. It is a warning, reported once
 per build, and it names the version and path found, the range, and the copy
-bundled. User code that imports Zod still bundles the project's copy (ADR-0040).
+bundled. A project with no reachable Zod gets Hooknostic's copy without one.
+User code that imports Zod still bundles the project's copy (ADR-0040).
 
 #### HN502 — bundled CLI entry point
 
@@ -986,7 +988,7 @@ self-contained (`packages/cli/scripts/bundle.mjs`): core and the adapters are in
 `dist/index.js`; each adapter's runtime shim is prebundled into `dist/shims/<id>.mjs`
 (runtime inlined, SDK root and `/schemas` external — the build aliases both to the user
 project's copy so an artifact carries exactly one SDK/zod copy, the SDK's schemas taking
-Zod from the project when it installs one and from the CLI's own dependency otherwise,
+Zod from the project when it installs one in the SDK's peer range and from the CLI's own dependency otherwise,
 [ADR-0040](decisions/0040-sdk-schemas-subpath.md)); and the emitted declarations import
 nothing but `@hooknostic/sdk`. `packages/cli/src/package.test.ts` proves the
 registry-install story offline. Publishing `@hooknostic/core` and `@hooknostic/testkit` for

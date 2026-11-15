@@ -38,8 +38,9 @@ as for a security fix, not on every Zod release. The published CLI also takes
 `zod` from `zod-peer`, as a regular dependency. The CLI's own code, the SDK
 and its Zod included, is inlined into its bundle, so that dependency exists for
 generated artifacts. A shim's SDK schemas take Zod from the CLI's install when
-the project's is missing or outside the SDK's peer range, which an out-of-range
-one reports as HN109. Sharing the catalog keeps that dependency equal to the
+the SDK reaches no Zod in the project, silently, or reaches one outside the
+SDK's peer range, including any Zod 3.24 or older, which has no `zod/v4`; that
+case reports HN109. Sharing the catalog keeps that dependency equal to the
 peer range, so the copy it supplies always satisfies it. When the project's
 Zod satisfies the range, the SDK and the project's own code share that one
 installed copy. This follows the [upstream peer dependency guidance](https://zod.dev/library-authors#how-to-configure-peer-dependencies)
@@ -126,8 +127,11 @@ SDK and installs an isolated consumer at the V4 peer floor, then checks TypeScri
 composition and runtime error identity. It also packs the CLI and builds an npm
 project, installed with `legacy-peer-deps`, that inherits a hoisted `zod@3.25.76`
 from another dependency. The artifact must carry the CLI's in-range Zod, and
-`check` and `build` must warn HN109. The version derives from `zod-peer`; this
-check needs registry access and disables dependency install scripts.
+`check` and `build` must warn HN109. It then installs a pnpm project that
+declares `zod@3.24.4`, which pnpm links as the SDK's optional peer although that
+release has no `zod/v4`, and requires the same of it, with HN109 naming the
+linked Zod's store path. The version derives from `zod-peer`; this check needs
+registry access and disables dependency install scripts.
 
 ### Minimatch lint-tooling override: 2026-11-13
 
