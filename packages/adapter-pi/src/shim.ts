@@ -253,11 +253,12 @@ export function createHooknosticExtension(plugin: PluginSpec, options: PiShimOpt
 
         // Warning, not info: Pi's own status line replaced an info notice after
         // reload, resume and fork (.capture/pi/README.md). Print mode has no UI
-        // and shows nothing. A missing ctx.ui is a silent no-op.
+        // and shows nothing. A missing ctx.ui is a silent no-op, and so is one
+        // that cannot be read: ctx is the host's live object, read in the try.
         if (name === "session_start" && application.notices !== undefined) {
-          const ui = (ctx as { ui?: { notify?: (message: string, level: string) => void } } | undefined)?.ui;
           for (const message of application.notices) {
             try {
+              const ui = (ctx as { ui?: { notify?: (message: string, level: string) => void } } | undefined)?.ui;
               ui?.notify?.(message, "warning");
             } catch {
               // Fail open.

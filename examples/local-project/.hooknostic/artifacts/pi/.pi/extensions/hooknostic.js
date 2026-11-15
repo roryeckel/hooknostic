@@ -7906,9 +7906,9 @@ function createHooknosticExtension(plugin, options) {
         return { native, enrichment };
       });
       if (name === "session_start" && application.notices !== void 0) {
-        const ui = ctx?.ui;
         for (const message of application.notices) {
           try {
+            const ui = ctx?.ui;
             ui?.notify?.(message, "warning");
           } catch {
           }

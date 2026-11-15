@@ -661,6 +661,25 @@ describe("createHooknosticExtension", () => {
       } as PiNativeEvent["ctx"];
       await expect(fire(pi, "session_start", start, throwing)).resolves.toBeUndefined();
     });
+
+    it("stays a silent no-op when reading ctx.ui itself throws", async () => {
+      const pi = fakePi();
+      const error = vi.spyOn(console, "error").mockImplementation(() => {});
+      try {
+        createHooknosticExtension(noticePlugin(), options)(pi);
+        const stale = {
+          cwd: "C:/project",
+          get ui(): never {
+            throw new Error("stale ctx");
+          },
+        } as unknown as PiNativeEvent["ctx"];
+        await expect(fire(pi, "session_start", start, stale)).resolves.toBeUndefined();
+        // A best-effort post, like the notify call itself: nothing is reported.
+        expect(error).not.toHaveBeenCalled();
+      } finally {
+        error.mockRestore();
+      }
+    });
   });
 
   it("rejects an optional notify effect instead of posting a hidden model message", async () => {
