@@ -176,6 +176,20 @@ export const opencodeV2CapabilityProfiles: CapabilityProfile[] = [
           artifact: ".capture/opencode-notice",
           what: "The 2.0.17 session-start notice probe repeated with the same results: a server-only plugin has no user-only route. The companion ./tui RPC route (.capture/opencode-v2 notifications) still renders a server-emitted notice and makes no model request; attention.notify still returns attention_disabled under scratch defaults.",
         },
+        {
+          version: "2.0.17",
+          date: "2026-11-14",
+          method: "live-probe",
+          artifact: ".capture/opencode-v2-plugin-stderr",
+          what: "Windows loopback handler-error probe, isolated state: the shim's console.error report of a throwing tool.before handler reached run's stderr only under run --standalone --print-logs. Under --standalone alone, or with --log-level debug, it reached neither stream nor opencode.log; the call failed open in every mode. The TUI and the background service were not measured.",
+        },
+        {
+          version: "2.2.7",
+          date: "2026-11-14",
+          method: "live-probe",
+          artifact: ".capture/opencode-v2-plugin-stderr",
+          what: "The 2.0.17 handler-error probe repeated with the same results: the report is visible only under run --standalone --print-logs.",
+        },
       ],
     },
     // Optional event fields (ADR-0027). The turn fields rest on the 2.0.18

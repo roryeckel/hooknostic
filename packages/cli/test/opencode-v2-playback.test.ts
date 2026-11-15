@@ -877,10 +877,10 @@ describe.skipIf(!enabled)("OpenCode v2 offline playback", () => {
             "--auto",
             "--format",
             "json",
-            // Observed on 2.2.7: run loads plugins in the `serve --stdio`
-            // process it starts, and their console.error reached run's
-            // stderr with --print-logs and neither stderr nor the log file
-            // without it.
+            // Observed on 2.0.17 and 2.2.7: run loads plugins in the
+            // `serve --stdio` process it starts, and their console.error
+            // reached run's stderr with --print-logs and neither stream nor
+            // the log file without it (.capture/opencode-v2-plugin-stderr).
             ...(effect === "handler-error" ? ["--print-logs"] : []),
             effect === "block-prompt" ? "hooknostic-block-this-prompt" : "Use the shell once, then stop.",
           ],
