@@ -370,19 +370,55 @@ describe("Copilot command shim with a hook source that owns the process", () => 
     expect(result.stderr).toMatch(/^hooknostic internal \[preToolUse\]: the hook source called process\.exit\(3\)\n/m);
   });
 
-  it("reports a prepended beforeExit listener's exit once, however often it loops", async () => {
+  it("lets the hooks decide when the hook source's own listener defers its exit to a tick", async () => {
+    const result = await run(
+      hostileSource({
+        top: `process.once("uncaughtException", () => process.nextTick(() => process.exit(1)));
+          setTimeout(() => { throw new Error("timer threw"); }, 30);`,
+        body: "await sleep(100)",
+        effect: `block("blocked on purpose")`,
+      }),
+    );
+    // The deferred exit throws once the emit is over, so the denial still lands.
+    expect(result.code, result.stderr).toBe(0);
+    expect(JSON.parse(result.stdout)).toEqual({
+      permissionDecision: "deny",
+      permissionDecisionReason: "blocked on purpose",
+    });
+    expect(result.stderr).toMatch(/^hooknostic internal \[preToolUse\]: the hook source called process\.exit\(1\)\n/m);
+  });
+
+  it("fails open, rather than looping, when that listener exits again on the guard's own error", async () => {
+    // A listener that stays: the deferred exit throws, the listener sees that
+    // error and defers another exit. Killed after two seconds if it loops.
+    const result = await run(
+      hostileSource({
+        top: `process.on("uncaughtException", () => process.nextTick(() => process.exit(1)));
+          setTimeout(() => { throw new Error("timer threw"); }, 30);`,
+        body: "await sleep(100)",
+        effect: `block("blocked on purpose")`,
+      }),
+      {},
+      2_000,
+    );
+    expect(result.killed).toBe(false);
+    expect(result).toMatchObject({ code: 0, stdout: "" });
+    expect(result.stderr).toMatch(/^hooknostic internal \[preToolUse\]: the hook source called process\.exit\(1\)\n/m);
+  });
+
+  it("reports a prepended beforeExit listener's exit once, and leaves on its second round", async () => {
     // Ahead of the guard's own beforeExit listener the stub throws, the loop
-    // empties and beforeExit comes round again: the process stays alive until
-    // the harness times it out. Killed here after a second; one line, not a flood.
+    // empties and beforeExit comes round again; the repeated exit then leaves.
+    // Killed after two seconds if it loops.
     const result = await run(
       hostileSource({
         top: `process.prependListener("beforeExit", () => process.exit(3));\nawait new Promise(() => {});`,
       }),
       {},
-      1_000,
+      2_000,
     );
-    expect(result.killed).toBe(true);
-    expect(result.stdout).toBe("");
+    expect(result.killed).toBe(false);
+    expect(result).toMatchObject({ code: 0, stdout: "" });
     expect(result.stderr.match(INTERNAL)).toHaveLength(1);
     expect(result.stderr).toMatch(/^hooknostic internal \[preToolUse\]: the hook source called process\.exit\(3\)\n/m);
   });

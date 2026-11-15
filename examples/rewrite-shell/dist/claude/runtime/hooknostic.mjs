@@ -7988,7 +7988,7 @@ function guardCommandShim(describe2) {
   };
   const holdUnwind = () => {
     cannotUnwind = true;
-    queueMicrotask(() => {
+    process.nextTick(() => {
       cannotUnwind = false;
     });
   };
@@ -7997,14 +7997,16 @@ function guardCommandShim(describe2) {
   const onRejection = (reason) => {
     void report(reason);
   };
+  const escaped = /* @__PURE__ */ new Set();
   process.on("uncaughtException", (error2, origin) => {
+    if (isInstance(error2, HookSourceExitError)) escaped.add(exitKey(error2.code));
     if (origin !== "unhandledRejection" || !process.listeners("unhandledRejection").includes(onRejection))
       void report(error2);
   });
   process.on("unhandledRejection", onRejection);
   process.exit = function exitFromHookSource(code) {
     const error2 = new HookSourceExitError(code);
-    if (!cannotUnwind && !finished) throw error2;
+    if (!cannotUnwind && !finished && !escaped.has(exitKey(code))) throw error2;
     reportNow(error2, exitKey(code));
     return exit(decided ?? 0);
   };

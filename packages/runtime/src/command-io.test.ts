@@ -149,6 +149,47 @@ describe("guardCommandShim", () => {
     expect(exit.mock.calls).toEqual([[0]]);
   });
 
+  it("throws again from a tick a listener queued, once the emit is over", async () => {
+    guardCommandShim(describeError);
+    let thrown: unknown;
+    process.on("uncaughtException", () =>
+      process.nextTick(() => {
+        try {
+          process.exit(4);
+        } catch (error) {
+          thrown = error;
+        }
+      }),
+    );
+
+    // From a macrotask, as Node raises one: ticks run there before microtasks.
+    // (From this async test body the microtask queue would drain first.)
+    await new Promise<void>((resolve) =>
+      setImmediate(() => {
+        emitUncaught(new Error("timer threw"), "uncaughtException");
+        resolve();
+      }),
+    );
+    await new Promise<void>((resolve) => setImmediate(resolve));
+
+    // The guard's reset tick was queued first, so the hooks can still decide.
+    expect(thrown).toBeInstanceOf(HookSourceExitError);
+    expect(exit).not.toHaveBeenCalled();
+  });
+
+  it("leaves, rather than throwing again, on an exit whose throw already escaped uncaught", async () => {
+    guardCommandShim(describeError);
+
+    emitUncaught(new HookSourceExitError(1), "uncaughtException");
+    await new Promise<void>((resolve) => setImmediate(resolve));
+
+    // The hook source is looping on exit(1); another throw would only come round again.
+    expect(() => process.exit(1)).not.toThrow();
+    expect(exit.mock.calls).toEqual([[0]]);
+    // Another code is a new exit, and still throws.
+    expect(() => process.exit(2)).toThrow(HookSourceExitError);
+  });
+
   it("leaves with 0 rather than throwing from a beforeExit listener before the decision", () => {
     guardCommandShim(describeError);
     process.on("beforeExit", () => process.exit(3));

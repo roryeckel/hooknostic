@@ -236,13 +236,14 @@ export function guardCommandShim(describe: (error: unknown) => string): CommandS
     }
   };
 
-  // Set for the length of an emit, and reset once its listeners have run.
-  // A callback the hook source defers past the emit but ahead of the reset,
-  // such as process.nextTick(() => process.exit(1)), still sees it set and
-  // leaves with the decided code or 0 instead of throwing: it fails open.
+  // Set for the length of an emit, and reset once its listeners have run. The
+  // reset is a tick queued before any listener runs, so it comes ahead of a
+  // tick a listener queues: process.nextTick(() => process.exit(1)) from one
+  // throws, is reported, and the hooks still decide. A microtask would run
+  // only after every queued tick.
   const holdUnwind = (): void => {
     cannotUnwind = true;
-    queueMicrotask(() => {
+    process.nextTick(() => {
       cannotUnwind = false;
     });
   };
@@ -255,7 +256,13 @@ export function guardCommandShim(describe: (error: unknown) => string): CommandS
   const onRejection = (reason: unknown): void => {
     void report(reason);
   };
+  // Exit codes whose throw escaped to uncaughtException. The same exit again
+  // means the hook source is looping on it: an uncaughtException listener that
+  // exits again on the guard's own error, or a beforeExit listener ahead of
+  // the guard's. Another throw would only come round again, so the stub leaves.
+  const escaped = new Set<string>();
   process.on("uncaughtException", (error, origin) => {
+    if (isInstance(error, HookSourceExitError)) escaped.add(exitKey(error.code));
     // Under --unhandled-rejections=strict a rejection is raised here first,
     // then emitted as one; report it there, once. If the hook source removed
     // that listener, this is the only sight of it.
@@ -265,7 +272,7 @@ export function guardCommandShim(describe: (error: unknown) => string): CommandS
   process.on("unhandledRejection", onRejection);
   process.exit = function exitFromHookSource(code?: number | string | null): never {
     const error = new HookSourceExitError(code);
-    if (!cannotUnwind && !finished) throw error;
+    if (!cannotUnwind && !finished && !escaped.has(exitKey(code))) throw error;
     reportNow(error, exitKey(code));
     return exit(decided ?? 0);
   } as typeof process.exit;
