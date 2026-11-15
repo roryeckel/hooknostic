@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import type { PluginSpec } from "@hooknostic/sdk";
-import { definePlugin, hook, notify } from "@hooknostic/sdk";
+import { definePlugin, hook, notify, replaceInput } from "@hooknostic/sdk";
 import { loadFixture } from "@hooknostic/testkit";
 
 import type { PiEnrichment, PiNativeEvent } from "./decode.js";
@@ -688,24 +688,140 @@ describe("createHooknosticExtension", () => {
     }
   });
 
-  it("fails open when the shim itself throws", async () => {
+  it("is silent on a payload that is not ours", async () => {
     const pi = fakePi();
-    const extension = createHooknosticExtension(
-      pluginWith([
-        hook("tool.before", {
-          id: "g",
-          capabilities: { "tool.before.block": "required" },
-          async run() {
-            return { kind: "block" as const, reason: "deliberate" };
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const extension = createHooknosticExtension(
+        pluginWith([
+          hook("tool.before", {
+            id: "g",
+            capabilities: { "tool.before.block": "required" },
+            async run() {
+              return { kind: "block" as const, reason: "deliberate" };
+            },
+          }),
+        ]),
+        { ...INVOCATION, capabilities: LEVELS },
+      );
+      extension(pi);
+      // Undecodable: the decoder says it is not ours, so no hook runs and nothing is reported.
+      const result = await fire(pi, "tool_call", "not the expected envelope shape");
+      expect(result).toBeUndefined();
+      expect(error).not.toHaveBeenCalled();
+    } finally {
+      error.mockRestore();
+    }
+  });
+
+  describe("internal errors (#179)", () => {
+    function observing() {
+      const pi = fakePi();
+      createHooknosticExtension(pluginWith([hook("tool.before", { id: "observe", async run() {} })]), {
+        ...INVOCATION,
+        capabilities: LEVELS,
+      })(pi);
+      return pi;
+    }
+    /** A live event whose `type` getter throws, as a host object that went away would. */
+    const refusing = () => ({
+      get type(): never {
+        throw new Error("live object went away");
+      },
+      toolName: "bash",
+      input: { command: "ls" },
+    });
+
+    it("reports a decode-time host refusal on every event, and fails open", async () => {
+      const error = vi.spyOn(console, "error").mockImplementation(() => {});
+      try {
+        const pi = observing();
+        for (const _ of [0, 1, 2]) expect(await fire(pi, "tool_call", refusing())).toBeUndefined();
+        // Not deduplicated (ADR-0002): a defect that fires on every event says so every time.
+        expect(error.mock.calls).toEqual(
+          [0, 1, 2].map(() => ["hooknostic internal [tool_call]: live object went away"]),
+        );
+      } finally {
+        error.mockRestore();
+      }
+    });
+
+    it("reports an input replacement that escaped dispatch validation", async () => {
+      const error = vi.spyOn(console, "error").mockImplementation(() => {});
+      try {
+        const pi = fakePi();
+        const input = { command: "a" };
+        createHooknosticExtension(
+          pluginWith([
+            hook("tool.before", {
+              id: "rewrite",
+              capabilities: { "tool.before.input.replace": "required" },
+              async run() {
+                return replaceInput({ command: "b" });
+              },
+            }),
+            hook("tool.before", {
+              id: "freeze",
+              async run() {
+                // After the rewrite was validated against a mutable input.
+                Object.freeze(input);
+              },
+            }),
+          ]),
+          { ...INVOCATION, capabilities: LEVELS },
+        )(pi);
+        expect(await fire(pi, "tool_call", { type: "tool_call", toolName: "bash", toolCallId: "c", input })).toBe(
+          undefined,
+        );
+        expect(input).toEqual({ command: "a" });
+        expect(error.mock.calls).toEqual([
+          ["hooknostic internal [tool_call]: pi input replacement escaped dispatch validation"],
+        ]);
+      } finally {
+        error.mockRestore();
+      }
+    });
+
+    it("reports a ctx that cannot be read before decode, and fails open", async () => {
+      const error = vi.spyOn(console, "error").mockImplementation(() => {});
+      try {
+        const pi = observing();
+        const ctx = {
+          get cwd(): never {
+            throw new Error("stale ctx");
           },
-        }),
-      ]),
-      { ...INVOCATION, capabilities: LEVELS },
-    );
-    extension(pi);
-    // A dispatch crash (e.g. malformed native event) must not deny the call.
-    const result = await fire(pi, "tool_call", "not the expected envelope shape");
-    expect(result).toBeUndefined();
+        } as unknown as PiNativeEvent["ctx"];
+        const payload = { type: "tool_call", toolName: "bash", toolCallId: "c", input: { command: "ls" } };
+        await expect(fire(pi, "tool_call", payload, ctx)).resolves.toBeUndefined();
+        expect(error.mock.calls).toEqual([["hooknostic internal [tool_call]: stale ctx"]]);
+      } finally {
+        error.mockRestore();
+      }
+    });
+
+    it("fails open on a thrown value it cannot inspect, and on a report channel that throws", async () => {
+      const error = vi.spyOn(console, "error").mockImplementation(() => {});
+      try {
+        const pi = observing();
+        // A revoked proxy throws from `instanceof` and from String() alike.
+        const { proxy, revoke } = Proxy.revocable({}, {});
+        revoke();
+        const ctx = {
+          get cwd(): never {
+            throw proxy;
+          },
+        } as unknown as PiNativeEvent["ctx"];
+        const payload = { type: "tool_call", toolName: "bash", toolCallId: "c", input: { command: "ls" } };
+        await expect(fire(pi, "tool_call", payload, ctx)).resolves.toBeUndefined();
+        expect(error.mock.calls).toEqual([["hooknostic internal [tool_call]: uninspectable thrown value"]]);
+        error.mockImplementation(() => {
+          throw new Error("stderr is gone");
+        });
+        await expect(fire(pi, "tool_call", refusing())).resolves.toBeUndefined();
+      } finally {
+        error.mockRestore();
+      }
+    });
   });
 
   it("is stateless across invocations (ADR-0002)", async () => {

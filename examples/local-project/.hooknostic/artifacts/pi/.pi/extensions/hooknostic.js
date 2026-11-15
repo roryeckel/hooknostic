@@ -7125,6 +7125,27 @@ function errorMessage(error2) {
     return "uninspectable thrown value";
   }
 }
+function debugEnabled(env = globalThis.process?.env) {
+  const flag = env?.["HOOKNOSTIC_DEBUG"];
+  return flag !== void 0 && flag !== "" && flag !== "0";
+}
+function formatInternalError(error2, options = {}) {
+  const line = `hooknostic internal${options.hook ? ` [${options.hook}]` : ""}: ${errorMessage(error2)}`;
+  if (!options.stack) return line;
+  try {
+    const stack = error2 instanceof Error ? error2.stack : void 0;
+    return typeof stack === "string" && stack !== "" ? `${line}
+${stack}` : line;
+  } catch {
+    return line;
+  }
+}
+function reportInternalError(error2, hook2, write = (line) => console.error(line)) {
+  try {
+    write(formatInternalError(error2, { ...hook2 !== void 0 ? { hook: hook2 } : {}, stack: debugEnabled() }));
+  } catch {
+  }
+}
 function createCapabilitySet(levels) {
   const levelOf = (id) => (Object.hasOwn(levels, id) ? levels[id] : void 0) ?? "unsupported";
   return {
@@ -7838,41 +7859,45 @@ function createHooknosticExtension(plugin, options) {
     }
     return { result: Object.keys(result).length > 0 ? result : void 0, application };
   };
-  const runFailingOpen = async (native, enrichment) => {
+  const runFailingOpen = async (name, prepare) => {
     try {
+      const { native, enrichment } = prepare();
       return await run(native, enrichment);
-    } catch {
+    } catch (error2) {
+      reportInternalError(error2, name);
       return { result: void 0, application: {} };
     }
   };
   return (pi) => {
     const handler = (name) => async (event, ctx) => {
-      const ctxCwd = ctx?.cwd;
-      const ctxMode = ctx?.mode;
-      const eventCwd = event.cwd;
-      const cwd = typeof ctxCwd === "string" ? ctxCwd : typeof eventCwd === "string" ? eventCwd : process.cwd();
-      const native = {
-        event,
-        ctx: { cwd, ...typeof ctxMode === "string" ? { mode: ctxMode } : {} }
-      };
-      const enrichment = {};
-      if (name === "agent_settled" && readsTurnFields) {
-        try {
-          const manager = ctx?.sessionManager;
-          const branch = manager?.getBranch?.();
-          if (branch !== void 0) enrichment.branch = branch;
-        } catch {
+      const { result, application } = await runFailingOpen(name, () => {
+        const ctxCwd = ctx?.cwd;
+        const ctxMode = ctx?.mode;
+        const eventCwd = event.cwd;
+        const cwd = typeof ctxCwd === "string" ? ctxCwd : typeof eventCwd === "string" ? eventCwd : process.cwd();
+        const native = {
+          event,
+          ctx: { cwd, ...typeof ctxMode === "string" ? { mode: ctxMode } : {} }
+        };
+        const enrichment = {};
+        if (name === "agent_settled" && readsTurnFields) {
+          try {
+            const manager = ctx?.sessionManager;
+            const branch = manager?.getBranch?.();
+            if (branch !== void 0) enrichment.branch = branch;
+          } catch {
+          }
         }
-      }
-      const toolName = event.toolName;
-      if (name === "tool_result" && options.nativeMcp !== false && typeof toolName === "string" && toolName.startsWith(PI_MCP_PREFIX)) {
-        try {
-          const source = registeredToolSource(pi, toolName);
-          if (source !== void 0) enrichment.toolSource = source;
-        } catch {
+        const toolName = event.toolName;
+        if (name === "tool_result" && options.nativeMcp !== false && typeof toolName === "string" && toolName.startsWith(PI_MCP_PREFIX)) {
+          try {
+            const source = registeredToolSource(pi, toolName);
+            if (source !== void 0) enrichment.toolSource = source;
+          } catch {
+          }
         }
-      }
-      const { result, application } = await runFailingOpen(native, enrichment);
+        return { native, enrichment };
+      });
       if (name === "session_start" && application.notices !== void 0) {
         const ui = ctx?.ui;
         for (const message of application.notices) {
