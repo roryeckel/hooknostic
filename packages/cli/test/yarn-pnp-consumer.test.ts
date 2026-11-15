@@ -2,7 +2,7 @@ import { cp, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/pr
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
-import { expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import { runProcess } from "./harness-playback.js";
 
@@ -37,11 +37,58 @@ const ok = (hn109: number, zod: Outcome["zod"]): Outcome => ({ exit: 0, hn504: 0
 const hn504: Outcome = { exit: 2, hn504: 1, hn109: 0, zod: [] };
 
 /**
- * What a registry fetch or download failure leaves in Yarn's, corepack's or
- * npm's output. Yarn exits 1 for it, never 2 as Hooknostic does.
+ * The network tokens a registry fetch or download failure leaves in Yarn's,
+ * corepack's or npm's output (Yarn exits 1 for it, never 2 as Hooknostic
+ * does). Yarn's own codes say nothing on their own: YN0013 is the fetch step
+ * of every install, and YN0001 is any exception, a missing `file:` tarball
+ * included. Node's socket errors (`ERR_SOCKET_CLOSED_BEFORE_CONNECTION`) are
+ * what Yarn printed against an unreachable registry.
  */
 const NETWORK_FAILURE =
-  /\bYN0001\b|\bYN0013\b|ECONNRESET|ECONNREFUSED|ETIMEDOUT|ENOTFOUND|EAI_AGAIN|ECANCELED|socket hang up|SSL|Error when performing the request/;
+  /ECONNRESET|ECONNREFUSED|ECONNABORTED|ETIMEDOUT|ENOTFOUND|EAI_AGAIN|socket hang up|\bERR_SOCKET_\w+|Error when performing the request|\bSSL\b|CERT_/;
+
+/** Whether a failed step's output shows a network failure rather than a product one. */
+function isNetworkFailure(output: string): boolean {
+  return NETWORK_FAILURE.test(output);
+}
+
+describe("the opt-in Yarn check's network classifier", () => {
+  it("does not take a successful install's fetch step for a network failure", () => {
+    const log = [
+      "➤ YN0000: · Yarn 4.18.1",
+      "➤ YN0000: ┌ Fetch step",
+      "➤ YN0013: │ A package was added to the project (+ 1.2 MiB).",
+      "➤ YN0000: └ Completed in 0s 412ms",
+    ].join("\n");
+    expect(isNetworkFailure(log)).toBe(false);
+  });
+
+  it("does not take a missing file: tarball for a network failure", () => {
+    const log = [
+      "➤ YN0000: ┌ Resolution step",
+      "➤ YN0001: │ Error: hooknostic@file:/tmp/packs/hooknostic-0.12.0.tgz: ENOENT: no such file or directory, " +
+        "stat '/tmp/packs/hooknostic-0.12.0.tgz'",
+      "➤ YN0000: └ Completed",
+    ].join("\n");
+    expect(isNetworkFailure(log)).toBe(false);
+  });
+
+  it("takes a socket closed before connecting for a network failure", () => {
+    // As Yarn 4.18.1 printed it against an unreachable registry.
+    const log =
+      "➤ YN0001: │ Error [ERR_SOCKET_CLOSED_BEFORE_CONNECTION]: Socket closed before the connection was established";
+    expect(isNetworkFailure(log)).toBe(true);
+  });
+
+  it("takes a reset connection for a network failure", () => {
+    expect(isNetworkFailure("➤ YN0001: │ RequestError: read ECONNRESET")).toBe(true);
+  });
+
+  it("takes a TLS teardown for a network failure", () => {
+    // As Yarn 4.18.1 printed it when a download was cut off.
+    expect(isNetworkFailure("➤ YN0001: │ Error: write ECANCELED Canceled because of SSL destruction")).toBe(true);
+  });
+});
 
 /** Under Yarn's runtime, the SDK takes the project's in-range Zod and the CLI's otherwise. */
 const underYarnRuntime: Record<Project, Outcome> = {
@@ -92,7 +139,7 @@ it.skipIf(process.env["HOOKNOSTIC_YARN_PNP"] !== "1")(
       const result = await runProcess(command, args, { cwd, env, timeoutMs: 300_000 });
       const output = result.stdout + result.stderr;
       // A failed download is the environment, not a missing HN504: stop here and say so.
-      if (command !== process.execPath && result.code !== 0 && result.code !== 2 && NETWORK_FAILURE.test(output))
+      if (command !== process.execPath && result.code !== 0 && result.code !== 2 && isNetworkFailure(output))
         throw new Error(
           `ENVIRONMENT/NETWORK FAILURE, not a Hooknostic result: \`${command} ${args.join(" ")}\` in ${cwd} ` +
             `exited ${result.code} on a fetch or network error. Rerun when the registry is reachable.\n${output}`,

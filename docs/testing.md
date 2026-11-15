@@ -263,8 +263,10 @@ Yarn, corepack and npm keep their state in the test's temporary directory,
 where every install and `yarn dlx` run shares one Yarn global cache, and each
 consumer gets an empty `yarn.lock` so Yarn never adopts an ancestor project.
 Each cell records the real exit code (Hooknostic exits 2 for a failed build).
-A Yarn, corepack or npm step that exits otherwise with a fetch or network
-error (`YN0001`, `ECONNRESET` and the like) stops the test at once with an
+A Yarn, corepack or npm step that exits otherwise with a network error in its
+output (`ECONNRESET`, `ETIMEDOUT`, a closed socket, an SSL or certificate
+error and the like; not Yarn's own codes, since `YN0013` is the fetch step of
+every install and `YN0001` any exception) stops the test at once with an
 `ENVIRONMENT/NETWORK FAILURE` error and that step's output: rerun it, it is
 not a missing HN504. Set `HOOKNOSTIC_YARN_PNP_VERBOSE=1` to print every
 build's output and the Zod it bundled.
