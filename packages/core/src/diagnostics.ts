@@ -21,6 +21,7 @@ export const DIAGNOSTIC_CODES = {
   HN107: "project wiring is read from the root checkout, not this linked worktree",
   HN108: "event field not produced exactly",
   HN109: "SDK's Zod outside its peer range",
+  HN110: "CLI and project SDK on different releases",
   HN201: "required capability unsupported",
   HN202: "event unavailable",
   HN203: "target version outside adapter data",

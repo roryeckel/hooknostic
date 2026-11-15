@@ -21,7 +21,7 @@ import { CODEX_PLUGIN_MODE_RANGE } from "@hooknostic/adapter-codex";
 import { opencodeHarness, opencodeV2Harness } from "@hooknostic/adapter-opencode";
 import { piCapabilityProfiles, piHarness } from "@hooknostic/adapter-pi";
 import { AGENT_PLUGIN_MANIFEST_SCHEMA, AGENT_PLUGIN_MCP_SCHEMA, loadAgentPlugin } from "@hooknostic/agent-plugin";
-import { rangeCoversVersion } from "@hooknostic/core";
+import { HOOKNOSTIC_VERSION, rangeCoversVersion } from "@hooknostic/core";
 import { makeFakeAdapter, syntheticSource, writeSyntheticPnpProject } from "@hooknostic/testkit";
 
 import { describeMcpCommands, runBuild } from "./build.js";
@@ -3068,6 +3068,121 @@ describe("hooknostic build under Yarn Plug'n'Play without Yarn's runtime (#183)"
       await stopEsbuild();
       await rm(dir, { recursive: true, force: true, maxRetries: 20, retryDelay: 100 });
     }
+  });
+});
+
+describe("a CLI and a project SDK on different releases (HN110, #194)", () => {
+  /** A release that is not this CLI's. */
+  const OTHER = "0.11.9";
+
+  /**
+   * rewrite-shell, for claude and codex, outside the workspace, with its own
+   * `node_modules/@hooknostic/sdk`: a copy of the built SDK, as a registry
+   * install gives, stamped `version`.
+   */
+  async function projectWithSdk(version: string) {
+    const dir = await mkdtemp(join(tmpdir(), "hooknostic-skew-"));
+    cleanupDirs.push(dir);
+    await cp(join(EXAMPLES, "rewrite-shell"), dir, {
+      recursive: true,
+      filter: (src) => !["dist", "hooknostic-build.json", "node_modules"].includes(basename(src)),
+    });
+    const config = join(dir, "hooknostic.config.ts");
+    const source = await readFile(config, "utf8");
+    const twoTargets = source.replace(/^\s*(?:pi|opencode): \{[^}]*\},\n/gm, "");
+    expect(twoTargets).not.toMatch(/\b(?:pi|opencode):/);
+    await writeFile(config, twoTargets);
+    const sdk = join(dir, "node_modules/@hooknostic/sdk");
+    // What the package publishes ("files"), so the bundler finds its notice.
+    await cp(join(REPO, "packages/sdk/dist"), join(sdk, "dist"), { recursive: true });
+    await cp(join(REPO, "packages/sdk/LICENSE"), join(sdk, "LICENSE"));
+    const manifest = JSON.parse(await readFile(join(REPO, "packages/sdk/package.json"), "utf8")) as { version: string };
+    await writeFile(join(sdk, "package.json"), JSON.stringify({ ...manifest, version }, null, 2));
+    return { dir, config, sdk };
+  }
+
+  const hn110 = <D extends { code: string }>(diagnostics: D[]) => diagnostics.filter((d) => d.code === "HN110");
+
+  it("warns once, naming both releases, and check still passes", { timeout: 120_000 }, async () => {
+    expect(OTHER).not.toBe(HOOKNOSTIC_VERSION);
+    const { config, sdk } = await projectWithSdk(OTHER);
+    const { io, out } = captureIO();
+    expect(await runCheck({ config, json: true, registry: defaultAdapterRegistry(), io }), out()).toBe(0);
+    const report = JSON.parse(out()) as { diagnostics: { code: string; severity: string; message: string }[] };
+    expect(hn110(report.diagnostics)).toEqual([
+      expect.objectContaining({
+        severity: "warn",
+        message: expect.stringContaining(`this hooknostic is ${HOOKNOSTIC_VERSION}, but the project's @hooknostic/sdk`),
+      }),
+    ]);
+    expect(hn110(report.diagnostics)[0]?.message).toContain(`at ${sdk} is ${OTHER},`);
+  });
+
+  it("is silent when the project's SDK is on this CLI's release", { timeout: 120_000 }, async () => {
+    const { config } = await projectWithSdk(HOOKNOSTIC_VERSION);
+    const { io, out } = captureIO();
+    expect(await runCheck({ config, json: true, registry: defaultAdapterRegistry(), io }), out()).toBe(0);
+    expect(hn110(JSON.parse(out()).diagnostics)).toEqual([]);
+  });
+
+  it("is silent when the project has no SDK", { timeout: 120_000 }, async () => {
+    // A package-only config: with no entry, nothing needs the SDK to load.
+    const dir = await mkdtemp(join(tmpdir(), "hooknostic-skew-nosdk-"));
+    cleanupDirs.push(dir);
+    await writeFile(
+      join(dir, "plugin.json"),
+      JSON.stringify({ $schema: AGENT_PLUGIN_MANIFEST_SCHEMA, name: "no-sdk" }),
+    );
+    const config = join(dir, "hooknostic.config.ts");
+    await writeFile(
+      config,
+      `export default {
+        components: { root: ".", targets: ["claude"] },
+        targets: { claude: { version: ${JSON.stringify(claudeHarness.recommendedRange)}, delivery: "package", output: "dist/claude" } },
+      };`,
+    );
+    // Not in-process: the workspace's pnpm bin shims put its hoisted
+    // node_modules, which holds the SDK, on NODE_PATH, so the SDK resolves from
+    // anywhere. Run the built CLI without it.
+    const env = Object.fromEntries(Object.entries(process.env).filter(([key]) => key.toUpperCase() !== "NODE_PATH"));
+    const resolves = spawnSync(
+      process.execPath,
+      [
+        "-e",
+        'require("node:module").createRequire(process.argv[1]).resolve("@hooknostic/sdk")',
+        join(dir, "package.json"),
+      ],
+      { env, encoding: "utf8" },
+    );
+    expect(resolves.status, "precondition: no @hooknostic/sdk resolves from the project").not.toBe(0);
+    const run = spawnSync(
+      process.execPath,
+      [join(REPO, "packages/cli/bin/hooknostic.mjs"), "check", "--json", "--config", config],
+      { env, encoding: "utf8", timeout: 120_000 },
+    );
+    expect(run.status, `${run.stdout}\n${run.stderr}`).toBe(0);
+    expect(hn110(JSON.parse(run.stdout).diagnostics)).toEqual([]);
+  });
+
+  it("is silent in the workspace, whose SDK moves in lockstep with the CLI", { timeout: 120_000 }, async () => {
+    const dir = await cleanExample("rewrite-shell");
+    const { io, out } = captureIO();
+    const config = join(dir, "hooknostic.config.ts");
+    expect(await runCheck({ config, json: true, registry: defaultAdapterRegistry(), io }), out()).toBe(0);
+    expect(hn110(JSON.parse(out()).diagnostics)).toEqual([]);
+  });
+
+  it("reports one HN110 for a build of several targets, on stdout and on disk", { timeout: 120_000 }, async () => {
+    const { dir, config } = await projectWithSdk(OTHER);
+    const { io, out } = captureIO();
+    expect(await runBuild({ config, json: true, registry: defaultAdapterRegistry(), io }), out()).toBe(0);
+    const stdout = JSON.parse(out()) as { targets: Record<string, unknown>; diagnostics: { code: string }[] };
+    expect(Object.keys(stdout.targets).sort()).toEqual(["claude", "codex"]);
+    expect(hn110(stdout.diagnostics)).toHaveLength(1);
+    const onDisk = JSON.parse(await readFile(join(dir, "hooknostic-build.json"), "utf8")) as {
+      diagnostics: { code: string }[];
+    };
+    expect(hn110(onDisk.diagnostics)).toHaveLength(1);
   });
 });
 

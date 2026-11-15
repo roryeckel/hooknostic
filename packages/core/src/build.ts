@@ -71,6 +71,7 @@ import { isStrictDescendant, validateOutputLayout } from "./output-layout.js";
 import { dispatcherRuntimePolicy, effectiveCompatibility, effectiveRuntime } from "./policy.js";
 import type { ProjectIntegration } from "./project-files.js";
 import { projectPath } from "./project-files.js";
+import { sdkReleaseSkew } from "./sdk-resolution.js";
 import { type AuthoredProjectSkill, planProjectSkillPolicies } from "./skill-policy.js";
 
 export const HOOKNOSTIC_VERSION = "0.12.0";
@@ -654,6 +655,15 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
   const configDir = dirname(configPath);
   const diagnostics: Diagnostic[] = [];
   const report: BuildReport = { schemaVersion: 2, hooknosticVersion: HOOKNOSTIC_VERSION, targets: {}, diagnostics };
+  // Before the config loads: a config that fails to load under a skewed SDK
+  // should be reported beside the skew that may have caused it. Once per run,
+  // whatever the targets.
+  const skew = sdkReleaseSkew(
+    options.evaluate?.alias?.["@hooknostic/sdk"] ?? resolveProjectSdk(configDir),
+    HOOKNOSTIC_VERSION,
+    configDir,
+  );
+  if (skew !== undefined) diagnostics.push(skew);
   const packages = new Map<string, AgentPluginPackage>();
   const sources = new Map<string, ProjectComponents>();
   const exclusions = new Map<string, AuthorExclusions>();

@@ -126,6 +126,52 @@ function pnpManifest(directory: string): string | undefined {
   }
 }
 
+/**
+ * HN110 when the CLI running a build and the project's `@hooknostic/sdk` are
+ * on different releases: the build would bundle one release's SDK with
+ * another release's runtime and shims (#194).
+ *
+ * `sdkEntry` is the SDK entry the build resolves; its package's own manifest
+ * gives the version. `cliVersion` is passed in rather than imported, because
+ * `build.ts` imports this module through `bundle.ts`. Any difference counts,
+ * prereleases included: the two packages are released in lockstep. With no
+ * SDK, or a version on either side that is not semver, there is nothing to
+ * compare, and the check stays silent. So does the Hooknostic workspace, by
+ * lockstep rather than detection: its SDK is `packages/sdk`, at the CLI's
+ * version.
+ */
+export function sdkReleaseSkew(
+  sdkEntry: string | undefined,
+  cliVersion: string,
+  projectDirectory: string,
+): Diagnostic | undefined {
+  if (sdkEntry === undefined) return undefined;
+  const sdk = owningManifest(sdkEntry, new Map());
+  if (sdk?.name !== SDK || sdk.version === undefined) return undefined;
+  if (semver.valid(sdk.version) === null || semver.valid(cliVersion) === null) return undefined;
+  if (semver.eq(sdk.version, cliVersion)) return undefined;
+  const align = "install hooknostic and @hooknostic/sdk at the same version.";
+  // Under Plug'n'Play, npx does not see the project's install and fetches the
+  // registry's latest CLI instead (as HN504 explains), so it is no remedy there.
+  const remediation =
+    pnpManifest(projectDirectory) !== undefined
+      ? "add hooknostic to the project's devDependencies and run `yarn hooknostic`, the project's own CLI " +
+        "(under Plug'n'Play, npx fetches the registry's latest); if that is the one reporting this, " +
+        align
+      : "run `npx hooknostic` from the project directory, which runs the project's installed CLI; " +
+        "if that is the one reporting this, " +
+        align;
+  return {
+    code: "HN110",
+    severity: "warn",
+    message:
+      `this hooknostic is ${cliVersion}, but the project's ${SDK} at ${sdk.directory} is ${sdk.version}, ` +
+      "so the build bundles one release's SDK with another release's runtime; " +
+      "run the project's own hooknostic, or install both at one version.",
+    remediation,
+  };
+}
+
 /** A path inside a Yarn zip archive or virtual folder (Yarn 2's `$$virtual`, Yarn 3+'s `__virtual__`). */
 export const PNP_PATH = /\.zip[\\/]|[\\/](?:__virtual__|\$\$virtual)[\\/]/;
 
