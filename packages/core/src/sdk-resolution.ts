@@ -363,7 +363,7 @@ export function sdkZodFallbackPlugin(onSubstitution: (diagnostic: Diagnostic) =>
             const note = {
               text:
                 `${reachedText(found)}, outside the SDK's zod peer range ${found.range}, ` +
-                "and Hooknostic's own zod, which would replace it, did not resolve.",
+                `and Hooknostic's own zod, which would replace it, did not resolve from ${OWN_DIRECTORY}.`,
             };
             return { errors: own.errors.map((error) => ({ ...error, notes: [...error.notes, note] })) };
           }

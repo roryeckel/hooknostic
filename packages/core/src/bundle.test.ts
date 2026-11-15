@@ -607,7 +607,9 @@ describe("an SDK installed without its optional Zod peer", () => {
                 expect.objectContaining({
                   text:
                     `the SDK's zod import reached zod@3.24.4 at ${vendored}, outside the SDK's zod peer range ` +
-                    `${PEER}, and Hooknostic's own zod, which would replace it, did not resolve.`,
+                    `${PEER}, and Hooknostic's own zod, which would replace it, did not resolve from ` +
+                    // Where Hooknostic's dependencies resolve: core's src in the workspace.
+                    `${import.meta.dirname}.`,
                 }),
               ]),
             },
