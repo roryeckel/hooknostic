@@ -7147,6 +7147,13 @@ function errorMessage(error2) {
     return "uninspectable thrown value";
   }
 }
+function isInstance(value, type) {
+  try {
+    return value instanceof type;
+  } catch {
+    return false;
+  }
+}
 function debugEnabled(env = globalThis.process?.env) {
   const flag = env?.["HOOKNOSTIC_DEBUG"];
   return flag !== void 0 && flag !== "" && flag !== "0";
@@ -7705,13 +7712,7 @@ function decodeOpenCodeV2(raw, invocation, enrichment = {}) {
 }
 var HooknosticBlock = class extends Error {
 };
-var isBlock = (error2) => {
-  try {
-    return error2 instanceof HooknosticBlock;
-  } catch {
-    return false;
-  }
-};
+var isBlock = (error2) => isInstance(error2, HooknosticBlock);
 async function failingOpen(hook2, work) {
   try {
     await work();
@@ -7795,7 +7796,7 @@ async function setupOpenCodeV2(plugin, options2, ctx) {
         { ...execution ? { execution } : {}, ...shell !== void 0 ? { shell } : {} }
       );
     } catch (error2) {
-      if (error2 instanceof OpenCodeV2DecodeError) return;
+      if (isInstance(error2, OpenCodeV2DecodeError)) return;
       throw error2;
     }
     if (modelRequest) event = { ...event, event: "model.request.before" };

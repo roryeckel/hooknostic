@@ -258,6 +258,15 @@ describe("Claude command shim plugin loading and exit", () => {
       /^hooknostic internal \[PreToolUse\]: plugin module failed\nError: plugin module failed\n\s+at /m,
     );
   });
+
+  it("fails open on a thrown value it cannot inspect", async () => {
+    // `instanceof` on a revoked proxy throws, in the very catch that tells a
+    // payload that is not ours from a defect.
+    const REVOKED = `const { proxy, revoke } = Proxy.revocable({}, {});\nrevoke();\nthrow proxy;\nexport default {};`;
+    const result = await runShim(REVOKED, "fixtures/claude/2.1/pre-tool-bash.input.json", CAPS);
+    expect(result).toMatchObject({ code: 0, stdout: "" });
+    expect(result.stderr).toMatch(/^hooknostic internal \[PreToolUse\]: uninspectable thrown value\n/m);
+  });
 });
 
 describe("Claude command shim with an unusable stderr", () => {

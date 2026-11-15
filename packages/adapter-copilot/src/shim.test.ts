@@ -156,6 +156,18 @@ describe("Copilot command shim", () => {
     );
   });
 
+  it("fails open on a thrown value it cannot inspect, rather than denying the call", async () => {
+    // `instanceof` on a revoked proxy throws, in the very catch that tells a
+    // payload that is not ours from a defect. The exit 1 that followed is a
+    // denial on preToolUse, where any non-zero exit blocks.
+    const REVOKED = `const { proxy, revoke } = Proxy.revocable({}, {});\nrevoke();\nthrow proxy;\nexport default {};`;
+    const result = await runShim(REVOKED, await fixture("tool-before.input.json"), {
+      "tool.before.observe": "exact",
+    });
+    expect(result).toMatchObject({ code: 0, stdout: "" });
+    expect(result.stderr).toMatch(/^hooknostic internal \[preToolUse\]: uninspectable thrown value\n/m);
+  });
+
   it("flushes a response larger than the pipe buffer before exiting", async () => {
     const result = await runShim(
       `import { definePlugin, hook, replaceInput } from "@hooknostic/sdk";

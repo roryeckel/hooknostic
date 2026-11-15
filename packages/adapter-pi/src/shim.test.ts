@@ -799,6 +799,25 @@ describe("createHooknosticExtension", () => {
       }
     });
 
+    it("reports a revoked proxy the decoder meets as itself, not as the decode check's TypeError", async () => {
+      const error = vi.spyOn(console, "error").mockImplementation(() => {});
+      try {
+        const { proxy, revoke } = Proxy.revocable({}, {});
+        revoke();
+        const payload = {
+          get type(): never {
+            throw proxy;
+          },
+          toolName: "bash",
+          input: { command: "ls" },
+        };
+        expect(await fire(observing(), "tool_call", payload)).toBeUndefined();
+        expect(error.mock.calls).toEqual([["hooknostic internal [tool_call]: uninspectable thrown value"]]);
+      } finally {
+        error.mockRestore();
+      }
+    });
+
     it("fails open on a thrown value it cannot inspect, and on a report channel that throws", async () => {
       const error = vi.spyOn(console, "error").mockImplementation(() => {});
       try {

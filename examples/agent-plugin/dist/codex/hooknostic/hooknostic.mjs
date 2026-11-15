@@ -7505,6 +7505,13 @@ function errorMessage(error2) {
     return "uninspectable thrown value";
   }
 }
+function isInstance(value, type) {
+  try {
+    return value instanceof type;
+  } catch {
+    return false;
+  }
+}
 function debugEnabled(env = globalThis.process?.env) {
   const flag = env?.["HOOKNOSTIC_DEBUG"];
   return flag !== void 0 && flag !== "" && flag !== "0";
@@ -8220,7 +8227,7 @@ async function runCodexCommandShim(source, options) {
     }
     exitCode = native.exitCode ?? 0;
   } catch (error2) {
-    if (error2 instanceof CodexDecodeError) trace?.(`ignored payload: ${error2.message}`);
+    if (isInstance(error2, CodexDecodeError)) trace?.(`ignored payload: ${error2.message}`);
     else {
       const line = formatInternalError(error2, { ...hook2 !== void 0 ? { hook: hook2 } : {}, stack: debugEnabled() });
       await writeStream(process.stderr, `${line}

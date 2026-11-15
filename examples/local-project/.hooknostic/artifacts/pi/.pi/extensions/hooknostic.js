@@ -7125,6 +7125,13 @@ function errorMessage(error2) {
     return "uninspectable thrown value";
   }
 }
+function isInstance(value, type) {
+  try {
+    return value instanceof type;
+  } catch {
+    return false;
+  }
+}
 function debugEnabled(env = globalThis.process?.env) {
   const flag = env?.["HOOKNOSTIC_DEBUG"];
   return flag !== void 0 && flag !== "" && flag !== "0";
@@ -7801,7 +7808,7 @@ function createHooknosticExtension(plugin, options) {
         options.nativeMcp === void 0 ? {} : { nativeMcp: options.nativeMcp }
       );
     } catch (error2) {
-      if (error2 instanceof PiDecodeError) return { result: void 0, application: {} };
+      if (isInstance(error2, PiDecodeError)) return { result: void 0, application: {} };
       throw error2;
     }
     const dispatchResult = await dispatch(plugin.hooks, event, {

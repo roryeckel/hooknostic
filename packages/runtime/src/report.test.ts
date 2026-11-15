@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { debugTracer } from "./command-io.js";
-import { debugEnabled, formatInternalError, reportInternalError } from "./report.js";
+import { debugEnabled, formatInternalError, isInstance, reportInternalError } from "./report.js";
 
 function revokedProxy(): object {
   const { proxy, revoke } = Proxy.revocable({}, {});
@@ -85,6 +85,25 @@ describe("reportInternalError", () => {
         throw new Error("console is gone");
       }),
     ).not.toThrow();
+  });
+});
+
+describe("isInstance", () => {
+  class Base extends Error {}
+  class Derived extends Base {}
+
+  it("answers as instanceof does", () => {
+    expect(isInstance(new Derived(), Base)).toBe(true);
+    expect(isInstance(new Base(), Derived)).toBe(false);
+    expect(isInstance(new Error("x"), Base)).toBe(false);
+    expect(isInstance("plain string", Base)).toBe(false);
+    expect(isInstance(undefined, Base)).toBe(false);
+  });
+
+  it("answers false, rather than throwing, for a revoked proxy", () => {
+    const proxy = revokedProxy();
+    expect(() => proxy instanceof Base).toThrow(TypeError);
+    expect(isInstance(proxy, Base)).toBe(false);
   });
 });
 

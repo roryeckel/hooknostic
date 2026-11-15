@@ -10,6 +10,7 @@ import {
   finishCommandShim,
   formatHandlerErrors,
   formatInternalError,
+  isInstance,
   loadCommandPlugin,
 } from "@hooknostic/runtime";
 import type { RuntimePolicy, SupportLevel } from "@hooknostic/sdk";
@@ -108,7 +109,7 @@ export async function runCodexCommandShim(source: CommandPluginSource, options: 
     }
     exitCode = native.exitCode ?? 0;
   } catch (error) {
-    if (error instanceof CodexDecodeError) trace?.(`ignored payload: ${error.message}`);
+    if (isInstance(error, CodexDecodeError)) trace?.(`ignored payload: ${error.message}`);
     else {
       // A Hooknostic defect, not a hook's: the same line the in-process shims report.
       const line = formatInternalError(error, { ...(hook !== undefined ? { hook } : {}), stack: debugEnabled() });

@@ -1,5 +1,5 @@
 import type { CapabilityLevels } from "@hooknostic/runtime";
-import { dispatch, formatHandlerErrors, reportInternalError } from "@hooknostic/runtime";
+import { dispatch, formatHandlerErrors, isInstance, reportInternalError } from "@hooknostic/runtime";
 import type { HookEventName, PluginSpec, RuntimePolicy, SupportLevel } from "@hooknostic/sdk";
 // Value imports must stay on the SDK/runtime: pulling `@hooknostic/core` into
 // the shim bundles esbuild into every generated artifact (see docs/design.md).
@@ -108,7 +108,7 @@ export function createHooknosticExtension(plugin: PluginSpec, options: PiShimOpt
         options.nativeMcp === undefined ? {} : { nativeMcp: options.nativeMcp },
       );
     } catch (error) {
-      if (error instanceof PiDecodeError) return { result: undefined, application: {} }; // fail-open
+      if (isInstance(error, PiDecodeError)) return { result: undefined, application: {} }; // fail-open
       throw error;
     }
     const dispatchResult = await dispatch(plugin.hooks, event, {

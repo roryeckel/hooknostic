@@ -560,6 +560,25 @@ All commands run in the cwd.`,
       }
     });
 
+    it("reports a revoked proxy the decoder meets as itself, not as the decode check's TypeError", async () => {
+      const error = vi.spyOn(console, "error").mockImplementation(() => {});
+      try {
+        const { proxy, revoke } = Proxy.revocable({}, {});
+        revoke();
+        await expect(
+          hooks()["experimental.session.compacting"]!(
+            refusing(() => proxy),
+            {},
+          ),
+        ).resolves.toBeUndefined();
+        expect(error.mock.calls).toEqual([
+          ["hooknostic internal [experimental.session.compacting]: uninspectable thrown value"],
+        ]);
+      } finally {
+        error.mockRestore();
+      }
+    });
+
     it("fails open on a thrown value it cannot inspect, and on a report channel that throws", async () => {
       const error = vi.spyOn(console, "error").mockImplementation(() => {});
       try {

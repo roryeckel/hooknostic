@@ -517,6 +517,14 @@ describe("v2 captured boundary", () => {
       });
     });
 
+    it("T9c: reports a revoked proxy the decoder meets as itself, not as the decode check's TypeError", async () => {
+      await withSpy([rewrite], async (callbacks, reports) => {
+        const native = throwingRevoked(frozenCall(), "id");
+        await expect(callbacks["tool:execute.before"]!(native)).resolves.toBeUndefined();
+        expect(reports()).toEqual(["hooknostic internal [execute.before]: uninspectable thrown value"]);
+      });
+    });
+
     it("T9b: keeps the session's queue running past a thrown revoked proxy", async () => {
       const created = { type: "session.created", data: { sessionID: "ses_s", location: { directory: "." } } };
       const good = { type: "session.execution.succeeded", data: { sessionID: "ses_s" } };

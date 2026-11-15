@@ -7125,6 +7125,13 @@ function errorMessage(error2) {
     return "uninspectable thrown value";
   }
 }
+function isInstance(value, type) {
+  try {
+    return value instanceof type;
+  } catch {
+    return false;
+  }
+}
 function debugEnabled(env = globalThis.process?.env) {
   const flag = env?.["HOOKNOSTIC_DEBUG"];
   return flag !== void 0 && flag !== "" && flag !== "0";
@@ -7863,7 +7870,7 @@ function createHooknosticHooks(plugin, options, pluginInput) {
     try {
       event = decodeOpenCode(native, invocation, enrichment);
     } catch (error2) {
-      if (error2 instanceof OpenCodeDecodeError) return;
+      if (isInstance(error2, OpenCodeDecodeError)) return;
       throw error2;
     }
     const result = await dispatch(plugin.hooks, event, {
@@ -7914,18 +7921,11 @@ function createHooknosticHooks(plugin, options, pluginInput) {
       throw new HooknosticBlock2(application.throwMessage);
     }
   };
-  const isBlock2 = (error2) => {
-    try {
-      return error2 instanceof HooknosticBlock2;
-    } catch {
-      return false;
-    }
-  };
   const runFailingOpen = async (native) => {
     try {
       await run(native);
     } catch (error2) {
-      if (isBlock2(error2)) throw error2;
+      if (isInstance(error2, HooknosticBlock2)) throw error2;
       reportInternalError(error2, native.hook);
     }
   };

@@ -1,5 +1,5 @@
 import type { CapabilityLevels } from "@hooknostic/runtime";
-import { dispatch, formatHandlerErrors, reportInternalError } from "@hooknostic/runtime";
+import { dispatch, formatHandlerErrors, isInstance, reportInternalError } from "@hooknostic/runtime";
 import type { HookEvent, HookEventName, PluginSpec, RuntimePolicy, SupportLevel } from "@hooknostic/sdk";
 // Value imports must stay on the SDK/runtime: pulling `@hooknostic/core` into
 // the shim bundles esbuild into every generated artifact (see docs/design.md).
@@ -205,7 +205,7 @@ export function createHooknosticHooks(
     try {
       event = decodeOpenCode(native, invocation, enrichment);
     } catch (error) {
-      if (error instanceof OpenCodeDecodeError) return; // fail-open
+      if (isInstance(error, OpenCodeDecodeError)) return; // fail-open
       throw error;
     }
     const result = await dispatch(plugin.hooks, event, {
@@ -281,15 +281,6 @@ export function createHooknosticHooks(
     }
   };
 
-  /** Proxy-safe: `instanceof` on a revoked proxy throws, and that would fail closed. */
-  const isBlock = (error: unknown): boolean => {
-    try {
-      return error instanceof HooknosticBlock;
-    } catch {
-      return false;
-    }
-  };
-
   /**
    * Fail open, the way the command-hook shims do.
    *
@@ -304,7 +295,7 @@ export function createHooknosticHooks(
     try {
       await run(native);
     } catch (error) {
-      if (isBlock(error)) throw error;
+      if (isInstance(error, HooknosticBlock)) throw error;
       // Only Hooknostic's own failures land here: a decode, dispatch or apply
       // bug, or a host object that refuses the in-place mutation. A handler's
       // failure never does: dispatch records it in HookResult.errors and run
