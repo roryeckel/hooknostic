@@ -58,13 +58,17 @@ describe("finishCommandShim", () => {
 describe("guardCommandShim", () => {
   // The guard owns these for the life of a shim process; here it gets them
   // for one test, and the worker's own listeners come back afterwards.
-  const EVENTS = ["uncaughtException", "unhandledRejection", "exit"] as const;
+  const EVENTS = ["uncaughtExceptionMonitor", "uncaughtException", "unhandledRejection", "beforeExit", "exit"] as const;
   const originalExitCode = process.exitCode;
   const describeError = (error: unknown) =>
     `hooknostic internal [Test]: ${error instanceof Error ? error.message : String(error)}`;
-  // Node passes the origin as a second argument; the typings leave it out.
-  const emitUncaught = (error: unknown, origin: string): boolean =>
-    (process.emit as (event: string, ...args: unknown[]) => boolean).call(process, "uncaughtException", error, origin);
+  // As Node raises one: the monitor event, then the listeners. Node passes the
+  // origin as a second argument; the typings leave it out.
+  const emitUncaught = (error: unknown, origin: string): boolean => {
+    const emit = process.emit as (event: string, ...args: unknown[]) => boolean;
+    emit.call(process, "uncaughtExceptionMonitor", error, origin);
+    return emit.call(process, "uncaughtException", error, origin);
+  };
   let saved: [string, ((...args: unknown[]) => void)[]][];
   let realExit: typeof process.exit;
   let exit: ReturnType<typeof vi.fn>;
@@ -131,6 +135,29 @@ describe("guardCommandShim", () => {
     expect(written).toEqual(["hooknostic internal [Test]: timer threw\n"]);
     expect(vi.mocked(writeSync).mock.calls).toEqual([
       [2, "hooknostic internal [Test]: the hook source called process.exit(1)\n"],
+    ]);
+  });
+
+  it("leaves with 0 rather than throwing from an uncaughtException listener the hook source prepends", () => {
+    guardCommandShim(describeError);
+    // Ahead of every listener the guard added: only the monitor event runs earlier.
+    process.prependListener("uncaughtException", () => process.exit(1));
+
+    expect(() => emitUncaught(new Error("timer threw"), "uncaughtException")).not.toThrow();
+
+    expect(exit.mock.calls).toEqual([[0]]);
+  });
+
+  it("leaves with 0 rather than throwing from a beforeExit listener before the decision", () => {
+    guardCommandShim(describeError);
+    process.on("beforeExit", () => process.exit(3));
+
+    // A throw would empty the loop again, and beforeExit would come round forever.
+    expect(() => process.emit("beforeExit", 0)).not.toThrow();
+
+    expect(exit.mock.calls).toEqual([[0]]);
+    expect(vi.mocked(writeSync).mock.calls).toEqual([
+      [2, "hooknostic internal [Test]: the hook source called process.exit(3)\n"],
     ]);
   });
 

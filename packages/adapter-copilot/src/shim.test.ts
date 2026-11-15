@@ -323,6 +323,29 @@ describe("Copilot command shim with a hook source that owns the process", () => 
     expect(result.stderr).toMatch(/^hooknostic internal \[preToolUse\]: timer threw\n/m);
   });
 
+  it("fails open when the hook source prepends an uncaughtException listener that exits", async () => {
+    const result = await run(
+      hostileSource({
+        top: `process.prependListener("uncaughtException", () => process.exit(1));
+          setTimeout(() => { throw new Error("timer threw"); }, 30);`,
+        body: "await sleep(100)",
+      }),
+    );
+    // It runs ahead of the guard's own listeners; a throw from it is exit 7, a denial.
+    expect(result.code, result.stderr).toBe(0);
+    expect(result.stderr).toMatch(/^hooknostic internal \[preToolUse\]: the hook source called process\.exit\(1\)\n/m);
+  });
+
+  it("leaves once, with 0, when a beforeExit listener exits under an await that never settles", async () => {
+    // runShim's own deadline turns a regression -- the beforeExit loop -- into a failure.
+    const result = await run(
+      hostileSource({ top: `process.on("beforeExit", () => process.exit(3));\nawait new Promise(() => {});` }),
+    );
+    expect(result).toMatchObject({ code: 0, stdout: "" });
+    expect(result.stderr.match(INTERNAL)).toHaveLength(1);
+    expect(result.stderr).toMatch(/^hooknostic internal \[preToolUse\]: the hook source called process\.exit\(3\)\n/m);
+  });
+
   it("forces the exit past a leaked handle without reporting its own exit", async () => {
     const result = await run(hostileSource({ top: "setInterval(() => {}, 1_000);" }));
     expect(result.code, result.stderr).toBe(0);

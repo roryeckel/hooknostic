@@ -7968,12 +7968,14 @@ function guardCommandShim(describe2) {
     } catch {
     }
   };
-  process.prependListener("uncaughtException", () => {
+  const holdUnwind = () => {
     cannotUnwind = true;
     queueMicrotask(() => {
       cannotUnwind = false;
     });
-  });
+  };
+  process.on("uncaughtExceptionMonitor", holdUnwind);
+  process.prependListener("beforeExit", holdUnwind);
   process.on("uncaughtException", (error2, origin) => {
     if (origin !== "unhandledRejection") void report(error2);
   });

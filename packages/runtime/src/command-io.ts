@@ -143,8 +143,8 @@ export interface CommandShimGuard {
  * - `process.exit` throws a `HookSourceExitError`, so a load-time exit is
  *   reported like a load error and one inside a handler is that handler's
  *   error. Where a throw cannot unwind -- inside an uncaughtException emit,
- *   during `exit`, after the decision -- it reports and leaves with the
- *   decided code, or 0 before one.
+ *   during `beforeExit` or `exit`, after the decision -- it reports and
+ *   leaves with the decided code, or 0 before one.
  * - An `exit` listener pins the exit code to the decided code, or 0 before
  *   one, over `process.exitCode` set by the hook source and over code 13 for
  *   an unsettled top-level await.
@@ -159,8 +159,8 @@ export function guardCommandShim(describe: (error: unknown) => string): CommandS
   // Whether stderr, as far as this guard wrote it, ended mid-line: Claude's
   // block reason need not end in a newline, and a report must start its own.
   let midLine = false;
-  // A throw cannot unwind inside an uncaughtException emit (Node exits 7) or
-  // once the process is leaving.
+  // A throw cannot unwind inside an uncaughtException emit (Node exits 7), in
+  // a beforeExit loop, or once the process is leaving.
   let cannotUnwind = false;
   const reported = new Set<unknown>();
 
@@ -213,12 +213,22 @@ export function guardCommandShim(describe: (error: unknown) => string): CommandS
     }
   };
 
-  process.prependListener("uncaughtException", () => {
+  // Set for the length of an emit, and reset once its listeners have run.
+  // A callback the hook source defers past the emit but ahead of the reset,
+  // such as process.nextTick(() => process.exit(1)), still sees it set and
+  // leaves with the decided code or 0 instead of throwing: it fails open.
+  const holdUnwind = (): void => {
     cannotUnwind = true;
     queueMicrotask(() => {
       cannotUnwind = false;
     });
-  });
+  };
+  // The monitor event runs before every uncaughtException listener, including
+  // one the hook source prepends, in normal and strict rejection modes alike.
+  process.on("uncaughtExceptionMonitor", holdUnwind);
+  // Before the decision, beforeExit means the shim's own await can never
+  // settle: a throw here would only empty the loop again, so leave instead.
+  process.prependListener("beforeExit", holdUnwind);
   process.on("uncaughtException", (error, origin) => {
     // Under --unhandled-rejections=strict a rejection is raised here first,
     // then emitted as one; report it there, once.
