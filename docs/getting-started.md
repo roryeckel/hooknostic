@@ -26,7 +26,9 @@ code that imports the SDK's runtime schemas from `@hooknostic/sdk/schemas`
 needs `zod@^4.6.7` installed.
 
 Under Yarn Plug'n'Play, run each `npx hooknostic` command below as
-`yarn hooknostic`: outside Yarn's runtime the build fails with HN504.
+`yarn hooknostic`: outside Yarn's runtime the build fails with HN504. Either
+form runs the project's own CLI; a global or registry `hooknostic` on another
+release than the project's `@hooknostic/sdk` warns HN110.
 
 > **Not on npm yet?** While the packages are unpublished, build the exact same
 > tarballs locally from a checkout of this repo and install those instead — the

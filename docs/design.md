@@ -685,6 +685,22 @@ the runtime bundles Hooknostic's own Zod instead. It is a warning, reported once
 per build, and it names the version and path found, the range, and the copy
 bundled. A project with no reachable Zod gets Hooknostic's copy without one.
 User code that imports Zod still bundles the project's copy (ADR-0040).
+**HN110** the CLI running a build and the project's `@hooknostic/sdk` are on
+different releases, so the build would bundle one release's SDK with another
+release's runtime and shims. The CLI's version is the one it stamps into the
+build report as `hooknosticVersion`; the SDK's is the `version` in the manifest
+of the SDK package the build resolves, the one it bundles. Any difference
+counts, prereleases included, because the two are released in lockstep. It is
+a warning, reported once per run, before the configuration loads, so `check`
+and `build` report it beside a load failure that the skew causes. It never
+changes an exit code: `check` and `build` print it, and `sync` and `verify`
+list it with their other build diagnostics. It is silent when no SDK
+resolves, when either version is not valid semver, and in this repository's
+workspace, whose examples resolve `packages/sdk` at the CLI's own version.
+Run the project's own CLI --
+`npx hooknostic` from the project directory, or `yarn hooknostic` under Yarn
+Plug'n'Play, where `npx` fetches the registry's latest -- or install
+`hooknostic` and `@hooknostic/sdk` at one version.
 **HN504** a build under a Yarn Plug'n'Play manifest needs a module from Yarn's
 install that this process cannot read, because Hooknostic is running without
 Yarn's PnP runtime: under plain `node`, `npx`, a global install or `pnpm dlx`.

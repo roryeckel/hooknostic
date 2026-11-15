@@ -7,7 +7,8 @@ Changes that need more than a few lines get a guide here.
 When upgrading:
 
 - Keep `@hooknostic/sdk`, `@hooknostic/agent-plugin`, and the `hooknostic` CLI
-  on the same release.
+  on the same release. `check`, `build`, `sync` and `verify` warn HN110 when
+  the CLI and the project's SDK are on different releases.
 - Rebuild packages or re-sync projects with the new CLI to regenerate owned
   output.
 - Read the release notes' upgrading section, then any guide below for the
