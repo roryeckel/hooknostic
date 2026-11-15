@@ -107,17 +107,20 @@ guard and exit code 1.)
 ## Amendments — 2026-11-15
 
 **The process** now also runs the hook source under the command-shim guard
-(#186, #189), so a hook source cannot end the run. The command shims ship this
-guard; without it, dispatch exited with the hook source's own exit code and
-usually printed no results.
+(#186, #189), so a hook source can no longer choose the run's exit code, and it
+usually cannot end the run early. The command shims ship this guard; without it,
+dispatch exited with the hook source's own exit code and usually printed no
+results.
 
-- **Exit codes.** `0` and `2` keep their meanings. A new `1` means every event
-  that ran has its result, but the hook source failed outside a handler: a
-  rejection nothing handled, a throw from a timer, or a `process.exit` the
-  guard intercepted where the shipped shim would not. The reports are on stderr
-  as `hooknostic internal [event N]: ...`. `2` takes precedence over `1`, and
-  handler errors stay in `errors` with exit `0`. Until the run finishes, leaving
-  counts as `1`.
+- **Exit codes.** `0` and `2` keep their meanings. A new `1` means the hook
+  source failed outside a handler: a rejection nothing handled, a throw from a
+  timer, or a `process.exit` the guard intercepted where the shipped shim would
+  not. The reports are on stderr as `hooknostic internal [event N]: ...`.
+  Usually every event still has its result. Where the guard cannot unwind, as
+  with the hook source's own `uncaughtException` listener that exits or an exit
+  repeated within one event, the run ends early with `1` and some or all result
+  lines missing: until the run finishes, leaving counts as `1`. `2` takes
+  precedence over `1`, and handler errors stay in `errors` with exit `0`.
 - **Per target.** On a command target, `process.exit` in a handler is that
   handler's error, as in its shim. On a module target the error is the same,
   and a stderr note says the target's shim runs in the harness's process and

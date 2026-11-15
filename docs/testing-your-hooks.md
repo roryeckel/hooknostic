@@ -118,13 +118,19 @@ replacement input that is not a plain object with HN401. Rejected effects obey
 `hooknostic dispatch` runs your source under the same guard as the command shims
 (see [Writing hooks safely](writing-hooks-safely.md#see-why-a-hook-did-nothing-hooknostic_debug)).
 A rejection nothing handles, an exception thrown from a timer or callback, or a
-`process.exit` call outside a handler does not end the run. Each one is reported
-on stderr against the event it interrupted, every event still gets its result
-line, and dispatch exits 1:
+`process.exit` call outside a handler is reported on stderr against the event it
+interrupted, and dispatch exits 1. Usually the run carries on and every event
+still gets its result line:
 
 ```text
 hooknostic internal [event 2]: stray rejection
 ```
+
+Some failures still end the run early, though with exit 1 rather than the hook
+source's own code. That happens when your own `uncaughtException` listener calls
+`process.exit`, or when the same `process.exit` call repeats within one event, as
+from `setInterval`. Result lines are written only at the end, so some or all of
+them are then missing.
 
 The event number is best effort. Dispatch waits one zero-delay timer after each
 event, so a rejected promise or a `setTimeout(..., 0)` your handler left behind
@@ -171,7 +177,7 @@ somewhere that outlives a process, such as a file.
 | Code | Meaning |
 | --- | --- |
 | `0` | Every event was dispatched. The effects and errors are in the output. |
-| `1` | Every event was dispatched and has its result, but your hook source failed outside a handler. The reports are on stderr; see [When the hook source fails outside a handler](#when-the-hook-source-fails-outside-a-handler). |
+| `1` | Your hook source failed outside a handler, or ended the process before every result was written; some or all result lines may be missing. The reports are on stderr; see [When the hook source fails outside a handler](#when-the-hook-source-fails-outside-a-handler). |
 | `2` | Nothing was dispatched: an unreadable or invalid event, an unknown target, a configuration without an `entry`, or hooks the target could not be built for. The reasons go to stderr, numbered by event. It takes precedence over `1`. |
 
 ## What dispatch does not cover

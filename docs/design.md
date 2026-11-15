@@ -934,13 +934,18 @@ source in the CLI's own process and guards it (#189):
   again in the next. Each event waits one zero-delay timer before the next starts, so a
   0 ms tail or a microtask rejection is labelled `[event N]`; that label is best effort.
 - It decides 1 up front: until every result is written, a process the hook source ends
-  is a failure. The run then exits 1 if anything was reported outside a handler, and a
-  report after the last result moves a 0 to 1. Dispatch's own 2 takes precedence, and
-  handler errors stay 0.
+  is a failure, with some or all result lines missing, since they are written at the end.
+  The stub's leave path re-registers the exit-code pin last, as `finish` does, so an
+  `exit` listener the hook source added cannot reset that 1. The run then exits 1 if
+  anything was reported outside a handler, and a report after the last result moves a 0
+  to 1. Dispatch's own 2 takes precedence, and handler errors stay 0. If dispatch itself
+  throws, the CLI still releases stdout and finishes with 2, so a leaked handle cannot
+  hold it open.
 - On a module target, whose shim does not intercept `process.exit`, the guard's `onExit`
-  queues each intercepted exit. If the guard reports it, the line gets a note that the
-  target's shim does not intercept it; otherwise the note gets its own line at the end
-  of the event. Either way the run exits 1, and one exit is never two lines.
+  queues each exit code once per event. If the guard reports that exit, its line gets a
+  note that the adapter's shim does not intercept it; otherwise the note gets its own
+  line at the end of the event. Either way the run exits 1, and one exit is never two
+  lines.
 - `--unguarded` skips the guard and keeps the earlier behaviour. `dispatchEvents()` and
   an in-process `runCli` with an injected `io` never install it: they share the
   caller's process.
