@@ -319,6 +319,40 @@ describe("Codex command shim plugin loading and exit", () => {
   });
 });
 
+describe("Codex command shim with a hook source that owns the process", () => {
+  const CAPS = { "tool.before.observe": "exact", "tool.before.block": "exact" } as const;
+  // The shapes a bundled CLI brings along (#186): its main(), reading the
+  // stdin the shim already consumed.
+  const source = (top: string) => `import { block, definePlugin, hook } from "@hooknostic/sdk";
+    async function readAll() { let data = ""; for await (const chunk of process.stdin) data += chunk; return data; }
+    async function main() { console.log(JSON.parse(await readAll())); }
+    ${top}
+    export default definePlugin({ name: "hostile", hooks: [hook("tool.before", {
+      id: "hostile", capabilities: { "tool.before.block": "required" },
+      async run() { await new Promise((resolve) => setTimeout(resolve, 50)); return block("the hooks still decide"); }
+    })] });`;
+
+  it("reports a CLI main() that rejects, once, and the hooks still decide", async () => {
+    const result = await runCodexShim(source("main();"), CAPS);
+    expect(result.code, result.stderr).toBe(0);
+    expect(JSON.parse(result.stdout).hookSpecificOutput.permissionDecision).toBe("deny");
+    expect(result.stderr.match(/^hooknostic internal \[PreToolUse\]: .+\n/gm)).toHaveLength(1);
+  });
+
+  it("reports a top-level process.exit(2) as a load error, and fails open", async () => {
+    const result = await runCodexShim(source("process.exit(2);"), CAPS);
+    expect(result).toMatchObject({ code: 0, stdout: "" });
+    expect(result.stderr).toMatch(/^hooknostic internal \[PreToolUse\]: the hook source called process\.exit\(2\)\n/m);
+  });
+
+  it("reports a CLI's main().catch(() => process.exit(1)), and the hooks still decide", async () => {
+    const result = await runCodexShim(source("main().catch(() => process.exit(1));"), CAPS);
+    expect(result.code, result.stderr).toBe(0);
+    expect(JSON.parse(result.stdout).hookSpecificOutput.permissionDecision).toBe("deny");
+    expect(result.stderr).toMatch(/^hooknostic internal \[PreToolUse\]: the hook source called process\.exit\(1\)\n/m);
+  });
+});
+
 describe("Codex command shim with an unusable stderr", () => {
   const CAPS = { "tool.before.observe": "exact", "tool.before.block": "exact" } as const;
 

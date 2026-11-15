@@ -7249,13 +7249,15 @@ var hookResultSchema = object({
 
 // ../../packages/cli/dist/shims/claude.mjs
 import { Console } from "node:console";
+import { writeSync } from "node:fs";
 import { syncBuiltinESMExports } from "node:module";
 import { Writable } from "node:stream";
 init_dist();
 function errorMessage(error2) {
   try {
     if (error2 instanceof Error) {
-      return typeof error2.message === "string" ? error2.message : "Error";
+      const message = error2.message;
+      return typeof message === "string" ? message : "Error";
     }
   } catch {
   }
@@ -7677,9 +7679,126 @@ function claimProtocolStdout() {
 }
 var RELEASE_BOUND_MS = 500;
 var DRAIN_GRACE_MS = 250;
-function finishCommandShim(exitCode) {
+function finishCommandShim(exitCode, exit = process.exit) {
   process.exitCode = exitCode;
-  setTimeout(() => process.exit(exitCode), DRAIN_GRACE_MS).unref();
+  setTimeout(() => exit(exitCode), DRAIN_GRACE_MS).unref();
+}
+var HookSourceExitError = class extends Error {
+  code;
+  constructor(code) {
+    super(`the hook source called process.exit(${exitCodeText(code)})`);
+    this.name = "HookSourceExitError";
+    this.code = code;
+  }
+};
+function exitKey(code) {
+  return `exit:${exitCodeText(code)}`;
+}
+function exitCodeText(code) {
+  try {
+    return code === void 0 ? "" : String(code);
+  } catch {
+    return "?";
+  }
+}
+function guardCommandShim(describe2) {
+  const exit = process.exit;
+  const stderr = process.stderr;
+  let decided;
+  let finished = false;
+  let midLine = false;
+  let cannotUnwind = false;
+  const reported = /* @__PURE__ */ new Set();
+  const write = async (text) => {
+    if (text === "") return;
+    midLine = !text.endsWith("\n");
+    try {
+      if (stderr.writableEnded || stderr.destroyed) return;
+      while (stderr.writableCorked > 0) stderr.uncork();
+      await new Promise((resolve) => {
+        stderr.write(text, () => resolve());
+      });
+    } catch {
+    }
+  };
+  const line = (error2) => {
+    try {
+      return `${midLine ? "\n" : ""}${describe2(error2)}
+`;
+    } catch {
+      return void 0;
+    }
+  };
+  const firstTime = (key) => {
+    if (reported.has(key)) return false;
+    reported.add(key);
+    return true;
+  };
+  const keyOf = (error2) => isInstance(error2, HookSourceExitError) ? exitKey(error2.code) : error2;
+  const report = async (error2) => {
+    if (!firstTime(keyOf(error2))) return;
+    const text = line(error2);
+    if (text !== void 0) await write(text);
+  };
+  const reportNow = (error2, key) => {
+    if (!firstTime(key)) return;
+    const text = line(error2);
+    if (text === void 0) return;
+    midLine = false;
+    try {
+      writeSync(2, text);
+    } catch {
+    }
+  };
+  const pin = () => {
+    try {
+      process.exitCode = decided ?? 0;
+    } catch {
+    }
+  };
+  const holdUnwind = () => {
+    cannotUnwind = true;
+    process.nextTick(() => {
+      cannotUnwind = false;
+    });
+  };
+  process.on("uncaughtExceptionMonitor", holdUnwind);
+  process.prependListener("beforeExit", holdUnwind);
+  const onRejection = (reason) => {
+    void report(reason);
+  };
+  const escaped = /* @__PURE__ */ new Set();
+  process.on("uncaughtException", (error2, origin) => {
+    if (isInstance(error2, HookSourceExitError)) escaped.add(exitKey(error2.code));
+    if (origin !== "unhandledRejection" || !process.listeners("unhandledRejection").includes(onRejection))
+      void report(error2);
+  });
+  process.on("unhandledRejection", onRejection);
+  process.exit = function exitFromHookSource(code) {
+    const error2 = new HookSourceExitError(code);
+    if (!cannotUnwind && !finished && !escaped.has(exitKey(code))) throw error2;
+    reportNow(error2, exitKey(code));
+    return exit(decided ?? 0);
+  };
+  syncBuiltinESMExports();
+  process.prependListener("exit", () => {
+    cannotUnwind = true;
+  });
+  process.on("exit", pin);
+  return {
+    write,
+    report,
+    decide(exitCode) {
+      decided = exitCode;
+    },
+    finish(exitCode = decided ?? 0) {
+      decided = exitCode;
+      finished = true;
+      process.off("exit", pin);
+      process.on("exit", pin);
+      finishCommandShim(exitCode, exit);
+    }
+  };
 }
 function bounded(work) {
   let timer;
@@ -7948,17 +8067,14 @@ function statedHook(payload) {
   const name = payload?.hook_event_name;
   return typeof name === "string" ? name : void 0;
 }
-async function writeStream(stream, contents) {
-  if (stream.writableEnded || stream.destroyed) return;
-  await new Promise((resolve) => {
-    stream.write(contents, () => resolve());
-  });
-}
 async function runClaudeCommandShim(source, options) {
+  let hook2;
+  const guard = guardCommandShim(
+    (error2) => formatInternalError(error2, { ...hook2 !== void 0 ? { hook: hook2 } : {}, stack: debugEnabled() })
+  );
   let exitCode = 0;
   const stdout = claimProtocolStdout();
   const trace = debugTracer();
-  let hook2;
   try {
     let nativeEvent;
     try {
@@ -7986,27 +8102,26 @@ async function runClaudeCommandShim(source, options) {
     });
     trace?.(describeHookResult(result));
     const native = await applyClaude(result, nativeEvent, invocation);
+    exitCode = native.exitCode ?? 0;
+    guard.decide(exitCode);
     if (native.body !== void 0) await stdout.writeReply(JSON.stringify(native.body));
-    if (native.stderr !== void 0) await writeStream(process.stderr, native.stderr);
+    if (native.stderr !== void 0) await guard.write(native.stderr);
     const diagnostics = formatHandlerErrors(result);
     if (diagnostics !== void 0) {
       const separator = native.stderr !== void 0 && !native.stderr.endsWith("\n") ? "\n" : "";
-      await writeStream(process.stderr, `${separator}${diagnostics}
+      await guard.write(`${separator}${diagnostics}
 `);
     }
-    exitCode = native.exitCode ?? 0;
   } catch (error2) {
     if (isInstance(error2, ClaudeDecodeError)) trace?.(`ignored payload: ${error2.message}`);
     else {
-      const line = formatInternalError(error2, { ...hook2 !== void 0 ? { hook: hook2 } : {}, stack: debugEnabled() });
-      await writeStream(process.stderr, `${line}
-`);
+      await guard.report(error2);
     }
     exitCode = 0;
   }
   await stdout.release().catch(() => {
   });
-  finishCommandShim(exitCode);
+  guard.finish(exitCode);
 }
 
 // hooknostic-shim-entry.ts
