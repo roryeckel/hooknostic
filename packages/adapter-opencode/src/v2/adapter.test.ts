@@ -495,6 +495,49 @@ describe("v2 captured boundary", () => {
       );
     });
 
+    // A revoked proxy makes `instanceof` itself throw, so telling a block
+    // apart from an internal error must not.
+    const revoked = () => {
+      const { proxy, revoke } = Proxy.revocable({}, {});
+      revoke();
+      return proxy;
+    };
+    const throwingRevoked = <T extends object>(target: T, key: string): T =>
+      Object.defineProperty(target, key, {
+        get() {
+          throw revoked();
+        },
+      });
+
+    it("T9: fails open on a thrown revoked proxy, and reports it", async () => {
+      await withSpy([rewrite], async (callbacks, reports) => {
+        const native = throwingRevoked(frozenCall(), "sessionID");
+        await expect(callbacks["tool:execute.before"]!(native)).resolves.toBeUndefined();
+        expect(reports()).toContain("hooknostic internal [execute.before]: uninspectable thrown value");
+      });
+    });
+
+    it("T9b: keeps the session's queue running past a thrown revoked proxy", async () => {
+      const created = { type: "session.created", data: { sessionID: "ses_s", location: { directory: "." } } };
+      const good = { type: "session.execution.succeeded", data: { sessionID: "ses_s" } };
+      const hostile = throwingRevoked({ ...good }, "sessionID");
+      const stops = vi.fn();
+      await withSpy(
+        [hook("turn.stop", { id: "stop", run: stops })],
+        async (_callbacks, reports) => {
+          await vi.waitFor(() => expect(stops).toHaveBeenCalledTimes(1));
+          await new Promise((resolve) => setTimeout(resolve, 20));
+          expect(stops).toHaveBeenCalledTimes(1);
+          expect(reports()).toContain("hooknostic internal [event]: uninspectable thrown value");
+        },
+        {
+          events: async function* () {
+            yield* [created, hostile, good];
+          },
+        },
+      );
+    });
+
     it("T6: still throws a deliberate block, and does not report it", async () => {
       await withSpy([guard("tool.before"), guard("prompt.before")], async (callbacks, reports) => {
         await expect(callbacks["tool:execute.before"]!(frozenCall())).rejects.toThrow("blocked by guard");

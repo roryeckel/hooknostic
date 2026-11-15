@@ -7705,11 +7705,18 @@ function decodeOpenCodeV2(raw, invocation, enrichment = {}) {
 }
 var HooknosticBlock = class extends Error {
 };
+var isBlock = (error2) => {
+  try {
+    return error2 instanceof HooknosticBlock;
+  } catch {
+    return false;
+  }
+};
 async function failingOpen(hook2, work) {
   try {
     await work();
   } catch (error2) {
-    if (error2 instanceof HooknosticBlock) throw error2;
+    if (isBlock(error2)) throw error2;
     reportInternalError(error2, hook2);
   }
 }
@@ -7770,7 +7777,7 @@ async function setupOpenCodeV2(plugin, options2, ctx) {
   };
   const enqueue = (key, work) => {
     const next = (queues.get(key) ?? Promise.resolve()).then(() => controller.signal.aborted ? void 0 : work()).catch((error2) => {
-      if (!(error2 instanceof HooknosticBlock)) reportInternalError(error2, "event");
+      if (!isBlock(error2)) reportInternalError(error2, "event");
     });
     queues.set(key, next);
     void next.then(() => {

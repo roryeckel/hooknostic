@@ -171,7 +171,7 @@
       },
       "projection": {
         "status": "success",
-        "contentDigest": "sha256:6744f41d4ce9249470b9b3ed8163f9dbf1cdca8209b9042dbe053d83c090c8da",
+        "contentDigest": "sha256:86e6d2b2901c675e15dd15d6c6b4ad80b29f5ce3eb65735f42d007e4c9282647",
         "copiedFileCount": 6,
         "directories": [
           "package/.agents",

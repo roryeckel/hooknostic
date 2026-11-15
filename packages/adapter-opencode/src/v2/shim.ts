@@ -36,12 +36,21 @@ export interface OpenCodeV2Context {
  */
 class HooknosticBlock extends Error {}
 
+/** Proxy-safe: `instanceof` on a revoked proxy throws, and that would fail closed. */
+const isBlock = (error: unknown): boolean => {
+  try {
+    return error instanceof HooknosticBlock;
+  } catch {
+    return false;
+  }
+};
+
 /** Fail open on an internal error from `work`; a deliberate block still propagates. */
 async function failingOpen(hook: string, work: () => Promise<void>): Promise<void> {
   try {
     await work();
   } catch (error) {
-    if (error instanceof HooknosticBlock) throw error;
+    if (isBlock(error)) throw error;
     reportInternalError(error, hook);
   }
 }
@@ -151,7 +160,7 @@ export async function setupOpenCodeV2(
     const next = (queues.get(key) ?? Promise.resolve())
       .then(() => (controller.signal.aborted ? undefined : work()))
       .catch((error: unknown) => {
-        if (!(error instanceof HooknosticBlock)) reportInternalError(error, "event");
+        if (!isBlock(error)) reportInternalError(error, "event");
       });
     queues.set(key, next);
     void next.then(() => {
