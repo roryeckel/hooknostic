@@ -182,6 +182,13 @@ interface ZodSubstitution {
   ownVersion?: string;
 }
 
+/** A Zod the SDK reached that it cannot use: out of its peer range, or versionless. */
+interface ReachedZod {
+  path: string;
+  version?: string;
+  range: string;
+}
+
 /** HN109 for one substituted Zod. */
 function substitutionDiagnostic(substitution: ZodSubstitution): Diagnostic {
   const found =
@@ -235,7 +242,8 @@ function substitutionDiagnostic(substitution: ZodSubstitution): Diagnostic {
  * reaches -- an `alias` with a zod key, `nodePaths` or `preserveSymlinks` --
  * cannot be modelled by the walk: esbuild (0.28) applies `alias` only after
  * `onResolve` callbacks have seen the import as written, while a nested
- * `build.resolve()` does apply it.
+ * `build.resolve()` does apply it. When the import itself fails there, the
+ * package's root, which every Zod exports, names the Zod it reached.
  *
  * Hooknostic's own Zod resolves once per import kind and path for the life of
  * the process ({@link resolveOwn}), so a Zod-free project pays one nested
@@ -266,21 +274,36 @@ export function sdkZodFallbackPlugin(onSubstitution: (diagnostic: Diagnostic) =>
         const options = { kind: args.kind, importer: args.importer, pluginData: FALLBACK };
         const range = sdk.zodPeer !== undefined && semver.validRange(sdk.zodPeer) !== null ? sdk.zodPeer : undefined;
         const reachable = optionsResolveFirst ? undefined : reachableZod(args.resolveDir);
-        /** The Zod the SDK would have used, when it is out of range or versionless. */
-        let found: { path: string; version?: string } | undefined;
+        let found: ReachedZod | undefined;
         let direct: ResolveResult | undefined;
         if (reachable === undefined || reachable.kind === "pnp") {
           direct = await build.resolve(args.path, { ...options, resolveDir: args.resolveDir });
-          if (direct.errors.length === 0) {
-            if (range === undefined) return direct;
-            const owner = owningManifest(direct.path, manifests);
-            // A prerelease is outside the range, as a package manager would treat it.
-            if (owner?.name === "zod" && owner.version !== undefined && semver.satisfies(owner.version, range))
-              return direct;
-            found =
-              owner?.name === "zod"
-                ? { path: owner.directory, ...(owner.version === undefined ? {} : { version: owner.version }) }
-                : { path: direct.path };
+          if (direct.errors.length === 0 && range === undefined) return direct;
+          if (range !== undefined) {
+            // A Zod too old for zod/v4 fails that import, but every published
+            // Zod exports its root (3.0-3.8 as `{import, require}`), so the
+            // root names the package the import reached. Only a failed import
+            // pays for this second resolve.
+            const resolved =
+              direct.errors.length === 0
+                ? direct
+                : args.path === "zod"
+                  ? undefined
+                  : await build.resolve("zod", { ...options, resolveDir: args.resolveDir });
+            if (resolved !== undefined && resolved.errors.length === 0) {
+              const owner = owningManifest(resolved.path, manifests);
+              const version = owner?.name === "zod" ? owner.version : undefined;
+              // A prerelease is outside the range, as a package manager would
+              // treat it. An in-range Zod whose import failed is broken, and
+              // fails with esbuild's own error, as on the walk path.
+              if (version !== undefined && semver.satisfies(version, range))
+                return direct.errors.length === 0 ? direct : { errors: direct.errors };
+              found = {
+                path: owner?.name === "zod" ? owner.directory : resolved.path,
+                ...(version === undefined ? {} : { version }),
+                range,
+              };
+            }
           }
         } else if (reachable.kind === "found") {
           // In range, or no floor to enforce: esbuild resolves it as it would without this plugin.
@@ -290,6 +313,7 @@ export function sdkZodFallbackPlugin(onSubstitution: (diagnostic: Diagnostic) =>
           found = {
             path: realpathSync.native(reachable.directory),
             ...(reachable.version === undefined ? {} : { version: reachable.version }),
+            range,
           };
         }
         const own = await resolveOwn(build, args.path, options, !optionsResolveFirst);
@@ -302,12 +326,12 @@ export function sdkZodFallbackPlugin(onSubstitution: (diagnostic: Diagnostic) =>
           direct ??= await build.resolve(args.path, { ...options, resolveDir: args.resolveDir });
           return { errors: direct.errors.length > 0 ? direct.errors : own.errors };
         }
-        if (found !== undefined && range !== undefined && !reported.has(found.path)) {
+        if (found !== undefined && !reported.has(found.path)) {
           reported.add(found.path);
           const mine = owningManifest(own.path, manifests);
           onSubstitution(
             substitutionDiagnostic({
-              range,
+              range: found.range,
               foundPath: found.path,
               ...(found.version === undefined ? {} : { foundVersion: found.version }),
               ownPath: mine?.directory ?? own.path,

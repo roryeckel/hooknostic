@@ -221,14 +221,17 @@ describe("an SDK installed without its optional Zod peer", () => {
     return { root, sdkEntry: join(root, "node_modules/@hooknostic/sdk/dist/index.js") };
   }
 
-  /** HN109 for an SDK that reached `found` at `at`, bundling Hooknostic's own Zod instead. */
-  function substitution(found: string, at: string): Diagnostic {
+  /**
+   * HN109 for an SDK that reached `found` at `at`, bundling Hooknostic's own
+   * Zod from `own` (its real path, unless the build preserves symlinks).
+   */
+  function substitution(found: string, at: string, own = dirname(ownZodManifest)): Diagnostic {
     return {
       code: "HN109",
       severity: "warn",
       message:
         `the SDK's zod import reached ${found} at ${at}, outside the SDK's zod peer range ${PEER}; the runtime ` +
-        `bundles Hooknostic's own zod@${ownZodVersion} from ${dirname(ownZodManifest)} instead, while user code ` +
+        `bundles Hooknostic's own zod@${ownZodVersion} from ${own} instead, while user code ` +
         "that imports zod still bundles the project's copy.",
       remediation: `install a zod that satisfies ${PEER} in the project, so the SDK and user code share one copy.`,
     };
@@ -548,6 +551,39 @@ describe("an SDK installed without its optional Zod peer", () => {
         }
       });
     }
+
+    // zod/v4 fails to resolve against a Zod 3.24, but the package's root still
+    // names it: every published Zod exports one.
+    it("warns when nodePaths reach a Zod too old for zod/v4", async () => {
+      const { root, sdkEntry } = await project();
+      try {
+        await writeZod(join(root, "vendor", "zod"), "3.24.4", { v4: false });
+        const result = await bundleRecorded(root, sdkEntry, { nodePaths: [join(root, "vendor")] });
+        expect(await run(root, result.code)).toBe("ok");
+        expect(result.diagnostics).toEqual([substitution("zod@3.24.4", join(root, "vendor", "zod"))]);
+      } finally {
+        await rm(root, { recursive: true, force: true });
+      }
+    });
+
+    it("warns when preserveSymlinks reaches a Zod too old for zod/v4", async () => {
+      const { root, sdkEntry } = await project({ zod: "3.24.4", v4: false, layout: "pnpm" });
+      try {
+        const result = await bundleRecorded(root, sdkEntry, { preserveSymlinks: true });
+        expect(await run(root, result.code)).toBe("ok");
+        // Both Zods keep their linked paths: the SDK's is the project's own
+        // link, and Hooknostic's is core's link into the workspace store.
+        expect(result.diagnostics).toEqual([
+          substitution(
+            "zod@3.24.4",
+            join(root, "node_modules", "zod"),
+            resolve(import.meta.dirname, "..", "node_modules", "zod"),
+          ),
+        ]);
+      } finally {
+        await rm(root, { recursive: true, force: true });
+      }
+    });
   });
 });
 
