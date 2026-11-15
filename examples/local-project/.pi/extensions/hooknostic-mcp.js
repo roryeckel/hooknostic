@@ -46,6 +46,22 @@ const remote = (server) => {
   return { url, ...(headers === undefined ? {} : { headers }), ...(missing.size > 0 ? { enabled: false } : {}) };
 };
 
+// What pi threw, rendered as @hooknostic/runtime's errorMessage renders it.
+// instanceof, the message read, and String() can each throw on a hostile
+// value such as a revoked proxy, which would escape this extension's factory.
+const describe = (error) => {
+  try {
+    if (error instanceof Error) return typeof error.message === "string" ? error.message : "Error";
+  } catch {
+    // Fall through to String().
+  }
+  try {
+    return String(error);
+  } catch {
+    return "uninspectable thrown value";
+  }
+};
+
 export default function (pi) {
   for (const server of registrations) {
     const config =
@@ -57,7 +73,7 @@ export default function (pi) {
     } catch (error) {
       // pi throws for a name another extension registered; the other servers
       // still register.
-      console.warn("Hooknostic could not register MCP " + JSON.stringify(server.name) + ": " + (error instanceof Error ? error.message : String(error)));
+      console.warn("Hooknostic could not register MCP " + JSON.stringify(server.name) + ": " + describe(error));
     }
   }
 }

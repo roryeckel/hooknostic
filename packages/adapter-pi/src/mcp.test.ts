@@ -10,6 +10,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AgentPluginMcpServer } from "@hooknostic/agent-plugin";
 import { AGENT_PLUGIN_MCP_SCHEMA } from "@hooknostic/agent-plugin";
 import { reconcileProject, REMOTE_ENVIRONMENT_SOURCE } from "@hooknostic/core";
+import { formatInternalError } from "@hooknostic/runtime";
 
 import { legacyPiMcpCells, nativePiMcpCells, piMcpExtensionSource, piNamespace, translatePiMcp } from "./mcp.js";
 import { registrations } from "./mcp-test-helpers.js";
@@ -455,6 +456,78 @@ describe("generated pi MCP extension", () => {
     });
     expect(registered.map(([name]) => name)).toEqual(["free"]);
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('could not register MCP "taken"'));
+    warn.mockRestore();
+  });
+
+  it("registers the remaining servers when pi throws a revoked proxy", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const { registered, module } = await load(
+      piMcpExtensionSource({
+        registrations: ["before", "hostile", "after"].map((name) => ({
+          name,
+          type: "http" as const,
+          url: `https://example.test/${name}`,
+        })),
+        rootFromHere: ".",
+        launcherFromHere: "launcher.mjs",
+        resolveEnvironment: false,
+      }),
+    );
+    const { proxy, revoke } = Proxy.revocable({}, {});
+    revoke();
+    expect(() =>
+      module.default({
+        registerMcpServer: (name, config) => {
+          // `instanceof` and String() both throw on a revoked proxy.
+          if (name === "hostile") throw proxy;
+          registered.push([name, config]);
+        },
+      }),
+    ).not.toThrow();
+    expect(registered.map(([name]) => name)).toEqual(["before", "after"]);
+    expect(warn.mock.calls).toEqual([['Hooknostic could not register MCP "hostile": uninspectable thrown value']]);
+    warn.mockRestore();
+  });
+
+  it("renders what pi throws as the runtime renders an error", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const { proxy: revoked, revoke } = Proxy.revocable({}, {});
+    revoke();
+    const thrown: unknown[] = [
+      new Error("registered by another extension"),
+      new TypeError("legacy SSE transport is not supported"),
+      Object.assign(new Error("x"), { message: 42 }),
+      "a string",
+      undefined,
+      Symbol("s"),
+      { toString: () => "custom" },
+      Object.create(null),
+      new Proxy(new Error("trapped"), {
+        get: () => {
+          throw new Error("get trap");
+        },
+      }),
+      revoked,
+    ];
+    const { module } = await load(
+      piMcpExtensionSource({
+        registrations: thrown.map((_, index) => ({ name: `s${index}`, type: "http", url: "https://example.test/" })),
+        rootFromHere: ".",
+        launcherFromHere: "launcher.mjs",
+        resolveEnvironment: false,
+      }),
+    );
+    module.default({
+      registerMcpServer: (name) => {
+        throw thrown[Number(name.slice(1))];
+      },
+    });
+    const prefix = "hooknostic internal: ";
+    expect(warn.mock.calls).toEqual(
+      thrown.map((value, index) => [
+        `Hooknostic could not register MCP "s${index}": ${formatInternalError(value).slice(prefix.length)}`,
+      ]),
+    );
     warn.mockRestore();
   });
 });
