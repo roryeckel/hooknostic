@@ -206,8 +206,10 @@ profile for a broad range.
   host may treat any throw as a block: OpenCode 2.x does
   (`.capture/opencode-v2-plugin-throw`). Throw deliberate blocks as a dedicated
   class, rethrow only that class, and report everything else through
-  `reportInternalError(error, nativeHook)` from `@hooknostic/runtime`. The
-  OpenCode v2 shim is the worked example.
+  `reportInternalError(error, nativeHook)` from `@hooknostic/runtime`. Make the
+  class check itself unable to throw: `instanceof` on a revoked proxy does. The
+  OpenCode v2 shim is the worked example and, for now, the only shim that
+  reports this way; #179 moves the OpenCode v1, Pi and command shims onto it.
 - Declare `publishesNpmPackage: true` only if package delivery emits a manifest
   npm publishes the artifact under. That is what lets a target set `npmName`;
   undeclared, core refuses the coordinate at analysis, before anything is

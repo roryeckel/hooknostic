@@ -55,7 +55,7 @@ run with `HKN_OPENCODE_BINARY` pointing at its `bin/opencode.exe`. On Windows
 that path is required: the serve cases spawn the binary without a shell, which
 cannot start npm's `opencode.cmd` shim.
 
-## Observations (Windows 11, Node 24.20.0, 2026-11-14)
+## Observations (Windows 11 Pro 10.0.26300, Node 24.20.0, 2026-11-14)
 
 All controls passed: the tool ran, the execution succeeded, `/generate` and
 `/compact` answered 200, and an `ask` raised a pending permission. OpenCode
@@ -122,7 +122,8 @@ values that are not `Error`s.
   swallowed. Title is guarded too, although the host drops its errors, so that
   the shim never loses the title request.
 - A permission deny that cannot be written onto the evaluation leaves the
-  host's own evaluation in place. It never becomes a denial.
+  host's own evaluation in place. It never becomes a denial: `effect` is
+  written last, and a write that throws partway puts back what the host had.
 - The subscription catches per event. The host only logs an unhandled
   rejection, so without that catch one unreadable event silently ends every
   later `session.start` and `turn.stop` hook.
