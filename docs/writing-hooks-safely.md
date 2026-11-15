@@ -86,10 +86,13 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
 
 After bundling, both sides name the artifact, so the guard is always true and the CLI
 runs on every dispatch. The dispatcher has read the event payload by then, so the CLI
-finds stdin already consumed, and whatever else it does happens inside your hook. A
-CLI that exits the process ends the hook before it replies, and one that throws stops
-the hooks loading. `hooknostic build` warns about this pattern as **HN502**. Put
-command-line entry points in modules your hooks do not import.
+finds stdin already consumed, and whatever else it does happens inside your hook. A CLI
+that throws synchronously as it loads is reported as an internal error, and the call
+proceeds. A CLI that exits the process ends the hook with its own exit code and no
+reply, and an async `main()` whose rejection nothing handles crashes it the same way,
+with exit 1. On Copilot's `preToolUse` any non-zero exit is a denial, and on Claude
+Code exit 2 blocks a prompt or a compaction. `hooknostic build` warns about this
+pattern as **HN502**. Put command-line entry points in modules your hooks do not import.
 
 ## `process.execPath` is not always Node
 

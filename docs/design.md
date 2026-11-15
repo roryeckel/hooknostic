@@ -692,9 +692,14 @@ After bundling, both sides of that comparison name the **generated artifact**,
 so a guard that was dormant in the source becomes unconditionally true and its
 command-line body runs on every hook dispatch. A command shim reads the event
 payload before it loads the hook source, so the body finds stdin already
-consumed. Whatever else it does still runs inside the hook: a body that exits
-the process ends the hook without its reply, and one that throws fails the hook
-source's load, which the shim reports as an internal error and fails open over.
+consumed. Whatever else it does still runs inside the hook, and not all of it
+fails open. A body that throws synchronously while the hook source loads is
+reported as an internal error, and the call proceeds. A body that exits the
+process ends the hook with that exit code and no reply. An async `main()` whose
+rejection nothing handles crashes the process the same way: no shim installs a
+rejection handler, so Node exits 1. A non-zero exit can block: Copilot's
+`preToolUse` denies the call on any, and on Claude Code exit 2 blocks a prompt
+or a compaction.
 
 This only happens where the harness **executes** the artifact. An adapter
 declares which it is via `shimExecution`: `"command"` (Claude, Codex — spawned
