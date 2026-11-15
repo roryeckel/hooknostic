@@ -4,6 +4,8 @@ import { Writable } from "node:stream";
 
 import type { HookEvent, HookResult, PluginSpec } from "@hooknostic/sdk";
 
+import { debugEnabled } from "./report.js";
+
 /** What a command shim is given: the plugin, or a loader it calls once stdout is claimed. */
 export type CommandPluginSource = PluginSpec | (() => Promise<{ default: PluginSpec }>);
 
@@ -118,8 +120,7 @@ function bounded(work: Promise<void>): Promise<void> {
 
 /** A stderr tracer when `HOOKNOSTIC_DEBUG` is set to a non-empty value other than `0`. */
 export function debugTracer(env: NodeJS.ProcessEnv = process.env): ((message: string) => void) | undefined {
-  const flag = env["HOOKNOSTIC_DEBUG"];
-  if (flag === undefined || flag === "" || flag === "0") return undefined;
+  if (!debugEnabled(env)) return undefined;
   return (message) => {
     process.stderr.write(`hooknostic debug: ${message}\n`);
   };

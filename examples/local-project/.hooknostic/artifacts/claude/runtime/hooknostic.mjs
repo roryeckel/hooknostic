@@ -7470,6 +7470,23 @@ import { Console } from "node:console";
 import { syncBuiltinESMExports } from "node:module";
 import { Writable } from "node:stream";
 init_dist();
+function errorMessage(error2) {
+  try {
+    if (error2 instanceof Error) {
+      return typeof error2.message === "string" ? error2.message : "Error";
+    }
+  } catch {
+  }
+  try {
+    return String(error2);
+  } catch {
+    return "uninspectable thrown value";
+  }
+}
+function debugEnabled(env = globalThis.process?.env) {
+  const flag = env?.["HOOKNOSTIC_DEBUG"];
+  return flag !== void 0 && flag !== "" && flag !== "0";
+}
 function createCapabilitySet(levels) {
   const levelOf = (id) => (Object.hasOwn(levels, id) ? levels[id] : void 0) ?? "unsupported";
   return {
@@ -7495,19 +7512,6 @@ function truncateNotification(message, limit) {
   const code = message.charCodeAt(limit - 1);
   const splitsPair = code >= 55296 && code <= 56319;
   return message.slice(0, splitsPair ? limit - 1 : limit);
-}
-function errorMessage(error2) {
-  try {
-    if (error2 instanceof Error) {
-      return typeof error2.message === "string" ? error2.message : "Error";
-    }
-  } catch {
-  }
-  try {
-    return String(error2);
-  } catch {
-    return "uninspectable thrown value";
-  }
 }
 async function dispatch(hooks, event, options) {
   const policy = { ...DEFAULT_RUNTIME, ...options.policy };
@@ -7887,8 +7891,7 @@ function bounded(work) {
   ]);
 }
 function debugTracer(env = process.env) {
-  const flag = env["HOOKNOSTIC_DEBUG"];
-  if (flag === void 0 || flag === "" || flag === "0") return void 0;
+  if (!debugEnabled(env)) return void 0;
   return (message) => {
     process.stderr.write(`hooknostic debug: ${message}
 `);

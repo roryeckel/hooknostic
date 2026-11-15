@@ -15,7 +15,7 @@
       },
       "projection": {
         "status": "success",
-        "contentDigest": "sha256:d0952b8a713c00f42fe6024014bdc6a80d050eb51af21b3b1d3bd49aab14c758",
+        "contentDigest": "sha256:81fe0c7bf8a32d77e1167223b72228df793635e1945010f75f7f79ce96a1769e",
         "copiedFileCount": 3,
         "components": {
           "agent-plugin.manifest": {
@@ -63,7 +63,7 @@
       },
       "projection": {
         "status": "success",
-        "contentDigest": "sha256:090a1ab599c3d6b654e0a6d0b4f404706502e93f1b1689479712ab2f40e9d54a",
+        "contentDigest": "sha256:77b9ce7bef1d490911d4245bfedb6d4d96b71759ea8bb761dc2d593a1ef53930",
         "copiedFileCount": 3,
         "directories": [
           ".agents",
@@ -118,7 +118,7 @@
       },
       "projection": {
         "status": "success",
-        "contentDigest": "sha256:d184141810ea4dfa0bee29750d5b4cb8dbb8a39bbf6af9ae3964bf2704c934f1",
+        "contentDigest": "sha256:d88c6768d28895edf7ad77218990615391429b3f27296ec9f23a84834504a332",
         "copiedFileCount": 4,
         "directories": [
           ".agents",
@@ -171,7 +171,7 @@
       },
       "projection": {
         "status": "success",
-        "contentDigest": "sha256:0889787e892692452ef1bfb2d15faf0011bfe86a1340d4df801c7ff3c12ad17b",
+        "contentDigest": "sha256:cc5c1ec9e47efec30b39d2e04d3f338742388c6d257ad3d830e1cb5cea7836f2",
         "copiedFileCount": 6,
         "directories": [
           "package/.agents",
@@ -226,7 +226,7 @@
       },
       "projection": {
         "status": "success",
-        "contentDigest": "sha256:4caa405099bc351cf284ccf30593da5d2cfdc7ebf10a41e0156f3629df36d18d",
+        "contentDigest": "sha256:613b890b53f409259057955457dad19278001c1551966d76d9a67b4b7b2e5456",
         "copiedFileCount": 5,
         "directories": [
           "package/.agents",
@@ -282,7 +282,7 @@
       },
       "projection": {
         "status": "success",
-        "contentDigest": "sha256:e532c4c4aae7b4b7eef1eded957b7b7b6c9aef92484e5ef8388260156578feaf",
+        "contentDigest": "sha256:252d2f08f980b6ed32a83b68131d69dd269ecd70b293623ae48ce5ef247527db",
         "copiedFileCount": 6,
         "directories": [
           "package/.agents",
