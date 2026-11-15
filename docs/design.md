@@ -693,9 +693,12 @@ module -- the SDK's manifest, licence notices -- would come back missing, so
 the build fails instead of bundling around it. `yarn dlx` loads a runtime, but
 not the project's, so a build that needs Hooknostic's own Zod fails the same
 way. It is an error, reported once per build, naming the module and the PnP
-manifest, or under `yarn dlx` where Hooknostic's own Zod failed to resolve. Run Hooknostic through Yarn from the project, `yarn hooknostic`,
-with `hooknostic` as a devDependency (ADR-0040; supporting the other
-invocations is #190).
+manifest, or under `yarn dlx` where Hooknostic's own Zod failed to resolve.
+Under `yarn hooknostic` itself, where the CLI is in the project's install, a
+failure to resolve Hooknostic's own Zod keeps esbuild's error instead. Run
+Hooknostic through Yarn from the project, `yarn hooknostic`, with
+`hooknostic` as a devDependency (ADR-0040; supporting the other invocations
+is #190).
 
 #### HN502 — bundled CLI entry point
 
