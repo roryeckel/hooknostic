@@ -140,6 +140,17 @@ describe("Copilot command shim", () => {
     expect(result.stderr).not.toMatch(/^hooknostic /m);
   });
 
+  it("treats a payload that is not JSON as ignored, and traces it only under HOOKNOSTIC_DEBUG", async () => {
+    const PLUGIN = `import { definePlugin, hook } from "@hooknostic/sdk";
+       export default definePlugin({ name: "noop", hooks: [hook("tool.before", { id: "noop", async run() {} })] });`;
+    const caps = { "tool.before.observe": "exact" } as const;
+    const quiet = await runShim(PLUGIN, "not json", caps);
+    expect(quiet).toMatchObject({ code: 0, stdout: "", stderr: "" });
+    const traced = await runShim(PLUGIN, "not json", caps, undefined, undefined, { HOOKNOSTIC_DEBUG: "1" });
+    expect(traced).toMatchObject({ code: 0, stdout: "" });
+    expect(traced.stderr).toMatch(/^hooknostic debug: ignored payload: payload is not JSON/m);
+  });
+
   it("reports a plugin module that throws as an internal error, and fails open", async () => {
     const THROWING = `throw new Error("plugin module failed");\nexport default {};`;
     const caps = { "tool.before.observe": "exact" } as const;
