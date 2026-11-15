@@ -259,9 +259,15 @@ outside the project, and `yarn dlx`. It compares the whole table of outcomes:
 through Yarn's runtime the build uses the project's in-range Zod or the CLI's
 own (with HN109 when the project's is out of range); plain `node` fails with one
 HN504 (#183); `yarn dlx` fails with HN504 unless the project's Zod is in range.
-Yarn, corepack and npm keep their state in the test's temporary directory, and
-each consumer gets an empty `yarn.lock` so Yarn never adopts an ancestor
-project. Set `HOOKNOSTIC_YARN_PNP_VERBOSE=1` to print every build's output.
+Yarn, corepack and npm keep their state in the test's temporary directory,
+where every install and `yarn dlx` run shares one Yarn global cache, and each
+consumer gets an empty `yarn.lock` so Yarn never adopts an ancestor project.
+Each cell records the real exit code (Hooknostic exits 2 for a failed build).
+A Yarn, corepack or npm step that exits otherwise with a fetch or network
+error (`YN0001`, `ECONNRESET` and the like) stops the test at once with an
+`ENVIRONMENT/NETWORK FAILURE` error and that step's output: rerun it, it is
+not a missing HN504. Set `HOOKNOSTIC_YARN_PNP_VERBOSE=1` to print every
+build's output and the Zod it bundled.
 
 The normal suite covers HN504 without Yarn, through a synthetic layout: a
 hand-written `.pnp.data.json` and stored zip archives that esbuild resolves

@@ -20,15 +20,28 @@ type Project = keyof typeof PROJECTS;
 
 /** How a run turned out, compared as a whole so a failure shows every cell. */
 interface Outcome {
-  exit: "ok" | "failed";
+  /** The process's exit code: Hooknostic exits 2 for a build with errors. */
+  exit: number | null;
   hn504: number;
   hn109: number;
-  /** Whose Zod the Claude runtime bundles, per zod package: the project's, or the CLI's own. */
+  /**
+   * Whose Zod the Claude runtime bundles, per zod archive: the project's
+   * version, or another, the CLI's own. In one shared cache the project's
+   * in-range 4.6.7 and the CLI's (4.6.7 is the newest release in the SDK's
+   * range) are the same archive, so that cell asserts one copy, in range.
+   */
   zod: ("project" | "cli")[];
 }
 
-const ok = (hn109: number, zod: Outcome["zod"]): Outcome => ({ exit: "ok", hn504: 0, hn109, zod });
-const hn504: Outcome = { exit: "failed", hn504: 1, hn109: 0, zod: [] };
+const ok = (hn109: number, zod: Outcome["zod"]): Outcome => ({ exit: 0, hn504: 0, hn109, zod });
+const hn504: Outcome = { exit: 2, hn504: 1, hn109: 0, zod: [] };
+
+/**
+ * What a registry fetch or download failure leaves in Yarn's, corepack's or
+ * npm's output. Yarn exits 1 for it, never 2 as Hooknostic does.
+ */
+const NETWORK_FAILURE =
+  /\bYN0001\b|\bYN0013\b|ECONNRESET|ECONNREFUSED|ETIMEDOUT|ENOTFOUND|EAI_AGAIN|ECANCELED|socket hang up|SSL|Error when performing the request/;
 
 /** Under Yarn's runtime, the SDK takes the project's in-range Zod and the CLI's otherwise. */
 const underYarnRuntime: Record<Project, Outcome> = {
@@ -64,8 +77,9 @@ it.skipIf(process.env["HOOKNOSTIC_YARN_PNP"] !== "1")(
       COREPACK_HOME: join(root, "corepack"),
       COREPACK_ENABLE_DOWNLOAD_PROMPT: "0",
       COREPACK_ENABLE_AUTO_PIN: "0",
+      // One cache for every install and dlx run, so each archive downloads once.
       YARN_GLOBAL_FOLDER: join(root, "yarn-global"),
-      YARN_ENABLE_GLOBAL_CACHE: "false",
+      YARN_ENABLE_GLOBAL_CACHE: "true",
       YARN_ENABLE_TELEMETRY: "0",
       YARN_NPM_MINIMAL_AGE_GATE: "0",
       npm_config_cache: join(root, "npm-cache"),
@@ -76,7 +90,14 @@ it.skipIf(process.env["HOOKNOSTIC_YARN_PNP"] !== "1")(
     delete env["NODE_PATH"];
     const run = async (command: string, args: string[], cwd: string) => {
       const result = await runProcess(command, args, { cwd, env, timeoutMs: 300_000 });
-      return { code: result.code, output: result.stdout + result.stderr };
+      const output = result.stdout + result.stderr;
+      // A failed download is the environment, not a missing HN504: stop here and say so.
+      if (command !== process.execPath && result.code !== 0 && result.code !== 2 && NETWORK_FAILURE.test(output))
+        throw new Error(
+          `ENVIRONMENT/NETWORK FAILURE, not a Hooknostic result: \`${command} ${args.join(" ")}\` in ${cwd} ` +
+            `exited ${result.code} on a fetch or network error. Rerun when the registry is reachable.\n${output}`,
+        );
+      return { code: result.code, output };
     };
     const must = async (command: string, args: string[], cwd: string) => {
       const result = await run(command, args, cwd);
@@ -141,7 +162,7 @@ it.skipIf(process.env["HOOKNOSTIC_YARN_PNP"] !== "1")(
         );
         await writeFile(
           join(project, ".yarnrc.yml"),
-          "nodeLinker: pnp\nenableGlobalCache: false\nenableTelemetry: false\n",
+          "nodeLinker: pnp\nenableGlobalCache: true\nenableTelemetry: false\n",
         );
         // Without a lockfile of its own, Yarn adopts an ancestor project, such as one in the user's home.
         await writeFile(join(project, "yarn.lock"), "");
@@ -155,23 +176,25 @@ it.skipIf(process.env["HOOKNOSTIC_YARN_PNP"] !== "1")(
           const runtime = (
             await Promise.all((await files(join(project, "dist", "claude"))).map((file) => readFile(file, "utf8")))
           ).join("\n");
-          // esbuild names each module relative to the project. The CLI's Zod
-          // can share the project's in-range version (4.6.7 is the newest
-          // release in the SDK's range), so the version alone does not say
-          // whose copy it is: the project's is in its own cache, at its version.
+          // esbuild names each module by its path: in Yarn's cache, an archive
+          // whose name carries the version.
           const packages = new Set(
             [...runtime.matchAll(/^\/\/ (\S*?node_modules\/zod)\//gm)].map((match) => match[1]!),
           );
           (observed[mode] ??= {})[name] = {
-            exit: result.code === 0 ? "ok" : "failed",
+            exit: result.code,
             hn504: (result.output.match(/^HN504 /gm) ?? []).length,
             hn109: (result.output.match(/^HN109 /gm) ?? []).length,
-            zod: [...packages].map((path) =>
-              path.startsWith(".yarn/") && /\/zod-npm-(\d+\.\d+\.\d+)-/.exec(path)?.[1] === zod ? "project" : "cli",
-            ),
+            zod: [...packages].map((path) => {
+              // A Zod outside Yarn's cache, such as the npm-installed CLI's, is never the project's.
+              const version = /\/zod-npm-(\d+\.\d+\.\d+)-/.exec(path)?.[1];
+              return version !== undefined && version === zod ? "project" : "cli";
+            }),
           };
           if (process.env["HOOKNOSTIC_YARN_PNP_VERBOSE"] === "1")
-            console.log(`--- ${name} / ${mode} (exit ${result.code})\n${result.output}`);
+            console.log(
+              `--- ${name} / ${mode} (exit ${result.code}), zod: ${[...packages].join(", ")}\n${result.output}`,
+            );
         }
       }
       console.log(JSON.stringify(observed, null, 2));
