@@ -113,6 +113,66 @@ describe("guardCommandShim", () => {
     expect(exit).not.toHaveBeenCalled();
   });
 
+  it("reports the same error again in a new scope", async () => {
+    const guard = guardCommandShim(describeError);
+    // One error object, as a module-scope singleton rejected by every event would be.
+    const error = new Error("rejected in every event");
+
+    await guard.report(error);
+    await guard.report(error);
+    guard.scope();
+    await guard.report(error);
+    await guard.report(new HookSourceExitError(3));
+    guard.scope();
+    await guard.report(new HookSourceExitError(3));
+
+    expect(written).toEqual([
+      "hooknostic internal [Test]: rejected in every event\n",
+      "hooknostic internal [Test]: rejected in every event\n",
+      "hooknostic internal [Test]: the hook source called process.exit(3)\n",
+      "hooknostic internal [Test]: the hook source called process.exit(3)\n",
+    ]);
+  });
+
+  it("throws again, in a new scope, an exit code whose throw escaped before", async () => {
+    const guard = guardCommandShim(describeError);
+
+    emitUncaught(new HookSourceExitError(1), "uncaughtException");
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    guard.scope();
+
+    // A later event's exit(1) is that event's failure, not the earlier loop coming round.
+    expect(() => process.exit(1)).toThrow(HookSourceExitError);
+    expect(exit).not.toHaveBeenCalled();
+  });
+
+  it("tells onExit of every intercepted exit, whether the stub throws or leaves", () => {
+    vi.useFakeTimers();
+    const onExit = vi.fn();
+    const guard = guardCommandShim(describeError, { onExit });
+
+    expect(() => process.exit(5)).toThrow(HookSourceExitError);
+    guard.finish(0);
+    process.exit(6);
+
+    expect(onExit.mock.calls).toEqual([[5], [6]]);
+    expect(exit.mock.calls).toEqual([[0]]);
+  });
+
+  it("keeps the stub's behaviour when onExit throws", () => {
+    vi.useFakeTimers();
+    const guard = guardCommandShim(describeError, {
+      onExit() {
+        throw new Error("listener failed");
+      },
+    });
+
+    expect(() => process.exit(5)).toThrow(new HookSourceExitError(5));
+    guard.finish(2);
+    expect(() => process.exit(6)).not.toThrow();
+    expect(exit.mock.calls).toEqual([[2]]);
+  });
+
   it("binds a named `exit` import from node:process to the stub itself", () => {
     guardCommandShim(describeError);
 

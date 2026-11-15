@@ -140,6 +140,20 @@ export interface CommandShimGuard {
   decide(exitCode: number): void;
   /** Leave with `exitCode`, by default the decided one. A stray failure after this keeps that code. */
   finish(exitCode?: number): void;
+  /**
+   * Start a new scope, such as the next of several events one process runs.
+   * An error or exit code reported before is reported again if it recurs, and
+   * an exit code whose throw escaped before throws again.
+   */
+  scope(): void;
+}
+
+export interface CommandShimGuardOptions {
+  /**
+   * Told of every `process.exit` the guard intercepts, whether the stub
+   * throws or leaves. A listener that throws does not change what the stub does.
+   */
+  onExit?(code: unknown): void;
 }
 
 /**
@@ -167,8 +181,16 @@ export interface CommandShimGuard {
  * exits ahead of the guard (exit 7), an uncaught-exception capture callback,
  * removing the guard's listeners, and a line the hook source left
  * unterminated, which a report is glued onto (docs/design.md §10.3).
+ *
+ * A process that runs several events, as `hooknostic dispatch` does, installs
+ * one guard and calls `scope()` as each event starts, so a failure that recurs
+ * in a later event is reported against it too. `options.onExit` hears every
+ * intercepted exit.
  */
-export function guardCommandShim(describe: (error: unknown) => string): CommandShimGuard {
+export function guardCommandShim(
+  describe: (error: unknown) => string,
+  options: CommandShimGuardOptions = {},
+): CommandShimGuard {
   const exit = process.exit;
   const stderr = process.stderr;
   let decided: number | undefined;
@@ -274,6 +296,11 @@ export function guardCommandShim(describe: (error: unknown) => string): CommandS
   process.on("unhandledRejection", onRejection);
   process.exit = function exitFromHookSource(code?: number | string | null): never {
     const error = new HookSourceExitError(code);
+    try {
+      options.onExit?.(code);
+    } catch {
+      // A listener must never change what the stub does.
+    }
     if (!cannotUnwind && !finished && !escaped.has(exitKey(code))) throw error;
     reportNow(error, exitKey(code));
     return exit(decided ?? 0);
@@ -299,6 +326,10 @@ export function guardCommandShim(describe: (error: unknown) => string): CommandS
       process.off("exit", pin);
       process.on("exit", pin);
       finishCommandShim(exitCode, exit);
+    },
+    scope() {
+      reported.clear();
+      escaped.clear();
     },
   };
 }

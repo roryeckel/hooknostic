@@ -7689,7 +7689,7 @@ function exitCodeText(code) {
     return "?";
   }
 }
-function guardCommandShim(describe2) {
+function guardCommandShim(describe2, options = {}) {
   const exit = process.exit;
   const stderr = process.stderr;
   let decided;
@@ -7764,6 +7764,10 @@ function guardCommandShim(describe2) {
   process.on("unhandledRejection", onRejection);
   process.exit = function exitFromHookSource(code) {
     const error2 = new HookSourceExitError(code);
+    try {
+      options.onExit?.(code);
+    } catch {
+    }
     if (!cannotUnwind && !finished && !escaped.has(exitKey(code))) throw error2;
     reportNow(error2, exitKey(code));
     return exit(decided ?? 0);
@@ -7785,6 +7789,10 @@ function guardCommandShim(describe2) {
       process.off("exit", pin);
       process.on("exit", pin);
       finishCommandShim(exitCode, exit);
+    },
+    scope() {
+      reported.clear();
+      escaped.clear();
     }
   };
 }
