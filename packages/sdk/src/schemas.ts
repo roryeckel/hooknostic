@@ -2,7 +2,7 @@ import * as z from "zod/v4";
 
 import type { CapabilityId } from "./capabilities.js";
 import { ALL_CAPABILITY_IDS } from "./capabilities.js";
-import type { PackageMaterializer, RuntimePolicy } from "./config.js";
+import type { CompatibilityPolicy, PackageMaterializer, RuntimePolicy, TargetConfig } from "./config.js";
 import type { Effect } from "./effects.js";
 import { EFFECT_KINDS } from "./effects.js";
 import type { HookEventName } from "./events.js";
@@ -10,11 +10,11 @@ import { HOOK_EVENT_NAMES } from "./events.js";
 import { ALL_EVENT_FIELD_IDS, isEventFieldId } from "./fields.js";
 import type { TargetScope } from "./hook.js";
 import { findNonJsonPath } from "./json.js";
-import type { HandlerError, HookResult, RuntimeDiagnosticCode } from "./result.js";
+import type { AppliedEffect, HandlerError, HookResult, RuntimeDiagnosticCode } from "./result.js";
 import { RUNTIME_DIAGNOSTIC_CODES } from "./result.js";
 import type { RequirementLevel, SupportLevel } from "./support.js";
 import { SUPPORT_LEVELS } from "./support.js";
-import type { ShellDialect, ToolInvocation, ToolKind } from "./tools.js";
+import type { ShellDialect, ToolInvocation, ToolKind, ToolMatch } from "./tools.js";
 import { SHELL_DIALECTS, TOOL_KINDS } from "./tools.js";
 
 /**
@@ -536,34 +536,57 @@ export const hookResultSchema = z
  *
  * Zod 4 infers an `.optional()` key as `key?: T | undefined`, where the root
  * types, written under `exactOptionalPropertyTypes`, say `key?: T`. `Exact`
- * removes that one systematic difference, recursively, before comparing.
+ * removes that one systematic difference, recursively, before comparing. Its
+ * key remapping keeps every other modifier, so a `readonly` on one side only
+ * still fails.
+ *
+ * Five schemas are checked against their root type with a documented
+ * difference applied: `effectSchema` and `hookResultSchema` output plain
+ * objects where every `Effect` field is readonly; `compatibilityPolicySchema`
+ * and `targetConfigSchema` accept any `accept` string and refine it at
+ * runtime, where `FieldAcceptance` is a template literal; and
+ * `toolMatchSchema` outputs mutable arrays where `ToolMatch` also accepts
+ * readonly ones.
  *
  * Schemas without a check here differ from their root type by design: the
  * schema is deliberately looser or stricter than the type, and identity would
  * mean changing a public type. `eventFieldIdSchema` infers `string`;
- * `baseHookEventSchema` passes event-specific fields through;
- * `compatibilityPolicySchema` and `targetConfigSchema` accept any `accept`
- * string and refine it at runtime, where `FieldAcceptance` is a template
- * literal; `toolMatchSchema` outputs mutable arrays where `ToolMatch` accepts
- * readonly ones; and the config, hook and plugin schemas validate structure
- * around functions and unions the root types spell more precisely.
+ * `jsonValueSchema` infers `unknown` and refines it at runtime, and comparing
+ * it with the recursive `JsonValue` exceeds the compiler's instantiation depth
+ * (TS2589); `baseHookEventSchema` passes event-specific fields through; and
+ * the config, hook and plugin schemas validate structure around functions and
+ * unions the root types spell more precisely.
  */
 type Equals<A, B> = (<T>() => T extends A ? 1 : 2) extends <T>() => T extends B ? 1 : 2 ? true : false;
 type Assert<T extends true> = T;
 type OptionalKeys<T> = { [K in keyof T]-?: Pick<T, K> extends Required<Pick<T, K>> ? never : K }[keyof T];
 type Flatten<T> = { [K in keyof T]: T[K] };
+// `as` remapping over `keyof T` stays homomorphic, so `readonly` and `?` carry over.
 type Exact<T> = T extends (...args: never[]) => unknown
   ? T
   : T extends readonly unknown[]
     ? { [I in keyof T]: Exact<T[I]> }
     : T extends object
       ? Flatten<
-          { [K in Exclude<keyof T, OptionalKeys<T>>]: Exact<T[K]> } & {
-            [K in OptionalKeys<T>]?: Exact<Exclude<T[K], undefined>>;
+          { [K in keyof T as K extends OptionalKeys<T> ? never : K]: Exact<T[K]> } & {
+            [K in keyof T as K extends OptionalKeys<T> ? K : never]: Exact<Exclude<T[K], undefined>>;
           }
         >
       : T;
 type Matches<S extends z.ZodType, T> = Equals<Exact<z.output<S>>, Exact<T>>;
+
+/** Each union member with its fields' `readonly` removed: what a non-readonly schema outputs. */
+type Writable<T> = T extends unknown ? { -readonly [K in keyof T]: T[K] } : never;
+type SchemaHookResult = Omit<HookResult, "effects"> & {
+  effects: (Omit<AppliedEffect, "effect"> & { effect: Writable<Effect> })[];
+};
+/** The schema's `accept`: any string, refined at runtime. */
+type SchemaCompatibilityPolicy = Omit<CompatibilityPolicy, "accept"> & { accept?: string[] };
+type SchemaTargetConfig = Omit<TargetConfig, "compatibility"> & { compatibility?: SchemaCompatibilityPolicy };
+/** Each readonly array in a property's type, as the mutable array a schema outputs. */
+type MutableArrays<T> = {
+  [K in keyof T]: T[K] extends infer V ? (V extends readonly (infer E)[] ? E[] : V) : never;
+};
 
 // Module-private: a compile error here is the whole point, and nothing exports it.
 type _SchemasMatchRootTypes = [
@@ -574,10 +597,13 @@ type _SchemasMatchRootTypes = [
   Assert<Matches<typeof toolKindSchema, ToolKind>>,
   Assert<Matches<typeof shellDialectSchema, ShellDialect>>,
   Assert<Matches<typeof toolInvocationSchema, ToolInvocation>>,
-  Assert<Matches<typeof effectSchema, Effect>>,
+  Assert<Matches<typeof effectSchema, Writable<Effect>>>,
   Assert<Matches<typeof runtimePolicySchema, RuntimePolicy>>,
   Assert<Matches<typeof targetScopeSchema, TargetScope>>,
   Assert<Matches<typeof runtimeDiagnosticCodeSchema, RuntimeDiagnosticCode>>,
   Assert<Matches<typeof handlerErrorSchema, HandlerError>>,
-  Assert<Matches<typeof hookResultSchema, HookResult>>,
+  Assert<Matches<typeof hookResultSchema, SchemaHookResult>>,
+  Assert<Matches<typeof compatibilityPolicySchema, SchemaCompatibilityPolicy>>,
+  Assert<Matches<typeof targetConfigSchema, SchemaTargetConfig>>,
+  Assert<Matches<typeof toolMatchSchema, MutableArrays<ToolMatch>>>,
 ];
