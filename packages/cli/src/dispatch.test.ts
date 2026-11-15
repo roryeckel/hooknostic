@@ -1,5 +1,6 @@
 import { spawnSync } from "node:child_process";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { syncBuiltinESMExports } from "node:module";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -758,6 +759,200 @@ export default definePlugin({
     expect(lines.map((line) => (JSON.parse(line) as DispatchResult).event)).toEqual(["prompt.before"]);
     expect(child.stderr).toContain("noise from console.log");
     expect(child.stderr).toContain("noise from process.stdout");
+  });
+
+  describe("under the command-shim guard (#189)", () => {
+    // Plain data, as above. Three events; only the second one's prompt is hostile.
+    const GUARD_TARGETS = `{
+      claude: { version: ${JSON.stringify(claudeHarness.recommendedRange)}, delivery: "package", output: "./dist/claude" },
+      opencode: {
+        version: ${JSON.stringify(opencodeHarness.recommendedRange)},
+        delivery: "project",
+        output: "./dist/opencode",
+        compatibility: { minimum: "approximate" },
+      },
+      pi: {
+        version: ${JSON.stringify(piHarness.recommendedRange)},
+        delivery: "project",
+        output: "./dist/pi",
+        compatibility: { minimum: "approximate" },
+      },
+    }`;
+    const onSecondEvent = (body: string) => `export default {
+      name: "hostile",
+      hooks: [{
+        event: "prompt.before",
+        id: "hostile",
+        capabilities: {},
+        run(event) {
+          if (event.prompt !== "second") return;
+          ${body}
+        },
+      }],
+    };`;
+    const atLoad = (prelude: string) => `${prelude}
+      export default { name: "hostile", hooks: [{ event: "prompt.before", id: "hostile", capabilities: {}, run() {} }] };`;
+    const EVENTS = ["first", "second", "third"].map(
+      (prompt) => `${JSON.stringify({ event: "prompt.before", prompt })}\n`,
+    );
+    const run = async (hooks: string, target: string, flags: string[] = []) => {
+      const dir = await project(hooks, GUARD_TARGETS);
+      const child = spawnSync(
+        process.execPath,
+        [CLI_BIN, "dispatch", "--config", join(dir, "hooknostic.config.ts"), "--target", target, ...flags],
+        { input: EVENTS.join(""), encoding: "utf8", timeout: 60_000 },
+      );
+      const results = child.stdout
+        .split("\n")
+        .filter(Boolean)
+        .map((line) => JSON.parse(line) as DispatchResult);
+      const stderr = child.stderr.split(/\r?\n/).filter(Boolean);
+      return { status: child.status, results, stderr, raw: child.stderr };
+    };
+
+    it.each(["claude", "opencode"])(
+      "reports stray failures against their event and keeps every result (%s)",
+      async (target) => {
+        const { status, results, raw } = await run(
+          onSecondEvent(`
+            Promise.reject(new Error("stray rejection"));
+            setTimeout(() => { throw new Error("handler timer threw"); }, 0);
+          `),
+          target,
+        );
+        expect(status, raw).toBe(1);
+        expect(results).toHaveLength(3);
+        expect(raw).toContain("hooknostic internal [event 2]: stray rejection\n");
+        // A zero-delay tail lands before the next event starts.
+        expect(raw).toContain("hooknostic internal [event 2]: handler timer threw\n");
+      },
+    );
+
+    it("makes process.exit in a handler that handler's error on a command target", async () => {
+      const { status, results, raw } = await run(onSecondEvent(`process.exit(2);`), "claude");
+      // Not 2: that is dispatch's own failure code, and the shim's exit 2 is a block.
+      expect(status, raw).toBe(0);
+      expect(results).toHaveLength(3);
+      expect(results[1]!.errors.map((error) => error.message)).toEqual(["the hook source called process.exit(2)"]);
+      expect(results[1]!.native.exitCode).toBe(0);
+      expect(raw).toBe("");
+    });
+
+    it.each([
+      ["opencode", "handler", `process.exit(2);`],
+      ["pi", "handler", `process.exit(2);`],
+      ["opencode", "tail", `setTimeout(() => process.exit(2), 0);`],
+      ["pi", "tail", `setTimeout(() => process.exit(2), 0);`],
+    ])("flags process.exit on a module target, once (%s, %s)", async (target, shape, body) => {
+      const { status, results, stderr, raw } = await run(onSecondEvent(body), target);
+      expect(status, raw).toBe(1);
+      expect(results).toHaveLength(3);
+      expect(results[1]!.errors.map((error) => error.message)).toEqual(
+        shape === "handler" ? ["the hook source called process.exit(2)"] : [],
+      );
+      // One exit, one line: the guard's own report of a tail carries the note.
+      expect(stderr, raw).toHaveLength(1);
+      expect(stderr[0]).toContain("[event 2]");
+      expect(stderr[0]).toContain(`the ${target} shim runs in the harness's process and does not intercept it`);
+    });
+
+    it("does not let an exit repeated by every module instance end the run", async () => {
+      // A command target loads one instance per event, so this exits three times.
+      const { status, results, stderr, raw } = await run(atLoad(`setTimeout(() => process.exit(8), 0);`), "claude");
+      expect(status, raw).toBe(1);
+      expect(results).toHaveLength(3);
+      expect(stderr).toEqual(
+        [1, 2, 3].map((n) => `hooknostic internal [event ${n}]: the hook source called process.exit(8)`),
+      );
+    });
+
+    it("leaves as a failure when the hook source ends the process where the guard cannot unwind", async () => {
+      const { status, results, raw } = await run(
+        atLoad(
+          `process.on("uncaughtException", () => process.exit(0)); setTimeout(() => { throw new Error("t"); }, 0);`,
+        ),
+        "claude",
+      );
+      // The results are not all out, whatever code the hook source asked for.
+      expect(status, raw).toBe(1);
+      expect(results).toHaveLength(0);
+    });
+
+    it("still fails the run for a stray after the last result", async () => {
+      // Deterministic rather than timed: the rejection fires once dispatch has
+      // set its exit code, and the leaked interval leaves the forced exit to end it.
+      const { status, results, stderr, raw } = await run(
+        onSecondEvent(`
+          let fired = false;
+          setInterval(() => {
+            if (fired || process.exitCode === undefined) return;
+            fired = true;
+            Promise.reject(new Error("late after finish"));
+          }, 1);
+        `),
+        "claude",
+      );
+      expect(status, raw).toBe(1);
+      expect(results).toHaveLength(3);
+      expect(stderr).toEqual(["hooknostic internal: late after finish"]);
+    });
+
+    it("refuses a load-time process.exit as a load failure", async () => {
+      const { status, results, stderr, raw } = await run(atLoad(`process.exit(3);`), "claude");
+      expect(status, raw).toBe(2);
+      expect(results).toHaveLength(0);
+      expect(stderr).toEqual(["failed to dispatch through entry ./hooks.ts: the hook source called process.exit(3)"]);
+    });
+
+    it("leaves the crash raw under --unguarded, a flag only dispatch takes", async () => {
+      const { status, results, raw } = await run(onSecondEvent(`process.exit(5);`), "claude", ["--unguarded"]);
+      expect(status, raw).toBe(5);
+      expect(results).toHaveLength(0);
+
+      // A project that checks clean, so only the flag can make check fail.
+      const dir = await project(onSecondEvent(""), GUARD_TARGETS);
+      const cli = captureIO();
+      expect(
+        await runCli(["check", "--unguarded", "--config", join(dir, "hooknostic.config.ts")], { io: cli.io }),
+      ).toBe(2);
+      expect(cli.err()).toContain("--unguarded is only supported by dispatch");
+    });
+
+    it("never guards an in-process runCli with an injected io", async () => {
+      const LISTENED = ["uncaughtExceptionMonitor", "uncaughtException", "unhandledRejection", "beforeExit", "exit"];
+      const exit = process.exit;
+      const exitCode = process.exitCode;
+      const listeners = LISTENED.map((event) => process.rawListeners(event));
+      const dir = await project(onSecondEvent(""), GUARD_TARGETS);
+      const events = join(dir, "events.jsonl");
+      await writeFile(events, EVENTS.join(""));
+      const cli = captureIO();
+      try {
+        const argv = [
+          "dispatch",
+          "--config",
+          join(dir, "hooknostic.config.ts"),
+          "--target",
+          "claude",
+          "--events",
+          events,
+        ];
+        expect(await runCli(argv, { io: cli.io })).toBe(0);
+        expect(cli.out).toHaveLength(3);
+        // vitest's own process: a guard here would own its exit and its listeners.
+        expect(process.exit).toBe(exit);
+        expect(LISTENED.map((event) => process.rawListeners(event))).toEqual(listeners);
+      } finally {
+        // Should the gate ever fail, leave the worker as it was.
+        process.exit = exit;
+        syncBuiltinESMExports();
+        LISTENED.forEach((event, index) => {
+          process.removeAllListeners(event);
+          for (const listener of listeners[index]!) process.on(event, listener as (...args: unknown[]) => void);
+        });
+        process.exitCode = exitCode;
+      }
+    });
   });
 
   it("answers the testing guide's first run exactly as documented", async () => {

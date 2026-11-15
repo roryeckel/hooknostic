@@ -53,6 +53,19 @@ export interface DispatchEventsOptions {
   registry: AdapterRegistry;
   /** Module resolution overrides for fixture/self-hosted evaluation. */
   evaluate?: EvaluateOptions;
+  /**
+   * Told when event `index` (0-based) starts, before a command target loads
+   * its module for it, with how the target's shim runs.
+   *
+   * @internal For the `hooknostic dispatch` command's guard; not a stable API.
+   */
+  onEventStart?(index: number, execution: "command" | "module" | undefined): void;
+  /**
+   * Awaited once event `index` has its result, before the next event starts.
+   *
+   * @internal For the `hooknostic dispatch` command's guard; not a stable API.
+   */
+  onEventEnd?(index: number): Promise<void>;
 }
 
 export interface DispatchCommandOptions extends Omit<DispatchEventsOptions, "events"> {
@@ -377,6 +390,7 @@ export async function dispatchEvents(options: DispatchEventsOptions): Promise<Di
     };
     const results: DispatchResult[] = [];
     for (const [index, { event, shellDialect }] of events.entries()) {
+      options.onEventStart?.(index, adapter.shimExecution);
       // A command harness starts a fresh process for every dispatch, so no
       // module state may carry between events there; an in-process one keeps a
       // single instance for its lifetime.
@@ -392,6 +406,7 @@ export async function dispatchEvents(options: DispatchEventsOptions): Promise<Di
         ...(event.harness.version === undefined ? {} : { harnessVersion: event.harness.version }),
       });
       results.push({ ...result, target: options.target, native });
+      await options.onEventEnd?.(index);
     }
     return { ok: true, results };
   } catch (error) {
