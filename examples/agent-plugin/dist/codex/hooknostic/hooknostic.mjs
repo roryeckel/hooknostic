@@ -7495,7 +7495,8 @@ import { fileURLToPath as urlToPath } from "node:url";
 function errorMessage(error2) {
   try {
     if (error2 instanceof Error) {
-      return typeof error2.message === "string" ? error2.message : "Error";
+      const message = error2.message;
+      return typeof message === "string" ? message : "Error";
     }
   } catch {
   }

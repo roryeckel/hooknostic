@@ -489,25 +489,59 @@ describe("generated pi MCP extension", () => {
     warn.mockRestore();
   });
 
-  it("renders what pi throws as the runtime renders an error", async () => {
+  it("registers the remaining servers when an error's message getter turns hostile on a second read", async () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    const { proxy: revoked, revoke } = Proxy.revocable({}, {});
-    revoke();
-    const thrown: unknown[] = [
-      new Error("registered by another extension"),
-      new TypeError("legacy SSE transport is not supported"),
-      Object.assign(new Error("x"), { message: 42 }),
-      "a string",
-      undefined,
-      Symbol("s"),
-      { toString: () => "custom" },
-      Object.create(null),
-      new Proxy(new Error("trapped"), {
-        get: () => {
-          throw new Error("get trap");
+    const { registered, module } = await load(
+      piMcpExtensionSource({
+        registrations: ["before", "hostile", "after"].map((name) => ({
+          name,
+          type: "http" as const,
+          url: `https://example.test/${name}`,
+        })),
+        rootFromHere: ".",
+        launcherFromHere: "launcher.mjs",
+        resolveEnvironment: false,
+      }),
+    );
+    expect(() =>
+      module.default({
+        registerMcpServer: (name, config) => {
+          if (name === "hostile") throw flippingMessage();
+          registered.push([name, config]);
         },
       }),
+    ).not.toThrow();
+    expect(registered.map(([name]) => name)).toEqual(["before", "after"]);
+    expect(warn.mock.calls).toEqual([['Hooknostic could not register MCP "hostile": first read']]);
+    warn.mockRestore();
+  });
+
+  it("renders what pi throws as the runtime renders an error", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const revoked = () => {
+      const { proxy, revoke } = Proxy.revocable({}, {});
+      revoke();
+      return proxy;
+    };
+    // Factories: a stateful value cannot be shared between the extension and
+    // the runtime's rendering of it.
+    const thrown: (() => unknown)[] = [
+      () => new Error("registered by another extension"),
+      () => new TypeError("legacy SSE transport is not supported"),
+      () => Object.assign(new Error("x"), { message: 42 }),
+      () => "a string",
+      () => undefined,
+      () => Symbol("s"),
+      () => ({ toString: () => "custom" }),
+      () => Object.create(null),
+      () =>
+        new Proxy(new Error("trapped"), {
+          get: () => {
+            throw new Error("get trap");
+          },
+        }),
       revoked,
+      flippingMessage,
     ];
     const { module } = await load(
       piMcpExtensionSource({
@@ -519,15 +553,30 @@ describe("generated pi MCP extension", () => {
     );
     module.default({
       registerMcpServer: (name) => {
-        throw thrown[Number(name.slice(1))];
+        throw thrown[Number(name.slice(1))]!();
       },
     });
     const prefix = "hooknostic internal: ";
     expect(warn.mock.calls).toEqual(
       thrown.map((value, index) => [
-        `Hooknostic could not register MCP "s${index}": ${formatInternalError(value).slice(prefix.length)}`,
+        `Hooknostic could not register MCP "s${index}": ${formatInternalError(value()).slice(prefix.length)}`,
       ]),
     );
     warn.mockRestore();
   });
 });
+
+/** An Error whose message getter returns a string once, then a revoked proxy. */
+function flippingMessage(): Error {
+  const error = new Error("unused");
+  let reads = 0;
+  Object.defineProperty(error, "message", {
+    get: () => {
+      if (reads++ === 0) return "first read";
+      const { proxy, revoke } = Proxy.revocable({}, {});
+      revoke();
+      return proxy;
+    },
+  });
+  return error;
+}

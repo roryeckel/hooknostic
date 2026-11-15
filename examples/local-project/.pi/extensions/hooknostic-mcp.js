@@ -51,7 +51,11 @@ const remote = (server) => {
 // value such as a revoked proxy, which would escape this extension's factory.
 const describe = (error) => {
   try {
-    if (error instanceof Error) return typeof error.message === "string" ? error.message : "Error";
+    if (error instanceof Error) {
+      // Read once: a getter could pass the check and then return a hostile value.
+      const message = error.message;
+      return typeof message === "string" ? message : "Error";
+    }
   } catch {
     // Fall through to String().
   }
