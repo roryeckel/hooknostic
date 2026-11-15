@@ -1,4 +1,6 @@
 import { writeSync } from "node:fs";
+import { syncBuiltinESMExports } from "node:module";
+import * as nodeProcess from "node:process";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -94,6 +96,8 @@ describe("guardCommandShim", () => {
     for (const event of EVENTS) process.removeAllListeners(event);
     for (const [event, listeners] of saved) for (const listener of listeners) process.on(event, listener);
     process.exit = realExit;
+    // The guard synced the named export to its stub; bind it back to the real exit.
+    syncBuiltinESMExports();
     process.exitCode = originalExitCode;
     vi.mocked(writeSync).mockReset();
     vi.restoreAllMocks();
@@ -107,6 +111,13 @@ describe("guardCommandShim", () => {
     expect(() => process.exit(2)).toThrow("the hook source called process.exit(2)");
     expect(() => process.exit()).toThrow("the hook source called process.exit()");
     expect(exit).not.toHaveBeenCalled();
+  });
+
+  it("binds a named `exit` import from node:process to the stub itself", () => {
+    guardCommandShim(describeError);
+
+    // Without relying on claimProtocolStdout to sync builtin exports after it.
+    expect(nodeProcess.exit).toBe(process.exit);
   });
 
   it("after the decision, reports a hook source's exit once and leaves with the decided code", () => {
