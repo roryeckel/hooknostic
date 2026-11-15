@@ -8,8 +8,9 @@
  *                         (esbuild stays external: it runs at build time)
  *   dist/hooknostic.mjs   the binary, importing ./index.js (no duplicate bundle)
  *   dist/shims/<id>.mjs   each adapter's runtime shim with @hooknostic/runtime
- *                         inlined and @hooknostic/sdk external, so a built
- *                         artifact carries exactly one SDK/zod copy
+ *                         inlined and @hooknostic/sdk (root and /schemas)
+ *                         external, so a built artifact carries exactly one
+ *                         SDK/zod copy
  *   dist/types/**         declarations for this package plus the workspace
  *                         sources its API exposes, with internal specifiers
  *                         rewritten to relative paths; dist/index.d.ts
@@ -97,12 +98,14 @@ await build({
   entryPoints: SHIMS,
   outdir: join(dist, "shims"),
   outExtension: { ".js": ".mjs" },
-  external: ["@hooknostic/sdk"],
+  // The runtime validates effects through the /schemas subpath; both entries
+  // resolve from the consuming project's SDK at artifact build time.
+  external: ["@hooknostic/sdk", "@hooknostic/sdk/schemas"],
   plugins: [licenseNoticesPlugin()],
 });
 for (const id of Object.keys(SHIMS)) {
   const code = await readFile(join(dist, "shims", `${id}.mjs`), "utf8");
-  const leaked = [...code.matchAll(/\bfrom\s+"(@hooknostic\/(?!sdk")[^"]*)"/g)].map((m) => m[1]);
+  const leaked = [...code.matchAll(/\bfrom\s+"(@hooknostic\/(?!sdk(?:\/schemas)?")[^"]*)"/g)].map((m) => m[1]);
   if (leaked.length > 0) fail(`dist/shims/${id}.mjs still imports ${leaked.join(", ")}`);
   // esbuild emits this shim when a CommonJS dependency is inlined into ESM
   // output. Such a bundle throws `Dynamic require of "fs" is not supported`

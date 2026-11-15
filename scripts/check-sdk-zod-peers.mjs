@@ -22,7 +22,7 @@ const versions = range.split("||").map((part) => {
 });
 
 const consumer = `import { z } from "zod/v4";
-import { effectSchema, toolInvocationSchema } from "@hooknostic/sdk";
+import { effectSchema, toolInvocationSchema } from "@hooknostic/sdk/schemas";
 
 const sdkSchema: z.ZodType = toolInvocationSchema;
 const nested = z.object({ tool: toolInvocationSchema.extend({ label: z.string() }), effect: effectSchema });

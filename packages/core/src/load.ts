@@ -6,11 +6,12 @@ import { pathToFileURL } from "node:url";
 import { build } from "esbuild";
 
 import type { HooknosticConfig, PluginSpec } from "@hooknostic/sdk";
-import { hooknosticConfigSchema } from "@hooknostic/sdk";
+import { hooknosticConfigSchema } from "@hooknostic/sdk/schemas";
 
 import { createRequireBanner } from "./bundle-support.mjs";
 import type { Diagnostic } from "./diagnostics.js";
 import { formatSchemaIssue } from "./schema-issues.js";
+import { withSdkSubpathAliases } from "./sdk-resolution.js";
 
 export interface EvaluateOptions {
   /**
@@ -51,7 +52,7 @@ export async function stageUserModule(file: string, options?: EvaluateOptions): 
     banner: { js: createRequireBanner },
     sourcemap: "inline",
     logLevel: "silent",
-    ...(options?.alias ? { alias: options.alias } : {}),
+    ...(options?.alias ? { alias: withSdkSubpathAliases(options.alias) } : {}),
   });
   const code = bundled.outputFiles[0]?.text;
   if (code === undefined) {

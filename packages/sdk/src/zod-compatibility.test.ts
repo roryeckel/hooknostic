@@ -1,7 +1,7 @@
 import { expect, it } from "vitest";
 import { z } from "zod/v4";
 
-import { baseHookEventSchema, runtimePolicySchema, toolInvocationSchema } from "./index.js";
+import { baseHookEventSchema, runtimePolicySchema, toolInvocationSchema } from "./schemas.js";
 
 it("exports native Zod 4 schemas composable with the consumer's schemas and errors", () => {
   expect(toolInvocationSchema).toBeInstanceOf(z.ZodObject);

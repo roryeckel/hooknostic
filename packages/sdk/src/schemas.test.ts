@@ -3,30 +3,32 @@ import { describe, expect, it } from "vitest";
 import {
   addContext,
   ALL_CAPABILITY_IDS,
-  baseHookEventSchema,
   block,
   blockContinuation,
   capabilitiesForEvent,
   capabilityForEffect,
-  effectSchema,
   findNonJsonPath,
   hook,
   HOOK_EVENT_NAMES,
-  hooknosticConfigSchema,
   isJsonValue,
   isTerminalEffect,
   leastCapable,
   meetsMinimum,
   notify,
   observeCapability,
-  pluginSpecSchema,
   preventStop,
   replaceInput,
   replaceOutput,
   requestApproval,
-  toolInvocationSchema,
   updateShell,
 } from "./index.js";
+import {
+  baseHookEventSchema,
+  effectSchema,
+  hooknosticConfigSchema,
+  pluginSpecSchema,
+  toolInvocationSchema,
+} from "./schemas.js";
 
 describe("support levels", () => {
   it("orders exact > emulated > approximate > unsupported", () => {

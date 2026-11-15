@@ -6,7 +6,8 @@ import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { AGENT_PLUGIN_MANIFEST_SCHEMA, AGENT_PLUGIN_MCP_SCHEMA } from "@hooknostic/agent-plugin";
-import { type HooknosticConfig, hooknosticConfigSchema } from "@hooknostic/sdk";
+import type { HooknosticConfig } from "@hooknostic/sdk";
+import { hooknosticConfigSchema } from "@hooknostic/sdk/schemas";
 
 import { defaultAdapterRegistry } from "../../cli/src/registry.js";
 import { buildProject } from "./build.js";

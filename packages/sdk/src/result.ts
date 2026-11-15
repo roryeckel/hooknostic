@@ -1,10 +1,5 @@
-import * as z from "zod/v4";
-
 import type { Effect } from "./effects.js";
-import { EFFECT_KINDS } from "./effects.js";
 import type { HookEventName } from "./events.js";
-import { effectSchema } from "./schemas.js";
-import { hookEventNameSchema } from "./schemas.js";
 
 /** One effect as applied during composition, attributed to its hook. */
 export interface AppliedEffect {
@@ -48,6 +43,9 @@ export interface HandlerError {
  * The composed outcome of dispatching one native lifecycle event through all
  * matching portable handlers (ADR-0003). Adapters translate this into the
  * native control output; they never re-compose.
+ *
+ * Its runtime schema, `hookResultSchema`, lives in `@hooknostic/sdk/schemas`
+ * with every other Zod schema, so this module stays free of Zod.
  */
 export interface HookResult {
   schemaVersion: 1;
@@ -59,32 +57,3 @@ export interface HookResult {
   /** Handler failures, reported per the configured hook-error policy. */
   errors: HandlerError[];
 }
-
-export const runtimeDiagnosticCodeSchema = z.enum(RUNTIME_DIAGNOSTIC_CODES);
-
-export const handlerErrorSchema = z
-  .object({
-    hookId: z.string(),
-    kind: z.enum(["error", "timeout", "unsupported-effect", "budget-exceeded"]),
-    code: runtimeDiagnosticCodeSchema.optional(),
-    message: z.string(),
-  })
-  .strict();
-
-export const hookResultSchema = z
-  .object({
-    schemaVersion: z.literal(1),
-    event: hookEventNameSchema,
-    effects: z.array(
-      z
-        .object({
-          hookId: z.string(),
-          effect: effectSchema,
-          loweredFrom: z.enum(EFFECT_KINDS).optional(),
-        })
-        .strict(),
-    ),
-    terminatedBy: z.string().optional(),
-    errors: z.array(handlerErrorSchema),
-  })
-  .strict();

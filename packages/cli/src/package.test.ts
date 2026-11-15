@@ -104,8 +104,10 @@ describe("public package outputs", () => {
       const code = await readFile(resolve(REPO, `packages/cli/dist/shims/${id}.mjs`), "utf8");
       const specifiers = [...code.matchAll(/\bfrom\s+"([^"]+)"/g)].map((m) => m[1]!);
       expect(specifiers, id).toContain("@hooknostic/sdk");
+      // The runtime validates effects with the SDK's schemas subpath.
+      expect(specifiers, id).toContain("@hooknostic/sdk/schemas");
       expect(
-        specifiers.filter((s) => !s.startsWith("node:") && s !== "@hooknostic/sdk"),
+        specifiers.filter((s) => !s.startsWith("node:") && s !== "@hooknostic/sdk" && s !== "@hooknostic/sdk/schemas"),
         id,
       ).toEqual([]);
       // A shim that reaches into the compiler drags esbuild in with it, and

@@ -1,11 +1,20 @@
 import * as z from "zod/v4";
 
+import type { CapabilityId } from "./capabilities.js";
 import { ALL_CAPABILITY_IDS } from "./capabilities.js";
-import type { PackageMaterializer } from "./config.js";
+import type { PackageMaterializer, RuntimePolicy } from "./config.js";
+import type { Effect } from "./effects.js";
+import { EFFECT_KINDS } from "./effects.js";
+import type { HookEventName } from "./events.js";
 import { HOOK_EVENT_NAMES } from "./events.js";
 import { ALL_EVENT_FIELD_IDS, isEventFieldId } from "./fields.js";
+import type { TargetScope } from "./hook.js";
 import { findNonJsonPath } from "./json.js";
+import type { HandlerError, HookResult, RuntimeDiagnosticCode } from "./result.js";
+import { RUNTIME_DIAGNOSTIC_CODES } from "./result.js";
+import type { RequirementLevel, SupportLevel } from "./support.js";
 import { SUPPORT_LEVELS } from "./support.js";
+import type { ShellDialect, ToolInvocation, ToolKind } from "./tools.js";
 import { SHELL_DIALECTS, TOOL_KINDS } from "./tools.js";
 
 /**
@@ -13,6 +22,11 @@ import { SHELL_DIALECTS, TOOL_KINDS } from "./tools.js";
  * the fields Hooknostic controls; vendor payloads are only ever carried in
  * `raw` and are never validated here (tolerant-reader rule applies at the
  * adapter decode layer, not the canonical layer).
+ *
+ * This module is the `@hooknostic/sdk/schemas` entry and the only SDK module
+ * that imports Zod. The root entry must never import it, so hook and config
+ * authors need no Zod install (ADR-0040); tests in `packages/cli` hold the root
+ * runtime graph and declaration graph to that.
  */
 
 export const hookEventNameSchema = z.enum(HOOK_EVENT_NAMES);
@@ -485,3 +499,85 @@ export const pluginSpecSchema = z
     hooks: z.array(hookDefinitionSchema),
   })
   .strict();
+
+export const runtimeDiagnosticCodeSchema = z.enum(RUNTIME_DIAGNOSTIC_CODES);
+
+export const handlerErrorSchema = z
+  .object({
+    hookId: z.string(),
+    kind: z.enum(["error", "timeout", "unsupported-effect", "budget-exceeded"]),
+    code: runtimeDiagnosticCodeSchema.optional(),
+    message: z.string(),
+  })
+  .strict();
+
+export const hookResultSchema = z
+  .object({
+    schemaVersion: z.literal(1),
+    event: hookEventNameSchema,
+    effects: z.array(
+      z
+        .object({
+          hookId: z.string(),
+          effect: effectSchema,
+          loweredFrom: z.enum(EFFECT_KINDS).optional(),
+        })
+        .strict(),
+    ),
+    terminatedBy: z.string().optional(),
+    errors: z.array(handlerErrorSchema),
+  })
+  .strict();
+
+/*
+ * The root entry declares its types in plain TypeScript so that resolving them
+ * never needs Zod. These compile-time checks hold each schema's inferred output
+ * equal to the root type it validates, so the two cannot drift apart silently.
+ *
+ * Zod 4 infers an `.optional()` key as `key?: T | undefined`, where the root
+ * types, written under `exactOptionalPropertyTypes`, say `key?: T`. `Exact`
+ * removes that one systematic difference, recursively, before comparing.
+ *
+ * Schemas without a check here differ from their root type by design: the
+ * schema is deliberately looser or stricter than the type, and identity would
+ * mean changing a public type. `eventFieldIdSchema` infers `string`;
+ * `baseHookEventSchema` passes event-specific fields through;
+ * `compatibilityPolicySchema` and `targetConfigSchema` accept any `accept`
+ * string and refine it at runtime, where `FieldAcceptance` is a template
+ * literal; `toolMatchSchema` outputs mutable arrays where `ToolMatch` accepts
+ * readonly ones; and the config, hook and plugin schemas validate structure
+ * around functions and unions the root types spell more precisely.
+ */
+type Equals<A, B> = (<T>() => T extends A ? 1 : 2) extends <T>() => T extends B ? 1 : 2 ? true : false;
+type Assert<T extends true> = T;
+type OptionalKeys<T> = { [K in keyof T]-?: Pick<T, K> extends Required<Pick<T, K>> ? never : K }[keyof T];
+type Flatten<T> = { [K in keyof T]: T[K] };
+type Exact<T> = T extends (...args: never[]) => unknown
+  ? T
+  : T extends readonly unknown[]
+    ? { [I in keyof T]: Exact<T[I]> }
+    : T extends object
+      ? Flatten<
+          { [K in Exclude<keyof T, OptionalKeys<T>>]: Exact<T[K]> } & {
+            [K in OptionalKeys<T>]?: Exact<Exclude<T[K], undefined>>;
+          }
+        >
+      : T;
+type Matches<S extends z.ZodType, T> = Equals<Exact<z.output<S>>, Exact<T>>;
+
+// Module-private: a compile error here is the whole point, and nothing exports it.
+type _SchemasMatchRootTypes = [
+  Assert<Matches<typeof hookEventNameSchema, HookEventName>>,
+  Assert<Matches<typeof capabilityIdSchema, CapabilityId>>,
+  Assert<Matches<typeof supportLevelSchema, SupportLevel>>,
+  Assert<Matches<typeof requirementLevelSchema, RequirementLevel>>,
+  Assert<Matches<typeof toolKindSchema, ToolKind>>,
+  Assert<Matches<typeof shellDialectSchema, ShellDialect>>,
+  Assert<Matches<typeof toolInvocationSchema, ToolInvocation>>,
+  Assert<Matches<typeof effectSchema, Effect>>,
+  Assert<Matches<typeof runtimePolicySchema, RuntimePolicy>>,
+  Assert<Matches<typeof targetScopeSchema, TargetScope>>,
+  Assert<Matches<typeof runtimeDiagnosticCodeSchema, RuntimeDiagnosticCode>>,
+  Assert<Matches<typeof handlerErrorSchema, HandlerError>>,
+  Assert<Matches<typeof hookResultSchema, HookResult>>,
+];

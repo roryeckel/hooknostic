@@ -26,13 +26,8 @@ import {
 } from "@hooknostic/core";
 import { dispatch } from "@hooknostic/runtime";
 import type { EventFieldId, HookEvent, HookEventName, HookResult, PluginSpec, ShellDialect } from "@hooknostic/sdk";
-import {
-  baseHookEventSchema,
-  fieldsForEvent,
-  isToolScopedEvent,
-  readEventField,
-  SHELL_DIALECTS,
-} from "@hooknostic/sdk";
+import { fieldsForEvent, isToolScopedEvent, readEventField, SHELL_DIALECTS } from "@hooknostic/sdk";
+import { baseHookEventSchema } from "@hooknostic/sdk/schemas";
 
 import type { CommandIO } from "./check.js";
 

@@ -70,8 +70,12 @@ it("carries dependency license and notice text plus source legal comments throug
 });
 
 it("includes the SDK's own license in standalone runtimes as well as third-party licenses", async () => {
+  // Every shim validates effects through the /schemas subpath, which is what brings Zod in;
+  // the root alias alone must resolve that subpath too.
   const result = await bundleRuntime({
-    source: 'import { block } from "@hooknostic/sdk"; console.log(block("review"));',
+    source:
+      'import { block } from "@hooknostic/sdk"; import { effectSchema } from "@hooknostic/sdk/schemas";' +
+      ' console.log(effectSchema.parse(block("review")));',
     resolveDir: import.meta.dirname,
     alias: { "@hooknostic/sdk": resolve(import.meta.dirname, "../../sdk/src/index.ts") },
   });

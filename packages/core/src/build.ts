@@ -1308,6 +1308,8 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
           phase = "bundling";
           const resolved = adapter.capabilities(spec);
           const compatibility = effectiveCompatibility(config, id);
+          // bundleRuntime adds the SDK's /schemas sibling to this entry-file
+          // alias, and lets those schemas fall back to Hooknostic's own Zod.
           const alias = {
             ...adapter.shimAliases?.(),
             ...(projectSdk === undefined ? {} : { "@hooknostic/sdk": projectSdk }),

@@ -19,12 +19,12 @@ import {
   canonicalCapability,
   capabilityForEffect,
   DEFAULT_RUNTIME,
-  effectSchema,
   hookAppliesToTarget,
   isTerminalEffect,
   matchesTool,
   meetsMinimum,
 } from "@hooknostic/sdk";
+import { effectSchema } from "@hooknostic/sdk/schemas";
 
 import { errorMessage } from "./report.js";
 

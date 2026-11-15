@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { baseHookEventSchema } from "@hooknostic/sdk";
+import { baseHookEventSchema } from "@hooknostic/sdk/schemas";
 import { loadFixture } from "@hooknostic/testkit";
 
 import { CodexDecodeError, decodeCodex } from "./decode.js";
