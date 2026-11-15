@@ -17,6 +17,11 @@ const ROOT_VERSION = (
 ).version;
 
 const REPO = resolve(fileURLToPath(new URL(".", import.meta.url)), "../../..");
+/** The repository's TypeScript compiler, run against a consumer's own tsconfig. */
+const TSC = join(
+  dirname(createRequire(join(REPO, "package.json")).resolve("@typescript/native/package.json")),
+  "bin/tsc",
+);
 const SHIPPED_ADAPTERS = ["claude", "codex", "opencode", "pi"];
 
 interface Manifest {
@@ -25,6 +30,7 @@ interface Manifest {
   exports: Record<string, unknown>;
   dependencies?: Record<string, string>;
   peerDependencies?: Record<string, string>;
+  peerDependenciesMeta?: Record<string, { optional?: boolean }>;
 }
 
 async function manifestOf(packageDir: string): Promise<Manifest> {
@@ -78,9 +84,87 @@ describe("public package outputs", () => {
       types: "./dist/index.d.ts",
       default: "./dist/index.js",
     });
+    expect(manifest.exports["./schemas"]).toEqual({
+      types: "./dist/schemas.d.ts",
+      default: "./dist/schemas.js",
+    });
+    // Only the schemas subpath needs Zod (ADR-0040).
+    expect(manifest.peerDependencies).toEqual({ zod: expect.any(String) });
+    expect(manifest.peerDependenciesMeta).toEqual({ zod: { optional: true } });
     expect(await readFile(resolve(packageRoot, "dist/index.d.ts"), "utf8")).toContain("export");
     const sdk = await import(pathToFileURL(resolve(packageRoot, "dist/index.js")).href);
     expect(sdk.definePlugin).toBeTypeOf("function");
+    const schemas = await import(pathToFileURL(resolve(packageRoot, "dist/schemas.js")).href);
+    expect(schemas.effectSchema.parse(sdk.block("no"))).toEqual({ kind: "block", reason: "no" });
+  });
+
+  it("imports the SDK root without resolving zod", () => {
+    const dist = resolve(REPO, "packages/sdk/dist");
+    // A resolve hook that refuses zod: the root must load without ever asking
+    // for it. Spawned so Node, not vitest's module runner, does the resolving.
+    const importWithoutZod = (entry: string) =>
+      spawnSync(
+        process.execPath,
+        [
+          "--input-type=module",
+          "--no-warnings",
+          "-e",
+          `import { registerHooks } from "node:module";
+           registerHooks({
+             resolve(specifier, context, next) {
+               if (/^zod(?:\\/|$)/.test(specifier)) throw new Error("zod requested: " + specifier);
+               return next(specifier, context);
+             },
+           });
+           const sdk = await import(${JSON.stringify(pathToFileURL(join(dist, entry)).href)});
+           console.log(Object.keys(sdk).length);`,
+        ],
+        { encoding: "utf8", timeout: 30_000 },
+      );
+    const root = importWithoutZod("index.js");
+    expect(root.status, root.stderr).toBe(0);
+    expect(Number(root.stdout.trim())).toBeGreaterThan(0);
+    // The hook is live: the subpath that does need Zod is refused under it.
+    const schemas = importWithoutZod("schemas.js");
+    expect(schemas.status).not.toBe(0);
+    expect(schemas.stderr).toContain("zod requested: zod/v4");
+  });
+
+  it("emits SDK root declarations whose module graph never references zod", async () => {
+    const dist = resolve(REPO, "packages/sdk/dist");
+    /** Every specifier a declaration file imports, re-exports, or references. */
+    const specifiersOf = (code: string) =>
+      [
+        ...code.matchAll(/\bfrom\s+["']([^"']+)["']/g),
+        ...code.matchAll(/\bimport\s*\(\s*["']([^"']+)["']\s*\)/g),
+        ...code.matchAll(/^\s*import\s+["']([^"']+)["']/gm),
+        ...code.matchAll(/\/\/\/\s*<reference\s+(?:types|path)=["']([^"']+)["']/g),
+      ].map((match) => match[1]!);
+    const graphOf = async (entry: string) => {
+      const files = new Map<string, string[]>();
+      const pending = [join(dist, entry)];
+      while (pending.length > 0) {
+        const file = pending.pop()!;
+        if (files.has(file)) continue;
+        const specifiers = specifiersOf(await readFile(file, "utf8"));
+        files.set(file, specifiers);
+        for (const specifier of specifiers.filter((s) => s.startsWith("."))) {
+          pending.push(resolve(dirname(file), specifier.replace(/\.js$/, ".d.ts")));
+        }
+      }
+      return files;
+    };
+    const bareOf = (graph: Map<string, string[]>) =>
+      [...graph.values()].flat().filter((specifier) => !specifier.startsWith("."));
+
+    const root = await graphOf("index.d.ts");
+    // The walk reached the modules behind the root's re-exports.
+    expect([...root.keys()].map((file) => file.slice(dist.length + 1).replaceAll("\\", "/"))).toEqual(
+      expect.arrayContaining(["index.d.ts", "config.d.ts", "hook.d.ts", "plugin.d.ts", "result.d.ts"]),
+    );
+    expect(bareOf(root).filter((specifier) => /^zod(?:\/|$)/.test(specifier))).toEqual([]);
+    // The same walk does find Zod behind the subpath that needs it.
+    expect(bareOf(await graphOf("schemas.d.ts"))).toContain("zod/v4");
   });
 
   it("ships a runnable programmatic CLI entry alongside the binary", async () => {
@@ -176,13 +260,12 @@ describe("simulated registry install", () => {
       ];
       const published = new Set(installs.map(([manifest]) => manifest.name));
       // Install only declared dependencies: Yarn 1, and pnpm without
-      // auto-install-peers, never add a missing peer. The project declares the
-      // SDK's zod peer itself, as the Zod 4 upgrading guide instructs.
+      // auto-install-peers, never add a missing peer. The project declares
+      // only the SDK: authoring hooks needs no Zod (ADR-0040).
       const declared = new Map<string, Set<string>>([
         [cliRoot, new Set()],
-        [project, new Set(["zod"])],
+        [project, new Set()],
       ]);
-      await linkThirdParty("zod", sdkDir, project);
       for (const [manifest, consumerDir, installRoot] of installs) {
         for (const dependency of Object.keys(manifest.dependencies ?? {})) {
           declared.get(installRoot)!.add(dependency);
@@ -192,13 +275,21 @@ describe("simulated registry install", () => {
           await linkThirdParty(dependency, consumerDir, installRoot);
         }
       }
-      // A peer must come from a package that shares its install root, or the
-      // published package resolves it only where a client auto-installs peers.
+      // A required peer must come from a package that shares its install root,
+      // or the published package resolves it only where a client auto-installs
+      // peers. No client installs an optional one.
       for (const [manifest, , installRoot] of installs) {
         for (const peer of Object.keys(manifest.peerDependencies ?? {})) {
+          if (manifest.peerDependenciesMeta?.[peer]?.optional === true) continue;
           expect(declared.get(installRoot)!.has(peer), `${manifest.name}'s peer ${peer} in ${installRoot}`).toBe(true);
         }
       }
+      // So the project's SDK finds no Zod: the strict case, which the failed
+      // schemas import below confirms. `pnpm exec` puts the workspace's hoisted
+      // store on NODE_PATH; keep it from the children, so no CommonJS lookup
+      // can rescue a missing package either.
+      const env = { ...process.env };
+      delete env["NODE_PATH"];
       const installedAgentPlugin = await import(
         pathToFileURL(join(cliRoot, "node_modules/@hooknostic/agent-plugin/dist/index.js")).href
       );
@@ -214,14 +305,31 @@ describe("simulated registry install", () => {
         modern: { adapter: "opencode", version: ${JSON.stringify(opencodeV2Harness.recommendedRange)}, delivery: "project", output: "./dist/modern", compatibility: { minimum: "approximate", onBelowMinimum: "warn" } },`,
         ),
       );
-      const hookSource = await readFile(join(REPO, "examples/basic/src/hooks.ts"), "utf8");
-      await writeFile(
-        join(project, "src/hooks.ts"),
-        hookSource.replace(
-          'id: "observe-session-end",',
-          'id: "observe-session-end", targets: { exclude: ["modern"] },',
-        ),
-      );
+      const hookSource = (await readFile(join(REPO, "examples/basic/src/hooks.ts"), "utf8"))
+        .replace('id: "observe-session-end",', 'id: "observe-session-end", targets: { exclude: ["modern"] },')
+        // The authoring surface a Zod-free project uses: definePlugin, hook, block, updateShell.
+        .replace(
+          'import { block, definePlugin, hook } from "@hooknostic/sdk";',
+          'import { block, definePlugin, hook, updateShell } from "@hooknostic/sdk";',
+        )
+        .replace(
+          "hooks: [",
+          `hooks: [
+    hook("tool.before", {
+      id: "prefer-pnpm",
+      match: { kind: "shell" },
+      capabilities: { "input.replace": "optional" },
+      run({ tool }, ctx) {
+        const command = tool.shell?.command;
+        if (command?.startsWith("npm ") && ctx.capabilities.has("input.replace")) {
+          return updateShell({ command: command.replace(/^npm /, "pnpm ") });
+        }
+      },
+    }),`,
+        );
+      expect(hookSource).toContain("updateShell }");
+      expect(hookSource).toContain('id: "prefer-pnpm"');
+      await writeFile(join(project, "src/hooks.ts"), hookSource);
       await writeFile(
         join(project, "package.json"),
         JSON.stringify(
@@ -237,6 +345,60 @@ describe("simulated registry install", () => {
         ),
       );
 
+      // The authored files type-check against the installed SDK's declarations
+      // with library checking on, so a root declaration that needs Zod fails.
+      await writeFile(
+        join(project, "tsconfig.json"),
+        JSON.stringify({
+          compilerOptions: {
+            strict: true,
+            module: "NodeNext",
+            moduleResolution: "NodeNext",
+            target: "ES2022",
+            noEmit: true,
+            skipLibCheck: false,
+            types: [],
+          },
+          include: ["src/hooks.ts", "hooknostic.config.ts"],
+        }),
+      );
+      const typecheck = spawnSync(process.execPath, [TSC, "-p", join(project, "tsconfig.json")], {
+        cwd: project,
+        env,
+        encoding: "utf8",
+        timeout: 120_000,
+      });
+      expect(typecheck.status, `${typecheck.stdout}\n${typecheck.stderr}`).toBe(0);
+
+      // Plain Node loads the root from the project; only the schemas subpath needs Zod.
+      const importFromProject = (specifier: string) =>
+        spawnSync(
+          process.execPath,
+          [
+            "--input-type=module",
+            "-e",
+            `const sdk = await import(${JSON.stringify(specifier)}); console.log(Object.keys(sdk).length);`,
+          ],
+          { cwd: project, env, encoding: "utf8", timeout: 30_000 },
+        );
+      const rootImport = importFromProject("@hooknostic/sdk");
+      expect(rootImport.status, rootImport.stderr).toBe(0);
+      const schemasWithoutZod = importFromProject("@hooknostic/sdk/schemas");
+      expect(schemasWithoutZod.status).not.toBe(0);
+      expect(schemasWithoutZod.stderr).toMatch(/Cannot find package 'zod'/);
+
+      const check = spawnSync(
+        process.execPath,
+        [
+          join(cliRoot, "node_modules/hooknostic/bin/hooknostic.mjs"),
+          "check",
+          "--config",
+          join(project, "hooknostic.config.ts"),
+        ],
+        { cwd: project, env, encoding: "utf8", stdio: "pipe", timeout: 150_000 },
+      );
+      expect(check.status, `stdout:\n${check.stdout}\nstderr:\n${check.stderr}`).toBe(0);
+
       const run = spawnSync(
         process.execPath,
         [
@@ -246,7 +408,7 @@ describe("simulated registry install", () => {
           "--config",
           join(project, "hooknostic.config.ts"),
         ],
-        { cwd: project, encoding: "utf8", stdio: "pipe", timeout: 150_000 },
+        { cwd: project, env, encoding: "utf8", stdio: "pipe", timeout: 150_000 },
       );
       expect(run.status, `stdout:\n${run.stdout}\nstderr:\n${run.stderr}`).toBe(0);
       // Piped stdout arrived complete: the binary lets the loop drain instead of forcing exit.
@@ -266,7 +428,8 @@ describe("simulated registry install", () => {
         const code = await readFile(join(project, artifact), "utf8");
         // Self-contained: no bare workspace specifier survives bundling…
         expect(code, artifact).not.toMatch(/(from\s+|import\(|require\()["']@hooknostic\//);
-        // …and the shim shared the project's SDK instead of bundling a second zod.
+        // …and the shim shared the project's SDK, whose schemas took Zod from the
+        // CLI's install because the project has none, without a second copy.
         expect((code.match(/^\/\/ .*\/zod\/v4\/core\/errors\.js$/gm) ?? []).length, artifact).toBe(1);
         // …and nothing dragged a CommonJS build-time dependency in with it.
         expect(code, artifact).not.toContain('Dynamic require of "');
@@ -288,7 +451,7 @@ describe("simulated registry install", () => {
              throw new Error("artifact does not export HooknosticPlugin");
            }`,
         ],
-        { cwd: project, encoding: "utf8", stdio: "pipe", timeout: 60_000 },
+        { cwd: project, env, encoding: "utf8", stdio: "pipe", timeout: 60_000 },
       );
       expect(load.status, `stdout:\n${load.stdout}\nstderr:\n${load.stderr}`).toBe(0);
 
@@ -303,7 +466,7 @@ describe("simulated registry install", () => {
         if (typeof plugin.setup !== "function" || typeof plugin.id !== "string") throw new Error("missing v2 definition");
       `,
         ],
-        { cwd: project, encoding: "utf8", timeout: 60000 },
+        { cwd: project, env, encoding: "utf8", timeout: 60000 },
       );
       expect(modernLoad.status, modernLoad.stderr).toBe(0);
 
@@ -337,7 +500,7 @@ describe("simulated registry install", () => {
       const projection = spawnSync(
         process.execPath,
         [join(cliRoot, "node_modules/hooknostic/bin/hooknostic.mjs"), "build", "--config", config],
-        { cwd: project, encoding: "utf8", timeout: 60_000 },
+        { cwd: project, env, encoding: "utf8", timeout: 60_000 },
       );
       expect(projection.status, `${projection.stdout}\n${projection.stderr}`).toBe(0);
       const launcher = spawnSync(
@@ -349,10 +512,15 @@ describe("simulated registry install", () => {
           "-e",
           'console.log("standalone launcher")',
         ],
-        { cwd: project, encoding: "utf8", timeout: 10_000 },
+        { cwd: project, env, encoding: "utf8", timeout: 10_000 },
       );
       expect(launcher.status, launcher.stderr).toBe(0);
       expect(launcher.stdout.trim()).toBe("standalone launcher");
+
+      // Installing the optional peer is all the schemas subpath needs.
+      await linkThirdParty("zod", sdkDir, project);
+      const schemasWithZod = importFromProject("@hooknostic/sdk/schemas");
+      expect(schemasWithZod.status, schemasWithZod.stderr).toBe(0);
     },
   );
 });
