@@ -925,8 +925,25 @@ not cover these:
 - A line the hook source leaves unterminated on stdout or stderr. The guard tracks only
   what it writes itself, so a report that follows such a line is glued onto it.
 
-The in-process shims leave the process to their host. So does `hooknostic dispatch`,
-which runs the source in the CLI's own process (#189).
+The in-process shims leave the process to their host. `hooknostic dispatch` runs the
+source in the CLI's own process and guards it (#189):
+
+- It installs the guard once per run, since the guard owns process listeners, before it
+  claims stdout. As each event starts it calls `scope()`, so a failure that recurs is
+  reported against every event it reaches, and an exit that escaped in one event throws
+  again in the next. Each event waits one zero-delay timer before the next starts, so a
+  0 ms tail or a microtask rejection is labelled `[event N]`; that label is best effort.
+- It decides 1 up front: until every result is written, a process the hook source ends
+  is a failure. The run then exits 1 if anything was reported outside a handler, and a
+  report after the last result moves a 0 to 1. Dispatch's own 2 takes precedence, and
+  handler errors stay 0.
+- On a module target, whose shim does not intercept `process.exit`, the guard's `onExit`
+  queues each intercepted exit. If the guard reports it, the line gets a note that the
+  target's shim does not intercept it; otherwise the note gets its own line at the end
+  of the event. Either way the run exits 1, and one exit is never two lines.
+- `--unguarded` skips the guard and keeps the earlier behaviour. `dispatchEvents()` and
+  an in-process `runCli` with an injected `io` never install it: they share the
+  caller's process.
 
 Each native deadline is `ceil((sum of the event's handler budgets + processAllowanceMs) / 1000)`
 seconds: the handler budgets bound what the dispatcher runs, and the allowance covers what

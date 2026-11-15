@@ -76,6 +76,10 @@ stack under `HOOKNOSTIC_DEBUG` points into it. Fix that, and the line goes away.
 it is a defect in Hooknostic itself, such as a rewrite the host would not accept: please
 report it.
 
+`hooknostic dispatch` runs your source under the same guard, so these reports appear in
+your tests, labelled with the event, before you ship (see
+[Testing your hooks](testing-your-hooks.md#when-the-hook-source-fails-outside-a-handler)).
+
 ## Keep imported modules free of side effects
 
 Your hook source and everything it imports are bundled into one artifact, and every
