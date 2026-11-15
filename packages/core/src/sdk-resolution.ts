@@ -210,9 +210,18 @@ export function ownZodNeedsProjectInstall(
     process.versions.pnp === undefined
       ? undefined
       : (Module as { findPnpApi?: (location: string) => PnpApi | null }).findPnpApi;
-  // Without Yarn's runtime, nothing installed in a zip could be running this.
+  // No API to ask: without Yarn's runtime nothing installed in a zip could be
+  // running this, and Yarn 2 sets process.versions.pnp but has no
+  // findPnpApi. Either way the zip path is all there is to go on.
   if (findPnpApi === undefined) return true;
-  const own = findPnpApi(ownDirectory);
+  let own: PnpApi | null;
+  try {
+    own = findPnpApi(ownDirectory);
+  } catch {
+    // Yarn throws when several loaded APIs control the CLI's zip, which
+    // implies the project's lists it: keep esbuild's error.
+    return false;
+  }
   return own === null || own.findPackageLocator(projectDirectory) === null;
 }
 
@@ -289,7 +298,8 @@ const RESOLUTION_OPTIONS = [
 
 /**
  * Whether a build may use the process-lifetime cache of Hooknostic's own Zod.
- * The cache key holds only an import's kind and path, so that answer must not
+ * The cache key holds only the directory resolved from, an import's kind and
+ * its path, so that answer must not
  * depend on the build: each of {@link RESOLUTION_OPTIONS} must be absent, as a
  * key, even one set to its default value. Two exceptions are what
  * `bundleRuntime` sets: `platform` must be `"node"` (an unset one is esbuild's
@@ -406,8 +416,8 @@ function substitutionDiagnostic(substitution: ZodSubstitution): Diagnostic {
  * `build.resolve()` does apply it. When the import itself fails there, the
  * package's root, which every Zod exports, names the Zod it reached.
  *
- * Hooknostic's own Zod resolves once per import kind and path for the life of
- * the process ({@link resolveOwn}), so a Zod-free project pays one nested
+ * Hooknostic's own Zod resolves once per directory resolved from, import kind
+ * and path for the life of the process ({@link resolveOwn}), so a Zod-free project pays one nested
  * resolve, in its first bundle. Reports stay per build: `build.ts` dedupes
  * them across one build's targets, and a later build must warn again.
  *

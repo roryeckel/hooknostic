@@ -1004,6 +1004,31 @@ describe("a Yarn Plug'n'Play install outside Yarn's runtime (#183)", () => {
       }
     });
 
+    it("keeps esbuild's error when several PnP APIs control the CLI's zip", () => {
+      // Yarn's findPnpApi throws then; several APIs means the project's is one.
+      const app = join(tmpdir(), "app");
+      const ownDirectory = join(
+        app,
+        ".yarn",
+        "cache",
+        "hooknostic-npm-1.0.0.zip",
+        "node_modules",
+        "hooknostic",
+        "dist",
+      );
+      try {
+        versions["pnp"] = "3";
+        nodeModule.findPnpApi = (location: string) => {
+          throw new Error(
+            `Unable to locate pnpapi, the module '${location}' is controlled by multiple pnpapi instances.`,
+          );
+        };
+        expect(ownZodNeedsProjectInstall(true, ownDirectory, app)).toBe(false);
+      } finally {
+        leaveRuntime();
+      }
+    });
+
     it("leaves esbuild's error alone when the CLI is in the project's own install", async () => {
       // `yarn hooknostic`: the API serving Hooknostic is the project's, so
       // HN504's advice would be what the user is already doing.
