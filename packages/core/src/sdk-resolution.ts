@@ -107,8 +107,22 @@ export type ReachableZod =
   /** `version` only when the package's manifest names itself `zod`, unlike an npm alias installed as zod. */
   | { kind: "found"; directory: string; version?: string };
 
-/** The PnP manifests esbuild looks for, as it walks up from an importer. */
+/**
+ * The PnP manifests esbuild looks for. esbuild searches for one once, walking
+ * up from the build's working directory (see {@link sdkZodFallbackPlugin});
+ * {@link reachableZod} also checks each importer's ancestors, as a fallback.
+ */
 const PNP_MANIFESTS = [".pnp.data.json", ".pnp.cjs", ".pnp.js"];
+
+/** Whether `directory` or one of its ancestors holds a PnP manifest. */
+function underPnpManifest(directory: string): boolean {
+  for (let current = directory; ;) {
+    if (PNP_MANIFESTS.some((manifest) => existsSync(join(current, manifest)))) return true;
+    const parent = dirname(current);
+    if (parent === current) return false;
+    current = parent;
+  }
+}
 
 /**
  * Walk the `node_modules` lookup path from `directory`, as esbuild does for a
@@ -244,7 +258,8 @@ function substitutionDiagnostic(substitution: ZodSubstitution): Diagnostic {
  *
  * Two cases resolve first instead and read the version from the resolved
  * file's package, as this plugin always did. A Yarn Plug'n'Play project has no
- * `node_modules` to walk. And a build whose options change what a bare `zod`
+ * `node_modules` to walk; it is found as esbuild finds it, from the build's
+ * working directory. And a build whose options change what a bare `zod`
  * reaches -- an `alias` with a zod key, `nodePaths` or `preserveSymlinks` --
  * cannot be modelled by the walk: esbuild (0.28) applies `alias` only after
  * `onResolve` callbacks have seen the import as written, while a nested
@@ -267,11 +282,15 @@ export function sdkZodFallbackPlugin(onSubstitution: (diagnostic: Diagnostic) =>
     setup(build) {
       const manifests = new Map<string, OwningManifest | undefined>();
       const reported = new Set<string>();
-      const { alias, nodePaths, preserveSymlinks } = build.initialOptions;
+      const { absWorkingDir, alias, nodePaths, preserveSymlinks } = build.initialOptions;
       const optionsResolveFirst =
         Object.keys(alias ?? {}).some((key) => key === "zod" || key.startsWith("zod/")) ||
         (nodePaths?.length ?? 0) > 0 ||
         preserveSymlinks === true;
+      // esbuild looks for a PnP manifest once, walking up from the working
+      // directory, and then resolves every import through it -- including an
+      // SDK that lies outside that directory's tree.
+      const pnpProject = underPnpManifest(absWorkingDir ?? process.cwd());
       build.onResolve({ filter: /^zod(?:\/|$)/ }, async (args) => {
         // `<stdin>` (the generated shim entry) is no path, and no package owns it.
         if (args.pluginData === FALLBACK || !isAbsolute(args.importer)) return undefined;
@@ -279,7 +298,11 @@ export function sdkZodFallbackPlugin(onSubstitution: (diagnostic: Diagnostic) =>
         if (sdk?.name !== SDK) return undefined;
         const options = { kind: args.kind, importer: args.importer, pluginData: FALLBACK };
         const range = sdk.zodPeer !== undefined && semver.validRange(sdk.zodPeer) !== null ? sdk.zodPeer : undefined;
-        const reachable = optionsResolveFirst ? undefined : reachableZod(args.resolveDir);
+        const reachable: ReachableZod | undefined = optionsResolveFirst
+          ? undefined
+          : pnpProject
+            ? { kind: "pnp" }
+            : reachableZod(args.resolveDir);
         let found: ReachedZod | undefined;
         let direct: ResolveResult | undefined;
         if (reachable === undefined || reachable.kind === "pnp") {

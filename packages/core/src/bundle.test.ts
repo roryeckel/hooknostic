@@ -247,7 +247,7 @@ describe("an SDK installed without its optional Zod peer", () => {
   async function bundleRecorded(
     root: string,
     sdkEntry: string,
-    extra: Pick<BuildOptions, "alias" | "nodePaths" | "preserveSymlinks"> = {},
+    extra: Pick<BuildOptions, "absWorkingDir" | "alias" | "nodePaths" | "preserveSymlinks"> = {},
     source = SOURCE,
   ): Promise<{ code: string; diagnostics: Diagnostic[]; nested: string[] }> {
     const nested: string[] = [];
@@ -614,6 +614,24 @@ describe("an SDK installed without its optional Zod peer", () => {
         await rm(root, { recursive: true, force: true });
       }
     });
+  });
+
+  it("resolves first when the build's working directory is in a Plug'n'Play project", async () => {
+    // esbuild looks for the PnP manifest from absWorkingDir, not from each
+    // importer, so an SDK outside that directory's tree still resolves by PnP.
+    const { root, sdkEntry } = await project({ zod: "4.99.0" });
+    try {
+      const app = join(root, "app");
+      await mkdir(app);
+      // esbuild loads an empty manifest and keeps resolving through node_modules.
+      await writeFile(join(app, ".pnp.cjs"), "");
+      const result = await bundleRecorded(root, sdkEntry, { absWorkingDir: app });
+      expect(await run(root, result.code)).toBe("project zod 4.99.0: ok");
+      expect(result.diagnostics).toEqual([]);
+      expect(result.nested).toEqual([join(root, "node_modules", "@hooknostic", "sdk", "dist")]);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
   });
 });
 
