@@ -257,11 +257,15 @@ try {
     { "@hooknostic/sdk": sdk, zod: "3.24.4" },
     { packageManager },
   );
-  const installed = await run("pnpm", ["install", "--ignore-scripts"], pnpmProject);
-  const pinnedPnpm = packageManager.slice("pnpm@".length).split("+")[0];
-  assert.ok(
-    `${installed.stdout}${installed.stderr}`.includes(`using pnpm v${pinnedPnpm}`),
-    `the pnpm consumer must install with pnpm ${pinnedPnpm}`,
+  await run("pnpm", ["install", "--ignore-scripts"], pnpmProject);
+  // pnpm records the version that laid out node_modules in .modules.yaml
+  // (JSON content under pnpm 12, which is also YAML).
+  const modules = readFileSync(join(pnpmProject, "node_modules/.modules.yaml"), "utf8");
+  const installedBy = /^\s*"?packageManager"?\s*:\s*"?(pnpm@[^"\s,]+)/m.exec(modules)?.[1];
+  assert.equal(
+    installedBy,
+    packageManager.split("+")[0],
+    "the pnpm consumer must install with the repository's pinned pnpm",
   );
   // The layout under test, asserted rather than assumed: from its real path in
   // pnpm's store, the SDK reaches the project's Zod, which exports no ./v4.

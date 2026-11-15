@@ -130,8 +130,10 @@ from another dependency. The artifact must carry the CLI's in-range Zod, and
 `check` and `build` must warn HN109. It then installs a pnpm project that
 declares `zod@3.24.4`, which pnpm links as the SDK's optional peer although that
 release has no `zod/v4`, and requires the same of it, with HN109 naming the
-linked Zod's store path. The version derives from `zod-peer`; this check needs
-registry access and disables dependency install scripts.
+linked Zod's store path. Its pnpm consumers carry the repository's
+`packageManager`, so they install with the pinned pnpm rather than a global one.
+The version derives from `zod-peer`; this check needs registry access and
+disables dependency install scripts.
 
 ### Minimatch lint-tooling override: 2026-11-13
 
