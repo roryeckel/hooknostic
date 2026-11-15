@@ -8,15 +8,19 @@ selected separately through the [release workflow](../releases.md).
 
 ## Upgrade and compose schemas
 
-Install the SDK release containing this migration and upgrade your Zod peer:
+Installing `@hooknostic/sdk` with `hooknostic` is enough on its own: the CLI
+depends on a compatible Zod, and npm 7+ and pnpm 8+ install the SDK's peer
+automatically. Declare `zod@^4.6.7` yourself if your code imports `zod` to
+compose SDK schemas, as in the examples below, or if your package manager does
+not install peer dependencies. A project that declares `zod` itself, for any
+reason, moves it in the same step; an older Zod there conflicts with the SDK's
+peer:
 
 ```sh
 pnpm add -D @hooknostic/sdk hooknostic zod@^4.6.7
 ```
 
 Use regular dependencies instead if your application imports the SDK at runtime.
-The `hooknostic` CLI depends on a compatible Zod itself, so a global CLI
-install needs no separate Zod; a project that imports the SDK declares its own.
 Keep the SDK and CLI on the same Hooknostic release. Refresh your lockfile and
 rebuild generated Hooknostic artifacts with that CLI.
 

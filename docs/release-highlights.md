@@ -11,10 +11,11 @@ release and a patched Zod peer floor.
 - **SDK schemas are native Zod 4.** The `@hooknostic/sdk` schemas are Zod 4
   Classic objects and the package requires `zod: ^4.6.7` as a peer. Zod 3 schema
   composition is not interchangeable, and the V3 error API is gone: read
-  `ZodError.issues` rather than the removed `.errors` alias. The CLI declares a
-  compatible Zod of its own, so a global CLI install needs no separate Zod; a
-  project that imports the SDK declares its own. See the
-  [Zod 4 upgrading guide](upgrading/zod-4.md).
+  `ZodError.issues` rather than the removed `.errors` alias. The CLI depends on
+  a compatible Zod, so installing the SDK with the CLI is enough under a package
+  manager that installs peers (npm 7+, pnpm 8+). Declare `zod` yourself only if
+  your code imports it to compose SDK schemas, or if your package manager does
+  not install peers. See the [Zod 4 upgrading guide](upgrading/zod-4.md).
 - **A start-up allowance sizes every native deadline.** Each native deadline is
   `ceil((sum of the event's handler budgets + runtime.processAllowanceMs) /
   1000)` seconds. The allowance defaults to 5 seconds, is added once per native
@@ -38,8 +39,10 @@ release and a patched Zod peer floor.
 
 ## Upgrading from 0.11.0
 
-- **Upgrade the SDK, CLI and Zod together.** Install the SDK release containing
-  this migration and move the peer to `zod@^4.6.7`:
+- **Upgrade the SDK and CLI together.** Install the SDK release containing this
+  migration with the matching CLI. If your project declares `zod` itself, for
+  any reason, move it to `zod@^4.6.7` in the same step; an older Zod there
+  conflicts with the SDK's peer:
 
   ```sh
   pnpm add -D @hooknostic/sdk hooknostic zod@^4.6.7

@@ -121,8 +121,9 @@ export default definePlugin({
       match: { kind: "shell" },
       capabilities: { block: "required", "input.replace": "optional" },
       run({ tool }, ctx) {
-        // Normalized across harnesses; undefined only where the tool's shape is
-        // uncaptured -- and a guard refuses what it cannot read.
+        // Normalized across harnesses; undefined where the tool's shape is
+        // uncaptured or the input does not match it -- and a guard refuses what
+        // it cannot read.
         const command = tool.shell?.command;
         if (command === undefined) return block(`Unrecognized ${tool.nativeName} input`);
         if (command.includes("rm -rf /")) return block("Refusing destructive root deletion");

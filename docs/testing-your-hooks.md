@@ -55,7 +55,7 @@ ignored.
 **Tool events** (`tool.before`, `tool.after`, `tool.error`, `permission.request`)
 need a `tool` holding `nativeName` and `input`. Other events refuse one.
 These are the harness's own tool name and arguments: Claude's `Bash` takes
-`command`, while Codex's `exec_command` takes `cmd`. Dispatch classifies the
+`command`, while OpenCode v2's `shell` takes `command` and `workdir`. Dispatch classifies the
 call the way that target's decoder does and fills in `kind`, `mcp` and `shell`
 itself. An event that supplies any of the three is rejected, with the two
 exceptions described next. So Claude's

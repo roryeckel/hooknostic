@@ -15,8 +15,9 @@ export default definePlugin({
       match: { kind: "shell" },
       capabilities: { block: "required" },
       run({ tool }) {
-        // Undefined only where the tool's shape is uncaptured: a guard refuses
-        // what it cannot read rather than letting it through unchecked.
+        // Undefined where the tool's shape is uncaptured or the input does not
+        // match it: a guard refuses what it cannot read rather than letting it
+        // through unchecked.
         const command = tool.shell?.command;
         if (command === undefined) return block(`Unrecognized ${tool.nativeName} input`);
         if (/git\s+push\s+.*--force(?!-with-lease)/.test(command)) {

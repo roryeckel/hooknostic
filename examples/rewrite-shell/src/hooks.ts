@@ -17,8 +17,9 @@ export default definePlugin({
       capabilities: { block: "required", "input.replace": "optional" },
       run({ tool }, ctx) {
         // The normalized command, whichever key the harness uses. Undefined
-        // only for a shell tool whose shape is uncaptured: a guard that cannot
-        // read the command refuses it rather than guessing.
+        // for a shell tool whose shape is uncaptured or whose input does not
+        // match it: a guard that cannot read the command refuses it rather
+        // than guessing.
         const command = tool.shell?.command;
         if (command === undefined) return block(`Unrecognized ${tool.nativeName} input`);
         if (command.includes("rm -rf /")) {
@@ -27,8 +28,8 @@ export default definePlugin({
 
         if (ctx.capabilities.has("input.replace") && command.startsWith("npm ")) {
           // Portable write-back: the rewrite lands under whichever key this
-          // harness uses (`command` on Claude/OpenCode, `cmd` on Codex's
-          // exec_command), with every sibling input field preserved.
+          // harness's captured shape names, with every sibling input field
+          // (OpenCode v2's `workdir`, say) preserved.
           return updateShell({ command: command.replace(/^npm /, "pnpm ") });
         }
       },
