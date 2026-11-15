@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from "node:fs/promises";
-import { createRequire } from "node:module";
+import Module, { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 
@@ -11,7 +11,7 @@ import { describe, expect, it, vi } from "vitest";
 
 // testkit depends on core, so core's tests reach this dependency-free helper by path.
 import { type SyntheticPnpPackage, writeSyntheticPnpProject } from "../../testkit/src/synthetic-pnp.js";
-import { bundleHasMainModuleGuard, bundleRuntime, PnpRuntimeRequiredError } from "./bundle.js";
+import { bundleHasMainModuleGuard, bundleRuntime, pnpRuntimeFailure, PnpRuntimeRequiredError } from "./bundle.js";
 import type { Diagnostic } from "./diagnostics.js";
 import {
   ownZodNeedsProjectInstall,
@@ -895,11 +895,12 @@ describe("a Yarn Plug'n'Play install outside Yarn's runtime (#183)", () => {
 
   it("blames the project's install for Hooknostic's own Zod only when Hooknostic runs from a Yarn install", () => {
     // `yarn dlx` installs the CLI in a zip that the project's manifest does not list.
+    const app = join(tmpdir(), "app");
     const dlx = join(tmpdir(), "dlx-1", ".yarn", "cache", "hooknostic-npm-1.0.0-0.zip", "node_modules", "hooknostic");
-    const installed = join(tmpdir(), "app", "node_modules", "hooknostic", "dist");
-    expect(ownZodNeedsProjectInstall(true, join(dlx, "dist"))).toBe(true);
-    expect(ownZodNeedsProjectInstall(true, installed)).toBe(false);
-    expect(ownZodNeedsProjectInstall(false, join(dlx, "dist"))).toBe(false);
+    const installed = join(app, "node_modules", "hooknostic", "dist");
+    expect(ownZodNeedsProjectInstall(true, join(dlx, "dist"), app)).toBe(true);
+    expect(ownZodNeedsProjectInstall(true, installed, app)).toBe(false);
+    expect(ownZodNeedsProjectInstall(false, join(dlx, "dist"), app)).toBe(false);
   });
 
   it("formats the other errors of the same failure into HN504", async () => {
@@ -922,6 +923,102 @@ describe("a Yarn Plug'n'Play install outside Yarn's runtime (#183)", () => {
     } finally {
       await removePnpProject(root);
     }
+  });
+
+  describe("Hooknostic's own Zod in a Yarn install (yarn dlx)", () => {
+    /** The SDK unplugged, so its manifest is readable here as under Yarn's runtime. */
+    const unpluggedSdk: SyntheticPnpPackage = { ...sdk(false), unplugged: true };
+    /** A CLI package that depends on its own Zod, as the published one does. */
+    const cli = (withZod: boolean): SyntheticPnpPackage => ({
+      name: "hooknostic",
+      version: "1.0.0",
+      files: {
+        "package.json": JSON.stringify({ name: "hooknostic", version: "1.0.0", type: "module" }),
+        "dist/index.js": "export {};",
+      },
+      ...(withZod ? { dependencies: ["zod"] } : {}),
+    });
+    const versions = process.versions as Record<string, string | undefined>;
+    const nodeModule = Module as { findPnpApi?: (location: string) => unknown };
+
+    /**
+     * Bundle SOURCE in `root` with the guard and a fallback whose own
+     * install is `ownDirectory`; the failure's HN504, if it maps to one.
+     */
+    async function failure(root: string, ownDirectory: string) {
+      const error: unknown = await build({
+        stdin: { contents: SOURCE, resolveDir: root },
+        absWorkingDir: root,
+        bundle: true,
+        format: "esm",
+        platform: "node",
+        write: false,
+        logLevel: "silent",
+        plugins: [pnpRuntimeGuardPlugin(), sdkZodFallbackPlugin(() => {}, { ownDirectory })],
+      }).then(
+        () => undefined,
+        (error: unknown) => error,
+      );
+      expect(error, "the build must fail").toBeDefined();
+      return { error: error as { errors: { text: string }[] }, hn504: pnpRuntimeFailure(error)?.diagnostic };
+    }
+
+    /** Yarn's runtime, with a `module.findPnpApi` whose API lists only paths under `listed`. */
+    function simulateRuntime(listed: string): void {
+      versions["pnp"] = "3";
+      nodeModule.findPnpApi = () => ({
+        findPackageLocator: (location: string) =>
+          location.startsWith(listed) ? { name: "listed", reference: "workspace:." } : null,
+      });
+    }
+
+    function leaveRuntime(): void {
+      delete versions["pnp"];
+      delete nodeModule.findPnpApi;
+    }
+
+    it("reports HN504 when the CLI's own Zod is in another install", async () => {
+      const parent = await zodFreeTemporaryDirectory("hooknostic-pnp-");
+      try {
+        const root = join(parent, "app");
+        const elsewhere = join(parent, "dlx");
+        await writeSyntheticPnpProject(root, "app", [unpluggedSdk]);
+        // The dlx install: the CLI and its Zod, in zips of their own project.
+        const dlx = await writeSyntheticPnpProject(elsewhere, "dlx", [cli(true), zod]);
+        const ownDirectory = join(dlx["hooknostic"]!, "dist");
+        const { hn504 } = await failure(root, ownDirectory);
+        expect(hn504).toEqual({
+          code: "HN504",
+          severity: "error",
+          message:
+            `Hooknostic's own zod, which the SDK needs here, did not resolve from ${ownDirectory}: Hooknostic ` +
+            "runs from a Yarn install that this project's Plug'n'Play manifest does not list, as under yarn dlx.",
+          remediation: expect.stringContaining("run `yarn hooknostic`"),
+        });
+        // Under yarn dlx's own runtime, whose API does not list the project, too.
+        simulateRuntime(elsewhere);
+        expect((await failure(root, ownDirectory)).hn504?.code).toBe("HN504");
+      } finally {
+        leaveRuntime();
+        await removePnpProject(parent);
+      }
+    });
+
+    it("leaves esbuild's error alone when the CLI is in the project's own install", async () => {
+      // `yarn hooknostic`: the API serving Hooknostic is the project's, so
+      // HN504's advice would be what the user is already doing.
+      const root = await zodFreeTemporaryDirectory("hooknostic-pnp-");
+      try {
+        const roots = await writeSyntheticPnpProject(root, "app", [unpluggedSdk, cli(false)]);
+        simulateRuntime(root);
+        const { error, hn504 } = await failure(root, join(roots["hooknostic"]!, "dist"));
+        expect(hn504).toBeUndefined();
+        expect(error.errors.map((message) => message.text)).toEqual(['Could not resolve "zod/v4"']);
+      } finally {
+        leaveRuntime();
+        await removePnpProject(root);
+      }
+    });
   });
 });
 

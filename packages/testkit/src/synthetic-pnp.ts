@@ -1,5 +1,5 @@
 import { mkdir, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { crc32 } from "node:zlib";
 
 /** One package Yarn would install into its zip cache. */
@@ -10,6 +10,12 @@ export interface SyntheticPnpPackage {
   files: Record<string, string>;
   /** Names of other packages in the same layout that this one depends on. */
   dependencies?: readonly string[];
+  /**
+   * Install it as a real directory under `.yarn/unplugged`, as Yarn does for
+   * a package that must be on disk, instead of in a zip: readable without
+   * Yarn's runtime.
+   */
+  unplugged?: boolean;
 }
 
 /**
@@ -56,7 +62,8 @@ export function storedZip(files: Record<string, string>): Buffer {
 
 /**
  * A Yarn Plug'n'Play project written without Yarn: a `.pnp.data.json`
- * manifest and one stored zip per package under `.yarn/cache`, which esbuild
+ * manifest and one stored zip per package under `.yarn/cache` (or, for an
+ * unplugged one, a directory under `.yarn/unplugged`), which esbuild
  * resolves and reads through its own PnP support. A process without Yarn's
  * runtime cannot read inside those zips, exactly as with a real Yarn install.
  *
@@ -75,13 +82,24 @@ export async function writeSyntheticPnpProject(
   const roots: Record<string, string> = {};
   const registry: unknown[] = [];
   for (const pkg of packages) {
-    const zip = `${pkg.name.replace("/", "-")}-npm-${pkg.version}.zip`;
     const inside = `node_modules/${pkg.name}/`;
-    await writeFile(
-      join(cache, zip),
-      storedZip(Object.fromEntries(Object.entries(pkg.files).map(([path, text]) => [`${inside}${path}`, text]))),
-    );
-    roots[pkg.name] = join(cache, zip, ...inside.split("/"));
+    let location: string;
+    if (pkg.unplugged === true) {
+      location = `.yarn/unplugged/${pkg.name.replace("/", "-")}-npm-${pkg.version}/${inside}`;
+      for (const [path, text] of Object.entries(pkg.files)) {
+        const file = join(root, ...location.split("/"), ...path.split("/"));
+        await mkdir(dirname(file), { recursive: true });
+        await writeFile(file, text);
+      }
+    } else {
+      const zip = `${pkg.name.replace("/", "-")}-npm-${pkg.version}.zip`;
+      location = `.yarn/cache/${zip}/${inside}`;
+      await writeFile(
+        join(cache, zip),
+        storedZip(Object.fromEntries(Object.entries(pkg.files).map(([path, text]) => [`${inside}${path}`, text]))),
+      );
+    }
+    roots[pkg.name] = join(root, ...location.split("/"));
     const dependencies = [pkg.name, ...(pkg.dependencies ?? [])].map((dependency) => {
       const target = byName.get(dependency);
       if (target === undefined) throw new Error(`synthetic PnP: ${pkg.name} depends on unknown ${dependency}`);
@@ -89,12 +107,7 @@ export async function writeSyntheticPnpProject(
     });
     registry.push([
       pkg.name,
-      [
-        [
-          reference(pkg),
-          { packageLocation: `./.yarn/cache/${zip}/${inside}`, packageDependencies: dependencies, linkType: "HARD" },
-        ],
-      ],
+      [[reference(pkg), { packageLocation: `./${location}`, packageDependencies: dependencies, linkType: "HARD" }]],
     ]);
   }
   const project = {

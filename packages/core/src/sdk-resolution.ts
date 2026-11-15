@@ -1,4 +1,5 @@
 import { existsSync, readFileSync, realpathSync } from "node:fs";
+import Module from "node:module";
 import { basename, dirname, extname, isAbsolute, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -162,7 +163,7 @@ export function pnpRuntimeGuardPlugin(): Plugin {
       if (process.versions.pnp !== undefined) return;
       const manifest = pnpManifest(build.initialOptions.absWorkingDir ?? process.cwd());
       if (manifest === undefined) return;
-      build.onLoad({ filter: PNP_PATH }, (args) => {
+      build.onLoad({ filter: PNP_PATH, namespace: "file" }, (args) => {
         if (existsSync(args.path)) return undefined;
         return {
           errors: [
@@ -180,14 +181,39 @@ export function pnpRuntimeGuardPlugin(): Plugin {
   };
 }
 
+/** The part of Yarn's PnP API this module asks: which package a path belongs to. */
+interface PnpApi {
+  findPackageLocator(location: string): unknown;
+}
+
 /**
  * Whether Hooknostic's own Zod failed to resolve because Hooknostic itself
  * runs from a Yarn install that the project's PnP manifest does not list, as
  * under `yarn dlx`. esbuild reads one PnP manifest per build, the project's,
  * so nothing installed beside the CLI resolves from it.
+ *
+ * A Hooknostic in a zip is not enough to say so: under `yarn hooknostic`
+ * the CLI is in the project's own install, and a failure there has another
+ * cause, which esbuild's own error states. Under Yarn's runtime, which
+ * `yarn dlx` also loads (its own, not the project's), `module.findPnpApi`
+ * returns the API that serves Hooknostic -- it asks the loaded APIs first,
+ * so this holds in a global cache too -- and only an API that does not list
+ * the project means another install.
  */
-export function ownZodNeedsProjectInstall(pnpProject: boolean, ownDirectory: string): boolean {
-  return pnpProject && PNP_PATH.test(ownDirectory);
+export function ownZodNeedsProjectInstall(
+  pnpProject: boolean,
+  ownDirectory: string,
+  projectDirectory: string,
+): boolean {
+  if (!pnpProject || !PNP_PATH.test(ownDirectory)) return false;
+  const findPnpApi =
+    process.versions.pnp === undefined
+      ? undefined
+      : (Module as { findPnpApi?: (location: string) => PnpApi | null }).findPnpApi;
+  // Without Yarn's runtime, nothing installed in a zip could be running this.
+  if (findPnpApi === undefined) return true;
+  const own = findPnpApi(ownDirectory);
+  return own === null || own.findPackageLocator(projectDirectory) === null;
 }
 
 /**
@@ -227,7 +253,8 @@ const FALLBACK = "hooknostic-sdk-zod-fallback";
 const OWN_DIRECTORY = dirname(fileURLToPath(import.meta.url));
 
 /**
- * Hooknostic's own Zod, by import kind and path, for the life of the process:
+ * Hooknostic's own Zod, by the directory it resolves from (the install, unless
+ * a test places one), import kind and path, for the life of the process:
  * the CLI's install does not change under a running CLI. A cached file that has
  * since disappeared is resolved again.
  */
@@ -287,11 +314,12 @@ async function resolveOwn(
   path: string,
   options: { kind: ImportKind; importer: string; pluginData: string },
   cache: boolean,
+  ownDirectory: string,
 ): Promise<ResolveResult> {
-  const key = `${options.kind}\0${path}`;
+  const key = `${ownDirectory}\0${options.kind}\0${path}`;
   const cached = cache ? ownResolutions.get(key) : undefined;
   if (cached !== undefined && existsSync(cached.path)) return cached;
-  const own = await build.resolve(path, { ...options, resolveDir: OWN_DIRECTORY });
+  const own = await build.resolve(path, { ...options, resolveDir: ownDirectory });
   if (cache && own.errors.length === 0) ownResolutions.set(key, own);
   return own;
 }
@@ -387,8 +415,15 @@ function substitutionDiagnostic(substitution: ZodSubstitution): Diagnostic {
  * range keeps one shared copy, the one its SDK resolves; user code that imports
  * Zod resolves it the normal way, and without one installed still fails, as it
  * does when the entry is evaluated.
+ *
+ * `options.ownDirectory` stands in for where Hooknostic's own dependencies
+ * resolve, so tests can place that install, as `yarn dlx` does.
  */
-export function sdkZodFallbackPlugin(onSubstitution: (diagnostic: Diagnostic) => void = () => {}): Plugin {
+export function sdkZodFallbackPlugin(
+  onSubstitution: (diagnostic: Diagnostic) => void = () => {},
+  options: { ownDirectory?: string } = {},
+): Plugin {
+  const ownDirectory = options.ownDirectory ?? OWN_DIRECTORY;
   return {
     name: FALLBACK,
     setup(build) {
@@ -396,11 +431,12 @@ export function sdkZodFallbackPlugin(onSubstitution: (diagnostic: Diagnostic) =>
       const reported = new Set<string>();
       const { absWorkingDir, alias, nodePaths, preserveSymlinks } = build.initialOptions;
       const optionsResolveFirst = aliasesZod(alias) || (nodePaths?.length ?? 0) > 0 || preserveSymlinks === true;
+      const projectDirectory = absWorkingDir ?? process.cwd();
       // esbuild looks for a PnP manifest once, walking up from the working
       // directory. Once it finds one, an importer the manifest has a locator
       // for resolves through PnP and any other falls back to node_modules,
       // and the walk cannot tell which serves the SDK's import: resolve first.
-      const pnpProject = pnpManifest(absWorkingDir ?? process.cwd()) !== undefined;
+      const pnpProject = pnpManifest(projectDirectory) !== undefined;
       // Every resolve-first option is also a resolution option, so a build
       // that resolves first never caches.
       const cacheable = cachesOwnZod(build.initialOptions);
@@ -459,15 +495,15 @@ export function sdkZodFallbackPlugin(onSubstitution: (diagnostic: Diagnostic) =>
             range,
           };
         }
-        const own = await resolveOwn(build, args.path, options, cacheable);
+        const own = await resolveOwn(build, args.path, options, cacheable, ownDirectory);
         if (own.errors.length > 0) {
           // Not a broken CLI: one this project's install cannot see (HN504).
-          if (ownZodNeedsProjectInstall(pnpProject, OWN_DIRECTORY)) {
+          if (ownZodNeedsProjectInstall(pnpProject, ownDirectory, projectDirectory)) {
             return {
               errors: [
                 {
                   text:
-                    `Hooknostic's own zod, which the SDK needs here, did not resolve from ${OWN_DIRECTORY}: ` +
+                    `Hooknostic's own zod, which the SDK needs here, did not resolve from ${ownDirectory}: ` +
                     "Hooknostic runs from a Yarn install that this project's Plug'n'Play manifest does not list, " +
                     "as under yarn dlx.",
                   detail: PNP_RUNTIME_REQUIRED,
@@ -482,7 +518,7 @@ export function sdkZodFallbackPlugin(onSubstitution: (diagnostic: Diagnostic) =>
             const note = {
               text:
                 `${reachedText(found)}, outside the SDK's zod peer range ${found.range}, ` +
-                `and Hooknostic's own zod, which would replace it, did not resolve from ${OWN_DIRECTORY}.`,
+                `and Hooknostic's own zod, which would replace it, did not resolve from ${ownDirectory}.`,
             };
             return { errors: own.errors.map((error) => ({ ...error, notes: [...error.notes, note] })) };
           }
