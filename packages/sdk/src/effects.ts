@@ -42,8 +42,8 @@ export interface ReplaceOutputEffect {
 /**
  * Portable shell-command rewrite. Lowered at dispatch to a {@link
  * ReplaceInputEffect} through the target's shell codec: the command lands
- * under the native key (`command` for Claude's `Bash`, `cmd` for Codex's
- * `exec_command`) with every sibling input key preserved.
+ * under the native key the target's shape table names, with every sibling
+ * input key preserved.
  *
  * Legal only when `event.tool.shell` is defined -- that is the signal that the
  * tool's argument shape is captured. Returning it for an uncaptured shape is

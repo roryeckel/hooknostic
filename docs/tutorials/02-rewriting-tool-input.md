@@ -38,9 +38,9 @@ hook("tool.before", {
 
 Both the read and the write are portable here. `event.tool.shell.command` is
 normalized by the adapter, and `updateShell` reverses the same mapping: the new
-command lands under whichever key this harness's tool actually uses — `command` for
-Claude's `Bash`, `cmd` for Codex's `exec_command` — with every sibling input field
-preserved. One hook body, every captured shell shape.
+command lands under whichever key this harness's captured shape names, with every
+sibling input field — OpenCode v2's `workdir`, say — preserved. One hook body, every
+captured shell shape.
 
 ## How required and optional differ
 
@@ -89,9 +89,10 @@ Two, in increasing rawness — the portable path never replaces them:
    fixtures. Note `replaceInput` replaces the *whole* input object — spread the
    original and change only what you mean to.
 
-2. **Fully native.** When `tool.shell` is undefined, the shape is uncaptured: read
-   `tool.input` directly, treat the tool as unknown rather than assuming a key, and use
-   `replaceInput` with whatever native shape you have verified yourself.
+2. **Fully native.** When `tool.shell` is undefined, the shape is uncaptured or the
+   input does not match it: read `tool.input` directly, treat the tool as unknown
+   rather than assuming a key, and use `replaceInput` with whatever native shape you
+   have verified yourself.
    `rawInputString(tool, key)` reads one string argument without the cast-and-`typeof`
    dance — pair it with a `nativeName` check, because the key is per harness.
 
