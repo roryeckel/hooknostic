@@ -1,28 +1,35 @@
 # Migrating SDK consumers to Zod 4
 
-The SDK now exports native Zod 4 Classic schemas and requires `zod: ^4.6.7`
+The SDK now exports native Zod 4 Classic schemas, which need `zod: ^4.6.7`
 as a peer dependency. This is an explicit SDK breaking change. It replaces the
 Zod 3 schema API exported by earlier releases, including when those schemas
 were composed with a consumer's own Zod 3 instance. The package version is
 selected separately through the [release workflow](../releases.md).
 
+> A later release moves these schemas to `@hooknostic/sdk/schemas` and makes
+> the `zod` peer optional, needed only to import that subpath. The examples
+> below show the earlier root import before and the subpath after. See
+> [importing SDK schemas](sdk-schemas-subpath.md).
+
 ## Upgrade and compose schemas
 
-Installing `@hooknostic/sdk` with `hooknostic` is enough on its own: the CLI
-depends on a compatible Zod, and npm 7+ and pnpm 8+ install the SDK's peer
-automatically. Declare `zod@^4.6.7` yourself if your code imports `zod` to
-compose SDK schemas, as in the examples below, or if your package manager does
-not install peer dependencies. A project that declares `zod` itself, for any
-reason, moves it in the same step; an older Zod there conflicts with the SDK's
-peer:
+Upgrade the SDK and CLI together. Hook authors need no Zod: writing hooks and
+configuration never loads it, and generated runtimes use the `hooknostic`
+CLI's own Zod when your project has none. Install `zod@^4.6.7` beside the SDK
+only if your code imports `@hooknostic/sdk/schemas`, for example to compose
+SDK schemas as in the examples below:
 
 ```sh
 pnpm add -D @hooknostic/sdk hooknostic zod@^4.6.7
 ```
 
-Use regular dependencies instead if your application imports the SDK at runtime.
-Keep the SDK and CLI on the same Hooknostic release. Refresh your lockfile and
-rebuild generated Hooknostic artifacts with that CLI.
+A project that declares `zod` itself, for any reason, keeps it at `^4.6.7` or
+a newer 4.x floor and moves it in the same step: an older declared Zod
+conflicts with the SDK's peer, and npm refuses the install with `ERESOLVE`.
+
+Use regular dependencies instead if your application imports the schemas at
+runtime. Keep the SDK and CLI on the same Hooknostic release. Refresh your
+lockfile and rebuild generated Hooknostic artifacts with that CLI.
 
 Before, with Zod 3:
 
@@ -39,7 +46,7 @@ After:
 
 ```ts
 import * as z from "zod/v4";
-import { toolInvocationSchema } from "@hooknostic/sdk";
+import { toolInvocationSchema } from "@hooknostic/sdk/schemas";
 
 const schema = z.object({
   tool: toolInvocationSchema.extend({ label: z.string() }),

@@ -980,11 +980,18 @@ pnpm TypeScript monorepo; adapters are internal workspace packages. The SDK, Age
 loader/contracts, and CLI are published. The published CLI is therefore
 self-contained (`packages/cli/scripts/bundle.mjs`): core and the adapters are inlined into
 `dist/index.js`; each adapter's runtime shim is prebundled into `dist/shims/<id>.mjs`
-(runtime inlined, SDK external — the build aliases `@hooknostic/sdk` to the user project's
-copy so an artifact carries exactly one SDK/zod copy); and the emitted declarations import
+(runtime inlined, SDK root and `/schemas` external — the build aliases both to the user
+project's copy so an artifact carries exactly one SDK/zod copy, the SDK's schemas taking
+Zod from the project when it installs one and from the CLI's own dependency otherwise,
+[ADR-0040](decisions/0040-sdk-schemas-subpath.md)); and the emitted declarations import
 nothing but `@hooknostic/sdk`. `packages/cli/src/package.test.ts` proves the
 registry-install story offline. Publishing `@hooknostic/core` and `@hooknostic/testkit` for
 third-party adapters is a post-stabilization step that reuses the SDK's dist pattern.
+
+The SDK has two entries. The root, `@hooknostic/sdk`, is the authoring API and
+canonical types in plain TypeScript; it loads no Zod at runtime and names none in its
+declarations, so authors install no Zod. `@hooknostic/sdk/schemas` holds the Zod 4
+runtime schemas and needs the SDK's optional `zod` peer.
 
 ```
 hooknostic/
@@ -996,7 +1003,7 @@ hooknostic/
 
 | Package | Public? | Purpose |
 | --- | --- | --- |
-| `@hooknostic/sdk` | Yes | Authoring API and public types. |
+| `@hooknostic/sdk` | Yes | Authoring API and public types; Zod runtime schemas at `@hooknostic/sdk/schemas`. |
 | `@hooknostic/agent-plugin` | Yes | Agent Plugins 1.0 loader, schemas, and projection contracts. |
 | `hooknostic` | Yes | CLI binary. |
 | `@hooknostic/core` | Not initially | Compiler/IR/capability analysis. |

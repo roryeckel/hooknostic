@@ -46,6 +46,7 @@ Read these when you want to know *why* something works the way it does, not just
 | [0037 — Build-time harness and sibling skill references](0037-skill-context-tokens.md) | How can skill text identify its projection and name a sibling skill? |
 | [0038 — Per-target component exclusions](0038-per-target-component-exclusions.md) | How does one config intentionally omit content on a target, including when project discovery is shared? |
 | [0039 — A native deadline has two parts](0039-process-allowance.md) | Why does a hook budget not cover starting the hook process, and what does? |
+| [0040 — The SDK's Zod schemas are a subpath](0040-sdk-schemas-subpath.md) | Why does writing hooks need no Zod, and where did the schemas go? |
 
 Each record is immutable once accepted; a change of course gets a new record that
 supersedes the old one rather than a silent edit.

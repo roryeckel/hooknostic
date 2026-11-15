@@ -21,6 +21,10 @@ authors; the CLI already contains what it needs to project Agent Plugins.
 npm install --save-dev @hooknostic/sdk hooknostic
 ```
 
+Hook authors need no Zod. The generated runtimes carry their own copy, and only
+code that imports the SDK's runtime schemas from `@hooknostic/sdk/schemas`
+needs `zod@^4.6.7` installed.
+
 > **Not on npm yet?** While the packages are unpublished, build the exact same
 > tarballs locally from a checkout of this repo and install those instead — the
 > [publishing guide](publishing.md#testing-without-publishing-the-everyday-flow)

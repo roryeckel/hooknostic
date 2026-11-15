@@ -28,15 +28,18 @@ belong in subsequent reviewed PRs. Contribution scope remains in
 
 The default catalog holds shared external requirements. `zod4` serves core, the
 MCP example and the SDK's development dependency. The SDK exports native Zod 4
-Classic schemas from `zod/v4`, with `zod` as a peer from the separate `zod-peer`
-catalog. Renovate bumps `zod4` like any other range but replaces `zod-peer` only
-when a release falls outside it: the published peer floor is a compatibility
-decision raised deliberately, such as for a security fix, not on every Zod
-release. The published CLI also takes `zod` from `zod-peer`, as a regular
-dependency: it loads the SDK at runtime, so it supplies the SDK's peer itself
-instead of relying on package managers that auto-install peers. Sharing the
-catalog keeps that dependency equal to the peer range. All resolve to one
-installed copy. This follows the [upstream peer dependency guidance](https://zod.dev/library-authors#how-to-configure-peer-dependencies)
+Classic schemas from `zod/v4` at its `@hooknostic/sdk/schemas` subpath, with
+`zod` as an optional peer from the separate `zod-peer` catalog; the root entry
+loads no Zod, so only consumers of the subpath install it
+([ADR-0040](decisions/0040-sdk-schemas-subpath.md)). Renovate bumps `zod4` like
+any other range but replaces `zod-peer` only when a release falls outside it:
+the published peer floor is a compatibility decision raised deliberately, such
+as for a security fix, not on every Zod release. The published CLI also takes
+`zod` from `zod-peer`, as a regular dependency: it loads the SDK's schemas at
+runtime, and a generated artifact takes the SDK's Zod from the CLI's install
+when the project has none, so it supplies the peer itself instead of relying on
+a package manager to install it. Sharing the catalog keeps that dependency
+equal to the peer range. All resolve to one installed copy. This follows the [upstream peer dependency guidance](https://zod.dev/library-authors#how-to-configure-peer-dependencies)
 and lets schema types resolve against the consumer's instance. Zod 3 peers and
 V3 schema composition are no longer supported. See the
 [Zod 4 upgrading guide](upgrading/zod-4.md) for this breaking change.
