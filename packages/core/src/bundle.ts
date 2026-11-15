@@ -96,8 +96,9 @@ const MAIN_MODULE_GUARD = new RegExp(
  * such a guard end up naming the *generated artifact*. A guard that was
  * dormant in the source — it only fired when the module was run directly —
  * therefore becomes unconditionally true inside the artifact, and its CLI
- * body runs on every hook dispatch (typically consuming the harness's stdin
- * before the dispatcher can read the event payload).
+ * body runs on every hook dispatch. The shim has read the event payload by
+ * then, so the body finds stdin already consumed; its side effects still
+ * happen.
  *
  * This only misfires in artifacts the harness *executes*
  * (`shimExecution: "command"`); one the harness imports keeps `process.argv[1]`

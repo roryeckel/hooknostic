@@ -56,9 +56,9 @@ and Pi) report them on `console.error`, so the harness decides whether you see t
 On OpenCode 2.x that means `opencode run --standalone --print-logs` on the builds
 measured, as described above.
 
-A line that starts `hooknostic internal [<native hook>]:` is different. The shim hit an
-error outside any handler, so it could not run your hooks, and it let the call through
-as if no hook had run. It repeats on every event the error reaches, and
+A line that starts `hooknostic internal [<native hook>]:` is different. It names an
+error outside any handler. Usually the shim could not run your hooks, so it let the call
+through as if no hook had run. It repeats on every event the error reaches, and
 `HOOKNOSTIC_DEBUG` adds the stack on the lines after it. Every shim writes it on the
 channel it uses for handler errors: stderr from a command hook, `console.error`
 in-process. So the same visibility applies: on OpenCode 2.x, only under
@@ -67,9 +67,14 @@ in-process. So the same visibility applies: on OpenCode 2.x, only under
 Check the message first. On the command harnesses, the line also appears when your own
 hook source fails to load, because it or a module it imports throws at its top level (see
 [Keep imported modules free of side effects](#keep-imported-modules-free-of-side-effects)).
-The message is then that module's error, and the stack under `HOOKNOSTIC_DEBUG` points
-into your code. Fix that, and the line goes away. Otherwise it is a defect in Hooknostic
-itself, such as a rewrite the host would not accept: please report it.
+It also appears when code outside a handler fails later: a rejection nothing handles, an
+exception thrown from a timer or callback, or a call to `process.exit`, which reads
+`the hook source called process.exit(<code>)`. The shim reports each of these once and
+carries on, so your hooks still decide the call. If the hooks have already decided, that
+decision and its exit code stand. In each case the message is your code's error, and the
+stack under `HOOKNOSTIC_DEBUG` points into it. Fix that, and the line goes away. Otherwise
+it is a defect in Hooknostic itself, such as a rewrite the host would not accept: please
+report it.
 
 ## Keep imported modules free of side effects
 
@@ -86,13 +91,46 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
 
 After bundling, both sides name the artifact, so the guard is always true and the CLI
 runs on every dispatch. The dispatcher has read the event payload by then, so the CLI
-finds stdin already consumed, and whatever else it does happens inside your hook. A CLI
-that throws synchronously as it loads is reported as an internal error, and the call
-proceeds. A CLI that exits the process ends the hook with its own exit code and no
-reply, and an async `main()` whose rejection nothing handles crashes it the same way,
-with exit 1. On Copilot's `preToolUse` any non-zero exit is a denial, and on Claude
-Code exit 2 blocks a prompt or a compaction. `hooknostic build` warns about this
-pattern as **HN502**. Put command-line entry points in modules your hooks do not import.
+finds stdin already consumed, and whatever else it does happens inside your hook. On
+the command harnesses the shim keeps that from deciding the call. If the CLI throws
+synchronously as it loads, or calls `process.exit` before it finishes loading, the shim
+reports an internal error and the call proceeds without your hooks. If its async
+`main()` rejects or exits later, the shim reports that once and your hooks still run.
+Its side effects happen all the same, on every dispatch, so `hooknostic build` warns
+about this pattern as **HN502**. Put command-line entry points in modules your hooks do
+not import.
+
+The same holds for your own hooks: `process.exit` inside a handler does not end the
+process. It fails that handler with `the hook source called process.exit(<code>)`, and
+`runtime.onHookError` decides what follows, so a `process.exit(2)` no longer blocks on
+Claude Code. To block, return `block(...)`; to fail closed when a handler throws, set
+`onHookError: "block"`. Both are portable: they block wherever the adapter can block.
+
+The command shims cannot catch everything. They target accidental failures in your
+hook source; code that deliberately rearranges Node's process listeners can defeat
+them, because your hook source runs as trusted code and Hooknostic is not a sandbox.
+These still end the hook on their own terms:
+
+- `process.kill(process.pid)`, `process.abort()` and `process.reallyExit`.
+- An `exit` listener added after the shim finishes.
+- A listener of your own on `uncaughtException` or `uncaughtExceptionMonitor` that
+  throws, or that exits ahead of the shim's: Node exits 7.
+- `process.setUncaughtExceptionCaptureCallback(...)`: an uncaught exception is
+  swallowed, with no report.
+- `process.removeAllListeners("uncaughtException")`, or `process.removeAllListeners()`
+  with no argument: an uncaught exception then crashes the hook with no reply and no
+  report.
+- `process.removeAllListeners("unhandledRejection")` under
+  `--unhandled-rejections=warn` or `warn-with-error-code`: a rejection gets only Node's
+  own warning.
+
+The shims keep the exit code the hooks decided, but not necessarily the whole reply. An
+exit that lands while the reply is still being written can cut it short: a Claude Code
+block reason can be lost, or, where pipes are asynchronous, a JSON reply truncated. That
+was already so before the shims guarded the process.
+
+A report also starts mid-line if your code left a line on stdout or stderr without a
+newline, so end what you write with one.
 
 ## `process.execPath` is not always Node
 

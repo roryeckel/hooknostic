@@ -106,7 +106,40 @@ export function describeHandlerErrorReporting(
         await rm(dir, { recursive: true, force: true });
       }
     });
+
+    // A host that imports the artifact owns its process; a command shim owns
+    // its own, and the hook source shares it (#186).
+    if (driver.execution !== "command") return;
+    for (const failure of HOOK_SOURCE_FAILURES) {
+      it(`reports a hook source's ${failure.name} on stderr and fails open`, async () => {
+        const dir = await mkdtemp(join(tmpdir(), "hooknostic-handler-error-"));
+        try {
+          const artifact = await buildProbeArtifact(adapter, driver.event, dir, options.version, failure.top);
+          const input = await readFile(join(options.fixturesDir, driver.input), "utf8");
+          const result = await runCommand(artifact, driver.args ?? [], input);
+          expect(result.code, result.stderr).toBe(0);
+          expect(result.stderr).toMatch(internalErrorLine(failure.message));
+        } finally {
+          await rm(dir, { recursive: true, force: true });
+        }
+      });
+    }
   });
+}
+
+/** What a hook source can do to the process a command shim shares with it. */
+const HOOK_SOURCE_FAILURES = [
+  {
+    name: "top-level rejection",
+    top: `Promise.reject(new Error("probe source rejected on purpose"));`,
+    message: "probe source rejected on purpose",
+  },
+  { name: "process.exit(2)", top: "process.exit(2);", message: "the hook source called process.exit(2)" },
+] as const;
+
+/** The whole line `formatInternalError` writes for `message`, with or without a hook name. */
+function internalErrorLine(message: string): RegExp {
+  return new RegExp(`^hooknostic internal(?: \\[[^\\]]+\\])?: ${message.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`, "m");
 }
 
 async function buildProbeArtifact(
@@ -114,12 +147,14 @@ async function buildProbeArtifact(
   event: HookEventName,
   dir: string,
   version = adapter.harness.recommendedRange,
+  top = "",
 ): Promise<string> {
   const entryPath = join(dir, "hooks.ts");
   await writeFile(
     entryPath,
     [
       `import { definePlugin, hook } from "@hooknostic/sdk";`,
+      top,
       `export default definePlugin({ name: "handler-error-probe", hooks: [`,
       `  hook(${JSON.stringify(event)}, { id: ${JSON.stringify(HANDLER_ERROR_PROBE.hookId)}, run() {`,
       `    throw new Error(${JSON.stringify(HANDLER_ERROR_PROBE.message)});`,
