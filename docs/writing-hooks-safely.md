@@ -106,14 +106,28 @@ process. It fails that handler with `the hook source called process.exit(<code>)
 Claude Code. To block, return `block(...)`; to fail closed when a handler throws, set
 `onHookError: "block"`. Both are portable: they block wherever the adapter can block.
 
-The command shims cannot catch everything. These still end the process on their own
-terms:
+The command shims cannot catch everything. They target accidental failures in your
+hook source; code that deliberately rearranges Node's process listeners can defeat
+them, because your hook source runs as trusted code and Hooknostic is not a sandbox.
+These still end the hook on their own terms:
 
 - `process.kill(process.pid)`, `process.abort()` and `process.reallyExit`.
 - An `exit` listener added after the shim finishes.
-- An `uncaughtException` listener of your own that throws, which Node turns into exit 7.
-- `process.removeAllListeners("uncaughtException")`, after which an uncaught exception
-  crashes the hook with no reply and no report.
+- A listener of your own on `uncaughtException` or `uncaughtExceptionMonitor` that
+  throws, or that exits ahead of the shim's: Node exits 7.
+- `process.setUncaughtExceptionCaptureCallback(...)`: an uncaught exception is
+  swallowed, with no report.
+- `process.removeAllListeners("uncaughtException")`, or `process.removeAllListeners()`
+  with no argument: an uncaught exception then crashes the hook with no reply and no
+  report.
+- `process.removeAllListeners("unhandledRejection")` under
+  `--unhandled-rejections=warn` or `warn-with-error-code`: a rejection gets only Node's
+  own warning.
+
+The shims keep the exit code the hooks decided, but not necessarily the whole reply. An
+exit that lands while the reply is still being written can cut it short: a Claude Code
+block reason can be lost, or, where pipes are asynchronous, a JSON reply truncated. That
+was already so before the shims guarded the process.
 
 A report also starts mid-line if your code left a line on stdout or stderr without a
 newline, so end what you write with one.

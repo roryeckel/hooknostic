@@ -159,12 +159,14 @@ export interface CommandShimGuard {
  *   one, over `process.exitCode` set by the hook source and over code 13 for
  *   an unsettled top-level await.
  *
+ * It targets accidental failures: a hook source that deliberately rearranges
+ * Node's process listeners can defeat it, because it runs as trusted code.
  * Not covered: `process.reallyExit`, `process.kill(process.pid)`,
- * `process.abort()`, `exit` listeners added after `finish`, an
- * uncaughtException listener of the hook source's own that throws (exit 7),
- * `process.removeAllListeners("uncaughtException")`, and a line the hook
- * source left unterminated, which a report is glued onto (docs/design.md
- * §10.3).
+ * `process.abort()`, `exit` listeners added after `finish`, a hook source's
+ * own uncaughtException or uncaughtExceptionMonitor listener that throws or
+ * exits ahead of the guard (exit 7), an uncaught-exception capture callback,
+ * removing the guard's listeners, and a line the hook source left
+ * unterminated, which a report is glued onto (docs/design.md §10.3).
  */
 export function guardCommandShim(describe: (error: unknown) => string): CommandShimGuard {
   const exit = process.exit;

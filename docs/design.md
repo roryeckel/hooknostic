@@ -809,48 +809,80 @@ thing each command shim installs, and it stays for the life of the process:
   `--unhandled-rejections=strict` raises as an uncaught exception first is reported once,
   from the rejection. Node warns against continuing after an uncaught exception; the
   shim continues anyway, because the alternative is an exit the harness may read as a
-  block.
+  block. Each `process.exit` throws a new error, so those are reported once per exit
+  code.
 - **`process.exit`.** The hook source's `process.exit` throws a `HookSourceExitError`
   (`the hook source called process.exit(<code>)`). At load it is a load error; inside a
   handler it is that handler's error, so `onHookError` applies and an intentional
   `process.exit(2)` no longer blocks on Claude Code. `onHookError: "block"` is the
   portable replacement. Where a throw cannot unwind (inside an `uncaughtException`
   emit, in a `beforeExit` loop, during `exit`, or once the shim finishes), it reports
-  synchronously and leaves with the decided code, or 0 before one. The guard learns it
-  is inside an `uncaughtException` emit from `uncaughtExceptionMonitor`, which Node
-  emits before every listener, including one the hook source prepends. Before the
-  decision, `beforeExit` means the shim's own await can never settle. A named
-  `import { exit } from "node:process"` is caught too, because the guard syncs the
-  builtin module's exports. The shim's own exits use the original function.
+  synchronously and leaves with the decided code, or 0 before one.
+  - The guard learns it is inside an `uncaughtException` emit from
+    `uncaughtExceptionMonitor`, which Node emits before every `uncaughtException`
+    listener, including one the hook source prepends.
+  - It resets that flag with a tick queued from the monitor, ahead of any tick a
+    listener queues. So a listener's `process.nextTick(() => process.exit(1))` throws,
+    is reported, and the hooks still decide.
+  - Before the decision, `beforeExit` means the shim's own await can never settle.
+  - An exit whose throw already reached `uncaughtException` and comes again with the
+    same code means the hook source is looping on it. That happens with a listener
+    that stays registered and exits again on the guard's own error, or with a
+    `beforeExit` listener the hook source prepends ahead of the guard's. The second
+    call leaves instead of throwing, so the loop ends on its second round.
+  - A named `import { exit } from "node:process"` is caught too, because the guard
+    syncs the builtin module's exports.
+
+  The shim's own exits use the original function.
 - **Exit-code pin.** An `exit` listener sets the exit code to the decided code, or 0
   before one, over a `process.exitCode` the hook source set and over Node's 13 for an
   unsettled top-level await. Finishing re-registers it after any `exit` listener the
   hook source added while it loaded.
-- **Keep the decided code.** Each command shim records the decided code as soon as
-  `apply` produces it, before it writes the reply. A stray failure from then on neither
-  adds a block nor removes one: Claude Code's exit 2 stays 2. The guard's writer uncorks
-  a stderr a handler left corked, and a report starts on a line of its own after a
-  block reason that did not end in a newline.
+- **Keep the decided exit code.** Each command shim records the decided code as soon as
+  `apply` produces it, before it writes the reply. From then on a stray failure keeps
+  the decided exit code, so it neither adds a block nor removes one: Claude Code's exit
+  2 stays 2. The guard's writer uncorks a stderr a handler left corked, and a report
+  starts on a line of its own after a block reason that did not end in a newline.
+- **Not necessarily the reply.** An exit that cannot unwind and lands while the reply is
+  still flushing leaves at once, with the decided code. So the reply itself can be cut
+  short: Claude Code's block reason can be lost while stderr is slow, and on POSIX,
+  where pipes are asynchronous, a JSON reply could be truncated. This is not a
+  regression; before the guard such an exit ended the process with its own code.
 
 Every shape the guard covers then ends on exit 0 or the decided code, the two exits each
-harness's captured evidence covers. It does not cover these:
+harness's captured evidence covers. The guard targets accidental failures in the hook
+source. A hook source that deliberately rearranges Node's process listeners can defeat
+it, because the hook source runs as trusted code: Hooknostic is not a sandbox. It does
+not cover these:
 
 - `process.reallyExit`, which `signal-exit` wraps and the guard leaves alone;
   `process.kill(process.pid)`; `process.abort()`; or an `exit` listener added after the
   shim finishes.
-- An `uncaughtException` listener of the hook source's own that throws, for example
-  `(e) => { throw e }`: Node exits 7.
+- A listener of the hook source's own on `uncaughtException` or
+  `uncaughtExceptionMonitor` that throws, or that exits ahead of the guard. For
+  example, `(e) => { throw e }`, or a monitor listener prepended to call
+  `process.exit(1)`: Node exits 7.
+- `process.setUncaughtExceptionCaptureCallback(...)`, which makes Node skip the
+  `uncaughtException` listeners: an uncaught exception is swallowed, with exit 0 and no
+  report.
 - `process.removeAllListeners("uncaughtException")`, which takes the guard's listeners
   with it: the next uncaught exception crashes the process the way Node does by
   default, with no reply and no report. The exit-code pin, an `exit` listener, still
-  sets the exit code.
+  exits 0, or the decided code.
+- `process.removeAllListeners()` with no argument, which removes the monitor, `beforeExit`
+  and `exit` listeners as well. `finish()` restores only the exit-code pin, so an
+  uncaught exception before then crashes with Node's own exit code, with no reply and
+  no report.
+- `process.removeAllListeners("unhandledRejection")` under
+  `--unhandled-rejections=warn` or `warn-with-error-code`. Node then prints its own
+  warning and raises nothing, so there is no Hooknostic report, and the pin exits 0.
+  Under the default and `strict` modes Node raises the rejection as an uncaught
+  exception, and the guard reports it from there.
 - A line the hook source leaves unterminated on stdout or stderr. The guard tracks only
   what it writes itself, so a report that follows such a line is glued onto it.
 
-`process.removeAllListeners("unhandledRejection")` is covered: the guard reports the
-rejection from the uncaught exception Node raises instead. The in-process shims leave
-the process to their host. So does `hooknostic dispatch`, which runs the source in the
-CLI's own process (#189).
+The in-process shims leave the process to their host. So does `hooknostic dispatch`,
+which runs the source in the CLI's own process (#189).
 
 Each native deadline is `ceil((sum of the event's handler budgets + processAllowanceMs) / 1000)`
 seconds: the handler budgets bound what the dispatcher runs, and the allowance covers what
