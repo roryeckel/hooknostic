@@ -7,7 +7,8 @@ import type {
   TargetScope,
   ToolMatch,
 } from "@hooknostic/sdk";
-import { fieldEvent, isToolScopedEvent, pluginSpecSchema } from "@hooknostic/sdk";
+import { fieldEvent, isToolScopedEvent } from "@hooknostic/sdk";
+import { pluginSpecSchema } from "@hooknostic/sdk/schemas";
 
 import type { Diagnostic } from "./diagnostics.js";
 import { formatSchemaIssue } from "./schema-issues.js";

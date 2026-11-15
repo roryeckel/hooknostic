@@ -3,7 +3,8 @@ import { describe, expect, it } from "vitest";
 import type { AdapterRegistry, CapabilityProfile } from "@hooknostic/core";
 import { analyzeCapabilities, buildPluginIR, resolveCapabilityMatrix } from "@hooknostic/core";
 import type { HooknosticConfig } from "@hooknostic/sdk";
-import { definePlugin, hook, hooknosticConfigSchema } from "@hooknostic/sdk";
+import { definePlugin, hook } from "@hooknostic/sdk";
+import { hooknosticConfigSchema } from "@hooknostic/sdk/schemas";
 
 import { makeFakeAdapter, syntheticSource } from "./fake-adapter.js";
 

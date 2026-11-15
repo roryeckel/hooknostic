@@ -46,6 +46,9 @@ Requires Node.js `^22.22.2 || ^24.15.0 || >=26.0.0`. Install the CLI and configu
 npm install --save-dev hooknostic @hooknostic/sdk
 ```
 
+Authoring hooks and configuration needs no Zod. Only code that imports the runtime
+schemas from `@hooknostic/sdk/schemas` also needs `zod@^4.6.7`.
+
 | Your goal | Workflow | Start here |
 | --- | --- | --- |
 | Distribute a plugin | Author an Agent Plugins package, `check`, `build`, then install native output through a marketplace or package manager | [Combined package and marketplace tutorial](docs/tutorials/04-packaging-with-agent-plugins.md) |
@@ -212,7 +215,7 @@ Node.js `^22.22.2 || ^24.15.0 || >=26.0.0` / pnpm 12 + TypeScript monorepo. Use 
 
 | Package | Purpose |
 | --- | --- |
-| `@hooknostic/sdk` | Public authoring API and canonical types |
+| `@hooknostic/sdk` | Public authoring API and canonical types; Zod runtime schemas at `@hooknostic/sdk/schemas` |
 | `@hooknostic/agent-plugin` | Public Agent Plugins 1.0 loader, schemas, and projection contracts |
 | `@hooknostic/core` | Compiler: config loading, plugin model, capability analysis, diagnostics |
 | `@hooknostic/runtime` | Dispatcher: decode events → run your handlers → apply effects |

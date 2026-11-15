@@ -1,12 +1,47 @@
 import { execFileSync } from "node:child_process";
-import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
-import { createRequire } from "node:module";
+import { existsSync, readFileSync } from "node:fs";
+import { mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from "node:fs/promises";
+import Module, { createRequire } from "node:module";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 
-import { describe, expect, it } from "vitest";
+import type * as Esbuild from "esbuild";
+import { build, type BuildOptions, type Plugin, stop } from "esbuild";
+import { describe, expect, it, vi } from "vitest";
 
-import { bundleHasMainModuleGuard, bundleRuntime } from "./bundle.js";
+// testkit depends on core, so core's tests reach this dependency-free helper by path.
+import { type SyntheticPnpPackage, writeSyntheticPnpProject } from "../../testkit/src/synthetic-pnp.js";
+import { bundleHasMainModuleGuard, bundleRuntime, pnpRuntimeFailure, PnpRuntimeRequiredError } from "./bundle.js";
+import type { Diagnostic } from "./diagnostics.js";
+import {
+  ownZodNeedsProjectInstall,
+  pnpRuntimeGuardPlugin,
+  reachableZod,
+  sdkZodFallbackPlugin,
+  withSdkSubpathAliases,
+} from "./sdk-resolution.js";
+
+/**
+ * Resolve directories of the nested resolves the Zod fallback plugin makes, in
+ * every esbuild build in this file. bundleRuntime takes no plugins, so esbuild
+ * is wrapped to put a recorder ahead of each build's own; it resolves nothing.
+ */
+const fallbackResolves = vi.hoisted(() => [] as string[]);
+vi.mock("esbuild", async (importOriginal) => {
+  const esbuild = await importOriginal<typeof Esbuild>();
+  const recorder: Plugin = {
+    name: "fallback-resolve-recorder",
+    setup(recorded) {
+      recorded.onResolve({ filter: /^zod(?:\/|$)/ }, (args) => {
+        if (args.pluginData === "hooknostic-sdk-zod-fallback") fallbackResolves.push(args.resolveDir);
+        return undefined;
+      });
+    },
+  };
+  const wrapped = (options: BuildOptions) =>
+    esbuild.build({ ...options, plugins: [recorder, ...(options.plugins ?? [])] });
+  return { ...esbuild, build: wrapped as typeof esbuild.build };
+});
 
 it("executes bundled CommonJS builtins without the source dependency tree", async () => {
   const root = await mkdtemp(join(tmpdir(), "hooknostic-cjs-"));
@@ -70,8 +105,12 @@ it("carries dependency license and notice text plus source legal comments throug
 });
 
 it("includes the SDK's own license in standalone runtimes as well as third-party licenses", async () => {
+  // Every shim validates effects through the /schemas subpath, which is what brings Zod in;
+  // the root alias alone must resolve that subpath too.
   const result = await bundleRuntime({
-    source: 'import { block } from "@hooknostic/sdk"; console.log(block("review"));',
+    source:
+      'import { block } from "@hooknostic/sdk"; import { effectSchema } from "@hooknostic/sdk/schemas";' +
+      ' console.log(effectSchema.parse(block("review")));',
     resolveDir: import.meta.dirname,
     alias: { "@hooknostic/sdk": resolve(import.meta.dirname, "../../sdk/src/index.ts") },
   });
@@ -81,6 +120,1024 @@ it("includes the SDK's own license in standalone runtimes as well as third-party
   const sdkRequire = createRequire(resolve(import.meta.dirname, "../../sdk/package.json"));
   const zodLicense = resolve(sdkRequire.resolve("zod/package.json"), "../LICENSE");
   expect(result.code).toContain((await readFile(zodLicense, "utf8")).replaceAll("\r\n", "\n").trim());
+});
+
+/** The `node_modules/zod` that Node resolution from `directory` would reach, if any. */
+function strayZod(directory: string): string | undefined {
+  for (let current = directory; ; current = dirname(current)) {
+    if (existsSync(join(current, "node_modules/zod"))) return join(current, "node_modules/zod");
+    if (dirname(current) === current) return undefined;
+  }
+}
+
+/**
+ * A fresh temporary directory from which no Zod is reachable: a stray Zod in
+ * an ancestor of the temporary directory would satisfy imports a test expects
+ * to find nothing.
+ */
+async function zodFreeTemporaryDirectory(prefix: string): Promise<string> {
+  const root = await mkdtemp(join(await realpath(tmpdir()), prefix));
+  const stray = strayZod(root);
+  if (stray !== undefined) {
+    await rm(root, { recursive: true, force: true });
+    throw new Error(`precondition: no Zod may be reachable from ${tmpdir()}, but ${stray} is`);
+  }
+  return root;
+}
+
+describe("an SDK installed without its optional Zod peer", () => {
+  /** The stand-in SDK's declared peer range; the plugin reads it from the manifest. */
+  const PEER = "^4.6.7";
+  const ownZodManifest = createRequire(import.meta.url).resolve("zod/package.json");
+  const ownZodVersion = (JSON.parse(readFileSync(ownZodManifest, "utf8")) as { version: string }).version;
+
+  const link = (target: string, path: string) =>
+    symlink(target, path, process.platform === "win32" ? "junction" : "dir");
+
+  /**
+   * A recognizable Zod stand-in at `directory`. `version` is `null` for a
+   * manifest with none. `v4: false` gives it no `./v4` export and no `v4/`
+   * directory, as Zod 3.24 and earlier ship; `exportsMap` replaces the
+   * exports map outright.
+   */
+  async function writeZod(
+    directory: string,
+    version: string | null,
+    options: { v4?: boolean; exportsMap?: Record<string, unknown> } = {},
+  ): Promise<void> {
+    const v4 = options.v4 !== false;
+    await mkdir(v4 ? join(directory, "v4") : directory, { recursive: true });
+    await writeFile(
+      join(directory, "package.json"),
+      JSON.stringify({
+        name: "zod",
+        ...(version === null ? {} : { version }),
+        type: "module",
+        exports:
+          options.exportsMap ??
+          (v4
+            ? { ".": "./index.js", "./v4": "./v4/index.js" }
+            : { ".": "./index.js", "./package.json": "./package.json" }),
+      }),
+    );
+    await writeFile(join(directory, "LICENSE"), "Project zod license.");
+    const label = `project zod ${version ?? "unversioned"}: `;
+    const string = `export const string = () => ({ min: () => ({ parse: (v) => ${JSON.stringify(label)} + v }) });`;
+    await writeFile(join(directory, "index.js"), string);
+    if (!v4) return;
+    // A nested manifest that only sets the module type, as real Zod ships: it names no version.
+    await writeFile(join(directory, "v4/package.json"), JSON.stringify({ type: "module" }));
+    await writeFile(join(directory, "v4/index.js"), string);
+  }
+
+  /**
+   * A project whose SDK's schemas import Zod, with no Zod of its own unless
+   * asked. `zod` names a recognizable stand-in's version (or `null` for a
+   * manifest with none), so the output shows whose Zod was bundled. `peer` is
+   * the SDK's declared range. `layout: "pnpm"` puts the SDK in a virtual-store
+   * entry whose `zod` links the project's, as pnpm links an optional peer;
+   * `sdkEntry` then goes through the project's `@hooknostic/sdk` link.
+   */
+  async function project(
+    options: {
+      zod?: string | null;
+      v4?: boolean;
+      exportsMap?: Record<string, unknown>;
+      layout?: "npm" | "pnpm";
+      peer?: string;
+    } = {},
+  ): Promise<{ root: string; sdkEntry: string }> {
+    // Without a stand-in, "no Zod" must mean none at all.
+    const root = await zodFreeTemporaryDirectory("hooknostic-no-zod-");
+    const pnpm = options.layout === "pnpm";
+    const version = options.zod === undefined ? undefined : (options.zod ?? "unversioned");
+    const store = join(root, "node_modules/.pnpm");
+    const storeEntry = join(
+      store,
+      `@hooknostic+sdk@1.0.0${version === undefined ? "" : `_zod@${version}`}/node_modules`,
+    );
+    const sdk = pnpm ? join(storeEntry, "@hooknostic/sdk") : join(root, "node_modules/@hooknostic/sdk");
+    await mkdir(join(sdk, "dist"), { recursive: true });
+    await writeFile(
+      join(sdk, "package.json"),
+      JSON.stringify({
+        name: "@hooknostic/sdk",
+        type: "module",
+        peerDependencies: { zod: options.peer ?? PEER },
+        peerDependenciesMeta: { zod: { optional: true } },
+      }),
+    );
+    await writeFile(join(sdk, "LICENSE"), "Example SDK license.");
+    await writeFile(join(sdk, "dist/index.js"), 'export const root = "root";');
+    await writeFile(
+      join(sdk, "dist/schemas.js"),
+      'import * as z from "zod/v4"; export const label = z.string().min(1);',
+    );
+    const zodOptions = {
+      ...(options.v4 === undefined ? {} : { v4: options.v4 }),
+      ...(options.exportsMap === undefined ? {} : { exportsMap: options.exportsMap }),
+    };
+    if (!pnpm) {
+      if (options.zod !== undefined) await writeZod(join(root, "node_modules/zod"), options.zod, zodOptions);
+      return { root, sdkEntry: join(sdk, "dist/index.js") };
+    }
+    if (options.zod !== undefined) {
+      const zod = join(store, `zod@${version}/node_modules/zod`);
+      await writeZod(zod, options.zod, zodOptions);
+      await link(zod, join(storeEntry, "zod"));
+      await link(zod, join(root, "node_modules/zod"));
+    }
+    await mkdir(join(root, "node_modules/@hooknostic"), { recursive: true });
+    await link(sdk, join(root, "node_modules/@hooknostic/sdk"));
+    return { root, sdkEntry: join(root, "node_modules/@hooknostic/sdk/dist/index.js") };
+  }
+
+  /**
+   * HN109 for an SDK that reached `found` at `at`, bundling Hooknostic's own
+   * Zod from `own` (its real path, unless the build preserves symlinks).
+   */
+  function substitution(found: string, at: string, own = dirname(ownZodManifest)): Diagnostic {
+    return {
+      code: "HN109",
+      severity: "warn",
+      message:
+        `the SDK's zod import reached ${found} at ${at}, outside the SDK's zod peer range ${PEER}; the runtime ` +
+        `bundles Hooknostic's own zod@${ownZodVersion} from ${own} instead, while user code ` +
+        "that imports zod still bundles the project's copy.",
+      remediation: `install a zod that satisfies ${PEER} in the project, so the SDK and user code share one copy.`,
+    };
+  }
+
+  const FALLBACK = "hooknostic-sdk-zod-fallback";
+
+  /** The esbuild options these tests vary. */
+  type ResolutionOptions = Pick<
+    BuildOptions,
+    | "absWorkingDir"
+    | "alias"
+    | "conditions"
+    | "external"
+    | "mainFields"
+    | "nodePaths"
+    | "packages"
+    | "platform"
+    | "preserveSymlinks"
+    | "resolveExtensions"
+    | "tsconfig"
+    | "tsconfigRaw"
+  >;
+
+  /**
+   * Bundle `source` with esbuild directly, a recorder ahead of the fallback
+   * plugin: `nested` lists the resolve directory of every nested resolve the
+   * fallback makes, which the recorder sees first by its pluginData.
+   */
+  async function bundleRecorded(
+    root: string,
+    sdkEntry: string,
+    extra: ResolutionOptions = {},
+    source = SOURCE,
+  ): Promise<{ code: string; diagnostics: Diagnostic[]; nested: string[] }> {
+    const nested: string[] = [];
+    const diagnostics: Diagnostic[] = [];
+    const recorder: Plugin = {
+      name: "recorder",
+      setup(recorded) {
+        recorded.onResolve({ filter: /^zod(?:\/|$)/ }, (args) => {
+          if (args.pluginData === FALLBACK) nested.push(args.resolveDir);
+          return undefined;
+        });
+      },
+    };
+    const result = await build({
+      stdin: { contents: source, resolveDir: root, loader: "ts" },
+      absWorkingDir: root,
+      bundle: true,
+      format: "esm",
+      platform: "node",
+      write: false,
+      logLevel: "silent",
+      ...extra,
+      alias: withSdkSubpathAliases({ "@hooknostic/sdk": sdkEntry, ...extra.alias }),
+      plugins: [recorder, sdkZodFallbackPlugin((diagnostic) => diagnostics.push(diagnostic))],
+    });
+    return { code: result.outputFiles[0]!.text, diagnostics, nested };
+  }
+
+  const SOURCE = 'import { label } from "@hooknostic/sdk/schemas"; console.log(label.parse("ok"));';
+
+  async function run(root: string, code: string): Promise<string> {
+    const artifact = join(root, "hook.mjs");
+    await writeFile(artifact, code);
+    return execFileSync(process.execPath, [artifact], { encoding: "utf8" }).trim();
+  }
+
+  it("bundles the SDK's schemas with Hooknostic's own Zod", async () => {
+    const { root, sdkEntry } = await project();
+    try {
+      const result = await bundleRuntime({ source: SOURCE, resolveDir: root, alias: { "@hooknostic/sdk": sdkEntry } });
+      expect(await run(root, result.code)).toBe("ok");
+      expect(result.code).toContain(
+        (await readFile(resolve(ownZodManifest, "../LICENSE"), "utf8")).replaceAll("\r\n", "\n").trim(),
+      );
+      // A project with no Zod at all is the ordinary case, not a warning.
+      expect(result.diagnostics).toEqual([]);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps the project's Zod, without a warning, when it satisfies the SDK's peer range", async () => {
+    const { root, sdkEntry } = await project({ zod: "4.99.0" });
+    try {
+      const result = await bundleRuntime({ source: SOURCE, resolveDir: root, alias: { "@hooknostic/sdk": sdkEntry } });
+      expect(await run(root, result.code)).toBe("project zod 4.99.0: ok");
+      expect(result.diagnostics).toEqual([]);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  for (const [found, described] of [
+    ["3.25.76", "zod@3.25.76"],
+    [null, "a zod with no readable version"],
+  ] as const) {
+    it(`bundles Hooknostic's own Zod, with a warning, when the SDK reaches ${described}`, async () => {
+      // An old Zod hoisted from an unrelated dependency: GHSA-mrhx-c7xc-m3w5
+      // affects 3.25.76's own v4 entry, which the SDK would otherwise bundle.
+      const { root, sdkEntry } = await project({ zod: found });
+      try {
+        const result = await bundleRuntime({
+          source: SOURCE,
+          resolveDir: root,
+          alias: { "@hooknostic/sdk": sdkEntry },
+        });
+        expect(await run(root, result.code)).toBe("ok");
+        expect(result.code).toContain(`zod@${ownZodVersion}`);
+        expect(result.code).not.toContain("Project zod license.");
+        const projectZod = join(root, "node_modules", "zod");
+        expect(result.diagnostics).toEqual([
+          {
+            code: "HN109",
+            severity: "warn",
+            message:
+              `the SDK's zod import reached ${found === null ? "a zod package with no readable version" : `zod@${found}`} at ${projectZod}, ` +
+              `outside the SDK's zod peer range ${PEER}; the runtime bundles Hooknostic's own zod@${ownZodVersion} ` +
+              `from ${dirname(ownZodManifest)} instead, while user code that imports zod still bundles the project's copy.`,
+            remediation: `install a zod that satisfies ${PEER} in the project, so the SDK and user code share one copy.`,
+          },
+        ]);
+      } finally {
+        await rm(root, { recursive: true, force: true });
+      }
+    });
+  }
+
+  it("still gives user code the project's out-of-range Zod", async () => {
+    const { root, sdkEntry } = await project({ zod: "3.25.76" });
+    try {
+      const result = await bundleRuntime({
+        source: `${SOURCE} import * as z from "zod/v4"; console.log(z.string().min(1).parse("user"));`,
+        resolveDir: root,
+        alias: { "@hooknostic/sdk": sdkEntry },
+      });
+      expect((await run(root, result.code)).split(/\r?\n/)).toEqual(["ok", "project zod 3.25.76: user"]);
+      expect(result.diagnostics.map((d) => d.code)).toEqual(["HN109"]);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("gives user code that imports Zod without installing it no fallback", async () => {
+    const { root, sdkEntry } = await project();
+    try {
+      await expect(
+        bundleRuntime({
+          source: 'import * as z from "zod/v4"; console.log(z.string().parse("ok"));',
+          resolveDir: root,
+          alias: { "@hooknostic/sdk": sdkEntry },
+        }),
+      ).rejects.toThrow(/Could not resolve "zod\/v4"/);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  for (const layout of ["pnpm", "npm"] as const) {
+    it(`warns when the SDK reaches a Zod too old for zod/v4 (${layout})`, async () => {
+      // pnpm links the project's Zod 3.24 as the SDK's optional peer; npm hoists
+      // it beside the SDK. Either way the SDK's zod/v4 cannot resolve against it.
+      const { root, sdkEntry } = await project({ zod: "3.24.4", v4: false, layout });
+      try {
+        const result = await bundleRuntime({
+          source: SOURCE,
+          resolveDir: root,
+          alias: { "@hooknostic/sdk": sdkEntry },
+        });
+        expect(await run(root, result.code)).toBe("ok");
+        expect(result.code).toContain(`zod@${ownZodVersion}`);
+        // The package's real path: pnpm's virtual-store directory, not the project's link.
+        const reached =
+          layout === "pnpm"
+            ? join(root, "node_modules", ".pnpm", "zod@3.24.4", "node_modules", "zod")
+            : join(root, "node_modules", "zod");
+        expect(result.diagnostics).toEqual([substitution("zod@3.24.4", reached)]);
+      } finally {
+        await rm(root, { recursive: true, force: true });
+      }
+    });
+  }
+
+  it("gives a library's own code its out-of-range Zod while warning once for the SDK's (pnpm)", async () => {
+    const { root, sdkEntry } = await project({ zod: "3.24.4", v4: false, layout: "pnpm" });
+    try {
+      // A hook library that declares the same zod peer as the SDK: only the
+      // SDK's name, not a zod peer, makes an import the SDK's.
+      await writeFile(
+        join(root, "package.json"),
+        JSON.stringify({ name: "hook-library", type: "module", peerDependencies: { zod: PEER } }),
+      );
+      await mkdir(join(root, "src"));
+      await writeFile(
+        join(root, "src/user.js"),
+        'import * as z from "zod"; console.log(z.string().min(1).parse("user"));',
+      );
+      const result = await bundleRuntime({
+        source: `${SOURCE} import "./src/user.js";`,
+        resolveDir: root,
+        alias: { "@hooknostic/sdk": sdkEntry },
+      });
+      expect((await run(root, result.code)).split(/\r?\n/)).toEqual(["project zod 3.24.4: user", "ok"]);
+      expect(result.diagnostics.map((d) => d.code)).toEqual(["HN109"]);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("stays silent when a pnpm SDK has no Zod linked", async () => {
+    const { root, sdkEntry } = await project({ layout: "pnpm" });
+    try {
+      const result = await bundleRuntime({ source: SOURCE, resolveDir: root, alias: { "@hooknostic/sdk": sdkEntry } });
+      expect(await run(root, result.code)).toBe("ok");
+      expect(result.diagnostics).toEqual([]);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("leaves an in-range Zod to esbuild, with no nested resolve", async () => {
+    const { root, sdkEntry } = await project({ zod: "4.99.0" });
+    try {
+      const result = await bundleRecorded(root, sdkEntry);
+      expect(await run(root, result.code)).toBe("project zod 4.99.0: ok");
+      expect(result.diagnostics).toEqual([]);
+      expect(result.nested).toEqual([]);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("resolves Hooknostic's own Zod once per process for a project with none", async () => {
+    const { root, sdkEntry } = await project();
+    try {
+      const first = await bundleRecorded(root, sdkEntry);
+      // Only the second build is asserted: an earlier test may already have filled the cache.
+      const second = await bundleRecorded(root, sdkEntry);
+      expect(second.nested).toEqual([]);
+      expect(second.code).toBe(first.code);
+      expect(second.diagnostics).toEqual([]);
+      expect(await run(root, second.code)).toBe("ok");
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("warns in every build, not once per process", async () => {
+    const { root, sdkEntry } = await project({ zod: "3.25.76" });
+    try {
+      for (const round of [1, 2]) {
+        const result = await bundleRuntime({
+          source: SOURCE,
+          resolveDir: root,
+          alias: { "@hooknostic/sdk": sdkEntry },
+        });
+        expect(result.diagnostics, `build ${round}`).toEqual([
+          substitution("zod@3.25.76", join(root, "node_modules", "zod")),
+        ]);
+      }
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("uses the reached Zod as is when the SDK's peer is not a semver range", async () => {
+    // The workspace SDK's `catalog:` reference, which only `pnpm pack` rewrites: no floor to enforce.
+    const { root, sdkEntry } = await project({ zod: "3.25.76", peer: "catalog:zod-peer" });
+    try {
+      const result = await bundleRecorded(root, sdkEntry);
+      expect(await run(root, result.code)).toBe("project zod 3.25.76: ok");
+      expect(result.diagnostics).toEqual([]);
+      expect(result.nested).toEqual([]);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("reads the version of a Zod whose exports map hides its manifest", async () => {
+    // Zod 3.0-3.8 export neither ./package.json nor ./v4, so
+    // require.resolve("zod/package.json") cannot find this manifest.
+    const { root, sdkEntry } = await project({
+      zod: "3.8.2",
+      v4: false,
+      exportsMap: { import: "./index.js", require: "./index.js" },
+    });
+    try {
+      const result = await bundleRuntime({ source: SOURCE, resolveDir: root, alias: { "@hooknostic/sdk": sdkEntry } });
+      expect(await run(root, result.code)).toBe("ok");
+      expect(result.diagnostics).toEqual([substitution("zod@3.8.2", join(root, "node_modules", "zod"))]);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  describe("build options that change what a zod import reaches", () => {
+    const cases = [
+      {
+        // The walk would find node_modules' 3.25.76; esbuild applies the alias,
+        // after onResolve callbacks have seen "zod/v4" as written.
+        name: "an alias with a zod key",
+        zod: "3.25.76",
+        options: (root: string) => ({ alias: { zod: join(root, "vendor", "zod") } }),
+        output: "project zod 4.99.0: ok",
+      },
+      {
+        // The walk finds no Zod at all; esbuild searches nodePaths.
+        name: "nodePaths",
+        zod: undefined,
+        options: (root: string) => ({ nodePaths: [join(root, "vendor")] }),
+        output: "project zod 4.99.0: ok",
+      },
+      {
+        name: "preserveSymlinks",
+        zod: "4.99.0",
+        options: () => ({ preserveSymlinks: true }),
+        output: "project zod 4.99.0: ok",
+      },
+    ];
+    for (const { name, zod, options, output } of cases) {
+      it(`resolves first under ${name}`, async () => {
+        const { root, sdkEntry } = await project(zod === undefined ? {} : { zod });
+        try {
+          if (zod !== "4.99.0") await writeZod(join(root, "vendor", "zod"), "4.99.0");
+          const result = await bundleRecorded(root, sdkEntry, options(root));
+          expect(await run(root, result.code)).toBe(output);
+          expect(result.diagnostics).toEqual([]);
+          // The in-range Zod is found by resolving from the SDK, as esbuild will.
+          expect(result.nested).toEqual([join(root, "node_modules", "@hooknostic", "sdk", "dist")]);
+        } finally {
+          await rm(root, { recursive: true, force: true });
+        }
+      });
+    }
+
+    // zod/v4 fails to resolve against a Zod 3.24, but the package's root still
+    // names it: every published Zod exports one.
+    it("warns when nodePaths reach a Zod too old for zod/v4", async () => {
+      const { root, sdkEntry } = await project();
+      try {
+        await writeZod(join(root, "vendor", "zod"), "3.24.4", { v4: false });
+        const result = await bundleRecorded(root, sdkEntry, { nodePaths: [join(root, "vendor")] });
+        expect(await run(root, result.code)).toBe("ok");
+        expect(result.diagnostics).toEqual([substitution("zod@3.24.4", join(root, "vendor", "zod"))]);
+      } finally {
+        await rm(root, { recursive: true, force: true });
+      }
+    });
+
+    it("warns when nodePaths reach a Zod 3.0-3.8 that exports only its root", async () => {
+      // Those releases export `{import, require}`: a root and nothing else, not
+      // even ./package.json, so only the bare "zod" can name them.
+      const { root, sdkEntry } = await project();
+      try {
+        await writeZod(join(root, "vendor", "zod"), "3.8.2", {
+          v4: false,
+          exportsMap: { import: "./index.js", require: "./index.js" },
+        });
+        const result = await bundleRecorded(root, sdkEntry, { nodePaths: [join(root, "vendor")] });
+        expect(await run(root, result.code)).toBe("ok");
+        expect(result.diagnostics).toEqual([substitution("zod@3.8.2", join(root, "vendor", "zod"))]);
+      } finally {
+        await rm(root, { recursive: true, force: true });
+      }
+    });
+
+    it("names the package directory when nodePaths reach another package installed as zod", async () => {
+      // An npm alias: installed as zod, published under another name, so it
+      // has no Zod version. Report its directory, as the walk path does.
+      const { root, sdkEntry } = await project();
+      try {
+        const aliased = join(root, "vendor", "zod");
+        await mkdir(aliased, { recursive: true });
+        await writeFile(
+          join(aliased, "package.json"),
+          JSON.stringify({ name: "not-zod", version: "4.99.0", type: "module", exports: { ".": "./index.js" } }),
+        );
+        await writeFile(join(aliased, "index.js"), "export const notZod = true;");
+        const result = await bundleRecorded(root, sdkEntry, { nodePaths: [join(root, "vendor")] });
+        expect(await run(root, result.code)).toBe("ok");
+        expect(result.diagnostics).toEqual([substitution("a zod package with no readable version", aliased)]);
+      } finally {
+        await rm(root, { recursive: true, force: true });
+      }
+    });
+
+    it("warns when preserveSymlinks reaches a Zod too old for zod/v4", async () => {
+      const { root, sdkEntry } = await project({ zod: "3.24.4", v4: false, layout: "pnpm" });
+      try {
+        const result = await bundleRecorded(root, sdkEntry, { preserveSymlinks: true });
+        expect(await run(root, result.code)).toBe("ok");
+        // Both Zods keep their linked paths: the SDK's is the project's own
+        // link, and Hooknostic's is core's link into the workspace store.
+        expect(result.diagnostics).toEqual([
+          substitution(
+            "zod@3.24.4",
+            join(root, "node_modules", "zod"),
+            resolve(import.meta.dirname, "..", "node_modules", "zod"),
+          ),
+        ]);
+      } finally {
+        await rm(root, { recursive: true, force: true });
+      }
+    });
+
+    it("names the reached Zod when an alias leaves Hooknostic's own unresolvable", async () => {
+      // esbuild applies an alias to every resolve, Hooknostic's own included, so
+      // nothing can supply zod/v4: the build fails, and says why.
+      const { root, sdkEntry } = await project();
+      try {
+        const vendored = join(root, "vendor", "zod");
+        await writeZod(vendored, "3.24.4", { v4: false });
+        const failure: unknown = await bundleRecorded(root, sdkEntry, { alias: { zod: vendored } }).then(
+          () => undefined,
+          (error: unknown) => error,
+        );
+        expect(failure).toMatchObject({
+          errors: [
+            {
+              text: 'Could not resolve "zod/v4"',
+              notes: expect.arrayContaining([
+                expect.objectContaining({
+                  text:
+                    `the SDK's zod import reached zod@3.24.4 at ${vendored}, outside the SDK's zod peer range ` +
+                    `${PEER}, and Hooknostic's own zod, which would replace it, did not resolve from ` +
+                    // Where Hooknostic's dependencies resolve: core's src in the workspace.
+                    `${import.meta.dirname}.`,
+                }),
+              ]),
+            },
+          ],
+        });
+      } finally {
+        await rm(root, { recursive: true, force: true });
+      }
+    });
+  });
+
+  it("resolves first when the build's working directory is in a Plug'n'Play project", async () => {
+    // esbuild looks for the PnP manifest from absWorkingDir, not from each
+    // importer. Once one is found, the walk cannot tell whether PnP or
+    // node_modules serves the SDK's import, so the plugin resolves first.
+    const { root, sdkEntry } = await project({ zod: "4.99.0" });
+    try {
+      const app = join(root, "app");
+      await mkdir(app);
+      // esbuild loads an empty manifest and keeps resolving through node_modules.
+      await writeFile(join(app, ".pnp.cjs"), "");
+      const result = await bundleRecorded(root, sdkEntry, { absWorkingDir: app });
+      expect(await run(root, result.code)).toBe("project zod 4.99.0: ok");
+      expect(result.diagnostics).toEqual([]);
+      expect(result.nested).toEqual([join(root, "node_modules", "@hooknostic", "sdk", "dist")]);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  const uncachedOptions: [string, (root: string) => ResolutionOptions][] = [
+    ["conditions", () => ({ conditions: ["hooknostic-test"] })],
+    ["mainFields", () => ({ mainFields: ["module", "main"] })],
+    ["a browser platform", () => ({ platform: "browser" })],
+    ["resolveExtensions", () => ({ resolveExtensions: [".ts", ".js", ".mjs"] })],
+    ["tsconfig", (root) => ({ tsconfig: join(root, "tsconfig.json") })],
+    ["tsconfigRaw", () => ({ tsconfigRaw: "{}" })],
+    ["external", () => ({ external: ["hooknostic-unrelated-package"] })],
+    // Present at all, even at its default value.
+    ["packages", () => ({ packages: "bundle" })],
+  ];
+  for (const [name, options] of uncachedOptions) {
+    it(`resolves Hooknostic's own Zod afresh under ${name}`, async () => {
+      // The cache is keyed by import kind and path alone, and these options
+      // can change what that path resolves to.
+      const { root, sdkEntry } = await project();
+      try {
+        await writeFile(join(root, "tsconfig.json"), "{}");
+        await bundleRecorded(root, sdkEntry, options(root));
+        const second = await bundleRecorded(root, sdkEntry, options(root));
+        expect(second.nested).toEqual([import.meta.dirname]);
+        expect(second.diagnostics).toEqual([]);
+      } finally {
+        await rm(root, { recursive: true, force: true });
+      }
+    });
+  }
+
+  it("caches Hooknostic's own Zod across bundleRuntime builds", async () => {
+    // bundleRuntime's options are what the cache is for: the node platform
+    // and an alias for the SDK, which maps no zod import.
+    const { root, sdkEntry } = await project();
+    try {
+      const bundle = () => bundleRuntime({ source: SOURCE, resolveDir: root, alias: { "@hooknostic/sdk": sdkEntry } });
+      await bundle();
+      const before = fallbackResolves.length;
+      const second = await bundle();
+      expect(fallbackResolves.slice(before)).toEqual([]);
+      expect(second.diagnostics).toEqual([]);
+      expect(await run(root, second.code)).toBe("ok");
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("a Yarn Plug'n'Play install outside Yarn's runtime (#183)", () => {
+  const SOURCE = 'import { label } from "@hooknostic/sdk/schemas"; console.log(label.parse("ok"));';
+
+  /** The SDK as Yarn would install it, depending on the project's `zod` when `withZod`. */
+  const sdk = (withZod: boolean): SyntheticPnpPackage => ({
+    name: "@hooknostic/sdk",
+    version: "1.0.0",
+    files: {
+      "package.json": JSON.stringify({
+        name: "@hooknostic/sdk",
+        version: "1.0.0",
+        type: "module",
+        exports: { ".": "./dist/index.js", "./schemas": "./dist/schemas.js" },
+        peerDependencies: { zod: "^4.6.7" },
+        peerDependenciesMeta: { zod: { optional: true } },
+      }),
+      LICENSE: "Example SDK license.",
+      "dist/index.js": 'export const root = "root";',
+      "dist/schemas.js": 'import * as z from "zod/v4"; export const label = z.string().min(1);',
+    },
+    ...(withZod ? { dependencies: ["zod"] } : {}),
+  });
+  const zod: SyntheticPnpPackage = {
+    name: "zod",
+    version: "4.99.0",
+    files: {
+      "package.json": JSON.stringify({
+        name: "zod",
+        version: "4.99.0",
+        type: "module",
+        exports: { ".": "./index.js", "./v4": "./v4/index.js" },
+      }),
+      LICENSE: "Project zod license.",
+      "index.js": "export {};",
+      "v4/index.js": 'export const string = () => ({ min: () => ({ parse: (v) => "project zod 4.99.0: " + v }) });',
+    },
+  };
+
+  /**
+   * Remove `root` once esbuild lets go of its zips: its service keeps them
+   * open on Windows until it stops. rm's own retries are asynchronous.
+   */
+  async function removePnpProject(root: string): Promise<void> {
+    await stop();
+    await rm(root, { recursive: true, force: true, maxRetries: 20, retryDelay: 100 });
+  }
+
+  async function run(root: string, code: string): Promise<string> {
+    const artifact = join(root, "hook.mjs");
+    await writeFile(artifact, code);
+    return execFileSync(process.execPath, [artifact], { encoding: "utf8" }).trim();
+  }
+
+  it("fails with HN504 naming the module it cannot read and `yarn hooknostic`", async () => {
+    const root = await zodFreeTemporaryDirectory("hooknostic-pnp-");
+    try {
+      const roots = await writeSyntheticPnpProject(root, "app", [sdk(false)]);
+      const failure: unknown = await bundleRuntime({ source: SOURCE, resolveDir: root }).then(
+        () => undefined,
+        (error: unknown) => error,
+      );
+      expect(failure).toBeInstanceOf(PnpRuntimeRequiredError);
+      expect((failure as PnpRuntimeRequiredError).diagnostic).toEqual({
+        code: "HN504",
+        severity: "error",
+        message:
+          `Yarn Plug'n'Play serves ${join(roots["@hooknostic/sdk"]!, "dist", "schemas.js")} from its install ` +
+          `(${join(root, ".pnp.data.json")}), and this process cannot read it: Hooknostic is running without ` +
+          "Yarn's PnP runtime.",
+        remediation: expect.stringContaining("run `yarn hooknostic`"),
+      });
+    } finally {
+      await removePnpProject(root);
+    }
+  });
+
+  it("stands down under Yarn's runtime, and the SDK bundles the project's Zod", async () => {
+    // Yarn's runtime sets process.versions.pnp. It also lets fs read inside
+    // the zips, which this simulation cannot, so licence notices -- which
+    // read beside each module -- are left out: the guard is what is tested.
+    const root = await zodFreeTemporaryDirectory("hooknostic-pnp-");
+    const versions = process.versions as Record<string, string | undefined>;
+    try {
+      await writeSyntheticPnpProject(root, "app", [sdk(true), zod]);
+      versions["pnp"] = "3";
+      const result = await build({
+        stdin: { contents: SOURCE, resolveDir: root },
+        absWorkingDir: root,
+        bundle: true,
+        format: "esm",
+        platform: "node",
+        write: false,
+        logLevel: "silent",
+        plugins: [pnpRuntimeGuardPlugin(), sdkZodFallbackPlugin()],
+      });
+      expect(await run(root, result.outputFiles[0]!.text)).toBe("project zod 4.99.0: ok");
+    } finally {
+      delete versions["pnp"];
+      await removePnpProject(root);
+    }
+  });
+
+  it("builds a node_modules project inside a real directory named *.zip", async () => {
+    // A directory, not an archive: the guard's path filter matches every
+    // module here, and an ancestor PnP manifest is found, but fs reads them.
+    const parent = await zodFreeTemporaryDirectory("hooknostic-pnp-");
+    const root = join(parent, "x.zip");
+    try {
+      const dependency = join(root, "node_modules", "dep");
+      await mkdir(dependency, { recursive: true });
+      await writeFile(join(root, ".pnp.cjs"), "");
+      await writeFile(join(dependency, "package.json"), JSON.stringify({ name: "dep", version: "1.0.0" }));
+      await writeFile(join(dependency, "LICENSE"), "Example dep license.");
+      await writeFile(join(dependency, "index.js"), 'module.exports = "dep";');
+      const result = await bundleRuntime({
+        source: 'import value from "dep"; console.log(value);',
+        resolveDir: root,
+      });
+      expect(await run(root, result.code)).toBe("dep");
+      expect(result.code).toContain("Example dep license.");
+    } finally {
+      await removePnpProject(parent);
+    }
+  });
+
+  it("blames the project's install for Hooknostic's own Zod only when Hooknostic runs from a Yarn install", () => {
+    // `yarn dlx` installs the CLI in a zip that the project's manifest does not list.
+    const app = join(tmpdir(), "app");
+    const dlx = join(tmpdir(), "dlx-1", ".yarn", "cache", "hooknostic-npm-1.0.0-0.zip", "node_modules", "hooknostic");
+    const installed = join(app, "node_modules", "hooknostic", "dist");
+    expect(ownZodNeedsProjectInstall(true, join(dlx, "dist"), app)).toBe(true);
+    expect(ownZodNeedsProjectInstall(true, installed, app)).toBe(false);
+    expect(ownZodNeedsProjectInstall(false, join(dlx, "dist"), app)).toBe(false);
+  });
+
+  describe("HN504's count of the other errors in the same failure", () => {
+    /** Another package only Yarn's zip cache holds. */
+    const dependency: SyntheticPnpPackage = {
+      name: "pnp-dep",
+      version: "1.0.0",
+      files: {
+        "package.json": JSON.stringify({ name: "pnp-dep", version: "1.0.0", type: "module", main: "index.js" }),
+        "index.js": "export {};",
+      },
+    };
+
+    /**
+     * HN504's message for `extra` imported beside SOURCE, and the guard
+     * error's text for the SDK's schemas without its final period.
+     */
+    async function hn504(extra: string): Promise<{ message: string; guard: string }> {
+      const root = await zodFreeTemporaryDirectory("hooknostic-pnp-");
+      try {
+        const roots = await writeSyntheticPnpProject(root, "app", [sdk(false), dependency]);
+        const failure: unknown = await bundleRuntime({ source: `${SOURCE} ${extra}`, resolveDir: root }).then(
+          () => undefined,
+          (error: unknown) => error,
+        );
+        expect(failure).toBeInstanceOf(PnpRuntimeRequiredError);
+        return {
+          message: (failure as PnpRuntimeRequiredError).diagnostic.message,
+          guard:
+            `Yarn Plug'n'Play serves ${join(roots["@hooknostic/sdk"]!, "dist", "schemas.js")} from its install ` +
+            `(${join(root, ".pnp.data.json")}), and this process cannot read it: Hooknostic is running without ` +
+            "Yarn's PnP runtime",
+        };
+      } finally {
+        await removePnpProject(root);
+      }
+    }
+
+    it("counts one unrelated error and names it", async () => {
+      const { message, guard } = await hn504('import "hooknostic-missing-package";');
+      expect(message).toBe(`${guard} (and 1 other error, first: Could not resolve "hooknostic-missing-package").`);
+    });
+
+    it("counts several unrelated errors, naming the first", async () => {
+      const { message, guard } = await hn504('import "hooknostic-missing-a"; import "hooknostic-missing-b";');
+      expect(message).toBe(`${guard} (and 2 other errors, first: Could not resolve "hooknostic-missing-a").`);
+    });
+
+    it("does not count another guard error, which has the same cause", async () => {
+      // pnp-dep is refused too: a second guard error, and nothing else.
+      const { message, guard } = await hn504('import "pnp-dep";');
+      expect(message).toBe(`${guard}.`);
+    });
+  });
+
+  describe("Hooknostic's own Zod in a Yarn install (yarn dlx)", () => {
+    /** The SDK unplugged, so its manifest is readable here as under Yarn's runtime. */
+    const unpluggedSdk: SyntheticPnpPackage = { ...sdk(false), unplugged: true };
+    /** A CLI package that depends on its own Zod, as the published one does. */
+    const cli = (withZod: boolean): SyntheticPnpPackage => ({
+      name: "hooknostic",
+      version: "1.0.0",
+      files: {
+        "package.json": JSON.stringify({ name: "hooknostic", version: "1.0.0", type: "module" }),
+        "dist/index.js": "export {};",
+      },
+      ...(withZod ? { dependencies: ["zod"] } : {}),
+    });
+    const versions = process.versions as Record<string, string | undefined>;
+    const nodeModule = Module as { findPnpApi?: (location: string) => unknown };
+
+    /**
+     * Bundle SOURCE in `root` with the guard and a fallback whose own
+     * install is `ownDirectory`; the failure's HN504, if it maps to one.
+     */
+    async function failure(root: string, ownDirectory: string) {
+      const error: unknown = await build({
+        stdin: { contents: SOURCE, resolveDir: root },
+        absWorkingDir: root,
+        bundle: true,
+        format: "esm",
+        platform: "node",
+        write: false,
+        logLevel: "silent",
+        plugins: [pnpRuntimeGuardPlugin(), sdkZodFallbackPlugin(() => {}, { ownDirectory })],
+      }).then(
+        () => undefined,
+        (error: unknown) => error,
+      );
+      expect(error, "the build must fail").toBeDefined();
+      return { error: error as { errors: { text: string }[] }, hn504: pnpRuntimeFailure(error)?.diagnostic };
+    }
+
+    /** Yarn's runtime, with a `module.findPnpApi` whose API lists only paths under `listed`. */
+    function simulateRuntime(listed: string): void {
+      versions["pnp"] = "3";
+      nodeModule.findPnpApi = () => ({
+        findPackageLocator: (location: string) =>
+          location.startsWith(listed) ? { name: "listed", reference: "workspace:." } : null,
+      });
+    }
+
+    function leaveRuntime(): void {
+      delete versions["pnp"];
+      delete nodeModule.findPnpApi;
+    }
+
+    it("reports HN504 when the CLI's own Zod is in another install", async () => {
+      const parent = await zodFreeTemporaryDirectory("hooknostic-pnp-");
+      try {
+        const root = join(parent, "app");
+        const elsewhere = join(parent, "dlx");
+        await writeSyntheticPnpProject(root, "app", [unpluggedSdk]);
+        // The dlx install: the CLI and its Zod, in zips of their own project.
+        const dlx = await writeSyntheticPnpProject(elsewhere, "dlx", [cli(true), zod]);
+        const ownDirectory = join(dlx["hooknostic"]!, "dist");
+        const { hn504 } = await failure(root, ownDirectory);
+        expect(hn504).toEqual({
+          code: "HN504",
+          severity: "error",
+          message:
+            `Hooknostic's own zod, which the SDK needs here, did not resolve from ${ownDirectory}: Hooknostic ` +
+            "runs from a Yarn install that this project's Plug'n'Play manifest does not list, as under yarn dlx.",
+          remediation: expect.stringContaining("run `yarn hooknostic`"),
+        });
+        // Under yarn dlx's own runtime, whose API does not list the project, too.
+        simulateRuntime(elsewhere);
+        expect((await failure(root, ownDirectory)).hn504?.code).toBe("HN504");
+      } finally {
+        leaveRuntime();
+        await removePnpProject(parent);
+      }
+    });
+
+    it("keeps esbuild's error when several PnP APIs control the CLI's zip", () => {
+      // Yarn's findPnpApi throws then; several APIs means the project's is one.
+      const app = join(tmpdir(), "app");
+      const ownDirectory = join(
+        app,
+        ".yarn",
+        "cache",
+        "hooknostic-npm-1.0.0.zip",
+        "node_modules",
+        "hooknostic",
+        "dist",
+      );
+      try {
+        versions["pnp"] = "3";
+        nodeModule.findPnpApi = (location: string) => {
+          throw new Error(
+            `Unable to locate pnpapi, the module '${location}' is controlled by multiple pnpapi instances.`,
+          );
+        };
+        expect(ownZodNeedsProjectInstall(true, ownDirectory, app)).toBe(false);
+      } finally {
+        leaveRuntime();
+      }
+    });
+
+    it("leaves esbuild's error alone when the CLI is in the project's own install", async () => {
+      // `yarn hooknostic`: the API serving Hooknostic is the project's, so
+      // HN504's advice would be what the user is already doing.
+      const root = await zodFreeTemporaryDirectory("hooknostic-pnp-");
+      try {
+        const roots = await writeSyntheticPnpProject(root, "app", [unpluggedSdk, cli(false)]);
+        simulateRuntime(root);
+        const { error, hn504 } = await failure(root, join(roots["hooknostic"]!, "dist"));
+        expect(hn504).toBeUndefined();
+        expect(error.errors.map((message) => message.text)).toEqual(['Could not resolve "zod/v4"']);
+      } finally {
+        leaveRuntime();
+        await removePnpProject(root);
+      }
+    });
+  });
+});
+
+describe("reachableZod", () => {
+  async function zodAt(directory: string, manifest: Record<string, unknown>): Promise<void> {
+    await mkdir(directory, { recursive: true });
+    await writeFile(join(directory, "package.json"), JSON.stringify(manifest));
+  }
+
+  it("takes the first node_modules/zod on the lookup path, skipping node_modules ancestors", async () => {
+    const root = await mkdtemp(join(await realpath(tmpdir()), "hooknostic-reachable-"));
+    try {
+      await zodAt(join(root, "node_modules/zod"), { name: "zod", version: "2.0.0" });
+      await zodAt(join(root, "app/node_modules/zod"), { name: "zod", version: "1.0.0" });
+      await mkdir(join(root, "app/src"), { recursive: true });
+      expect(reachableZod(join(root, "app/src"))).toEqual({
+        kind: "found",
+        directory: join(root, "app/node_modules/zod"),
+        version: "1.0.0",
+      });
+      // A package's lookup from inside node_modules never tries node_modules/node_modules.
+      await zodAt(join(root, "lib/node_modules/node_modules/zod"), { name: "zod", version: "9.9.9" });
+      await mkdir(join(root, "lib/node_modules/pkg"), { recursive: true });
+      expect(reachableZod(join(root, "lib/node_modules/pkg"))).toEqual({
+        kind: "found",
+        directory: join(root, "node_modules/zod"),
+        version: "2.0.0",
+      });
+      // Another package installed under the name zod, as an npm alias does, has no Zod version.
+      await zodAt(join(root, "aliased/node_modules/zod"), { name: "not-zod", version: "4.99.0" });
+      expect(reachableZod(join(root, "aliased"))).toEqual({
+        kind: "found",
+        directory: join(root, "aliased/node_modules/zod"),
+      });
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("defers to Plug'n'Play when a project's PnP manifest comes first", async () => {
+    const root = await mkdtemp(join(await realpath(tmpdir()), "hooknostic-reachable-"));
+    try {
+      await zodAt(join(root, "node_modules/zod"), { name: "zod", version: "2.0.0" });
+      for (const marker of [".pnp.cjs", ".pnp.data.json", ".pnp.js"]) {
+        const yarn = join(root, marker.replaceAll(".", "-"));
+        await mkdir(join(yarn, "src"), { recursive: true });
+        await writeFile(join(yarn, marker), "");
+        expect(reachableZod(join(yarn, "src")), marker).toEqual({ kind: "pnp" });
+      }
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("finds none where no zod is on the lookup path", async () => {
+    const root = await zodFreeTemporaryDirectory("hooknostic-reachable-");
+    try {
+      await mkdir(join(root, "app/src"), { recursive: true });
+      expect(reachableZod(join(root, "app/src"))).toEqual({ kind: "none" });
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
 });
 
 describe("bundleHasMainModuleGuard", () => {

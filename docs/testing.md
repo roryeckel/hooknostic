@@ -245,3 +245,33 @@ in a temporary consumer, checks shipped documentation and rewritten dependencies
 and exercises init/check/sync/verify plus a hookless package build. It may download
 registry dependencies; it never publishes. The normal suite retains its offline
 simulated-install coverage.
+
+## Yarn Plug'n'Play consumers
+
+After `pnpm run bundle`, set `HOOKNOSTIC_YARN_PNP=1` and run
+`pnpm exec vitest run packages/cli/test/yarn-pnp-consumer.test.ts`.
+It needs corepack and network access, and Yarn is not in CI, so run it
+locally for any change to how builds resolve or read packages. It packs the
+SDK and CLI, installs four Yarn 4.18.1 `nodeLinker: pnp` consumers (no Zod,
+Zod 3.24.4, 3.25.76 and 4.6.7), and builds `examples/basic` in each through
+`yarn hooknostic`, `node -r .pnp.cjs`, plain `node` against a CLI installed
+outside the project, and `yarn dlx`. It compares the whole table of outcomes:
+through Yarn's runtime the build uses the project's in-range Zod or the CLI's
+own (with HN109 when the project's is out of range); plain `node` fails with one
+HN504 (#183); `yarn dlx` fails with HN504 unless the project's Zod is in range.
+Yarn, corepack and npm keep their state in the test's temporary directory,
+where every install and `yarn dlx` run shares one Yarn global cache, and each
+consumer gets an empty `yarn.lock` so Yarn never adopts an ancestor project.
+Each cell records the real exit code (Hooknostic exits 2 for a failed build).
+A Yarn, corepack or npm step that exits otherwise with a network error in its
+output (`ECONNRESET`, `ETIMEDOUT`, a closed socket, an SSL or certificate
+error and the like; not Yarn's own codes, since `YN0013` is the fetch step of
+every install and `YN0001` any exception) stops the test at once with an
+`ENVIRONMENT/NETWORK FAILURE` error and that step's output: rerun it, it is
+not a missing HN504. Set `HOOKNOSTIC_YARN_PNP_VERBOSE=1` to print every
+build's output and the Zod it bundled.
+
+The normal suite covers HN504 without Yarn, through a synthetic layout: a
+hand-written `.pnp.data.json` and stored zip archives that esbuild resolves
+and reads as it does Yarn's (`writeSyntheticPnpProject` in
+`@hooknostic/testkit`).

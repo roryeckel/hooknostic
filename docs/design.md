@@ -662,7 +662,8 @@ Plugin component unsupported, **HN206** Agent Plugin component below the minimum
 (still emitted under `onBelowMinimum: "warn"`), **HN301** adapter
 generation failure, **HN302** output commit failure, **HN401** unsupported effect returned
 at runtime, **HN501** invalid configuration, **HN502** bundled CLI entry point,
-**HN503** invalid Agent Plugin input, unsafe path, or unmergeable overlay.
+**HN503** invalid Agent Plugin input, unsafe path, or unmergeable overlay,
+**HN504** Yarn Plug'n'Play install outside Yarn's runtime.
 **HN103** an effect was truncated or dropped by a runtime budget.
 **HN104** a declared executable mode cannot apply to a skill the target discovers
 in place. **HN105** a declared MCP environment names a server that cannot receive
@@ -677,7 +678,27 @@ the message names the root checkout (ADR-0015). **HN108** a hook declares an opt
 event field (`fields`) that the target produces below exact: an error where the field
 is never produced, the `onBelowMinimum` severity where its level is below
 `compatibility.minimum`, information otherwise or when accepted by id in
-`compatibility.accept` (ADR-0027).
+`compatibility.accept` (ADR-0027). **HN109** the zod package the SDK's `zod/v4`
+import reaches (the first on its `node_modules` path, whether or not it provides
+`zod/v4`) is outside the SDK's `zod` peer range, or has no readable version, so
+the runtime bundles Hooknostic's own Zod instead. It is a warning, reported once
+per build, and it names the version and path found, the range, and the copy
+bundled. A project with no reachable Zod gets Hooknostic's copy without one.
+User code that imports Zod still bundles the project's copy (ADR-0040).
+**HN504** a build under a Yarn Plug'n'Play manifest needs a module from Yarn's
+install that this process cannot read, because Hooknostic is running without
+Yarn's PnP runtime: under plain `node`, `npx`, a global install or `pnpm dlx`.
+esbuild reads Yarn's zip archives itself, but what Hooknostic reads beside a
+module -- the SDK's manifest, licence notices -- would come back missing, so
+the build fails instead of bundling around it. `yarn dlx` loads a runtime, but
+not the project's, so a build that needs Hooknostic's own Zod fails the same
+way. It is an error, reported once per build, naming the module and the PnP
+manifest, or under `yarn dlx` where Hooknostic's own Zod failed to resolve.
+Under `yarn hooknostic` itself, where the CLI is in the project's install, a
+failure to resolve Hooknostic's own Zod keeps esbuild's error instead. Run
+Hooknostic through Yarn from the project, `yarn hooknostic`, with
+`hooknostic` as a devDependency (ADR-0040; supporting the other invocations
+is #190).
 
 #### HN502 — bundled CLI entry point
 
@@ -1066,11 +1087,18 @@ pnpm TypeScript monorepo; adapters are internal workspace packages. The SDK, Age
 loader/contracts, and CLI are published. The published CLI is therefore
 self-contained (`packages/cli/scripts/bundle.mjs`): core and the adapters are inlined into
 `dist/index.js`; each adapter's runtime shim is prebundled into `dist/shims/<id>.mjs`
-(runtime inlined, SDK external — the build aliases `@hooknostic/sdk` to the user project's
-copy so an artifact carries exactly one SDK/zod copy); and the emitted declarations import
+(runtime inlined, SDK root and `/schemas` external — the build aliases both to the user
+project's copy so an artifact carries exactly one SDK/zod copy, the SDK's schemas taking
+Zod from the project when it installs one in the SDK's peer range and from the CLI's own dependency otherwise,
+[ADR-0040](decisions/0040-sdk-schemas-subpath.md)); and the emitted declarations import
 nothing but `@hooknostic/sdk`. `packages/cli/src/package.test.ts` proves the
 registry-install story offline. Publishing `@hooknostic/core` and `@hooknostic/testkit` for
 third-party adapters is a post-stabilization step that reuses the SDK's dist pattern.
+
+The SDK has two entries. The root, `@hooknostic/sdk`, is the authoring API and
+canonical types in plain TypeScript; it loads no Zod at runtime and names none in its
+declarations, so authors install no Zod. `@hooknostic/sdk/schemas` holds the Zod 4
+runtime schemas and needs the SDK's optional `zod` peer.
 
 ```
 hooknostic/
@@ -1082,7 +1110,7 @@ hooknostic/
 
 | Package | Public? | Purpose |
 | --- | --- | --- |
-| `@hooknostic/sdk` | Yes | Authoring API and public types. |
+| `@hooknostic/sdk` | Yes | Authoring API and public types; Zod runtime schemas at `@hooknostic/sdk/schemas`. |
 | `@hooknostic/agent-plugin` | Yes | Agent Plugins 1.0 loader, schemas, and projection contracts. |
 | `hooknostic` | Yes | CLI binary. |
 | `@hooknostic/core` | Not initially | Compiler/IR/capability analysis. |

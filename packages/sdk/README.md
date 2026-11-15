@@ -34,9 +34,24 @@ for the supported events and effects. Licensed under Apache-2.0.
 
 `defineConfig` also selects Agent Plugins 1.0 inputs or direct project components. See the [configuration reference](https://github.com/roryeckel/hooknostic/blob/master/docs/configuration.md). Hookless builds need configuration but no `definePlugin` entry.
 
+## Runtime schemas
+
+Writing hooks and configuration needs no Zod: the `@hooknostic/sdk` entry never
+loads it. The runtime validation schemas live at `@hooknostic/sdk/schemas`, for
+tooling that validates Hooknostic objects or composes them with its own
+schemas. They are Zod 4 Classic schemas, and importing them needs the optional
+`zod` peer at `^4.6.7`:
+
+```ts
+import * as z from "zod/v4";
+import { toolInvocationSchema } from "@hooknostic/sdk/schemas";
+
+const labelled = z.object({ tool: toolInvocationSchema.extend({ label: z.string() }) });
+```
+
 ## Upgrading
 
-The SDK's exported runtime schemas use Zod 4 Classic and require the `zod` peer
-at `^4.6.7`; Zod 3 schema composition is no longer supported. See the
+The schemas moved from the package root to `@hooknostic/sdk/schemas`, and Zod 3
+schema composition is no longer supported. See the
 [upgrading guides](https://github.com/roryeckel/hooknostic/blob/master/docs/upgrading/README.md)
-for this and other breaking changes.
+for these and other breaking changes.

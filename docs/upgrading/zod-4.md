@@ -6,6 +6,18 @@ Zod 3 schema API exported by earlier releases, including when those schemas
 were composed with a consumer's own Zod 3 instance. The package version is
 selected separately through the [release workflow](../releases.md).
 
+> **Releases after 0.12.0.** This guide describes 0.12.0. Later releases move
+> the schemas to `@hooknostic/sdk/schemas` and make the `zod` peer optional.
+> Hook authors then need no Zod: the SDK root never loads it, and generated
+> runtimes use the `hooknostic` CLI's own Zod when the project has none. Only
+> code that imports `@hooknostic/sdk/schemas` installs `zod@^4.6.7`, and the
+> examples below then import the schemas from that subpath. A project that
+> declares `zod` still keeps it at `^4.6.7` or a newer 4.x floor. Without
+> `legacy-peer-deps`, npm refuses an older one with `ERESOLVE`. pnpm installs
+> a declared Zod 3 with a peer warning, and the build then reports HN109 and
+> bundles the CLI's Zod for the SDK instead. See
+> [importing SDK schemas](sdk-schemas-subpath.md).
+
 ## Upgrade and compose schemas
 
 Installing `@hooknostic/sdk` with `hooknostic` is enough on its own: the CLI

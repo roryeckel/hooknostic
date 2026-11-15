@@ -310,6 +310,162 @@ function definePlugin(spec) {
   return spec;
 }
 
+// ../../packages/sdk/dist/result.js
+var RUNTIME_DIAGNOSTIC_CODES = ["HN103", "HN401"];
+
+// ../../packages/sdk/dist/support.js
+var SUPPORT_LEVELS = ["exact", "emulated", "approximate", "unsupported"];
+var RANK = {
+  exact: 3,
+  emulated: 2,
+  approximate: 1,
+  unsupported: 0
+};
+function meetsMinimum(actual, minimum) {
+  return RANK[actual] >= RANK[minimum];
+}
+
+// ../../packages/sdk/dist/tools.js
+var TOOL_KINDS = [
+  "shell",
+  "file.read",
+  "file.write",
+  "file.edit",
+  "web.fetch",
+  "web.search",
+  "agent",
+  "mcp",
+  "other"
+];
+var SHELL_DIALECTS = ["posix", "powershell", "cmd"];
+function isPlainObject2(value) {
+  if (typeof value !== "object" || value === null)
+    return false;
+  const proto = Object.getPrototypeOf(value);
+  return proto === Object.prototype || proto === null;
+}
+function shapeOf(shapes, key) {
+  return Object.hasOwn(shapes, key) ? shapes[key] : void 0;
+}
+function shellCodec(shapes, options) {
+  const normalize = options?.normalizeName ?? ((name) => name);
+  return {
+    classify(nativeName, input) {
+      const shape = shapeOf(shapes, normalize(nativeName));
+      if (shape === void 0 || !isPlainObject2(input))
+        return void 0;
+      const command = input[shape.commandKey];
+      if (typeof command !== "string")
+        return void 0;
+      const cwd = shape.cwdKey !== void 0 ? input[shape.cwdKey] : void 0;
+      return {
+        command,
+        ...typeof cwd === "string" ? { cwd } : {},
+        commandKey: shape.commandKey,
+        ...shape.cwdKey !== void 0 ? { cwdKey: shape.cwdKey } : {},
+        ...shape.dialect !== void 0 ? { dialect: shape.dialect } : {}
+      };
+    },
+    encode(nativeName, input, patch) {
+      const shape = shapeOf(shapes, normalize(nativeName));
+      if (shape === void 0 || !isPlainObject2(input))
+        return void 0;
+      if (typeof input[shape.commandKey] !== "string")
+        return void 0;
+      return { ...input, [shape.commandKey]: patch.command };
+    }
+  };
+}
+var PATCH_BEGIN = "*** Begin Patch";
+var PATCH_END = "*** End Patch";
+var PATCH_ENVIRONMENT = "*** Environment ID:";
+var PATCH_END_OF_FILE = "*** End of File";
+var PATCH_UPDATE = "*** Update File: ";
+var PATCH_FILE_HEADERS = ["*** Add File: ", "*** Delete File: ", PATCH_UPDATE];
+var PATCH_MOVE = "*** Move to: ";
+function parsePatchPaths(text) {
+  const lines = text.trim().split(/\r?\n/);
+  if (lines.length < 2 || lines[0].trim() !== PATCH_BEGIN || lines[lines.length - 1].trim() !== PATCH_END) {
+    return void 0;
+  }
+  const body = lines.slice(1, -1);
+  if (body[0]?.trim().startsWith(PATCH_ENVIRONMENT))
+    body.shift();
+  const paths = [];
+  let inUpdateHunk = false;
+  let afterUpdateHeader = false;
+  for (const line of body) {
+    const candidate = inUpdateHunk ? line.trimEnd() : line.trim();
+    const header = PATCH_FILE_HEADERS.find((prefix) => candidate.startsWith(prefix));
+    if (header !== void 0) {
+      const path = candidate.slice(header.length);
+      if (path === "")
+        return void 0;
+      paths.push(path);
+      inUpdateHunk = header === PATCH_UPDATE;
+      afterUpdateHeader = inUpdateHunk;
+      continue;
+    }
+    const untrailed = line.trimEnd();
+    if (untrailed.startsWith(PATCH_MOVE)) {
+      const path = untrailed.slice(PATCH_MOVE.length);
+      if (!afterUpdateHeader || path === "")
+        return void 0;
+      paths.push(path);
+      afterUpdateHeader = false;
+      continue;
+    }
+    if (line.startsWith("***") && untrailed !== PATCH_END_OF_FILE)
+      return void 0;
+    afterUpdateHeader = false;
+  }
+  return [...new Set(paths)];
+}
+function fileCodec(shapes, options) {
+  const normalize = options?.normalizeName ?? ((name) => name);
+  return {
+    classify(nativeName, input) {
+      const shape = shapeOf(shapes, normalize(nativeName));
+      if (shape === void 0 || !isPlainObject2(input))
+        return void 0;
+      if ("pathKey" in shape) {
+        const path = input[shape.pathKey];
+        return typeof path === "string" ? { paths: [path], pathKey: shape.pathKey } : void 0;
+      }
+      const patch = input[shape.patchKey];
+      const paths = typeof patch === "string" ? parsePatchPaths(patch) : void 0;
+      return paths === void 0 ? void 0 : { paths, patchKey: shape.patchKey };
+    }
+  };
+}
+function listOf(value) {
+  return Array.isArray(value) ? value : [value];
+}
+function matchesTool(match, tool) {
+  if (!match)
+    return true;
+  if (match.kind !== void 0 && !listOf(match.kind).includes(tool.kind))
+    return false;
+  if (match.nativeName !== void 0 && !listOf(match.nativeName).includes(tool.nativeName))
+    return false;
+  return true;
+}
+
+// hooks.ts
+var hooks_default = definePlugin({
+  name: "sample-project",
+  hooks: [
+    hook("tool.before", {
+      id: "sample-guard",
+      match: { kind: "shell" },
+      capabilities: { block: "required" },
+      run({ tool }) {
+        if (tool.shell?.command.includes("sample-forbidden-command")) return block("Synthetic example guard.");
+      }
+    })
+  ]
+});
+
 // ../../node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/core/util.js
 var util_exports = {};
 __export(util_exports, {
@@ -355,7 +511,7 @@ __export(util_exports, {
   hide: () => hide,
   installLazyProp: () => installLazyProp,
   isObject: () => isObject,
-  isPlainObject: () => isPlainObject2,
+  isPlainObject: () => isPlainObject3,
   issue: () => issue,
   joinValues: () => joinValues,
   jsonStringifyReplacer: () => jsonStringifyReplacer,
@@ -597,7 +753,7 @@ var allowsEval = /* @__PURE__ */ cached(() => {
     return false;
   }
 });
-function isPlainObject2(o) {
+function isPlainObject3(o) {
   if (isObject(o) === false)
     return false;
   const ctor = o.constructor;
@@ -614,7 +770,7 @@ function isPlainObject2(o) {
   return true;
 }
 function shallowClone(o) {
-  if (isPlainObject2(o))
+  if (isPlainObject3(o))
     return { ...o };
   if (Array.isArray(o))
     return [...o];
@@ -803,7 +959,7 @@ function omit(schema, mask) {
   return clone(schema, mergeDefs(currDef, { shape: newShape, checks: [] }));
 }
 function extend(schema, shape) {
-  if (!isPlainObject2(shape)) {
+  if (!isPlainObject3(shape)) {
     throw new Error("Invalid input to extend: expected a plain object");
   }
   const checks = schema._zod.def.checks;
@@ -825,7 +981,7 @@ function extended(schema, shape) {
   return newShape;
 }
 function safeExtend(schema, shape) {
-  if (!isPlainObject2(shape)) {
+  if (!isPlainObject3(shape)) {
     throw new Error("Invalid input to safeExtend: expected a plain object");
   }
   return clone(schema, mergeDefs(schema._zod.def, { shape: extended(schema, shape) }));
@@ -3052,7 +3208,7 @@ function mergeValues(a, b) {
   if (a instanceof Date && b instanceof Date && +a === +b) {
     return { valid: true, data: a };
   }
-  if (isPlainObject2(a) && isPlainObject2(b)) {
+  if (isPlainObject3(a) && isPlainObject3(b)) {
     const bKeys = Object.keys(b);
     const sharedKeys = Object.keys(a).filter((key) => bKeys.indexOf(key) !== -1);
     const newObj = { ...a, ...b };
@@ -3150,7 +3306,7 @@ var $ZodRecord = /* @__PURE__ */ $constructor("$ZodRecord", (inst, def) => {
   memo2?.attach(inst);
   inst._zod.parse = (payload, ctx) => {
     const input = payload.value;
-    if (!isPlainObject2(input)) {
+    if (!isPlainObject3(input)) {
       payload.issues.push({
         expected: "record",
         code: "invalid_type",
@@ -6594,144 +6750,6 @@ function superRefine(fn, params) {
   return _superRefine(fn, params);
 }
 
-// ../../packages/sdk/dist/support.js
-var SUPPORT_LEVELS = ["exact", "emulated", "approximate", "unsupported"];
-var RANK = {
-  exact: 3,
-  emulated: 2,
-  approximate: 1,
-  unsupported: 0
-};
-function meetsMinimum(actual, minimum) {
-  return RANK[actual] >= RANK[minimum];
-}
-
-// ../../packages/sdk/dist/tools.js
-var TOOL_KINDS = [
-  "shell",
-  "file.read",
-  "file.write",
-  "file.edit",
-  "web.fetch",
-  "web.search",
-  "agent",
-  "mcp",
-  "other"
-];
-var SHELL_DIALECTS = ["posix", "powershell", "cmd"];
-function isPlainObject3(value) {
-  if (typeof value !== "object" || value === null)
-    return false;
-  const proto = Object.getPrototypeOf(value);
-  return proto === Object.prototype || proto === null;
-}
-function shapeOf(shapes, key) {
-  return Object.hasOwn(shapes, key) ? shapes[key] : void 0;
-}
-function shellCodec(shapes, options) {
-  const normalize = options?.normalizeName ?? ((name) => name);
-  return {
-    classify(nativeName, input) {
-      const shape = shapeOf(shapes, normalize(nativeName));
-      if (shape === void 0 || !isPlainObject3(input))
-        return void 0;
-      const command = input[shape.commandKey];
-      if (typeof command !== "string")
-        return void 0;
-      const cwd = shape.cwdKey !== void 0 ? input[shape.cwdKey] : void 0;
-      return {
-        command,
-        ...typeof cwd === "string" ? { cwd } : {},
-        commandKey: shape.commandKey,
-        ...shape.cwdKey !== void 0 ? { cwdKey: shape.cwdKey } : {},
-        ...shape.dialect !== void 0 ? { dialect: shape.dialect } : {}
-      };
-    },
-    encode(nativeName, input, patch) {
-      const shape = shapeOf(shapes, normalize(nativeName));
-      if (shape === void 0 || !isPlainObject3(input))
-        return void 0;
-      if (typeof input[shape.commandKey] !== "string")
-        return void 0;
-      return { ...input, [shape.commandKey]: patch.command };
-    }
-  };
-}
-var PATCH_BEGIN = "*** Begin Patch";
-var PATCH_END = "*** End Patch";
-var PATCH_ENVIRONMENT = "*** Environment ID:";
-var PATCH_END_OF_FILE = "*** End of File";
-var PATCH_UPDATE = "*** Update File: ";
-var PATCH_FILE_HEADERS = ["*** Add File: ", "*** Delete File: ", PATCH_UPDATE];
-var PATCH_MOVE = "*** Move to: ";
-function parsePatchPaths(text) {
-  const lines = text.trim().split(/\r?\n/);
-  if (lines.length < 2 || lines[0].trim() !== PATCH_BEGIN || lines[lines.length - 1].trim() !== PATCH_END) {
-    return void 0;
-  }
-  const body = lines.slice(1, -1);
-  if (body[0]?.trim().startsWith(PATCH_ENVIRONMENT))
-    body.shift();
-  const paths = [];
-  let inUpdateHunk = false;
-  let afterUpdateHeader = false;
-  for (const line of body) {
-    const candidate = inUpdateHunk ? line.trimEnd() : line.trim();
-    const header = PATCH_FILE_HEADERS.find((prefix) => candidate.startsWith(prefix));
-    if (header !== void 0) {
-      const path = candidate.slice(header.length);
-      if (path === "")
-        return void 0;
-      paths.push(path);
-      inUpdateHunk = header === PATCH_UPDATE;
-      afterUpdateHeader = inUpdateHunk;
-      continue;
-    }
-    const untrailed = line.trimEnd();
-    if (untrailed.startsWith(PATCH_MOVE)) {
-      const path = untrailed.slice(PATCH_MOVE.length);
-      if (!afterUpdateHeader || path === "")
-        return void 0;
-      paths.push(path);
-      afterUpdateHeader = false;
-      continue;
-    }
-    if (line.startsWith("***") && untrailed !== PATCH_END_OF_FILE)
-      return void 0;
-    afterUpdateHeader = false;
-  }
-  return [...new Set(paths)];
-}
-function fileCodec(shapes, options) {
-  const normalize = options?.normalizeName ?? ((name) => name);
-  return {
-    classify(nativeName, input) {
-      const shape = shapeOf(shapes, normalize(nativeName));
-      if (shape === void 0 || !isPlainObject3(input))
-        return void 0;
-      if ("pathKey" in shape) {
-        const path = input[shape.pathKey];
-        return typeof path === "string" ? { paths: [path], pathKey: shape.pathKey } : void 0;
-      }
-      const patch = input[shape.patchKey];
-      const paths = typeof patch === "string" ? parsePatchPaths(patch) : void 0;
-      return paths === void 0 ? void 0 : { paths, patchKey: shape.patchKey };
-    }
-  };
-}
-function listOf(value) {
-  return Array.isArray(value) ? value : [value];
-}
-function matchesTool(match, tool) {
-  if (!match)
-    return true;
-  if (match.kind !== void 0 && !listOf(match.kind).includes(tool.kind))
-    return false;
-  if (match.nativeName !== void 0 && !listOf(match.nativeName).includes(tool.nativeName))
-    return false;
-  return true;
-}
-
 // ../../packages/sdk/dist/schemas.js
 var hookEventNameSchema = _enum(HOOK_EVENT_NAMES);
 var capabilityIdSchema = _enum(ALL_CAPABILITY_IDS);
@@ -7074,9 +7092,6 @@ var pluginSpecSchema = object({
   description: string2().optional(),
   hooks: array(hookDefinitionSchema)
 }).strict();
-
-// ../../packages/sdk/dist/result.js
-var RUNTIME_DIAGNOSTIC_CODES = ["HN103", "HN401"];
 var runtimeDiagnosticCodeSchema = _enum(RUNTIME_DIAGNOSTIC_CODES);
 var handlerErrorSchema = object({
   hookId: string2(),
@@ -7095,21 +7110,6 @@ var hookResultSchema = object({
   terminatedBy: string2().optional(),
   errors: array(handlerErrorSchema)
 }).strict();
-
-// hooks.ts
-var hooks_default = definePlugin({
-  name: "sample-project",
-  hooks: [
-    hook("tool.before", {
-      id: "sample-guard",
-      match: { kind: "shell" },
-      capabilities: { block: "required" },
-      run({ tool }) {
-        if (tool.shell?.command.includes("sample-forbidden-command")) return block("Synthetic example guard.");
-      }
-    })
-  ]
-});
 
 // ../../packages/cli/dist/shims/pi.mjs
 function errorMessage(error2) {

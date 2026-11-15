@@ -51,7 +51,7 @@ import {
 import type { AnalysisResult } from "./analysis.js";
 import { analyzeCapabilities } from "./analysis.js";
 import { validateGeneratedArtifacts } from "./artifacts.js";
-import { bundleHasMainModuleGuard, bundleRuntime } from "./bundle.js";
+import { bundleHasMainModuleGuard, bundleRuntime, PnpRuntimeRequiredError } from "./bundle.js";
 import { commitStagedOutputs, existingKindProblem } from "./commit.js";
 import type { Diagnostic } from "./diagnostics.js";
 import { hasFatal } from "./diagnostics.js";
@@ -1255,6 +1255,9 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
   }
 
   const mainGuardTargets: string[] = [];
+  const bundleMessages = new Set<string>();
+  // HN504 has one cause for every target, though each may name another module.
+  let pnpRuntimeReported = false;
   try {
     const skillPolicyPlans: ReturnType<typeof planProjectSkillPolicies> =
       componentSource === undefined
@@ -1308,6 +1311,8 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
           phase = "bundling";
           const resolved = adapter.capabilities(spec);
           const compatibility = effectiveCompatibility(config, id);
+          // bundleRuntime adds the SDK's /schemas sibling to this entry-file
+          // alias, and lets those schemas fall back to Hooknostic's own Zod.
           const alias = {
             ...adapter.shimAliases?.(),
             ...(projectSdk === undefined ? {} : { "@hooknostic/sdk": projectSdk }),
@@ -1337,6 +1342,12 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
             resolveDir: configDir,
             ...(Object.keys(alias).length === 0 ? {} : { alias }),
           });
+          // Every target bundles the same SDK, so report a Zod substitution once.
+          for (const diagnostic of bundle.diagnostics) {
+            if (bundleMessages.has(diagnostic.message)) continue;
+            bundleMessages.add(diagnostic.message);
+            diagnostics.push(diagnostic);
+          }
           if (adapter.shimExecution === "command" && bundleHasMainModuleGuard(bundle.code)) mainGuardTargets.push(id);
           phase = "generation";
           hookArtifacts.push(...(await adapter.compile(ir, spec, bundle, { runtime: runtimePolicy })));
@@ -1836,12 +1847,20 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
         const stagingDir = await writeArtifacts(stagingRoot, artifacts, directories);
         staged.push({ key: id, target: id, stagingDir, outputDir: outputFor(id)!.outputDir });
       } catch (error) {
-        diagnostics.push({
-          code: "HN301",
-          severity: "error",
-          target: id,
-          message: `artifact ${phase} failed: ${errorMessage(error)}`,
-        });
+        if (error instanceof PnpRuntimeRequiredError) {
+          // Report it once per build, like a Zod substitution.
+          if (!pnpRuntimeReported) {
+            pnpRuntimeReported = true;
+            diagnostics.push(error.diagnostic);
+          }
+        } else {
+          diagnostics.push({
+            code: "HN301",
+            severity: "error",
+            target: id,
+            message: `artifact ${phase} failed: ${errorMessage(error)}`,
+          });
+        }
         target.status = "failed";
         if (target.projection) target.projection.status = "failed";
       }

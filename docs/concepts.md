@@ -7,7 +7,9 @@ language; the [design document](design.md) has the precise contracts behind each
 
 Agent Plugins 1.0 supplies the portable manifest, skills, MCP, and client-extension
 contract. Hooknostic validates it and translates components through adapter profiles.
-Hooks use the TypeScript SDK and can accompany a package or stand alone. Direct skills
+Hooks use the TypeScript SDK and can accompany a package or stand alone. Its
+authoring entry, `@hooknostic/sdk`, needs no Zod; the runtime validation schemas
+are a separate `@hooknostic/sdk/schemas` entry for tooling. Direct skills
 and MCP sources can also be synchronized into a repository without a manifest.
 
 Choose package or project delivery per target. `build` writes native output; `sync`

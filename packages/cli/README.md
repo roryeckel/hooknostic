@@ -19,6 +19,9 @@ npx hooknostic check --config ./hooknostic.config.ts
 npx hooknostic build --config ./hooknostic.config.ts
 ```
 
+Under Yarn Plug'n'Play, run these as `yarn hooknostic`: outside Yarn's
+runtime the build fails with HN504.
+
 To test what the hooks decide on a target, pipe portable events (JSON Lines) to
 `dispatch`; see [Testing your hooks](https://github.com/roryeckel/hooknostic/blob/master/docs/testing-your-hooks.md):
 

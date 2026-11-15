@@ -224,7 +224,7 @@ const TERMINAL_EFFECT: Record<EffectKind, boolean> = {
 
 /**
  * Every effect kind, derived from the total record above so it cannot fall
- * out of date when a kind is added. Tuple-typed for zod's `z.enum`.
+ * out of date when a kind is added. Tuple-typed for the schemas' enum.
  */
 export const EFFECT_KINDS = Object.keys(TERMINAL_EFFECT) as [EffectKind, ...EffectKind[]];
 
