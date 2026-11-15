@@ -815,22 +815,42 @@ thing each command shim installs, and it stays for the life of the process:
   handler it is that handler's error, so `onHookError` applies and an intentional
   `process.exit(2)` no longer blocks on Claude Code. `onHookError: "block"` is the
   portable replacement. Where a throw cannot unwind (inside an `uncaughtException`
-  emit, during `exit`, or after the decision), it reports synchronously and leaves with
-  the decided code, or 0 before one. The shim's own exits use the original function.
+  emit, in a `beforeExit` loop, during `exit`, or once the shim finishes), it reports
+  synchronously and leaves with the decided code, or 0 before one. The guard learns it
+  is inside an `uncaughtException` emit from `uncaughtExceptionMonitor`, which Node
+  emits before every listener, including one the hook source prepends. Before the
+  decision, `beforeExit` means the shim's own await can never settle. A named
+  `import { exit } from "node:process"` is caught too, because the guard syncs the
+  builtin module's exports. The shim's own exits use the original function.
 - **Exit-code pin.** An `exit` listener sets the exit code to the decided code, or 0
   before one, over a `process.exitCode` the hook source set and over Node's 13 for an
   unsettled top-level await. Finishing re-registers it after any `exit` listener the
   hook source added while it loaded.
-- **Keep the decided code.** A stray failure after the decision neither adds a block
-  nor removes one: Claude Code's exit 2 stays 2, and the report starts on a line of its
-  own after a block reason that did not end in a newline.
+- **Keep the decided code.** Each command shim records the decided code as soon as
+  `apply` produces it, before it writes the reply. A stray failure from then on neither
+  adds a block nor removes one: Claude Code's exit 2 stays 2. The guard's writer uncorks
+  a stderr a handler left corked, and a report starts on a line of its own after a
+  block reason that did not end in a newline.
 
-Every shape then ends on exit 0 or the decided code, the two exits each harness's
-captured evidence covers. The guard does not cover `process.reallyExit`, which
-`signal-exit` wraps and is left alone, `process.kill(process.pid)`, `process.abort()`, or
-an `exit` listener added after the shim finishes. The in-process shims leave the
-process to their host. So does `hooknostic dispatch`, which runs the source in the CLI's
-own process (#189).
+Every shape the guard covers then ends on exit 0 or the decided code, the two exits each
+harness's captured evidence covers. It does not cover these:
+
+- `process.reallyExit`, which `signal-exit` wraps and the guard leaves alone;
+  `process.kill(process.pid)`; `process.abort()`; or an `exit` listener added after the
+  shim finishes.
+- An `uncaughtException` listener of the hook source's own that throws, for example
+  `(e) => { throw e }`: Node exits 7.
+- `process.removeAllListeners("uncaughtException")`, which takes the guard's listeners
+  with it: the next uncaught exception crashes the process the way Node does by
+  default, with no reply and no report. The exit-code pin, an `exit` listener, still
+  sets the exit code.
+- A line the hook source leaves unterminated on stdout or stderr. The guard tracks only
+  what it writes itself, so a report that follows such a line is glued onto it.
+
+`process.removeAllListeners("unhandledRejection")` is covered: the guard reports the
+rejection from the uncaught exception Node raises instead. The in-process shims leave
+the process to their host. So does `hooknostic dispatch`, which runs the source in the
+CLI's own process (#189).
 
 Each native deadline is `ceil((sum of the event's handler budgets + processAllowanceMs) / 1000)`
 seconds: the handler budgets bound what the dispatcher runs, and the allowance covers what

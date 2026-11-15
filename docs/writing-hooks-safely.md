@@ -106,9 +106,17 @@ process. It fails that handler with `the hook source called process.exit(<code>)
 Claude Code. To block, return `block(...)`; to fail closed when a handler throws, set
 `onHookError: "block"`. Both are portable: they block wherever the adapter can block.
 
-The command shims cannot catch everything. `process.kill(process.pid)`,
-`process.abort()`, `process.reallyExit` and an `exit` listener added after the reply
-is written still end the process on their own terms.
+The command shims cannot catch everything. These still end the process on their own
+terms:
+
+- `process.kill(process.pid)`, `process.abort()` and `process.reallyExit`.
+- An `exit` listener added after the shim finishes.
+- An `uncaughtException` listener of your own that throws, which Node turns into exit 7.
+- `process.removeAllListeners("uncaughtException")`, after which an uncaught exception
+  crashes the hook with no reply and no report.
+
+A report also starts mid-line if your code left a line on stdout or stderr without a
+newline, so end what you write with one.
 
 ## `process.execPath` is not always Node
 

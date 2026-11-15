@@ -156,7 +156,11 @@ export interface CommandShimGuard {
  *   an unsettled top-level await.
  *
  * Not covered: `process.reallyExit`, `process.kill(process.pid)`,
- * `process.abort()`, and `exit` listeners added after `finish`.
+ * `process.abort()`, `exit` listeners added after `finish`, an
+ * uncaughtException listener of the hook source's own that throws (exit 7),
+ * `process.removeAllListeners("uncaughtException")`, and a line the hook
+ * source left unterminated, which a report is glued onto (docs/design.md
+ * §10.3).
  */
 export function guardCommandShim(describe: (error: unknown) => string): CommandShimGuard {
   const exit = process.exit;
