@@ -933,6 +933,32 @@ export default definePlugin({
       expect(cli.err()).toContain("--unguarded is only supported by dispatch");
     });
 
+    it.each([{ flags: [] as string[] }, { flags: ["--unguarded"] }])(
+      "leaves with 2 when dispatch throws unexpectedly, though a handle leaked ($flags)",
+      async ({ flags }) => {
+        const dir = await project(onSecondEvent(""), GUARD_TARGETS);
+        // The config leaks a handle. An adapter name that resolves through the
+        // registry's prototype makes dispatch throw outside its own error
+        // handling, which is the path under test; it is a defect of its own.
+        await writeFile(
+          join(dir, "hooknostic.config.ts"),
+          `setInterval(() => {}, 60_000);
+          export default { entry: "./hooks.ts", targets: { claude: {
+            adapter: "toString", version: ${JSON.stringify(claudeHarness.recommendedRange)}, delivery: "package", output: "./dist/claude",
+          } } };`,
+        );
+        const child = spawnSync(
+          process.execPath,
+          [CLI_BIN, "dispatch", "--config", join(dir, "hooknostic.config.ts"), "--target", "claude", ...flags],
+          { input: EVENTS.join(""), encoding: "utf8", timeout: 20_000, env: { ...process.env, HOOKNOSTIC_DEBUG: "" } },
+        );
+        // Killed by the timeout, it would have no status.
+        expect(child.signal, child.stderr).toBeNull();
+        expect(child.status).toBe(2);
+        expect(child.stderr).toContain("hooknostic: unexpected error:");
+      },
+    );
+
     it("keeps the guard's event hooks out of the package's API", async () => {
       // Type-level, so `pnpm build`'s tsc enforces it: neither public options
       // type, nor the public functions' parameters, may carry the hooks.

@@ -148,8 +148,10 @@ function guardDispatch(target: string) {
       guard.finish(finishedWith);
       return finishedWith;
     },
+    /** Leave with 2 after an unexpected throw. */
     fail() {
-      guard.decide(2);
+      finishedWith = 2;
+      guard.finish(2);
     },
   };
 }
@@ -358,8 +360,14 @@ export async function runCli(argv: string[], options?: RunCliOptions): Promise<n
             guarded === undefined ? {} : { onEventStart: guarded.onEventStart, onEventEnd: guarded.onEventEnd },
           );
         } catch (error) {
-          // The catch below answers 2; the guard's up-front 1 must not override it.
-          guarded?.fail();
+          // The catch below answers 2. Leave as a finished run does, so a
+          // handle the config or hooks leaked cannot hold the CLI open, and
+          // the guard's up-front 1 does not override the 2.
+          if (protocol !== undefined) {
+            await protocol.release().catch(() => {});
+            if (guarded === undefined) finishCommandShim(2);
+            else guarded.fail();
+          }
           throw error;
         }
         if (protocol !== undefined) {
