@@ -7932,6 +7932,7 @@ function guardCommandShim(describe2) {
   const exit = process.exit;
   const stderr = process.stderr;
   let decided;
+  let finished = false;
   let midLine = false;
   let cannotUnwind = false;
   const reported = /* @__PURE__ */ new Set();
@@ -7940,6 +7941,7 @@ function guardCommandShim(describe2) {
     midLine = !text.endsWith("\n");
     try {
       if (stderr.writableEnded || stderr.destroyed) return;
+      while (stderr.writableCorked > 0) stderr.uncork();
       await new Promise((resolve) => {
         stderr.write(text, () => resolve());
       });
@@ -7998,7 +8000,7 @@ function guardCommandShim(describe2) {
   process.on("unhandledRejection", onRejection);
   process.exit = function exitFromHookSource(code) {
     const error2 = new HookSourceExitError(code);
-    if (!cannotUnwind && decided === void 0) throw error2;
+    if (!cannotUnwind && !finished) throw error2;
     reportNow(error2, `exit:${exitCodeText(code)}`);
     return exit(decided ?? 0);
   };
@@ -8009,8 +8011,12 @@ function guardCommandShim(describe2) {
   return {
     write,
     report,
-    finish(exitCode) {
+    decide(exitCode) {
       decided = exitCode;
+    },
+    finish(exitCode = decided ?? 0) {
+      decided = exitCode;
+      finished = true;
       process.off("exit", pin);
       process.on("exit", pin);
       finishCommandShim(exitCode, exit);
@@ -8307,6 +8313,8 @@ async function runCodexCommandShim(source, options) {
     });
     trace?.(describeHookResult(result));
     const native = await applyCodex(result, nativeEvent, invocation);
+    exitCode = native.exitCode ?? 0;
+    guard.decide(exitCode);
     if (native.body !== void 0) await stdout.writeReply(JSON.stringify(native.body));
     if (native.stderr !== void 0) await guard.write(native.stderr);
     const diagnostics = formatHandlerErrors(result);
@@ -8315,7 +8323,6 @@ async function runCodexCommandShim(source, options) {
       await guard.write(`${separator}${diagnostics}
 `);
     }
-    exitCode = native.exitCode ?? 0;
   } catch (error2) {
     if (isInstance(error2, CodexDecodeError)) trace?.(`ignored payload: ${error2.message}`);
     else {

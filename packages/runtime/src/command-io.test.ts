@@ -90,6 +90,7 @@ describe("guardCommandShim", () => {
   });
 
   afterEach(() => {
+    while (process.stderr.writableCorked > 0) process.stderr.uncork();
     for (const event of EVENTS) process.removeAllListeners(event);
     for (const [event, listeners] of saved) for (const listener of listeners) process.on(event, listener);
     process.exit = realExit;
@@ -159,6 +160,48 @@ describe("guardCommandShim", () => {
     expect(vi.mocked(writeSync).mock.calls).toEqual([
       [2, "hooknostic internal [Test]: the hook source called process.exit(3)\n"],
     ]);
+  });
+
+  it("leaves with the decided code, not 0, when the hook source ends the process before finish", () => {
+    const guard = guardCommandShim(describeError);
+    process.on("uncaughtException", () => process.exit(1));
+
+    guard.decide(2);
+    emitUncaught(new Error("timer threw after the decision"), "uncaughtException");
+
+    // A block the hooks decided stays one.
+    expect(exit.mock.calls).toEqual([[2]]);
+  });
+
+  it("still throws from the stub between the decision and finish, so the reply can flush", () => {
+    const guard = guardCommandShim(describeError);
+
+    guard.decide(2);
+
+    expect(() => process.exit(1)).toThrow(HookSourceExitError);
+    expect(exit).not.toHaveBeenCalled();
+  });
+
+  it("finishes with the decided code by default", () => {
+    vi.useFakeTimers();
+    const guard = guardCommandShim(describeError);
+
+    guard.decide(2);
+    guard.finish();
+    vi.advanceTimersByTime(250);
+
+    expect(process.exitCode).toBe(2);
+    expect(exit.mock.calls).toEqual([[2]]);
+  });
+
+  it("uncorks stderr before writing, so a corked handler cannot hold back a report", async () => {
+    const guard = guardCommandShim(describeError);
+    process.stderr.cork();
+
+    await guard.write("blocked on purpose");
+
+    expect(process.stderr.writableCorked).toBe(0);
+    expect(written).toEqual(["blocked on purpose"]);
   });
 
   it("leaves with 0 rather than throwing from an exit listener", () => {

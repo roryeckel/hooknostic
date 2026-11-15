@@ -309,6 +309,49 @@ describe("Claude command shim with a hook source that owns the process", () => {
     );
   });
 
+  it("keeps a decided block's exit 2 when the hook source ends the process before the shim finishes", async () => {
+    const result = await runShim(
+      `import { block, definePlugin, hook } from "@hooknostic/sdk";
+      // Defer stderr callbacks, like a slow pipe, so the shim is still writing the
+      // block reason when the timer throws.
+      const realWrite = process.stderr.write.bind(process.stderr);
+      process.stderr.write = (chunk, encoding, callback) => {
+        const done = typeof encoding === "function" ? encoding : callback;
+        setTimeout(() => { realWrite(chunk); done?.(); }, 200);
+        return true;
+      };
+      process.on("uncaughtException", () => process.exit(1));
+      export default definePlugin({ name: "hostile", hooks: [hook("prompt.before", {
+        id: "hostile", capabilities: { "prompt.before.block": "required" },
+        async run() {
+          setTimeout(() => { throw new Error("timer threw after the decision"); }, 50);
+          return block("blocked on purpose");
+        }
+      })] });`,
+      FIXTURE,
+      CAPS,
+    );
+    // Its own listener's exit cannot unwind; it must not turn the block into exit 0.
+    expect(result.code, result.stderr).toBe(2);
+    expect(result.stderr).toMatch(
+      /^hooknostic internal \[UserPromptSubmit\]: the hook source called process\.exit\(1\)\n/m,
+    );
+  });
+
+  it("writes a block reason past a stderr the handler left corked", async () => {
+    const result = await runShim(
+      `import { block, definePlugin, hook } from "@hooknostic/sdk";
+      export default definePlugin({ name: "corked", hooks: [hook("prompt.before", {
+        id: "corked", capabilities: { "prompt.before.block": "required" },
+        async run() { process.stderr.cork(); return block("blocked on purpose"); }
+      })] });`,
+      FIXTURE,
+      CAPS,
+    );
+    expect(result.code, result.stderr).toBe(2);
+    expect(result.stderr).toBe("blocked on purpose");
+  });
+
   it("keeps a decided block's exit 2 when a rejection lands after it, on a line of its own", async () => {
     const result = await runShim(
       source({

@@ -128,8 +128,14 @@ export interface CommandShimGuard {
   write(text: string): Promise<void>;
   /** Report `error` on its own line, once per error. Never rejects. */
   report(error: unknown): Promise<void>;
-  /** Leave with `exitCode`. A stray failure after this keeps that code. */
-  finish(exitCode: number): void;
+  /**
+   * Record the exit code the hooks decided, as soon as it is known. A process
+   * the hook source ends from here, where a throw cannot unwind, leaves with
+   * it rather than 0.
+   */
+  decide(exitCode: number): void;
+  /** Leave with `exitCode`, by default the decided one. A stray failure after this keeps that code. */
+  finish(exitCode?: number): void;
 }
 
 /**
@@ -156,6 +162,10 @@ export function guardCommandShim(describe: (error: unknown) => string): CommandS
   const exit = process.exit;
   const stderr = process.stderr;
   let decided: number | undefined;
+  // Set by finish: nothing left to save, so the stub leaves rather than
+  // throws. Not by decide, because until the reply is flushed a throw that
+  // the listeners report still keeps it intact.
+  let finished = false;
   // Whether stderr, as far as this guard wrote it, ended mid-line: Claude's
   // block reason need not end in a newline, and a report must start its own.
   let midLine = false;
@@ -169,6 +179,8 @@ export function guardCommandShim(describe: (error: unknown) => string): CommandS
     midLine = !text.endsWith("\n");
     try {
       if (stderr.writableEnded || stderr.destroyed) return;
+      // A handler may have left stderr corked, and a corked write never calls back.
+      while (stderr.writableCorked > 0) stderr.uncork();
       await new Promise<void>((resolve) => {
         stderr.write(text, () => resolve());
       });
@@ -242,7 +254,7 @@ export function guardCommandShim(describe: (error: unknown) => string): CommandS
   process.on("unhandledRejection", onRejection);
   process.exit = function exitFromHookSource(code?: number | string | null): never {
     const error = new HookSourceExitError(code);
-    if (!cannotUnwind && decided === undefined) throw error;
+    if (!cannotUnwind && !finished) throw error;
     reportNow(error, `exit:${exitCodeText(code)}`);
     return exit(decided ?? 0);
   } as typeof process.exit;
@@ -254,8 +266,12 @@ export function guardCommandShim(describe: (error: unknown) => string): CommandS
   return {
     write,
     report,
-    finish(exitCode) {
+    decide(exitCode) {
       decided = exitCode;
+    },
+    finish(exitCode = decided ?? 0) {
+      decided = exitCode;
+      finished = true;
       // Last again, after any 'exit' listener the hook source added while it loaded.
       process.off("exit", pin);
       process.on("exit", pin);

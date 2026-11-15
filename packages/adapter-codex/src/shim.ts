@@ -91,6 +91,9 @@ export async function runCodexCommandShim(source: CommandPluginSource, options: 
     });
     trace?.(describeHookResult(result));
     const native = await applyCodex(result, nativeEvent, invocation);
+    // The decision: a stray failure from here on keeps this code, so a block stays one.
+    exitCode = native.exitCode ?? 0;
+    guard.decide(exitCode);
     if (native.body !== undefined) await stdout.writeReply(JSON.stringify(native.body));
     if (native.stderr !== undefined) await guard.write(native.stderr);
     // Handler failures go to stderr on the exit-0 path. Both harnesses capture
@@ -104,7 +107,6 @@ export async function runCodexCommandShim(source: CommandPluginSource, options: 
       const separator = native.stderr !== undefined && !native.stderr.endsWith("\n") ? "\n" : "";
       await guard.write(`${separator}${diagnostics}\n`);
     }
-    exitCode = native.exitCode ?? 0;
   } catch (error) {
     if (isInstance(error, CodexDecodeError)) trace?.(`ignored payload: ${error.message}`);
     else {
