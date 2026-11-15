@@ -71,10 +71,19 @@ function installedVersion(specifier, from) {
   return { path, version: JSON.parse(readFileSync(path, "utf8")).version };
 }
 
+// The consumers live outside the repository, where `pnpm` would otherwise be
+// whatever version is installed globally. Naming the repository's own lets
+// pnpm switch to it, so a pnpm consumer installs as the pinned pnpm does.
+const { packageManager } = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
+assert.match(packageManager, /^pnpm@/, "the repository must pin pnpm");
+
 /** A consumer project with a strict tsconfig that also checks the SDK's declarations. */
 async function consumerProject(parent, dependencies, source) {
   const project = await mkdtemp(join(parent, "consumer-"));
-  await writeFile(join(project, "package.json"), JSON.stringify({ private: true, type: "module", dependencies }));
+  await writeFile(
+    join(project, "package.json"),
+    JSON.stringify({ private: true, type: "module", packageManager, dependencies }),
+  );
   await writeFile(
     join(project, "tsconfig.json"),
     JSON.stringify({
@@ -86,10 +95,17 @@ async function consumerProject(parent, dependencies, source) {
   return project;
 }
 
-/** A project with the basic example's config and hooks, for the packed CLI to check and build. */
-async function exampleProject(parent, prefix, dependencies) {
+/**
+ * A project with the basic example's config and hooks, for the packed CLI to
+ * check and build. `manifest` adds fields, such as the pinned packageManager
+ * for a project pnpm installs.
+ */
+async function exampleProject(parent, prefix, dependencies, manifest = {}) {
   const project = await mkdtemp(join(parent, prefix));
-  await writeFile(join(project, "package.json"), JSON.stringify({ private: true, type: "module", dependencies }));
+  await writeFile(
+    join(project, "package.json"),
+    JSON.stringify({ private: true, type: "module", ...manifest, dependencies }),
+  );
   await mkdir(join(project, "src"));
   await writeFile(
     join(project, "hooknostic.config.ts"),
@@ -235,8 +251,18 @@ try {
   // optional peer with only a warning. That release predates `zod/v4`, so the
   // SDK's import cannot resolve against it, yet the build must still name it
   // in HN109 rather than fall back silently (ADR-0040).
-  const pnpmProject = await exampleProject(directory, "pnpm-consumer-", { "@hooknostic/sdk": sdk, zod: "3.24.4" });
-  await run("pnpm", ["install", "--ignore-scripts"], pnpmProject);
+  const pnpmProject = await exampleProject(
+    directory,
+    "pnpm-consumer-",
+    { "@hooknostic/sdk": sdk, zod: "3.24.4" },
+    { packageManager },
+  );
+  const installed = await run("pnpm", ["install", "--ignore-scripts"], pnpmProject);
+  const pinnedPnpm = packageManager.slice("pnpm@".length).split("+")[0];
+  assert.ok(
+    `${installed.stdout}${installed.stderr}`.includes(`using pnpm v${pinnedPnpm}`),
+    `the pnpm consumer must install with pnpm ${pinnedPnpm}`,
+  );
   // The layout under test, asserted rather than assumed: from its real path in
   // pnpm's store, the SDK reaches the project's Zod, which exports no ./v4.
   const pnpmSdk = await realpath(join(pnpmProject, "node_modules/@hooknostic/sdk"));
