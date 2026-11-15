@@ -569,6 +569,23 @@ describe("an SDK installed without its optional Zod peer", () => {
       }
     });
 
+    it("warns when nodePaths reach a Zod 3.0-3.8 that exports only its root", async () => {
+      // Those releases export `{import, require}`: a root and nothing else, not
+      // even ./package.json, so only the bare "zod" can name them.
+      const { root, sdkEntry } = await project();
+      try {
+        await writeZod(join(root, "vendor", "zod"), "3.8.2", {
+          v4: false,
+          exportsMap: { import: "./index.js", require: "./index.js" },
+        });
+        const result = await bundleRecorded(root, sdkEntry, { nodePaths: [join(root, "vendor")] });
+        expect(await run(root, result.code)).toBe("ok");
+        expect(result.diagnostics).toEqual([substitution("zod@3.8.2", join(root, "vendor", "zod"))]);
+      } finally {
+        await rm(root, { recursive: true, force: true });
+      }
+    });
+
     it("warns when preserveSymlinks reaches a Zod too old for zod/v4", async () => {
       const { root, sdkEntry } = await project({ zod: "3.24.4", v4: false, layout: "pnpm" });
       try {
