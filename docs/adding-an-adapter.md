@@ -201,6 +201,13 @@ profile for a broad range.
   asserts the line arrives; a registered harness without a row fails there.
   Outside this repository, call `describeHandlerErrorReporting` yourself
   (section 2).
+- Fail open on the shim's own errors too. An in-process shim guards every host
+  callback as a whole, including its bookkeeping before dispatch, because a
+  host may treat any throw as a block: OpenCode 2.x does
+  (`.capture/opencode-v2-plugin-throw`). Throw deliberate blocks as a dedicated
+  class, rethrow only that class, and report everything else through
+  `reportInternalError(error, nativeHook)` from `@hooknostic/runtime`. The
+  OpenCode v2 shim is the worked example.
 - Declare `publishesNpmPackage: true` only if package delivery emits a manifest
   npm publishes the artifact under. That is what lets a target set `npmName`;
   undeclared, core refuses the coordinate at analysis, before anything is

@@ -75,6 +75,16 @@ through. On v2 that report was visible only under
 background service are unmeasured.
 [Capture](../.capture/opencode-v2-plugin-stderr/README.md).
 
+The v2 shim also fails open on its own internal errors. The v2 host fails
+closed on any error a plugin throws from its tool, permission, prompt, context,
+generate or compaction callbacks: it denies the call or fails the request, and
+shows the message to the model as a tool error. So the shim catches every
+error of its own, reports it as `hooknostic internal [<native hook>]: <message>`
+on `console.error`, and lets the call proceed as if no hook had run. A deny
+that cannot be applied leaves the host's own permission evaluation in place.
+Only deliberate blocks still throw.
+[Capture](../.capture/opencode-v2-plugin-throw/README.md).
+
 Typed tool failures support approximate `tool.error` observation: a missing-file
 read is captured, while a plain exception from a custom tool bypasses the native
 after callback. Text and object output replacements reach the model, with objects
