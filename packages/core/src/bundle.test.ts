@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -85,6 +85,82 @@ it("includes the SDK's own license in standalone runtimes as well as third-party
   const sdkRequire = createRequire(resolve(import.meta.dirname, "../../sdk/package.json"));
   const zodLicense = resolve(sdkRequire.resolve("zod/package.json"), "../LICENSE");
   expect(result.code).toContain((await readFile(zodLicense, "utf8")).replaceAll("\r\n", "\n").trim());
+});
+
+describe("an SDK installed without its optional Zod peer", () => {
+  /** A project whose SDK's schemas import Zod, with no Zod of its own unless asked. */
+  async function project(options: { zod?: boolean } = {}): Promise<{ root: string; sdkEntry: string }> {
+    const root = await mkdtemp(join(await realpath(tmpdir()), "hooknostic-no-zod-"));
+    const sdk = join(root, "node_modules/@hooknostic/sdk");
+    await mkdir(join(sdk, "dist"), { recursive: true });
+    await writeFile(join(sdk, "package.json"), JSON.stringify({ name: "@hooknostic/sdk", type: "module" }));
+    await writeFile(join(sdk, "LICENSE"), "Example SDK license.");
+    await writeFile(join(sdk, "dist/index.js"), 'export const root = "root";');
+    await writeFile(
+      join(sdk, "dist/schemas.js"),
+      'import * as z from "zod/v4"; export const label = z.string().min(1);',
+    );
+    if (options.zod) {
+      // A recognizable stand-in, so the output shows whose Zod was bundled.
+      const zod = join(root, "node_modules/zod");
+      await mkdir(zod, { recursive: true });
+      await writeFile(
+        join(zod, "package.json"),
+        JSON.stringify({ name: "zod", version: "4.99.0", type: "module", exports: { "./v4": "./v4.js" } }),
+      );
+      await writeFile(join(zod, "LICENSE"), "Project zod license.");
+      await writeFile(
+        join(zod, "v4.js"),
+        'export const string = () => ({ min: () => ({ parse: (v) => "project zod: " + v }) });',
+      );
+    }
+    return { root, sdkEntry: join(sdk, "dist/index.js") };
+  }
+
+  const SOURCE = 'import { label } from "@hooknostic/sdk/schemas"; console.log(label.parse("ok"));';
+
+  it("bundles the SDK's schemas with Hooknostic's own Zod", async () => {
+    const { root, sdkEntry } = await project();
+    try {
+      const result = await bundleRuntime({ source: SOURCE, resolveDir: root, alias: { "@hooknostic/sdk": sdkEntry } });
+      const artifact = join(root, "hook.mjs");
+      await writeFile(artifact, result.code);
+      expect(execFileSync(process.execPath, [artifact], { encoding: "utf8" }).trim()).toBe("ok");
+      const ownZod = createRequire(import.meta.url).resolve("zod/package.json");
+      expect(result.code).toContain(
+        (await readFile(resolve(ownZod, "../LICENSE"), "utf8")).replaceAll("\r\n", "\n").trim(),
+      );
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps the project's Zod when it installs one", async () => {
+    const { root, sdkEntry } = await project({ zod: true });
+    try {
+      const result = await bundleRuntime({ source: SOURCE, resolveDir: root, alias: { "@hooknostic/sdk": sdkEntry } });
+      const artifact = join(root, "hook.mjs");
+      await writeFile(artifact, result.code);
+      expect(execFileSync(process.execPath, [artifact], { encoding: "utf8" }).trim()).toBe("project zod: ok");
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("gives user code that imports Zod without installing it no fallback", async () => {
+    const { root, sdkEntry } = await project();
+    try {
+      await expect(
+        bundleRuntime({
+          source: 'import * as z from "zod/v4"; console.log(z.string().parse("ok"));',
+          resolveDir: root,
+          alias: { "@hooknostic/sdk": sdkEntry },
+        }),
+      ).rejects.toThrow(/Could not resolve "zod\/v4"/);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
 });
 
 describe("bundleHasMainModuleGuard", () => {
