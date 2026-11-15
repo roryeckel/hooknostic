@@ -330,7 +330,8 @@ export async function setupOpenCodeV2(
         await ctx.session.hook(
           "compaction",
           // Each pass fails open alone, so an internal error in the first cannot
-          // skip the second; a block in the first still does, as before.
+          // skip the second. Neither pass has a block capability on v2; a block
+          // would still propagate and skip the second, if a pass ever gained one.
           guarded("compaction", async (e) => {
             if (events.has("model.request.before")) await runFailingOpen("compaction", e, true);
             await runFailingOpen("compaction", e);
