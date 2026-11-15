@@ -46,7 +46,7 @@ export default definePlugin({
       match: { kind: "shell" },                       // any shell tool, on any harness
       capabilities: { block: "required" },            // we rely on being able to block
       run({ tool }) {
-        const command = tool.shell?.command;          // normalized: Bash, exec_command, …
+        const command = tool.shell?.command;          // normalized: Bash, PowerShell, bash, shell, powershell, …
         if (command === undefined) return block(`Unrecognized ${tool.nativeName} input`);
         if (/git\s+push\s+.*--force(?!-with-lease)/.test(command)) {
           return block("Use --force-with-lease instead of --force.");

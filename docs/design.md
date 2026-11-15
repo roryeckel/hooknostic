@@ -241,7 +241,8 @@ interface ToolInvocation {
   };
 
   // Normalized shell view, present when the adapter's shape table knows this
-  // tool's argument keys; absent means uncaptured -- fall back to `input`.
+  // tool's argument keys and the input matches them; absent means uncaptured
+  // or not matching -- fall back to `input`.
   // commandKey/cwdKey expose the native keys for hand-built replaceInput calls.
   // dialect is the grammar family the command runs in, where the adapter can
   // establish it (ADR-0029); absent means unknown, never POSIX by default.
@@ -256,7 +257,8 @@ interface ToolInvocation {
   // Normalized file view (ADR-0026), present when the adapter's file shape
   // table knows this tool: every path the call targets, verbatim, plural
   // because one patch can touch several files. Read-only; absent means
-  // uncaptured, a search tool, or an unparseable patch -- fall back to `input`.
+  // uncaptured, not matching, a search or listing tool, or an unparseable
+  // patch -- fall back to `input`.
   file?: {
     paths: string[];
     pathKey?: string; // the native argument naming one file
@@ -1113,9 +1115,9 @@ export default definePlugin({
       // Relative keys: "block" is tool.before.block, the id reports print.
       capabilities: { block: "required", "input.replace": "optional" },
       run({ tool }, ctx) {
-        // Undefined only for an uncaptured shape; a guard refuses what it
-        // cannot read. Past this line tool.shell is defined, which is also
-        // what makes updateShell legal below.
+        // Undefined for an uncaptured shape or an input that does not match
+        // it; a guard refuses what it cannot read. Past this line tool.shell
+        // is defined, which is also what makes updateShell legal below.
         const command = tool.shell?.command;
         if (command === undefined) return block(`Unrecognized ${tool.nativeName} input`);
         if (command.includes("rm -rf /")) {
@@ -1124,8 +1126,8 @@ export default definePlugin({
 
         if (ctx.capabilities.has("input.replace") && command.startsWith("npm ")) {
           // Portable write-back: the rewrite lands under whichever key this
-          // harness uses (`command` on Claude/OpenCode, `cmd` on Codex's
-          // exec_command), with every sibling input field preserved.
+          // harness's captured shape names, with every sibling input field
+          // (OpenCode v2's `workdir`, say) preserved.
           return updateShell({ command: command.replace(/^npm /, "pnpm ") });
         }
       },

@@ -36,15 +36,15 @@ export interface ToolInvocation {
    * The shell invocation, normalized, when the adapter knows this tool's
    * argument shape.
    *
-   * `kind` is portable but `input` is not: Claude's `Bash` names the command
-   * `command`, Codex's `exec_command` names it `cmd` (captured on 0.151.0 --
-   * see `.capture/codex-tools/README.md`). A guard matching `kind: "shell"` and
-   * reading `input.command` therefore compiles, checks and matches everywhere
-   * while silently permitting a whole harness's shell calls.
+   * `kind` is portable but `input` is not: each adapter's shape table names
+   * the native command key, and a harness can add siblings (OpenCode v2's
+   * `shell` carries `workdir`). A guard reading `input.command` directly
+   * hard-codes one harness's shape.
    *
    * Deliberately optional, and its absence is informative: where a shell-kind
-   * tool's argument shape has not been captured, the adapter leaves this
-   * undefined rather than guessing, and a hook should fall back to `input`.
+   * tool's argument shape has not been captured, or the input does not match
+   * it, the adapter leaves this undefined rather than guessing, and a hook
+   * should fall back to `input`.
    * `input` always stays the verbatim payload -- this is derived from it, never
    * a replacement for it.
    */
@@ -57,8 +57,9 @@ export interface ToolInvocation {
    * `kind` is portable but the path argument is not: Claude names it
    * `file_path`, OpenCode 1.x `filePath`, OpenCode 2.x `path`, and a Codex or
    * OpenCode patch tool carries its paths inside the patch text. Absent for an
-   * uncaptured shape, for tools with no target file (glob/grep search), and
-   * for anything the adapter cannot read with certainty -- fall back to
+   * uncaptured shape or an input that does not match it, for tools with no
+   * target file (glob/grep search, directory listing), and for anything the
+   * adapter cannot read with certainty -- fall back to
    * `input`, and decide whether a guard fails open or closed. File access
    * through a shell command is a shell call and never appears here.
    */

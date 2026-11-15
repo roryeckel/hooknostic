@@ -81,10 +81,10 @@ Reading it top to bottom:
   the build with a clear diagnostic, rather than shipping a guard that silently doesn't
   guard. Keys are relative to the hook's event — `block` here is the capability
   `tool.before.block`, which is the name the build report and diagnostics use.
-- **`run`** — the logic. `tool.shell.command` is the command, normalized: the harnesses
-  disagree about the argument key (`command` on Claude, `cmd` on Codex's
-  `exec_command`), and the adapter reads the right one. It is undefined only for a
-  shell tool whose argument shape has never been captured; a guard that can't read a
+- **`run`** — the logic. `tool.shell.command` is the command, normalized: the adapter
+  reads it from the argument key each harness's captured shape names, so the hook never
+  hard-codes one. It is undefined for a shell tool whose argument shape has never been
+  captured, or whose input does not match that shape; a guard that can't read a
   command refuses it (fails closed) rather than letting it through unchecked. The raw
   `tool.input` is always there too. Returning `block(reason)` stops the call and shows
   the reason; returning nothing (the fall-through) lets it proceed.
