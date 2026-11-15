@@ -168,6 +168,12 @@ profile for a broad range.
   the HN502 main-module-guard warning accurate — the guard can only fire where
   `process.argv[1]` is the artifact itself. Leaving it undeclared silently
   disables that diagnostic for the target.
+- Report `HookResult.errors` with `formatHandlerErrors()`: on stderr from a
+  command shim, on `console.error` from an in-process one. Fail-open is the
+  contract; fail-silent is not (#175). Add the harness to
+  `HANDLER_ERROR_DRIVERS` in `packages/cli/src/coverage.test.ts`, which builds
+  the real artifact with a throwing hook, drives it with a captured input and
+  asserts the line arrives; a registered harness without a row fails there.
 - Declare `publishesNpmPackage: true` only if package delivery emits a manifest
   npm publishes the artifact under. That is what lets a target set `npmName`;
   undeclared, core refuses the coordinate at analysis, before anything is
