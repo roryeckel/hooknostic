@@ -202,9 +202,28 @@ export async function setupOpenCodeV2(
       if (event.event === "permission.request") {
         // A deny is written onto the evaluation, not thrown. A write that
         // throws is an internal error: the callback's guard reports it and the
-        // host's own evaluation stands, as if no hook had run.
-        native.effect = "deny";
-        native.message = application.throwMessage;
+        // host's own evaluation stands, as if no hook had run. The host reads
+        // only `effect`, so it goes last, and a write that throws partway puts
+        // back what the host had: a deny half written must not deny.
+        const effect = native.effect;
+        const message = Object.hasOwn(native, "message") ? { value: native.message } : undefined;
+        try {
+          native.message = application.throwMessage;
+          native.effect = "deny";
+        } catch (error) {
+          const restores = [
+            () => (native.effect = effect),
+            () => (message ? (native.message = message.value) : delete native.message),
+          ];
+          for (const restore of restores) {
+            try {
+              restore();
+            } catch {
+              // Nothing more to put back; the first error is the one reported.
+            }
+          }
+          throw error;
+        }
         return;
       }
       throw new HooknosticBlock(application.throwMessage);

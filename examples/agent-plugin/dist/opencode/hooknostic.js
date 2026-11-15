@@ -7809,8 +7809,24 @@ async function setupOpenCodeV2(plugin, options2, ctx) {
     const application = planOpenCodeV2Application(result);
     if (application.throwMessage !== void 0) {
       if (event.event === "permission.request") {
-        native.effect = "deny";
-        native.message = application.throwMessage;
+        const effect = native.effect;
+        const message = Object.hasOwn(native, "message") ? { value: native.message } : void 0;
+        try {
+          native.message = application.throwMessage;
+          native.effect = "deny";
+        } catch (error2) {
+          const restores = [
+            () => native.effect = effect,
+            () => message ? native.message = message.value : delete native.message
+          ];
+          for (const restore of restores) {
+            try {
+              restore();
+            } catch {
+            }
+          }
+          throw error2;
+        }
         return;
       }
       throw new HooknosticBlock(application.throwMessage);

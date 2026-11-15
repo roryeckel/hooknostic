@@ -416,6 +416,30 @@ describe("v2 captured boundary", () => {
       });
     });
 
+    // A deny half written is a denial: the host reads only `effect`. So a
+    // write that throws partway leaves the evaluation as the host made it.
+    it.each([
+      ["T4b: a message setter that throws", "message"],
+      ["T4c: an effect setter that stores the value, then throws", "effect"],
+    ] as const)("%s leaves the host's effect in place, and reports it", async (_name, key) => {
+      await withSpy([guard("permission.request")], async (callbacks, reports) => {
+        const native = fixture("permission-ask.input.json");
+        let stored = native[key];
+        Object.defineProperty(native, key, {
+          get: () => stored,
+          set(value) {
+            stored = value;
+            throw new Error(`host refused ${key}`);
+          },
+        });
+        await expect(callbacks["permission:evaluate"]!(native)).resolves.toBeUndefined();
+        expect(native.effect).toBe("ask");
+        expect(
+          reports().filter((line) => internal("evaluate").test(line) && line.includes(`host refused ${key}`)),
+        ).toHaveLength(1);
+      });
+    });
+
     it("T5: keeps the subscription alive past an event it cannot read", async () => {
       const created = { type: "session.created", data: { sessionID: "ses_s", location: { directory: "." } } };
       const hostile = { type: "session.execution.succeeded" };
