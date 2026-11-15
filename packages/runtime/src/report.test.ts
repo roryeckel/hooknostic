@@ -1,13 +1,29 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { debugTracer } from "./command-io.js";
-import { debugEnabled, formatInternalError, isInstance, reportInternalError } from "./report.js";
+import { debugEnabled, errorMessage, formatInternalError, isInstance, reportInternalError } from "./report.js";
 
 function revokedProxy(): object {
   const { proxy, revoke } = Proxy.revocable({}, {});
   revoke();
   return proxy;
 }
+
+/** An Error whose message getter returns a string once, then a revoked proxy. */
+function flippingMessage(): Error {
+  const error = new Error("unused");
+  let reads = 0;
+  Object.defineProperty(error, "message", { get: () => (reads++ === 0 ? "first read" : revokedProxy()) });
+  return error;
+}
+
+describe("errorMessage", () => {
+  it("reads an Error's message once, so a getter cannot pass the check and then return a hostile value", () => {
+    // Two reads would return the revoked proxy, and interpolating it throws.
+    expect(typeof errorMessage(flippingMessage())).toBe("string");
+    expect(formatInternalError(flippingMessage(), { hook: "prompt" })).toBe("hooknostic internal [prompt]: first read");
+  });
+});
 
 describe("formatInternalError", () => {
   it("names the hook and the error's message on one line", () => {

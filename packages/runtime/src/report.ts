@@ -4,7 +4,9 @@
 export function errorMessage(error: unknown): string {
   try {
     if (error instanceof Error) {
-      return typeof error.message === "string" ? error.message : "Error";
+      // Read once: a getter could pass the check and then return a hostile value.
+      const message = error.message;
+      return typeof message === "string" ? message : "Error";
     }
   } catch {
     // `instanceof` and property reads can both invoke hostile proxy traps.
