@@ -15,6 +15,7 @@ import { resolve } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
+import { COPILOT_NATIVE_EVENT } from "@hooknostic/adapter-copilot";
 import { SHELL_DIALECTS } from "@hooknostic/sdk";
 import {
   adapterFixturesDir,
@@ -60,12 +61,13 @@ const callbackFor = (callbacks: Map<string, Callback>, name: string): Callback =
 const HANDLER_ERROR_DRIVERS: Record<string, HandlerErrorDriver> = {
   "Claude Code": { execution: "command", event: "tool.before", input: "pre-tool-bash.input.json" },
   "Codex CLI": { execution: "command", event: "tool.before", input: "pre-tool-bash.input.json" },
-  // The camelCase payload names no event; Copilot passes the registered name as argv.
+  // The camelCase payload names no event; Copilot passes the registered name as
+  // argv, which generate.ts takes from this same table.
   "GitHub Copilot CLI": {
     execution: "command",
     event: "tool.before",
     input: "tool-before.input.json",
-    args: ["preToolUse"],
+    args: [COPILOT_NATIVE_EVENT["tool.before"]!],
   },
   // The Plugin function, called with PluginInput; each hook with (input, output).
   OpenCode: {
@@ -91,22 +93,30 @@ const HANDLER_ERROR_DRIVERS: Record<string, HandlerErrorDriver> = {
     input: "tool-before.input.json",
     async deliver(exported, native) {
       const { hook, directory, event } = native as { hook: string; directory: string; event: unknown };
+      // Keyed by domain and name, so two domains registering one name cannot
+      // overwrite each other.
       const callbacks = new Map<string, Callback>();
-      const domain = {
+      const domain = (domainName: string) => ({
         async hook(name: string, callback: Callback) {
-          callbacks.set(name, callback);
+          const key = `${domainName}:${name}`;
+          if (callbacks.has(key)) throw new Error(`the shim registered ${key} twice`);
+          callbacks.set(key, callback);
           return { dispose: async () => {} };
         },
-      };
+      });
       const cleanup = await (exported as { setup(ctx: unknown): Promise<() => Promise<void>> }).setup({
         location: { directory },
-        session: domain,
-        tool: domain,
-        permission: domain,
+        session: domain("session"),
+        tool: domain("tool"),
+        permission: domain("permission"),
         event: { async *subscribe() {} },
       });
       try {
-        await callbackFor(callbacks, hook)(event);
+        // The capture names the callback but not its domain, so exactly one
+        // domain may have registered it.
+        const keys = [...callbacks.keys()].filter((key) => key.endsWith(`:${hook}`));
+        if (keys.length !== 1) throw new Error(`expected one domain to register ${hook}, got [${keys.join(", ")}]`);
+        await callbackFor(callbacks, keys[0]!)(event);
       } finally {
         await cleanup();
       }

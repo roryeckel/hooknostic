@@ -162,7 +162,13 @@ export type PlaybackEffect =
   | "replace-mcp-outputs" // tool.after.output.replace, on MCP tools only
   | "handler-error"; // tool.before throws, before any effect, so the shim must report it
 
-export const ALL_PLAYBACK_EFFECTS: readonly PlaybackEffect[] = [
+/**
+ * Every effect that can be driven together. `handler-error` is left out: its
+ * throw comes before every other branch of the tool.before hook, so enabling
+ * it would silently disable every other tool.before behaviour driven beside
+ * it: context-add, request-approval and the marker-driven block and rewrite.
+ */
+export const ALL_PLAYBACK_EFFECTS: readonly Exclude<PlaybackEffect, "handler-error">[] = [
   "context-add",
   "block-prompt",
   "prevent-stop-once",
@@ -173,7 +179,6 @@ export const ALL_PLAYBACK_EFFECTS: readonly PlaybackEffect[] = [
   "permission-deny",
   "replace-outputs",
   "replace-mcp-outputs",
-  "handler-error",
 ];
 
 /** The message the `handler-error` effect throws, and the line a shim must report for it. */

@@ -10,7 +10,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { HarnessAdapter } from "@hooknostic/core";
 import { bundleRuntime, dispatcherRuntimePolicy, levelsFromMatrix } from "@hooknostic/core";
 import type { HookEventName } from "@hooknostic/sdk";
-import { DEFAULT_RUNTIME } from "@hooknostic/sdk";
+import { DEFAULT_COMPATIBILITY, DEFAULT_RUNTIME } from "@hooknostic/sdk";
 
 const require = createRequire(import.meta.url);
 
@@ -130,14 +130,16 @@ async function buildProbeArtifact(
     "utf8",
   );
   const target = { id: adapter.id, version, delivery: "project" as const, output: "." };
+  // The options `build` passes (packages/core/src/build.ts) for a default
+  // config: a target named after the adapter, no plugin root.
   const bundle = await bundleRuntime({
     source: adapter.shimEntry!({
+      targetId: adapter.id,
       entryImportPath: entryPath.replaceAll("\\", "/"),
       capabilities: levelsFromMatrix(adapter.capabilities(target).matrix ?? {}),
-      minimumCapabilityLevel: "approximate",
+      minimumCapabilityLevel: DEFAULT_COMPATIBILITY.minimum,
       // continue, so the failure is reported rather than turned into a block.
       policy: dispatcherRuntimePolicy({ ...DEFAULT_RUNTIME, onHookError: "continue" }),
-      harnessVersion: adapter.harness.referenceVersion,
       targetRange: version,
     }),
     resolveDir: dir,
@@ -179,6 +181,9 @@ function runCommand(
       clearTimeout(timer);
       resolvePromise({ code, stdout, stderr });
     });
+    // A shim that exits before reading all of stdin makes the write fail
+    // with EPIPE; the exit code and stderr are the verdict, not the write.
+    child.stdin.on("error", () => {});
     child.stdin.end(input);
   });
 }

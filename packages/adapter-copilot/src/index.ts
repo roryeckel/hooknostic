@@ -40,7 +40,12 @@ export { copilotAgentPluginProjector, nativeCopilotAgentPluginProjector } from "
 export { projectComponents, projectComponentProfiles, projectIntegration } from "./project.js";
 export { applyCopilot } from "./apply.js";
 export { CopilotDecodeError, decodeCopilot } from "./decode.js";
-export { copilotHookRuntimePath, copilotHooksPath, generateCopilotArtifacts } from "./generate.js";
+export {
+  COPILOT_NATIVE_EVENT,
+  copilotHookRuntimePath,
+  copilotHooksPath,
+  generateCopilotArtifacts,
+} from "./generate.js";
 export { runCopilotCommandShim } from "./shim.js";
 export type { CopilotShimOptions } from "./shim.js";
 export {
