@@ -7946,12 +7946,12 @@ function createHooknosticHooks(plugin, options, pluginInput) {
       throw new HooknosticBlock2(application.throwMessage);
     }
   };
-  const runFailingOpen = async (native) => {
+  const runFailingOpen = async (hook2, prepare) => {
     try {
-      await run(native);
+      await run(prepare());
     } catch (error2) {
       if (isInstance(error2, HooknosticBlock2)) throw error2;
-      reportInternalError(error2, native.hook);
+      reportInternalError(error2, hook2);
     }
   };
   const postPrompts = async (event, application) => {
@@ -8048,13 +8048,16 @@ function createHooknosticHooks(plugin, options, pluginInput) {
   };
   const hooks = {};
   const callback = (hook2) => async (input, output) => {
-    const pending = runFailingOpen({
-      hook: hook2,
-      directory: pluginInput.directory,
-      ...pluginInput.worktree !== void 0 ? { worktree: pluginInput.worktree } : {},
-      input,
-      output
-    });
+    const pending = runFailingOpen(
+      hook2,
+      () => ({
+        hook: hook2,
+        directory: pluginInput.directory,
+        ...pluginInput.worktree !== void 0 ? { worktree: pluginInput.worktree } : {},
+        input,
+        output
+      })
+    );
     inflight.add(pending);
     const settle2 = () => void inflight.delete(pending);
     void pending.then(settle2, settle2);

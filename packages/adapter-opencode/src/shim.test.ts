@@ -560,6 +560,28 @@ All commands run in the cwd.`,
       }
     });
 
+    it.each(["directory", "worktree"] as const)(
+      "reports a plugin input whose %s cannot be read, and lets the tool call through",
+      async (key) => {
+        const error = vi.spyOn(console, "error").mockImplementation(() => {});
+        try {
+          // The host's own PluginInput, read on every event to build the envelope.
+          const input = Object.defineProperty({ ...PLUGIN_INPUT }, key, {
+            get(): never {
+              throw new Error("stale plugin input");
+            },
+          });
+          const h = createHooknosticHooks(smokePlugin(), { capabilities: LEVELS }, input);
+          await expect(
+            h["tool.execute.before"]!({ tool: "bash", sessionID: "s", callID: "c" }, { args: { command: "ls" } }),
+          ).resolves.toBeUndefined();
+          expect(error.mock.calls).toEqual([["hooknostic internal [tool.execute.before]: stale plugin input"]]);
+        } finally {
+          error.mockRestore();
+        }
+      },
+    );
+
     it("reports a revoked proxy the decoder meets as itself, not as the decode check's TypeError", async () => {
       const error = vi.spyOn(console, "error").mockImplementation(() => {});
       try {
