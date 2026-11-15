@@ -168,7 +168,10 @@ const OWN_DIRECTORY = dirname(fileURLToPath(import.meta.url));
 const ownResolutions = new Map<string, ResolveResult>();
 
 /**
- * Resolve `path` from Hooknostic's own install. `cache` is false for a build
+ * Resolve `path` from Hooknostic's own install. The cache key is only the
+ * import kind and path, which holds while every caching build resolves alike:
+ * the `node` platform with esbuild's default conditions and main fields, as
+ * `bundleRuntime` sets. `cache` is false for any other build, and for one
  * whose options reshape resolution, as a `zod` alias does: a nested resolve
  * applies the alias here too, so that answer holds for that build alone.
  */
@@ -282,7 +285,8 @@ export function sdkZodFallbackPlugin(onSubstitution: (diagnostic: Diagnostic) =>
     setup(build) {
       const manifests = new Map<string, OwningManifest | undefined>();
       const reported = new Set<string>();
-      const { absWorkingDir, alias, nodePaths, preserveSymlinks } = build.initialOptions;
+      const { absWorkingDir, alias, conditions, mainFields, nodePaths, platform, preserveSymlinks } =
+        build.initialOptions;
       const optionsResolveFirst =
         Object.keys(alias ?? {}).some((key) => key === "zod" || key.startsWith("zod/")) ||
         (nodePaths?.length ?? 0) > 0 ||
@@ -291,6 +295,9 @@ export function sdkZodFallbackPlugin(onSubstitution: (diagnostic: Diagnostic) =>
       // directory, and then resolves every import through it -- including an
       // SDK that lies outside that directory's tree.
       const pnpProject = underPnpManifest(absWorkingDir ?? process.cwd());
+      // See resolveOwn: the cache assumes bundleRuntime's resolution options.
+      const cacheable =
+        !optionsResolveFirst && conditions === undefined && mainFields === undefined && platform === "node";
       build.onResolve({ filter: /^zod(?:\/|$)/ }, async (args) => {
         // `<stdin>` (the generated shim entry) is no path, and no package owns it.
         if (args.pluginData === FALLBACK || !isAbsolute(args.importer)) return undefined;
@@ -345,7 +352,7 @@ export function sdkZodFallbackPlugin(onSubstitution: (diagnostic: Diagnostic) =>
             range,
           };
         }
-        const own = await resolveOwn(build, args.path, options, !optionsResolveFirst);
+        const own = await resolveOwn(build, args.path, options, cacheable);
         if (own.errors.length > 0) {
           // With an out-of-range Zod, never bundle it: a CLI that cannot
           // resolve its own dependency is broken. Say which Zod needed it.

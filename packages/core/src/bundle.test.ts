@@ -247,7 +247,10 @@ describe("an SDK installed without its optional Zod peer", () => {
   async function bundleRecorded(
     root: string,
     sdkEntry: string,
-    extra: Pick<BuildOptions, "absWorkingDir" | "alias" | "nodePaths" | "preserveSymlinks"> = {},
+    extra: Pick<
+      BuildOptions,
+      "absWorkingDir" | "alias" | "conditions" | "mainFields" | "nodePaths" | "platform" | "preserveSymlinks"
+    > = {},
     source = SOURCE,
   ): Promise<{ code: string; diagnostics: Diagnostic[]; nested: string[] }> {
     const nested: string[] = [];
@@ -633,6 +636,27 @@ describe("an SDK installed without its optional Zod peer", () => {
       await rm(root, { recursive: true, force: true });
     }
   });
+
+  const uncachedOptions: [string, Pick<BuildOptions, "conditions" | "mainFields" | "platform">][] = [
+    ["conditions", { conditions: ["hooknostic-test"] }],
+    ["mainFields", { mainFields: ["module", "main"] }],
+    ["a browser platform", { platform: "browser" }],
+  ];
+  for (const [name, options] of uncachedOptions) {
+    it(`resolves Hooknostic's own Zod afresh under ${name}`, async () => {
+      // The cache is keyed by import kind and path alone, and these options
+      // can change what that path resolves to.
+      const { root, sdkEntry } = await project();
+      try {
+        await bundleRecorded(root, sdkEntry, options);
+        const second = await bundleRecorded(root, sdkEntry, options);
+        expect(second.nested).toEqual([import.meta.dirname]);
+        expect(second.diagnostics).toEqual([]);
+      } finally {
+        await rm(root, { recursive: true, force: true });
+      }
+    });
+  }
 });
 
 describe("reachableZod", () => {
