@@ -5,6 +5,7 @@ import { dirname, join } from "node:path";
 
 import { afterAll, describe, expect, it } from "vitest";
 
+import { projectSdkReleaseSkew } from "./build.js";
 import { sdkReleaseSkew } from "./sdk-resolution.js";
 
 const CLI = "0.12.0";
@@ -38,7 +39,12 @@ async function project(manifest: string, options: { pnp?: boolean } = {}) {
 }
 
 const sdkManifest = (version: unknown) =>
-  JSON.stringify({ name: "@hooknostic/sdk", type: "module", ...(version === undefined ? {} : { version }) });
+  JSON.stringify({
+    name: "@hooknostic/sdk",
+    type: "module",
+    exports: { ".": "./dist/index.js" },
+    ...(version === undefined ? {} : { version }),
+  });
 
 describe("sdkReleaseSkew (HN110)", () => {
   it("is silent when the project has no SDK", async () => {
@@ -107,5 +113,20 @@ describe("sdkReleaseSkew (HN110)", () => {
     expect(yarn).toContain("`yarn hooknostic`");
     expect(yarn).not.toContain("`npx hooknostic`");
     for (const remediation of [npm, yarn]) expect(remediation).toContain("at the same version");
+  });
+});
+
+describe("projectSdkReleaseSkew (HN110)", () => {
+  it("checks an absolute SDK alias, and the project's own SDK for a bare package name alias", async () => {
+    const { root } = await project(sdkManifest("0.11.9"));
+    const aliased = await project(sdkManifest("0.10.0"));
+    expect(projectSdkReleaseSkew(root, { alias: { "@hooknostic/sdk": aliased.entry } })?.message).toContain(
+      "is 0.10.0,",
+    );
+    // A bare name has no manifest to walk up from: walking from "." would read
+    // whatever package the process runs in.
+    expect(projectSdkReleaseSkew(root, { alias: { "@hooknostic/sdk": "hooknostic-sdk-fork" } })?.message).toContain(
+      "is 0.11.9,",
+    );
   });
 });

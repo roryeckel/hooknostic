@@ -407,6 +407,21 @@ function resolveProjectSdk(configDir: string): string | undefined {
 }
 
 /**
+ * HN110 for a build or project command whose config is in `configDir`: this
+ * CLI against the SDK it would bundle (#194). An `evaluate` alias names that
+ * SDK when it is a path; a bare package name has no manifest to walk up from,
+ * so the project's own SDK stands in.
+ */
+export function projectSdkReleaseSkew(configDir: string, evaluate?: EvaluateOptions): Diagnostic | undefined {
+  const alias = evaluate?.alias?.["@hooknostic/sdk"];
+  return sdkReleaseSkew(
+    alias !== undefined && isAbsolute(alias) ? alias : resolveProjectSdk(configDir),
+    HOOKNOSTIC_VERSION,
+    configDir,
+  );
+}
+
+/**
  * The realpath of `path`. A path that does not exist yet (a target output
  * before its first build) is resolved through its deepest existing ancestor,
  * so `alias/dist/claude` and `real/dist/claude` name the same place.
@@ -658,11 +673,7 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
   // Before the config loads: a config that fails to load under a skewed SDK
   // should be reported beside the skew that may have caused it. Once per run,
   // whatever the targets.
-  const skew = sdkReleaseSkew(
-    options.evaluate?.alias?.["@hooknostic/sdk"] ?? resolveProjectSdk(configDir),
-    HOOKNOSTIC_VERSION,
-    configDir,
-  );
+  const skew = projectSdkReleaseSkew(configDir, options.evaluate);
   if (skew !== undefined) diagnostics.push(skew);
   const packages = new Map<string, AgentPluginPackage>();
   const sources = new Map<string, ProjectComponents>();

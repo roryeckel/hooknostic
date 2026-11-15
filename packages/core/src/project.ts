@@ -1,7 +1,13 @@
 import { dirname, join, relative, resolve } from "node:path";
 
 import { resolveTargetAdapter, targetSpecFromConfig } from "./adapter.js";
-import { type BuildOptions, buildProject, type BuildTargetReport, type McpServerCommand } from "./build.js";
+import {
+  type BuildOptions,
+  buildProject,
+  type BuildTargetReport,
+  type McpServerCommand,
+  projectSdkReleaseSkew,
+} from "./build.js";
 import type { Diagnostic } from "./diagnostics.js";
 import { linkedWorktree } from "./git-worktree.js";
 import { loadConfig } from "./load.js";
@@ -41,7 +47,13 @@ export async function runProject(
     const loaded =
       options.configResult ??
       (await loadConfig(options.configPath, options.evaluate, { allowEmptyProjectTargets: true }));
-    if (!loaded.config) throw new Error(loaded.diagnostics.map((d) => d.message).join("\n"));
+    if (!loaded.config) {
+      // buildProject reports HN110 once the config loads. A config that fails
+      // to load never reaches it, and the skew may be why it failed (#194).
+      const skew = projectSdkReleaseSkew(dirname(resolve(options.configPath)), options.evaluate);
+      if (skew !== undefined) result.diagnostics.push(skew);
+      throw new Error(loaded.diagnostics.map((d) => d.message).join("\n"));
+    }
     const config = loaded.config;
     if (!config.project) throw new Error("project commands require project.root in the configuration");
     const root = resolve(dirname(options.configPath), config.project.root);
