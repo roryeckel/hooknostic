@@ -119,7 +119,8 @@ function exitKey(code: unknown): string {
   return `exit:${exitCodeText(code)}`;
 }
 
-function exitCodeText(code: unknown): string {
+/** How `process.exit(code)` writes `code`, as a `HookSourceExitError` message does; never throws. */
+export function exitCodeText(code: unknown): string {
   try {
     return code === undefined ? "" : String(code);
   } catch {

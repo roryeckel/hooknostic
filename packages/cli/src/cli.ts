@@ -8,6 +8,7 @@ import { loadConfig, runProject } from "@hooknostic/core";
 import {
   claimProtocolStdout,
   debugEnabled,
+  exitCodeText,
   finishCommandShim,
   formatInternalError,
   guardCommandShim,
@@ -63,14 +64,6 @@ async function readStdin(): Promise<string> {
   return data;
 }
 
-function exitCodeText(code: unknown): string {
-  try {
-    return code === undefined ? "" : String(code);
-  } catch {
-    return "?";
-  }
-}
-
 /**
  * Run `hooknostic dispatch`'s hooks under the command-shim guard (#189), so a
  * hook source that exits, rejects, or throws from a timer is reported
@@ -81,10 +74,11 @@ function exitCodeText(code: unknown): string {
  * reported outside a handler, else 0. Until the run finishes, leaving is 1:
  * the results are not all out.
  */
-function guardDispatch(target: string) {
+function guardDispatch() {
   let strays = 0;
   let label: string | undefined;
   let execution: "command" | "module" | undefined;
+  let adapter: string | undefined;
   let finishedWith: number | undefined;
   // A module target's shim runs in the harness's process and does not
   // intercept process.exit, so there an exit gets a note. Queued here when
@@ -93,7 +87,8 @@ function guardDispatch(target: string) {
   let queued: unknown[] = [];
   let noted: unknown[] = [];
   // Only facts about our own shim: what the harness then does is not captured.
-  const clause = `the ${target} shim runs in the harness's process and does not intercept it`;
+  // The adapter's shim, not the configured target's key, which may be any name.
+  const clause = () => `the ${adapter} shim runs in the harness's process and does not intercept it`;
   const guard = guardCommandShim(
     (error) => {
       strays += 1;
@@ -106,7 +101,7 @@ function guardDispatch(target: string) {
           queued.splice(at, 1);
           // On the first line, ahead of any stack.
           const end = text.indexOf("\n");
-          text = end === -1 ? `${text}; ${clause}` : `${text.slice(0, end)}; ${clause}${text.slice(end)}`;
+          text = end === -1 ? `${text}; ${clause()}` : `${text.slice(0, end)}; ${clause()}${text.slice(end)}`;
         }
       }
       return text;
@@ -122,9 +117,10 @@ function guardDispatch(target: string) {
   // Before anything can end the process.
   guard.decide(1);
   return {
-    onEventStart(index: number, kind: "command" | "module" | undefined) {
+    onEventStart(index: number, shim: { id: string; execution: "command" | "module" | undefined }) {
       label = `event ${index + 1}`;
-      execution = kind;
+      adapter = shim.id;
+      execution = shim.execution;
       queued = [];
       noted = [];
       guard.scope();
@@ -136,7 +132,7 @@ function guardDispatch(target: string) {
       for (const code of queued) {
         strays += 1;
         await guard.write(
-          `hooknostic dispatch [${label}]: intercepted process.exit(${exitCodeText(code)}); ${clause}\n`,
+          `hooknostic dispatch [${label}]: intercepted process.exit(${exitCodeText(code)}); ${clause()}\n`,
         );
       }
       queued = [];
@@ -335,8 +331,7 @@ export async function runCli(argv: string[], options?: RunCliOptions): Promise<n
         // of the result lines, a handle one leaks cannot hold the process open,
         // and, unless --unguarded, the hook source cannot end the run (#189).
         // The guard goes first: it owns process.exit before anything loads.
-        const guarded =
-          options?.io === undefined && parsed.values["unguarded"] !== true ? guardDispatch(target) : undefined;
+        const guarded = options?.io === undefined && parsed.values["unguarded"] !== true ? guardDispatch() : undefined;
         const protocol = options?.io === undefined ? claimProtocolStdout() : undefined;
         const writes: Promise<void>[] = [];
         let code: number;

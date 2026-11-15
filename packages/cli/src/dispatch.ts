@@ -68,13 +68,14 @@ export interface DispatchCommandOptions extends Omit<DispatchEventsOptions, "eve
  */
 export interface DispatchEventHooks {
   /**
-   * Event `index` (0-based) starts, with how the target's shim runs. A
+   * Event `index` (0-based) starts, with the target's adapter: its id, which
+   * a target may name differently, and how its shim runs. A
    * command target then loads a fresh module instance for it, so what that
    * load does falls inside the event. The first event instead reuses the
    * instance loaded before any event to analyse the hooks, so what that load
    * does synchronously happens before this is called for index 0.
    */
-  onEventStart?(index: number, execution: "command" | "module" | undefined): void;
+  onEventStart?(index: number, adapter: { id: string; execution: "command" | "module" | undefined }): void;
   /** Awaited once event `index` has its result, before the next event starts. */
   onEventEnd?(index: number): Promise<void>;
 }
@@ -403,7 +404,7 @@ export async function dispatchEventsWith(
     };
     const results: DispatchResult[] = [];
     for (const [index, { event, shellDialect }] of events.entries()) {
-      hooks.onEventStart?.(index, adapter.shimExecution);
+      hooks.onEventStart?.(index, { id: adapter.id, execution: adapter.shimExecution });
       // A command harness starts a fresh process for every dispatch, so no
       // module state may carry between events there; an in-process one keeps a
       // single instance for its lifetime.

@@ -796,8 +796,8 @@ export default definePlugin({
     const EVENTS = ["first", "second", "third"].map(
       (prompt) => `${JSON.stringify({ event: "prompt.before", prompt })}\n`,
     );
-    const run = async (hooks: string, target: string, flags: string[] = []) => {
-      const dir = await project(hooks, GUARD_TARGETS);
+    const run = async (hooks: string, target: string, flags: string[] = [], targets = GUARD_TARGETS) => {
+      const dir = await project(hooks, targets);
       const child = spawnSync(
         process.execPath,
         [CLI_BIN, "dispatch", "--config", join(dir, "hooknostic.config.ts"), "--target", target, ...flags],
@@ -856,6 +856,23 @@ export default definePlugin({
       expect(stderr, raw).toHaveLength(1);
       expect(stderr[0]).toContain("[event 2]");
       expect(stderr[0]).toContain(`the ${target} shim runs in the harness's process and does not intercept it`);
+    });
+
+    it("names the target's adapter, not its configured key, in the module-target note", async () => {
+      const renamed = `{
+        myoc: {
+          adapter: "opencode",
+          version: ${JSON.stringify(opencodeHarness.recommendedRange)},
+          delivery: "project",
+          output: "./dist/opencode",
+          compatibility: { minimum: "approximate" },
+        },
+      }`;
+      const { status, stderr, raw } = await run(onSecondEvent(`process.exit(2);`), "myoc", [], renamed);
+      expect(status, raw).toBe(1);
+      expect(stderr).toEqual([
+        "hooknostic dispatch [event 2]: intercepted process.exit(2); the opencode shim runs in the harness's process and does not intercept it",
+      ]);
     });
 
     it("does not let an exit repeated by every module instance end the run", async () => {
