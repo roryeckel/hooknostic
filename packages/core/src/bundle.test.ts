@@ -903,26 +903,57 @@ describe("a Yarn Plug'n'Play install outside Yarn's runtime (#183)", () => {
     expect(ownZodNeedsProjectInstall(false, join(dlx, "dist"), app)).toBe(false);
   });
 
-  it("formats the other errors of the same failure into HN504", async () => {
-    const root = await zodFreeTemporaryDirectory("hooknostic-pnp-");
-    try {
-      const roots = await writeSyntheticPnpProject(root, "app", [sdk(false)]);
-      const failure: unknown = await bundleRuntime({
-        source: `${SOURCE} import "hooknostic-missing-package";`,
-        resolveDir: root,
-      }).then(
-        () => undefined,
-        (error: unknown) => error,
-      );
-      expect(failure).toBeInstanceOf(PnpRuntimeRequiredError);
-      expect((failure as PnpRuntimeRequiredError).diagnostic.message).toBe(
-        `Yarn Plug'n'Play serves ${join(roots["@hooknostic/sdk"]!, "dist", "schemas.js")} from its install ` +
-          `(${join(root, ".pnp.data.json")}), and this process cannot read it: Hooknostic is running without ` +
-          "Yarn's PnP runtime (and 1 other error).",
-      );
-    } finally {
-      await removePnpProject(root);
+  describe("HN504's count of the other errors in the same failure", () => {
+    /** Another package only Yarn's zip cache holds. */
+    const dependency: SyntheticPnpPackage = {
+      name: "pnp-dep",
+      version: "1.0.0",
+      files: {
+        "package.json": JSON.stringify({ name: "pnp-dep", version: "1.0.0", type: "module", main: "index.js" }),
+        "index.js": "export {};",
+      },
+    };
+
+    /**
+     * HN504's message for `extra` imported beside SOURCE, and the guard
+     * error's text for the SDK's schemas without its final period.
+     */
+    async function hn504(extra: string): Promise<{ message: string; guard: string }> {
+      const root = await zodFreeTemporaryDirectory("hooknostic-pnp-");
+      try {
+        const roots = await writeSyntheticPnpProject(root, "app", [sdk(false), dependency]);
+        const failure: unknown = await bundleRuntime({ source: `${SOURCE} ${extra}`, resolveDir: root }).then(
+          () => undefined,
+          (error: unknown) => error,
+        );
+        expect(failure).toBeInstanceOf(PnpRuntimeRequiredError);
+        return {
+          message: (failure as PnpRuntimeRequiredError).diagnostic.message,
+          guard:
+            `Yarn Plug'n'Play serves ${join(roots["@hooknostic/sdk"]!, "dist", "schemas.js")} from its install ` +
+            `(${join(root, ".pnp.data.json")}), and this process cannot read it: Hooknostic is running without ` +
+            "Yarn's PnP runtime",
+        };
+      } finally {
+        await removePnpProject(root);
+      }
     }
+
+    it("counts one unrelated error and names it", async () => {
+      const { message, guard } = await hn504('import "hooknostic-missing-package";');
+      expect(message).toBe(`${guard} (and 1 other error, first: Could not resolve "hooknostic-missing-package").`);
+    });
+
+    it("counts several unrelated errors, naming the first", async () => {
+      const { message, guard } = await hn504('import "hooknostic-missing-a"; import "hooknostic-missing-b";');
+      expect(message).toBe(`${guard} (and 2 other errors, first: Could not resolve "hooknostic-missing-a").`);
+    });
+
+    it("does not count another guard error, which has the same cause", async () => {
+      // pnp-dep is refused too: a second guard error, and nothing else.
+      const { message, guard } = await hn504('import "pnp-dep";');
+      expect(message).toBe(`${guard}.`);
+    });
   });
 
   describe("Hooknostic's own Zod in a Yarn install (yarn dlx)", () => {
