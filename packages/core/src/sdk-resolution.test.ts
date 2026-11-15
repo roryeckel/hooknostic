@@ -55,6 +55,34 @@ describe("sdkReleaseSkew (HN110)", () => {
     expect(sdkReleaseSkew(entry, CLI, root)).toBeUndefined();
   });
 
+  it.each([
+    ["0.12.0-rc.1", "0.12.0"],
+    ["0.12.0", "0.12.0-rc.1"],
+  ])("counts a prerelease as another release (SDK %s, CLI %s)", async (sdk, cli) => {
+    const { root, entry } = await project(sdkManifest(sdk));
+    expect(sdkReleaseSkew(entry, cli, root)).toMatchObject({ code: "HN110" });
+  });
+
+  it.each([
+    ["0.12.0+local.1", "0.12.0"],
+    ["0.12.0", "0.12.0+local.1"],
+  ])("ignores build metadata (SDK %s, CLI %s)", async (sdk, cli) => {
+    const { root, entry } = await project(sdkManifest(sdk));
+    expect(sdkReleaseSkew(entry, cli, root)).toBeUndefined();
+  });
+
+  it("is silent when the package that owns the entry is not the SDK", async () => {
+    // A vendored copy with no manifest of its own: the nearest named manifest
+    // is the project's, whose version says nothing about the SDK.
+    const root = await mkdtemp(join(await realpath(tmpdir()), "hooknostic-skew-"));
+    roots.push(root);
+    await writeFile(join(root, "package.json"), JSON.stringify({ name: "app", version: "1.0.0" }));
+    const entry = join(root, "vendor/hooknostic-sdk/dist/index.js");
+    await mkdir(dirname(entry), { recursive: true });
+    await writeFile(entry, "export {};\n");
+    expect(sdkReleaseSkew(entry, CLI, root)).toBeUndefined();
+  });
+
   it("is silent when the CLI's own version is not semver", async () => {
     const { root, entry } = await project(sdkManifest("0.11.9"));
     expect(sdkReleaseSkew(entry, "workspace", root)).toBeUndefined();

@@ -133,12 +133,13 @@ function pnpManifest(directory: string): string | undefined {
  *
  * `sdkEntry` is the SDK entry the build resolves; its package's own manifest
  * gives the version. `cliVersion` is passed in rather than imported, because
- * `build.ts` imports this module through `bundle.ts`. Any difference counts,
- * prereleases included: the two packages are released in lockstep. With no
- * SDK, or a version on either side that is not semver, there is nothing to
- * compare, and the check stays silent. So does the Hooknostic workspace, by
- * lockstep rather than detection: its SDK is `packages/sdk`, at the CLI's
- * version.
+ * `build.ts` imports this module through `bundle.ts`. Any difference in
+ * version counts, prereleases included, because the two packages are released
+ * in lockstep; build metadata (`+local.1`) is ignored, as semver orders it.
+ * With no SDK, or a version on either side that is not semver, there is
+ * nothing to compare, and the check stays silent. So does the Hooknostic
+ * workspace, by lockstep rather than detection: its SDK is `packages/sdk`, at
+ * the CLI's version.
  */
 export function sdkReleaseSkew(
   sdkEntry: string | undefined,

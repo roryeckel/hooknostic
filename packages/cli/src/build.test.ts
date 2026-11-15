@@ -3118,6 +3118,16 @@ describe("a CLI and a project SDK on different releases (HN110, #194)", () => {
     expect(hn110(report.diagnostics)[0]?.message).toContain(`at ${sdk} is ${OTHER},`);
   });
 
+  it("reports HN110 beside a config that fails to load", { timeout: 120_000 }, async () => {
+    // The check runs before the config loads, so a load failure the skew may
+    // have caused is reported with it.
+    const { config } = await projectWithSdk(OTHER);
+    await writeFile(config, 'import { notInThisSdk } from "@hooknostic/sdk";\nexport default notInThisSdk({});\n');
+    const { io, out } = captureIO();
+    expect(await runCheck({ config, json: true, registry: defaultAdapterRegistry(), io }), out()).toBe(2);
+    expect((JSON.parse(out()).diagnostics as { code: string }[]).map((d) => d.code)).toEqual(["HN110", "HN501"]);
+  });
+
   it("is silent when the project's SDK is on this CLI's release", { timeout: 120_000 }, async () => {
     const { config } = await projectWithSdk(HOOKNOSTIC_VERSION);
     const { io, out } = captureIO();
