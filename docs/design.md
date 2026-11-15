@@ -690,9 +690,11 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
 
 After bundling, both sides of that comparison name the **generated artifact**,
 so a guard that was dormant in the source becomes unconditionally true and its
-command-line body runs on every hook dispatch — typically consuming the
-harness's stdin before the dispatcher can read the event payload, which
-presents as a hook that silently receives nothing.
+command-line body runs on every hook dispatch. A command shim reads the event
+payload before it loads the hook source, so the body finds stdin already
+consumed. Whatever else it does still runs inside the hook: a body that exits
+the process ends the hook without its reply, and one that throws fails the hook
+source's load, which the shim reports as an internal error and fails open over.
 
 This only happens where the harness **executes** the artifact. An adapter
 declares which it is via `shimExecution`: `"command"` (Claude, Codex — spawned
@@ -774,7 +776,9 @@ and translates the timeout to native hook timeout settings where possible.
 Shims also fail open on their own internal errors: a defect in Hooknostic, such as a
 rewrite the host object will not take, must not become a block. A deliberate block is
 the one exception. The OpenCode shims, where a block is a throw, tell the two apart by
-throwing blocks as a dedicated class, with a class check that cannot itself throw.
+throwing blocks as a dedicated class. Every shim asks its block and decode-error class
+checks through the runtime's `isInstance`, which answers false where `instanceof` would
+throw, as it does on a revoked proxy.
 `onHookError: "block"` governs hook failures only, not internal errors.
 
 Every shim reports what it fails open over, as

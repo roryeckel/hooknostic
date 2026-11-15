@@ -213,8 +213,11 @@ profile for a broad range.
   bookkeeping before dispatch, because a host may treat any throw as a block:
   OpenCode 2.x does (`.capture/opencode-v2-plugin-throw`). Where a block is a
   throw, throw deliberate blocks as a dedicated class, rethrow only that class,
-  and never report it. Make the class check itself unable to throw:
-  `instanceof` on a revoked proxy does. No cross-adapter guard checks this, so
+  and never report it. Ask both class checks, the decode error's and the
+  block's, through `isInstance` from `@hooknostic/runtime`: a bare
+  `instanceof` throws on a revoked proxy, and one that throws inside the catch
+  fails closed. A command shim then exits non-zero, which Copilot's
+  `preToolUse` treats as a denial. No cross-adapter guard checks this, so
   each shim's own tests must: drive an internal error and assert the line, and
   assert that a not-ours payload and a block produce none. The OpenCode v2
   shim is the worked example for an in-process shim, the Claude Code shim for

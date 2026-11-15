@@ -56,29 +56,40 @@ and Pi) report them on `console.error`, so the harness decides whether you see t
 On OpenCode 2.x that means `opencode run --standalone --print-logs` on the builds
 measured, as described above.
 
-A line that starts `hooknostic internal [<native hook>]:` is different. It reports a
-defect in Hooknostic itself, not in your hook: the shim hit an error of its own, such as
-a rewrite the host would not accept, and let the call through as if no hook had run.
-It repeats on every event the defect reaches, and `HOOKNOSTIC_DEBUG` adds the stack on
-the lines after it. Please report it. Every shim writes it on the channel it uses for
-handler errors: stderr from a command hook, `console.error` in-process. So the same
-visibility applies: on OpenCode 2.x, only under `--standalone --print-logs` on the
-builds measured.
+A line that starts `hooknostic internal [<native hook>]:` is different. The shim hit an
+error outside any handler, so it could not run your hooks, and it let the call through
+as if no hook had run. It repeats on every event the error reaches, and
+`HOOKNOSTIC_DEBUG` adds the stack on the lines after it. Every shim writes it on the
+channel it uses for handler errors: stderr from a command hook, `console.error`
+in-process. So the same visibility applies: on OpenCode 2.x, only under
+`--standalone --print-logs` on the builds measured.
+
+Check the message first. On the command harnesses, the line also appears when your own
+hook source fails to load, because it or a module it imports throws at its top level (see
+[Keep imported modules free of side effects](#keep-imported-modules-free-of-side-effects)).
+The message is then that module's error, and the stack under `HOOKNOSTIC_DEBUG` points
+into your code. Fix that, and the line goes away. Otherwise it is a defect in Hooknostic
+itself, such as a rewrite the host would not accept: please report it.
 
 ## Keep imported modules free of side effects
 
 Your hook source and everything it imports are bundled into one artifact, and every
 module's top-level code runs each time the artifact loads — on every dispatch for the
-command harnesses. The classic trap is the ESM main-module guard around a CLI:
+command harnesses. A top-level throw in any of them means the hooks never load: a
+command hook then lets the call through and reports the error as a
+[`hooknostic internal` line](#see-why-a-hook-did-nothing-hooknostic_debug), on every
+dispatch. The classic trap is the ESM main-module guard around a CLI:
 
 ```ts
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) main();
 ```
 
 After bundling, both sides name the artifact, so the guard is always true and the CLI
-runs on every dispatch — typically reading stdin before the dispatcher can. `hooknostic
-build` warns about this pattern as **HN502**. Put command-line entry points in modules
-your hooks do not import.
+runs on every dispatch. The dispatcher has read the event payload by then, so the CLI
+finds stdin already consumed, and whatever else it does happens inside your hook. A
+CLI that exits the process ends the hook before it replies, and one that throws stops
+the hooks loading. `hooknostic build` warns about this pattern as **HN502**. Put
+command-line entry points in modules your hooks do not import.
 
 ## `process.execPath` is not always Node
 
