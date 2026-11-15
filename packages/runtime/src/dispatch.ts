@@ -407,9 +407,10 @@ export async function dispatch(
         // Unlike the context budget above, exhaustion is recorded as a
         // budget-exceeded HandlerError rather than dropped without a trace:
         // "the user sees this" is the entire semantic of a notification.
-        // Note nothing surfaces HookResult.errors to users yet — the adapters
-        // all discard it — so today the record reaches callers of dispatch()
-        // and tests. That is a gap in reporting, not in the record itself.
+        // Every generated shim reports HookResult.errors through
+        // formatHandlerErrors(), on stderr from a command hook and on
+        // console.error in-process, so this record names the clipped hook.
+        // Whether the user sees an in-process report is up to the harness.
         //
         // Floored because a fractional budget would let slice(0, 0.5) produce
         // an EMPTY message, which effectSchema rejects (message: min(1)).

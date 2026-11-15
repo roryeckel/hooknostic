@@ -18,6 +18,7 @@ import {
   buildPlaybackArtifact,
   expectOpenCodeShellDialect,
   openCodeShellDialectExpectation,
+  PLAYBACK_HANDLER_ERROR_LINE,
   runProcess,
   startModelPlayback,
   traceEvents,
@@ -819,7 +820,7 @@ describe.skipIf(!enabled)("OpenCode v2 offline playback", () => {
     expect(playback.errors).toEqual([]);
     expect(playback.code).toBe(0);
   }, 70000);
-  it.each(["rewrite", "block", "context", "output", "block-prompt"] as const)(
+  it.each(["rewrite", "block", "context", "output", "block-prompt", "handler-error"] as const)(
     "%s reaches its observable effect",
     async (effect) => {
       const root = await mkdtemp(join(await realpath(tmpdir()), "hooknostic-v2-playback-"));
@@ -860,7 +861,9 @@ describe.skipIf(!enabled)("OpenCode v2 offline playback", () => {
                 ? "replace-outputs"
                 : effect === "block-prompt"
                   ? "block-prompt"
-                  : "",
+                  : effect === "handler-error"
+                    ? "handler-error"
+                    : "",
         };
         for (const key of Object.keys(env)) if (/API_KEY|AUTH_TOKEN|SECRET|TOKEN|^OPENCODE/.test(key)) delete env[key];
         const binary = process.env["HKN_OPENCODE_BINARY"] ?? "opencode";
@@ -874,6 +877,11 @@ describe.skipIf(!enabled)("OpenCode v2 offline playback", () => {
             "--auto",
             "--format",
             "json",
+            // Observed on 2.0.17 and 2.2.7: run loads plugins in the
+            // `serve --stdio` process it starts, and their console.error
+            // reached run's stderr with --print-logs and neither stream nor
+            // the log file without it (.capture/opencode-v2-plugin-stderr).
+            ...(effect === "handler-error" ? ["--print-logs"] : []),
             effect === "block-prompt" ? "hooknostic-block-this-prompt" : "Use the shell once, then stop.",
           ],
           { cwd: project, env, timeoutMs: 45000 },
@@ -896,7 +904,13 @@ describe.skipIf(!enabled)("OpenCode v2 offline playback", () => {
         expect(model.requests.length).toBeGreaterThan(1);
         if (effect === "block")
           expect(await readFile(join(project, "hooknostic-blocked.txt"), "utf8").catch(() => null)).toBeNull();
-        else expect(await readFile(join(project, "hooknostic-tool.txt"), "utf8")).toContain("hooknostic-rewritten");
+        // The throw comes before the rewrite, so failing open runs the call as the model sent it.
+        else
+          expect(await readFile(join(project, "hooknostic-tool.txt"), "utf8")).toContain(
+            effect === "handler-error" ? "hooknostic-original" : "hooknostic-rewritten",
+          );
+        // #175: in-process, the report's channel is console.error.
+        if (effect === "handler-error") expect(result.stderr).toMatch(PLAYBACK_HANDLER_ERROR_LINE);
         if (effect === "context")
           expect(
             model.requests.every((request) =>

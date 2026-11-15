@@ -1,4 +1,4 @@
-import { dispatch } from "@hooknostic/runtime";
+import { dispatch, formatHandlerErrors } from "@hooknostic/runtime";
 import type { HookEvent, PluginSpec } from "@hooknostic/sdk";
 import { hookAppliesToTarget } from "@hooknostic/sdk";
 
@@ -160,6 +160,11 @@ export async function setupOpenCodeV2(
       ...(options.minimumCapabilityLevel ? { minimumCapabilityLevel: options.minimumCapabilityLevel } : {}),
       ...(options.pluginRoot ? { plugin: { root: options.pluginRoot } } : {}),
     });
+    // In-process, so the channel is console.error, as on v1 and Pi; stdout is
+    // not ours. Reported before any block returns or throws, so a failed
+    // handler is named even when another hook blocks.
+    const diagnostics = formatHandlerErrors(result);
+    if (diagnostics !== undefined) console.error(diagnostics);
     const application = planOpenCodeV2Application(result);
     if (application.throwMessage !== undefined) {
       if (event.event === "permission.request") {

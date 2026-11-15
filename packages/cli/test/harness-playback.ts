@@ -159,9 +159,16 @@ export type PlaybackEffect =
   | "request-approval" // tool.before.requestApproval on the sentinel marker
   | "permission-deny" // permission.request.block on any permission prompt
   | "replace-outputs" // tool.after.output.replace
-  | "replace-mcp-outputs"; // tool.after.output.replace, on MCP tools only
+  | "replace-mcp-outputs" // tool.after.output.replace, on MCP tools only
+  | "handler-error"; // tool.before throws, before any effect, so the shim must report it
 
-export const ALL_PLAYBACK_EFFECTS: readonly PlaybackEffect[] = [
+/**
+ * Every effect that can be driven together. `handler-error` is left out: its
+ * throw comes before every other branch of the tool.before hook, so enabling
+ * it would silently disable every other tool.before behaviour driven beside
+ * it: context-add, request-approval and the marker-driven block and rewrite.
+ */
+export const ALL_PLAYBACK_EFFECTS: readonly Exclude<PlaybackEffect, "handler-error">[] = [
   "context-add",
   "block-prompt",
   "prevent-stop-once",
@@ -173,6 +180,13 @@ export const ALL_PLAYBACK_EFFECTS: readonly PlaybackEffect[] = [
   "replace-outputs",
   "replace-mcp-outputs",
 ];
+
+/** The message the `handler-error` effect throws, and the line a shim must report for it. */
+export const PLAYBACK_HANDLER_ERROR = "hooknostic-playback-handler-error";
+export const PLAYBACK_HANDLER_ERROR_LINE = new RegExp(
+  `^hooknostic \\S+ \\[playback-tool\\.before\\]: ${PLAYBACK_HANDLER_ERROR}$`,
+  "m",
+);
 
 function playbackPluginSource(
   events: readonly HookEventName[],
@@ -231,7 +245,10 @@ function playbackPluginSource(
 
     const extraEffects = `
         const effects = (process.env["HOOKNOSTIC_PLAYBACK_EFFECTS"] ?? "").split(",").filter(Boolean);
-        const command = event.tool?.shell?.command;${contextAddBranch}
+        const command = event.tool?.shell?.command;
+        if (effects.includes("handler-error") && "${event}" === "tool.before") {
+          throw new Error(${JSON.stringify(PLAYBACK_HANDLER_ERROR)});
+        }${contextAddBranch}
         if (effects.includes("block-prompt") && "${event}" === "prompt.before" &&
             typeof event.prompt === "string" && event.prompt.includes("hooknostic-block-this-prompt")) {
           return block("prompt blocked by harness playback");

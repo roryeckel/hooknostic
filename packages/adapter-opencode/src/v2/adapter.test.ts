@@ -154,6 +154,103 @@ describe("v2 captured boundary", () => {
     }
   });
 
+  describe("handler errors", () => {
+    // Fail-open is the contract; fail-silent is not. In-process, the report's
+    // only channel is console.error, as on v1 and Pi.
+    type Callback = (event: Record<string, unknown>) => Promise<void>;
+    const setup = async (hooks: Parameters<typeof definePlugin>[0]["hooks"]) => {
+      const callbacks: { tool?: Callback; permission?: Callback } = {};
+      const registration = { dispose: async () => {} };
+      const cleanup = await setupOpenCodeV2(
+        definePlugin({ name: "handler-errors", hooks }),
+        {
+          capabilities: {
+            "tool.before.observe": "exact",
+            "tool.before.block": "exact",
+            "permission.request.observe": "exact",
+            "permission.request.block": "exact",
+          },
+        },
+        {
+          location: { directory: "." },
+          session: { hook: async () => registration },
+          tool: {
+            hook: async (_name, fn) => {
+              callbacks.tool = fn;
+              return registration;
+            },
+          },
+          permission: {
+            hook: async (_name, fn) => {
+              callbacks.permission = fn;
+              return registration;
+            },
+          },
+          event: { async *subscribe() {} },
+        },
+      );
+      return { callbacks, cleanup };
+    };
+    const throwing = (event: "tool.before" | "permission.request") =>
+      hook(event, {
+        id: "boom",
+        run() {
+          throw new Error("handler exploded");
+        },
+      });
+    const guard = (event: "tool.before" | "permission.request") =>
+      hook(event, {
+        id: "guard",
+        capabilities: { block: "required" },
+        run() {
+          return block("blocked by guard");
+        },
+      });
+    // Spy and setup both inside the try, so a setup that rejects cannot leak
+    // a mocked console.error into later tests.
+    const withErrorSpy = async (
+      hooks: Parameters<typeof definePlugin>[0]["hooks"],
+      body: (callbacks: { tool?: Callback; permission?: Callback }) => Promise<void>,
+    ) => {
+      const error = vi.spyOn(console, "error").mockImplementation(() => {});
+      let cleanup: (() => Promise<void>) | undefined;
+      try {
+        const ready = await setup(hooks);
+        cleanup = ready.cleanup;
+        await body(ready.callbacks);
+        expect(error).toHaveBeenCalledWith(expect.stringContaining("[boom]: handler exploded"));
+      } finally {
+        error.mockRestore();
+        await cleanup?.();
+      }
+    };
+
+    it("reports a throwing handler on console.error and lets the call through", async () => {
+      const input = { command: "echo hi" };
+      await withErrorSpy([throwing("tool.before")], async ({ tool }) => {
+        await expect(tool!({ tool: "shell", sessionID: "session", id: "call", input })).resolves.toBeUndefined();
+        expect(input).toEqual({ command: "echo hi" });
+      });
+    });
+
+    it("reports a failed handler even when a later hook blocks", async () => {
+      await withErrorSpy([throwing("tool.before"), guard("tool.before")], async ({ tool }) => {
+        await expect(
+          tool!({ tool: "shell", sessionID: "session", id: "call", input: { command: "echo hi" } }),
+        ).rejects.toThrow("blocked by guard");
+      });
+    });
+
+    it("reports a failed handler on the permission deny path", async () => {
+      const raw = JSON.parse(readFileSync(fixtures + "permission-ask.input.json", "utf8"));
+      await withErrorSpy([throwing("permission.request"), guard("permission.request")], async ({ permission }) => {
+        const native = structuredClone(raw.event);
+        await expect(permission!(native)).resolves.toBeUndefined();
+        expect(native).toMatchObject({ effect: "deny", message: expect.stringContaining("blocked by guard") });
+      });
+    });
+  });
+
   it("registers error-only hooks and disposes their registration", async () => {
     let callback: ((event: Record<string, unknown>) => Promise<void>) | undefined;
     const dispose = vi.fn(async () => {});

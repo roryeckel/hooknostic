@@ -259,9 +259,17 @@ integration-specific checklist:
 
 ### Registration and automation
 
-- Register the adapter in `defaultAdapterRegistry()`.
+- Register the adapter in `defaultAdapterRegistry()`. That alone puts every
+  harness family under the contract and scenario suites in
+  `packages/cli/src/coverage.test.ts`, which iterates the registry; there is no
+  per-adapter list.
 - Add the shim to `SHIMS` in `packages/cli/scripts/bundle.mjs`.
-- Add the adapter to `SUBJECTS` in `packages/cli/src/coverage.test.ts`.
+- Add a `HANDLER_ERROR_DRIVERS` row per harness family (keyed by display name)
+  in `packages/cli/src/coverage.test.ts`: a captured input, the event it decodes
+  to, and for a module shim a `deliver` standing in for the host's calling
+  convention. `describeHandlerErrorReporting` builds the real artifact with a
+  throwing hook and requires the `formatHandlerErrors()` line on the shim's
+  channel; a registered harness without a row fails.
 - Add the harness lane to `scripts/harness-lanes.mjs`, the harness-watch workflow
   matrix/install/bootstrap cases, the playback driver, the drift driver, and
   expected variants. Keep the default lane free and model-free; a paid/LLM path
@@ -284,6 +292,11 @@ integration-specific checklist:
 - Generation determinism, artifact validation, detection and package tests.
 - `describeAdapterContract`: events, fields, capabilities, shapes, scenarios,
   profile metadata, provenance evidence.
+- `describeHandlerErrorReporting`: a throwing handler in the built artifact is
+  named on stderr or `console.error` and the call still goes through. For an
+  in-process shim, also establish where the harness shows `console.error`, by
+  effect, and document it; OpenCode 2.x shows it only under
+  `run --standalone --print-logs` (`.capture/opencode-v2-plugin-stderr`).
 - Project `sync`/`verify`, package projection, skill policy, MCP identity.
 - Real-harness playback with loopback: artifact discovery, block/rewrite
   markers, lifecycle, context, MCP, pty, package/project. A skipped scenario is

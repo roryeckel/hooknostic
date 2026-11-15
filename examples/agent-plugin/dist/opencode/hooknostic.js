@@ -7490,6 +7490,10 @@ async function dispatch(hooks, event, options2) {
   }
   return result;
 }
+function formatHandlerErrors(result) {
+  if (result.errors.length === 0) return void 0;
+  return result.errors.map((e) => `hooknostic ${e.code ?? e.kind} [${e.hookId}]: ${e.message}`).join("\n");
+}
 function pluginRootFrom(moduleUrl, offset) {
   return pathResolve(pathDirname(urlToPath(moduleUrl)), offset);
 }
@@ -7766,6 +7770,8 @@ async function setupOpenCodeV2(plugin, options2, ctx) {
       ...options2.minimumCapabilityLevel ? { minimumCapabilityLevel: options2.minimumCapabilityLevel } : {},
       ...options2.pluginRoot ? { plugin: { root: options2.pluginRoot } } : {}
     });
+    const diagnostics = formatHandlerErrors(result);
+    if (diagnostics !== void 0) console.error(diagnostics);
     const application = planOpenCodeV2Application(result);
     if (application.throwMessage !== void 0) {
       if (event.event === "permission.request") {

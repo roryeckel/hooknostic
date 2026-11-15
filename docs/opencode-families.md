@@ -69,6 +69,12 @@ returns. `run --standalone` terminates its private server without calling plugin
 cleanup, so a hook still running then is cut off.
 [Capture](../.capture/opencode-dispose/README.md).
 
+Both families report a failed handler on `console.error` and let the call
+through. On v2 that report was visible only under
+`opencode run --standalone --print-logs` on the builds measured; the TUI and the
+background service are unmeasured.
+[Capture](../.capture/opencode-v2-plugin-stderr/README.md).
+
 Typed tool failures support approximate `tool.error` observation: a missing-file
 read is captured, while a plain exception from a custom tool bypasses the native
 after callback. Text and object output replacements reach the model, with objects

@@ -26,8 +26,13 @@ For diagnostics, write to stderr (`console.error`) or use `notify(...)` where th
 target supports it.
 
 On OpenCode the hook runs inside the harness process rather than as a command, so the
-stdout guard does not apply there and anything a handler prints goes wherever OpenCode
-sends its own output.
+stdout guard does not apply there. Where a handler's output goes is then up to
+OpenCode. On OpenCode 2.x, plugins run in a server process, and on the builds measured
+(2.0.17 and 2.2.7) their `console.error` output is shown only by
+`opencode run --standalone --print-logs`. Without `--print-logs` it reached neither
+stream nor OpenCode's log file. The TUI and `run` through the background service (without
+`--standalone`) have not been measured
+([capture](../.capture/opencode-v2-plugin-stderr/README.md)).
 
 ## See why a hook did nothing: `HOOKNOSTIC_DEBUG`
 
@@ -46,7 +51,10 @@ hooknostic debug: ignored payload: unmapped native event "Notification"
 ```
 
 The trace goes to stderr. Handler errors and timeouts are reported there with a
-`hooknostic` prefix whether or not debugging is on.
+`hooknostic` prefix whether or not debugging is on. The in-process targets (OpenCode
+and Pi) report them on `console.error`, so the harness decides whether you see them.
+On OpenCode 2.x that means `opencode run --standalone --print-logs` on the builds
+measured, as described above.
 
 ## Keep imported modules free of side effects
 

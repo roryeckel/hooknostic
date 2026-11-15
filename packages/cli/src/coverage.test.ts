@@ -5,7 +5,9 @@
  * another repository is held to them too. Registration iterates the default
  * registry itself: there is no per-adapter row to forget, which closes the one
  * gap the previous SUBJECTS array admitted it could not catch. Fixture paths
- * and audit ranges derive from each adapter's own `harness` metadata.
+ * and audit ranges derive from each adapter's own `harness` metadata. The one
+ * per-harness row, the handler-error driver, is itself checked against the
+ * registry, so a missing one fails rather than skips.
  */
 import { execFileSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
@@ -13,11 +15,14 @@ import { resolve } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
+import { COPILOT_NATIVE_EVENT } from "@hooknostic/adapter-copilot";
 import { SHELL_DIALECTS } from "@hooknostic/sdk";
 import {
   adapterFixturesDir,
   describeAdapterContract,
+  describeHandlerErrorReporting,
   describeScenarioCoverage,
+  type HandlerErrorDriver,
   scenarioById,
 } from "@hooknostic/testkit";
 
@@ -39,10 +44,115 @@ const adapters = Object.values(defaultAdapterRegistry()).flatMap((adapter) =>
 
 const REPO_ROOT = resolve(import.meta.dirname, "../../..");
 
+type Callback = (...args: unknown[]) => Promise<unknown>;
+const callbackFor = (callbacks: Map<string, Callback>, name: string): Callback => {
+  const callback = callbacks.get(name);
+  if (callback === undefined) throw new Error(`the shim registered no ${name} callback`);
+  return callback;
+};
+
+/**
+ * How each harness runs its artifact, for the handler-error obligation (#175).
+ * The command shims need only a captured input; an in-process shim also needs
+ * the host's calling convention, which no adapter field describes. Keyed by
+ * display name, which separates harness families of one adapter id; a harness
+ * registered without a row fails below.
+ */
+const HANDLER_ERROR_DRIVERS: Record<string, HandlerErrorDriver> = {
+  "Claude Code": { execution: "command", event: "tool.before", input: "pre-tool-bash.input.json" },
+  "Codex CLI": { execution: "command", event: "tool.before", input: "pre-tool-bash.input.json" },
+  // The camelCase payload names no event; Copilot passes the registered name as
+  // argv, which generate.ts takes from this same table.
+  "GitHub Copilot CLI": {
+    execution: "command",
+    event: "tool.before",
+    input: "tool-before.input.json",
+    args: [COPILOT_NATIVE_EVENT["tool.before"]!],
+  },
+  // The Plugin function, called with PluginInput; each hook with (input, output).
+  OpenCode: {
+    execution: "module",
+    event: "tool.before",
+    input: "tool-before.input.json",
+    async deliver(exported, native) {
+      const { hook, directory, input, output } = native as Record<string, unknown> & { hook: string };
+      const hooks = await (exported as (input: unknown) => Promise<Record<string, Callback | undefined>>)({
+        directory,
+      });
+      try {
+        await callbackFor(new Map(Object.entries(hooks) as [string, Callback][]), hook)(input, output);
+      } finally {
+        await hooks["dispose"]?.();
+      }
+    },
+  },
+  // `setup(ctx)`, whose domains register callbacks by name; each called with the event.
+  "OpenCode v2": {
+    execution: "module",
+    event: "tool.before",
+    input: "tool-before.input.json",
+    async deliver(exported, native) {
+      const { hook, directory, event } = native as { hook: string; directory: string; event: unknown };
+      // Keyed by domain and name, so two domains registering one name cannot
+      // overwrite each other.
+      const callbacks = new Map<string, Callback>();
+      const domain = (domainName: string) => ({
+        async hook(name: string, callback: Callback) {
+          const key = `${domainName}:${name}`;
+          if (callbacks.has(key)) throw new Error(`the shim registered ${key} twice`);
+          callbacks.set(key, callback);
+          return { dispose: async () => {} };
+        },
+      });
+      const cleanup = await (exported as { setup(ctx: unknown): Promise<() => Promise<void>> }).setup({
+        location: { directory },
+        session: domain("session"),
+        tool: domain("tool"),
+        permission: domain("permission"),
+        event: { async *subscribe() {} },
+      });
+      try {
+        // The capture names the callback but not its domain, so exactly one
+        // domain may have registered it.
+        const keys = [...callbacks.keys()].filter((key) => key.endsWith(`:${hook}`));
+        if (keys.length !== 1) throw new Error(`expected one domain to register ${hook}, got [${keys.join(", ")}]`);
+        await callbackFor(callbacks, keys[0]!)(event);
+      } finally {
+        await cleanup();
+      }
+    },
+  },
+  // The extension factory, called with the ExtensionAPI; each handler with (event, ctx).
+  pi: {
+    execution: "module",
+    event: "tool.before",
+    input: "tool-call-bash.input.json",
+    async deliver(exported, native) {
+      const { event, ctx } = native as { event: { type: string }; ctx: unknown };
+      const handlers = new Map<string, Callback>();
+      (exported as (pi: unknown) => void)({ on: (name: string, handler: Callback) => handlers.set(name, handler) });
+      await callbackFor(handlers, event.type)(event, ctx);
+    },
+  },
+};
+
 for (const adapter of adapters) {
   describeAdapterContract(adapter, { fixturesDir: adapterFixturesDir(adapter) });
   describeScenarioCoverage(adapter);
+  const driver = HANDLER_ERROR_DRIVERS[adapter.harness.displayName];
+  if (driver !== undefined)
+    describeHandlerErrorReporting(adapter, driver, { fixturesDir: adapterFixturesDir(adapter) });
 }
+
+describe("handler error reporting coverage", () => {
+  // A new harness cannot skip the obligation by having no driver, and a
+  // renamed one cannot leave its old row passing for nothing.
+  it("drives every registered harness, and only those", () => {
+    expect(Object.keys(HANDLER_ERROR_DRIVERS).sort()).toEqual(
+      adapters.map((adapter) => adapter.harness.displayName).sort(),
+    );
+  });
+});
 
 describe("scheduled scenario limitations", () => {
   it("declares non-silent limits for the unsupported Codex playback drivers", () => {

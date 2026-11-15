@@ -118,9 +118,34 @@ that re-classifies to the patched command), or a `tool.file` view its file codec
 does not reproduce, or if a shell or file shape table entry has no fixture
 carrying that view.
 
-An adapter shipped from this repository also has to be added to `SUBJECTS` in
-`packages/cli/src/coverage.test.ts`, which asserts it matches the default
-registry so a new adapter cannot skip the suite by omission.
+Run the handler-error obligation beside it. It builds your real artifact with a
+probe hook that throws, drives the artifact with one of your captured inputs, and
+asserts that the `formatHandlerErrors()` line arrives on the channel your
+`shimExecution` gives the shim and that the call goes through (section 5):
+
+```ts
+import { describeHandlerErrorReporting } from "@hooknostic/testkit";
+
+describeHandlerErrorReporting(
+  myAdapter(),
+  { execution: "command", event: "tool.before", input: "pre-tool-shell.input.json" },
+  { fixturesDir: resolve(import.meta.dirname, "../fixtures/1.0") },
+);
+```
+
+A `"command"` driver may add the `args` your harness passes after the artifact
+path. A `"module"` driver also supplies `deliver(exported, native)`, which hands
+the artifact's default export what your harness hands it and calls the callback
+the way your harness does; nothing on `HarnessAdapter` describes that calling
+convention. Nothing else runs this obligation for an adapter in another
+repository, so call it yourself.
+
+An adapter shipped from this repository gets both from
+`packages/cli/src/coverage.test.ts`. That file runs the contract suite for every
+adapter in `defaultAdapterRegistry()`, once per harness family, so registering
+the adapter is what puts it under the suite; there is no per-adapter list to
+forget. Its one per-harness row is the `HANDLER_ERROR_DRIVERS` entry (section 5),
+and a registered harness without one fails.
 
 ## 3. Capability profile
 
@@ -168,6 +193,14 @@ profile for a broad range.
   the HN502 main-module-guard warning accurate — the guard can only fire where
   `process.argv[1]` is the artifact itself. Leaving it undeclared silently
   disables that diagnostic for the target.
+- Report `HookResult.errors` with `formatHandlerErrors()`: on stderr from a
+  command shim, on `console.error` from an in-process one. Fail-open is the
+  contract; fail-silent is not (#175). Add the harness to
+  `HANDLER_ERROR_DRIVERS` in `packages/cli/src/coverage.test.ts`, which builds
+  the real artifact with a throwing hook, drives it with a captured input and
+  asserts the line arrives; a registered harness without a row fails there.
+  Outside this repository, call `describeHandlerErrorReporting` yourself
+  (section 2).
 - Declare `publishesNpmPackage: true` only if package delivery emits a manifest
   npm publishes the artifact under. That is what lets a target set `npmName`;
   undeclared, core refuses the coordinate at analysis, before anything is
