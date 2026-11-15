@@ -1,6 +1,10 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { writeSync } from "node:fs";
 
-import { finishCommandShim } from "./command-io.js";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+import { finishCommandShim, guardCommandShim, HookSourceExitError } from "./command-io.js";
+
+vi.mock("node:fs", async (original) => ({ ...(await original<Record<string, unknown>>()), writeSync: vi.fn() }));
 
 describe("finishCommandShim", () => {
   const originalExitCode = process.exitCode;
@@ -48,5 +52,158 @@ describe("finishCommandShim", () => {
     // Referenced, the fallback would add its grace to every hook that ran.
     expect(timer?.hasRef()).toBe(false);
     clearTimeout(timer);
+  });
+});
+
+describe("guardCommandShim", () => {
+  // The guard owns these for the life of a shim process; here it gets them
+  // for one test, and the worker's own listeners come back afterwards.
+  const EVENTS = ["uncaughtException", "unhandledRejection", "exit"] as const;
+  const originalExitCode = process.exitCode;
+  const describeError = (error: unknown) =>
+    `hooknostic internal [Test]: ${error instanceof Error ? error.message : String(error)}`;
+  // Node passes the origin as a second argument; the typings leave it out.
+  const emitUncaught = (error: unknown, origin: string): boolean =>
+    (process.emit as (event: string, ...args: unknown[]) => boolean).call(process, "uncaughtException", error, origin);
+  let saved: [string, ((...args: unknown[]) => void)[]][];
+  let realExit: typeof process.exit;
+  let exit: ReturnType<typeof vi.fn>;
+  let written: string[];
+
+  beforeEach(() => {
+    saved = EVENTS.map((event) => [event, process.rawListeners(event) as ((...args: unknown[]) => void)[]]);
+    for (const event of EVENTS) process.removeAllListeners(event);
+    realExit = process.exit;
+    // What the guard captures as the original exit.
+    exit = vi.fn();
+    process.exit = exit as never;
+    written = [];
+    vi.spyOn(process.stderr, "write").mockImplementation(((chunk: string, callback?: () => void) => {
+      written.push(chunk);
+      callback?.();
+      return true;
+    }) as never);
+  });
+
+  afterEach(() => {
+    for (const event of EVENTS) process.removeAllListeners(event);
+    for (const [event, listeners] of saved) for (const listener of listeners) process.on(event, listener);
+    process.exit = realExit;
+    process.exitCode = originalExitCode;
+    vi.mocked(writeSync).mockReset();
+    vi.restoreAllMocks();
+    vi.useRealTimers();
+  });
+
+  it("makes the hook source's process.exit throw before the decision", () => {
+    guardCommandShim(describeError);
+
+    expect(() => process.exit(2)).toThrow(new HookSourceExitError(2));
+    expect(() => process.exit(2)).toThrow("the hook source called process.exit(2)");
+    expect(() => process.exit()).toThrow("the hook source called process.exit()");
+    expect(exit).not.toHaveBeenCalled();
+  });
+
+  it("after the decision, reports a hook source's exit once and leaves with the decided code", () => {
+    vi.useFakeTimers();
+    const guard = guardCommandShim(describeError);
+    guard.finish(2);
+
+    process.exit(1);
+    process.exit(1);
+
+    // A stray exit neither adds a block nor removes one.
+    expect(exit.mock.calls).toEqual([[2], [2]]);
+    // Synchronously: the process is about to go, and a pipe may be asynchronous.
+    expect(vi.mocked(writeSync).mock.calls).toEqual([
+      [2, "hooknostic internal [Test]: the hook source called process.exit(1)\n"],
+    ]);
+  });
+
+  it("leaves with 0 rather than throwing from inside an uncaughtException emit", () => {
+    guardCommandShim(describeError);
+    // The hook source's own listener: a throw from it would end the process with code 7.
+    process.on("uncaughtException", () => process.exit(1));
+
+    expect(() => emitUncaught(new Error("timer threw"), "uncaughtException")).not.toThrow();
+
+    expect(exit.mock.calls).toEqual([[0]]);
+    expect(written).toEqual(["hooknostic internal [Test]: timer threw\n"]);
+    expect(vi.mocked(writeSync).mock.calls).toEqual([
+      [2, "hooknostic internal [Test]: the hook source called process.exit(1)\n"],
+    ]);
+  });
+
+  it("leaves with 0 rather than throwing from an exit listener", () => {
+    guardCommandShim(describeError);
+    process.on("exit", () => process.exit(3));
+
+    expect(() => process.emit("exit", 0)).not.toThrow();
+
+    expect(exit.mock.calls).toEqual([[0]]);
+  });
+
+  it("reports a rejection once when strict mode raises it as an uncaught exception too", () => {
+    guardCommandShim(describeError);
+
+    // --unhandled-rejections=strict raises a wrapper first, then emits the reason.
+    emitUncaught(new Error("wrapped plain reason"), "unhandledRejection");
+    process.emit("unhandledRejection", "plain reason", Promise.resolve());
+
+    expect(written).toEqual(["hooknostic internal [Test]: plain reason\n"]);
+  });
+
+  it("reports each error once", async () => {
+    const guard = guardCommandShim(describeError);
+    const error = new Error("rejected twice over");
+
+    process.emit("unhandledRejection", error, Promise.resolve());
+    await guard.report(error);
+
+    expect(written).toEqual(["hooknostic internal [Test]: rejected twice over\n"]);
+  });
+
+  it("starts a report on a line of its own after a write that ended mid-line", async () => {
+    const guard = guardCommandShim(describeError);
+
+    // Claude's block reason need not end in a newline.
+    await guard.write("blocked on purpose");
+    await guard.report(new Error("rejected after a block"));
+
+    expect(written.join("")).toBe("blocked on purpose\nhooknostic internal [Test]: rejected after a block\n");
+  });
+
+  it("pins the decided exit code after exit listeners the hook source added while it loaded", () => {
+    vi.useFakeTimers();
+    const guard = guardCommandShim(describeError);
+    process.on("exit", () => {
+      process.exitCode = 3;
+    });
+
+    guard.finish(2);
+    process.emit("exit", 2);
+
+    expect(process.exitCode).toBe(2);
+  });
+
+  it("forces a leaked handle's exit with the original process.exit, unreported", () => {
+    vi.useFakeTimers();
+    const guard = guardCommandShim(describeError);
+
+    guard.finish(0);
+    vi.advanceTimersByTime(250);
+
+    expect(exit.mock.calls).toEqual([[0]]);
+    expect(writeSync).not.toHaveBeenCalled();
+  });
+
+  it("never throws or rejects when describing the error throws", async () => {
+    const guard = guardCommandShim(() => {
+      throw new Error("describe failed");
+    });
+
+    expect(() => process.emit("unhandledRejection", new Error("rejected"), Promise.resolve())).not.toThrow();
+    await expect(guard.report(new Error("reported"))).resolves.toBeUndefined();
+    expect(written).toEqual([]);
   });
 });

@@ -1,4 +1,5 @@
 import { Console } from "node:console";
+import { writeSync } from "node:fs";
 import { syncBuiltinESMExports } from "node:module";
 import { Writable } from "node:stream";
 
@@ -98,9 +99,156 @@ const DRAIN_GRACE_MS = 250;
  * unref'd, so it fires only when something else is still keeping the loop
  * alive -- exactly the leak -- and cannot delay a shim that already drained.
  */
-export function finishCommandShim(exitCode: number): void {
+export function finishCommandShim(exitCode: number, exit: (code: number) => void = process.exit): void {
   process.exitCode = exitCode;
-  setTimeout(() => process.exit(exitCode), DRAIN_GRACE_MS).unref();
+  setTimeout(() => exit(exitCode), DRAIN_GRACE_MS).unref();
+}
+
+/** What the hook source's `process.exit(n)` throws while a command shim owns the process. */
+export class HookSourceExitError extends Error {
+  readonly code: unknown;
+
+  constructor(code: unknown) {
+    super(`the hook source called process.exit(${exitCodeText(code)})`);
+    this.name = "HookSourceExitError";
+    this.code = code;
+  }
+}
+
+function exitCodeText(code: unknown): string {
+  try {
+    return code === undefined ? "" : String(code);
+  } catch {
+    return "?";
+  }
+}
+
+export interface CommandShimGuard {
+  /** Write to stderr and wait for the flush; a stream a handler ended or destroyed is skipped. */
+  write(text: string): Promise<void>;
+  /** Report `error` on its own line, once per error. Never rejects. */
+  report(error: unknown): Promise<void>;
+  /** Leave with `exitCode`. A stray failure after this keeps that code. */
+  finish(exitCode: number): void;
+}
+
+/**
+ * Own the process for a command shim, against a hook source that does not
+ * expect to share it (#186). Install it first and leave it for the life of
+ * the process.
+ *
+ * - An unhandled rejection or uncaught exception is reported once, through
+ *   `describe`, and the shim carries on: before the decision the hooks still
+ *   decide, after it the decided exit code stands.
+ * - `process.exit` throws a `HookSourceExitError`, so a load-time exit is
+ *   reported like a load error and one inside a handler is that handler's
+ *   error. Where a throw cannot unwind -- inside an uncaughtException emit,
+ *   during `exit`, after the decision -- it reports and leaves with the
+ *   decided code, or 0 before one.
+ * - An `exit` listener pins the exit code to the decided code, or 0 before
+ *   one, over `process.exitCode` set by the hook source and over code 13 for
+ *   an unsettled top-level await.
+ *
+ * Not covered: `process.reallyExit`, `process.kill(process.pid)`,
+ * `process.abort()`, and `exit` listeners added after `finish`.
+ */
+export function guardCommandShim(describe: (error: unknown) => string): CommandShimGuard {
+  const exit = process.exit;
+  const stderr = process.stderr;
+  let decided: number | undefined;
+  // Whether stderr, as far as this guard wrote it, ended mid-line: Claude's
+  // block reason need not end in a newline, and a report must start its own.
+  let midLine = false;
+  // A throw cannot unwind inside an uncaughtException emit (Node exits 7) or
+  // once the process is leaving.
+  let cannotUnwind = false;
+  const reported = new Set<unknown>();
+
+  const write = async (text: string): Promise<void> => {
+    if (text === "") return;
+    midLine = !text.endsWith("\n");
+    try {
+      if (stderr.writableEnded || stderr.destroyed) return;
+      await new Promise<void>((resolve) => {
+        stderr.write(text, () => resolve());
+      });
+    } catch {
+      // A handler may have broken stderr in a way the checks above miss.
+    }
+  };
+  const line = (error: unknown): string | undefined => {
+    try {
+      return `${midLine ? "\n" : ""}${describe(error)}\n`;
+    } catch {
+      return undefined;
+    }
+  };
+  const firstTime = (key: unknown): boolean => {
+    if (reported.has(key)) return false;
+    reported.add(key);
+    return true;
+  };
+  const report = async (error: unknown): Promise<void> => {
+    if (!firstTime(error)) return;
+    const text = line(error);
+    if (text !== undefined) await write(text);
+  };
+  // The process is about to go: an asynchronous pipe write would be lost.
+  const reportNow = (error: unknown, key: unknown): void => {
+    if (!firstTime(key)) return;
+    const text = line(error);
+    if (text === undefined) return;
+    midLine = false;
+    try {
+      writeSync(2, text);
+    } catch {
+      // Nowhere left to report it.
+    }
+  };
+  const pin = (): void => {
+    try {
+      process.exitCode = decided ?? 0;
+    } catch {
+      // Listeners must never throw.
+    }
+  };
+
+  process.prependListener("uncaughtException", () => {
+    cannotUnwind = true;
+    queueMicrotask(() => {
+      cannotUnwind = false;
+    });
+  });
+  process.on("uncaughtException", (error, origin) => {
+    // Under --unhandled-rejections=strict a rejection is raised here first,
+    // then emitted as one; report it there, once.
+    if (origin !== "unhandledRejection") void report(error);
+  });
+  process.on("unhandledRejection", (reason) => {
+    void report(reason);
+  });
+  process.exit = function exitFromHookSource(code?: number | string | null): never {
+    const error = new HookSourceExitError(code);
+    if (!cannotUnwind && decided === undefined) throw error;
+    reportNow(error, `exit:${exitCodeText(code)}`);
+    return exit(decided ?? 0);
+  } as typeof process.exit;
+  process.prependListener("exit", () => {
+    cannotUnwind = true;
+  });
+  process.on("exit", pin);
+
+  return {
+    write,
+    report,
+    finish(exitCode) {
+      decided = exitCode;
+      // Last again, after any 'exit' listener the hook source added while it loaded.
+      process.off("exit", pin);
+      process.on("exit", pin);
+      finishCommandShim(exitCode, exit);
+    },
+  };
 }
 
 /**

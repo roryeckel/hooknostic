@@ -7908,9 +7908,9 @@ function claimProtocolStdout() {
 }
 var RELEASE_BOUND_MS = 500;
 var DRAIN_GRACE_MS = 250;
-function finishCommandShim(exitCode) {
+function finishCommandShim(exitCode, exit = process.exit) {
   process.exitCode = exitCode;
-  setTimeout(() => process.exit(exitCode), DRAIN_GRACE_MS).unref();
+  setTimeout(() => exit(exitCode), DRAIN_GRACE_MS).unref();
 }
 function bounded(work) {
   let timer;
