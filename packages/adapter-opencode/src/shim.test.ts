@@ -86,6 +86,11 @@ function hooks() {
   return createHooknosticHooks(smokePlugin(), { capabilities: LEVELS }, PLUGIN_INPUT);
 }
 
+/** The internal-error reports among a console.error spy's calls. */
+function internalLines(spy: { mock: { calls: unknown[][] } }): unknown[] {
+  return spy.mock.calls.map(([line]) => line).filter((line) => String(line).startsWith("hooknostic internal"));
+}
+
 describe("createHooknosticHooks", () => {
   it("copies __proto__ as an own data key without changing live argument identity or prototype", async () => {
     const replacement = JSON.parse('{"__proto__":{"injected":"yes"},"command":"echo safe"}');
@@ -480,12 +485,19 @@ All commands run in the cwd.`,
     }
   });
 
-  it("ignores unmapped bus events without throwing (fail-open)", async () => {
-    const h = hooks();
-    await expect(h["event"]!({ event: { type: "message.part.updated" } }, undefined)).resolves.toBeUndefined();
+  it("ignores unmapped bus events without throwing or reporting (fail-open)", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const h = hooks();
+      await expect(h["event"]!({ event: { type: "message.part.updated" } }, undefined)).resolves.toBeUndefined();
+      // Not ours is not a defect: nothing is reported.
+      expect(error).not.toHaveBeenCalled();
+    } finally {
+      error.mockRestore();
+    }
   });
 
-  it("does not deny the user's tool call when the shim itself fails", async () => {
+  it("does not deny the user's tool call when the shim itself fails, and reports it", async () => {
     // Throwing IS the block channel here, so an unintended throw out of the
     // dispatch path denies the call. Claude and Codex force exitCode 0 on an
     // internal error and the call proceeds; this harness did the opposite,
@@ -495,17 +507,87 @@ All commands run in the cwd.`,
     // records them in HookResult.errors. The exposed paths are the ones after
     // it -- applying mutations, and posting. A frozen `output` makes the
     // context assignment throw in the same place a real bug would.
-    const h = hooks();
-    const frozen = Object.freeze({});
-    await expect(h["experimental.session.compacting"]!({ sessionID: "s" }, frozen)).resolves.toBeUndefined();
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const h = hooks();
+      const frozen = Object.freeze({});
+      await expect(h["experimental.session.compacting"]!({ sessionID: "s" }, frozen)).resolves.toBeUndefined();
+      // V8's wording for the refused assignment is not pinned.
+      expect(internalLines(error)).toEqual([
+        expect.stringMatching(/^hooknostic internal \[experimental\.session\.compacting\]: \S/m),
+      ]);
+    } finally {
+      error.mockRestore();
+    }
   });
 
-  it("still delivers a block the plugin actually asked for", async () => {
+  it("still delivers a block the plugin actually asked for, without reporting it", async () => {
     // The wrapper must not swallow the deliberate throw the block rides on.
-    const h = hooks();
-    await expect(
-      h["tool.execute.before"]!({ tool: "bash", sessionID: "s", callID: "c" }, { args: { command: "rm -rf /" } }),
-    ).rejects.toThrow("blocked by guard");
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const h = hooks();
+      await expect(
+        h["tool.execute.before"]!({ tool: "bash", sessionID: "s", callID: "c" }, { args: { command: "rm -rf /" } }),
+      ).rejects.toThrow("blocked by guard");
+      expect(internalLines(error)).toEqual([]);
+    } finally {
+      error.mockRestore();
+    }
+  });
+
+  describe("internal errors (#179)", () => {
+    /** A host object whose getter throws, read by the decoder before any hook runs. */
+    const refusing = (thrown: () => unknown) => ({
+      get sessionID(): never {
+        throw thrown();
+      },
+    });
+
+    it("reports a decode-time host refusal on every event, and fails open", async () => {
+      const error = vi.spyOn(console, "error").mockImplementation(() => {});
+      try {
+        const h = hooks();
+        for (const _ of [0, 1, 2]) {
+          const input = refusing(() => new Error("live object went away"));
+          await expect(h["experimental.session.compacting"]!(input, {})).resolves.toBeUndefined();
+        }
+        // Not deduplicated (ADR-0002): a defect that fires on every event says so every time.
+        expect(error.mock.calls).toEqual(
+          [0, 1, 2].map(() => ["hooknostic internal [experimental.session.compacting]: live object went away"]),
+        );
+      } finally {
+        error.mockRestore();
+      }
+    });
+
+    it("fails open on a thrown value it cannot inspect, and on a report channel that throws", async () => {
+      const error = vi.spyOn(console, "error").mockImplementation(() => {});
+      try {
+        const h = hooks();
+        // A revoked proxy throws from `instanceof` and from String() alike. Thrown
+        // from the output the context is appended to, it reaches the block check
+        // as itself: the decoder never reads that field.
+        const { proxy, revoke } = Proxy.revocable({}, {});
+        revoke();
+        const output = {
+          get context(): never {
+            throw proxy;
+          },
+        };
+        await expect(h["experimental.session.compacting"]!({ sessionID: "s" }, output)).resolves.toBeUndefined();
+        expect(error.mock.calls).toEqual([
+          ["hooknostic internal [experimental.session.compacting]: uninspectable thrown value"],
+        ]);
+        error.mockImplementation(() => {
+          throw new Error("stderr is gone");
+        });
+        await expect(
+          h["experimental.session.compacting"]!({ sessionID: "s" }, Object.freeze({})),
+        ).resolves.toBeUndefined();
+      } finally {
+        error.mockRestore();
+      }
+    });
   });
 
   it("does not register callbacks used only by hooks scoped away from OpenCode", () => {

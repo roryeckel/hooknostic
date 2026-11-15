@@ -1,5 +1,5 @@
 import type { CapabilityLevels } from "@hooknostic/runtime";
-import { dispatch, formatHandlerErrors } from "@hooknostic/runtime";
+import { dispatch, formatHandlerErrors, reportInternalError } from "@hooknostic/runtime";
 import type { HookEvent, HookEventName, PluginSpec, RuntimePolicy, SupportLevel } from "@hooknostic/sdk";
 // Value imports must stay on the SDK/runtime: pulling `@hooknostic/core` into
 // the shim bundles esbuild into every generated artifact (see docs/design.md).
@@ -281,6 +281,15 @@ export function createHooknosticHooks(
     }
   };
 
+  /** Proxy-safe: `instanceof` on a revoked proxy throws, and that would fail closed. */
+  const isBlock = (error: unknown): boolean => {
+    try {
+      return error instanceof HooknosticBlock;
+    } catch {
+      return false;
+    }
+  };
+
   /**
    * Fail open, the way the command-hook shims do.
    *
@@ -295,12 +304,14 @@ export function createHooknosticHooks(
     try {
       await run(native);
     } catch (error) {
-      if (error instanceof HooknosticBlock) throw error;
+      if (isBlock(error)) throw error;
       // Only Hooknostic's own failures land here: a decode, dispatch or apply
       // bug, or a host object that refuses the in-place mutation. A handler's
       // failure never does: dispatch records it in HookResult.errors and run
-      // reports it on console.error. This one is swallowed unreported, whereas
-      // the command shims print `hooknostic: <message>` to stderr.
+      // reports it on console.error. A payload that is not ours returned
+      // before this, silently. The rest is a defect, so it is said, on the
+      // same channel, every time.
+      reportInternalError(error, native.hook);
     }
   };
 

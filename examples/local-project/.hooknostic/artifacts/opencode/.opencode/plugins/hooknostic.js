@@ -7125,6 +7125,27 @@ function errorMessage(error2) {
     return "uninspectable thrown value";
   }
 }
+function debugEnabled(env = globalThis.process?.env) {
+  const flag = env?.["HOOKNOSTIC_DEBUG"];
+  return flag !== void 0 && flag !== "" && flag !== "0";
+}
+function formatInternalError(error2, options = {}) {
+  const line = `hooknostic internal${options.hook ? ` [${options.hook}]` : ""}: ${errorMessage(error2)}`;
+  if (!options.stack) return line;
+  try {
+    const stack = error2 instanceof Error ? error2.stack : void 0;
+    return typeof stack === "string" && stack !== "" ? `${line}
+${stack}` : line;
+  } catch {
+    return line;
+  }
+}
+function reportInternalError(error2, hook2, write = (line) => console.error(line)) {
+  try {
+    write(formatInternalError(error2, { ...hook2 !== void 0 ? { hook: hook2 } : {}, stack: debugEnabled() }));
+  } catch {
+  }
+}
 function createCapabilitySet(levels) {
   const levelOf = (id) => (Object.hasOwn(levels, id) ? levels[id] : void 0) ?? "unsupported";
   return {
@@ -7893,11 +7914,19 @@ function createHooknosticHooks(plugin, options, pluginInput) {
       throw new HooknosticBlock2(application.throwMessage);
     }
   };
+  const isBlock2 = (error2) => {
+    try {
+      return error2 instanceof HooknosticBlock2;
+    } catch {
+      return false;
+    }
+  };
   const runFailingOpen = async (native) => {
     try {
       await run(native);
     } catch (error2) {
-      if (error2 instanceof HooknosticBlock2) throw error2;
+      if (isBlock2(error2)) throw error2;
+      reportInternalError(error2, native.hook);
     }
   };
   const postPrompts = async (event, application) => {
