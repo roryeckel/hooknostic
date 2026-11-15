@@ -35,11 +35,14 @@ loads no Zod, so only consumers of the subpath install it
 any other range but replaces `zod-peer` only when a release falls outside it:
 the published peer floor is a compatibility decision raised deliberately, such
 as for a security fix, not on every Zod release. The published CLI also takes
-`zod` from `zod-peer`, as a regular dependency: it loads the SDK's schemas at
-runtime, and a generated artifact takes the SDK's Zod from the CLI's install
-when the project has none, so it supplies the peer itself instead of relying on
-a package manager to install it. Sharing the catalog keeps that dependency
-equal to the peer range. All resolve to one installed copy. This follows the [upstream peer dependency guidance](https://zod.dev/library-authors#how-to-configure-peer-dependencies)
+`zod` from `zod-peer`, as a regular dependency. The CLI's own code, the SDK
+and its Zod included, is inlined into its bundle, so that dependency exists for
+generated artifacts. A shim's SDK schemas take Zod from the CLI's install when
+the project's is missing or outside the SDK's peer range, which an out-of-range
+one reports as HN109. Sharing the catalog keeps that dependency equal to the
+peer range, so the copy it supplies always satisfies it. When the project's
+Zod satisfies the range, the SDK and the project's own code share that one
+installed copy. This follows the [upstream peer dependency guidance](https://zod.dev/library-authors#how-to-configure-peer-dependencies)
 and lets schema types resolve against the consumer's instance. Zod 3 peers and
 V3 schema composition are no longer supported. See the
 [Zod 4 upgrading guide](upgrading/zod-4.md) for this breaking change.
@@ -120,7 +123,10 @@ array bounds. The old dependency visits all eight invalid elements before
 reporting the bound; the patched dependency visits none. The Node compatibility
 CI job runs `node scripts/check-sdk-zod-peers.mjs` after building: it packs the
 SDK and installs an isolated consumer at the V4 peer floor, then checks TypeScript
-composition and runtime error identity. The version derives from `zod-peer`; this
+composition and runtime error identity. It also packs the CLI and builds an npm
+project, installed with `legacy-peer-deps`, that inherits a hoisted `zod@3.25.76`
+from another dependency. The artifact must carry the CLI's in-range Zod, and
+`check` and `build` must warn HN109. The version derives from `zod-peer`; this
 check needs registry access and disables dependency install scripts.
 
 ### Minimatch lint-tooling override: 2026-11-13

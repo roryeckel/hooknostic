@@ -69,9 +69,17 @@ SDK. If you added `zod` only to satisfy the SDK, you can remove it. Importing
 
 ## Rebuild generated artifacts
 
-Generated runtimes still validate handler effects with Zod. A build takes Zod
-from your project when you have it installed, and otherwise from the
-`hooknostic` CLI's own installation. Either way the artifact carries one copy.
+Generated runtimes still validate handler effects with Zod. A build uses the
+Zod your SDK resolves only when it satisfies the SDK's `zod` peer range
+(`^4.6.7`). The artifact then carries one copy, shared with any hook code that
+imports Zod. Otherwise the SDK's schemas use the `hooknostic` CLI's own Zod.
+That happens when your project has no Zod, or one too old to provide `zod/v4`.
+It also happens when its Zod is outside the range, such as a Zod 3 inherited
+from another dependency. That last case still builds, with an HN109 warning
+that names the version found and the copy bundled instead. Your own code that
+imports `zod` keeps your project's copy, so the artifact then carries two.
+Install a Zod in the range to share one.
+
 Keep the SDK and CLI on the same Hooknostic release: an older CLI cannot bundle
 against this SDK. Rebuild or re-sync with the new CLI to regenerate owned
 output. Artifact bytes change even when your sources do not.

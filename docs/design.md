@@ -677,7 +677,11 @@ the message names the root checkout (ADR-0015). **HN108** a hook declares an opt
 event field (`fields`) that the target produces below exact: an error where the field
 is never produced, the `onBelowMinimum` severity where its level is below
 `compatibility.minimum`, information otherwise or when accepted by id in
-`compatibility.accept` (ADR-0027).
+`compatibility.accept` (ADR-0027). **HN109** the Zod that the SDK's schemas
+resolve is outside the SDK's `zod` peer range, or has no readable version, so
+the runtime bundles Hooknostic's own Zod instead. It is a warning, reported once
+per build, and it names the version and path found, the range, and the copy
+bundled. User code that imports Zod still bundles the project's copy (ADR-0040).
 
 #### HN502 — bundled CLI entry point
 

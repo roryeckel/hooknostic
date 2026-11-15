@@ -33,22 +33,32 @@ from the barrel alone.
    Every type an author reaches from the root is plain TypeScript, as each one
    already was. `result.ts` keeps `HookResult`, `HandlerError`,
    `AppliedEffect` and `RUNTIME_DIAGNOSTIC_CODES` at the root, with no schema.
-   Compile-time assertions in `schemas.ts` hold 13 schemas' inferred output
+   Compile-time assertions in `schemas.ts` hold 16 schemas' inferred output
    equal to the root type each validates, after removing the `| undefined`
-   that Zod 4 adds to optional keys. The schemas without an assertion differ
-   from their types by design, and the file says how. Asserting identity
-   there would mean changing a public type.
+   that Zod 4 adds to optional keys. Five of them compare against the type
+   with a documented difference applied: `Effect`'s fields without
+   `readonly`, `accept` as any string, or mutable arrays. The schemas without
+   an assertion differ from their types by design, and the file says how.
+   Asserting identity there would mean changing a public type.
 3. **`zod` stays a peer, now optional.** It still comes from the `zod-peer`
    catalog, with `peerDependenciesMeta.zod.optional`. It is needed only to
    import `@hooknostic/sdk/schemas`.
-4. **Artifacts take the SDK's Zod from the project, or else from Hooknostic.**
-   A runtime shim validates effects through `@hooknostic/sdk/schemas`,
-   resolved from the project's SDK (one SDK copy per artifact, as before).
-   When the project installs Zod, those schemas use it and the artifact holds
-   one shared copy. When it does not, a Zod import made by the SDK resolves
-   from Hooknostic's own install: the published CLI depends on Zod for exactly
-   this, and for its own validation. Only the SDK's imports fall back. User
-   code that imports Zod without installing it still fails.
+4. **Artifacts take the SDK's Zod from the project only when it satisfies the
+   peer range, or else from Hooknostic.** A runtime shim validates effects
+   through `@hooknostic/sdk/schemas`, resolved from the project's SDK (one SDK
+   copy per artifact, as before). When the Zod the SDK resolves satisfies the
+   `peerDependencies.zod` range in the SDK's own manifest, those schemas use
+   it, and the artifact holds one copy, shared with user code. Otherwise a Zod
+   import made by the SDK resolves from Hooknostic's own install: the
+   published CLI depends on Zod from the same range for exactly this. That
+   covers a project with no Zod, or one without a `zod/v4` entry (Zod 3.24
+   and older). It also covers a project whose Zod resolves outside the range
+   or has no readable version, such as a Zod 3 inherited from an unrelated
+   dependency. That case builds with an HN109 warning, not an error, because
+   a project rarely controls a transitive Zod. Only the SDK's imports are
+   redirected. User code that imports Zod keeps the project's copy, so the
+   artifact then carries two. User code that imports Zod without installing
+   it still fails.
 5. **An SDK alias covers the subpath.** esbuild appends a subpath to an alias
    target, so an `@hooknostic/sdk` alias to the SDK's `index` file would send
    `@hooknostic/sdk/schemas` to `<index>/schemas`. Bundling adds the `schemas`
@@ -75,7 +85,9 @@ from the barrel alone.
   refuses Zod; the root declaration graph names no Zod module; and the
   simulated registry install builds a project that has no Zod, with peers not
   auto-installed. The packed-SDK check runs the same Zod-free case against the
-  real tarball.
+  real tarball. It also builds an npm project that inherits a hoisted
+  `zod@3.25.76` (GHSA-mrhx-c7xc-m3w5) with the packed CLI, and requires the
+  CLI's in-range Zod in the artifact and HN109 from `check` and `build`.
 
 ## Alternatives considered
 

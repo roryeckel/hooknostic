@@ -26,9 +26,9 @@ decision does not.
   dispatch?" are answered. `EFFECT_KINDS` derives from them; never restate
   the kind list anywhere else.
 - `packages/sdk/src/schemas.ts`: the `effectSchema` union member, **in the
-  same edit** — the schemas are `.strict()`, so a field added to an interface
-  but not its zod twin is rejected at dispatch as HN401 while compiling
-  clean. This trap has bitten four separate times.
+  same edit**. The schemas are `.strict()`, so a field missing from the twin
+  is an HN401 at dispatch; it bit four times before the `Effect` assertion in
+  `schemas.ts` made it a compile error. Fix the schema, never the assertion.
 - `EffectForCapability` in effects.ts (longest-suffix-first ordering).
 - `packages/runtime/src/dispatch.ts`: an apply case in the effect switch. If
   the effect is portable-but-lowered (like `updateShell`), lower it in
