@@ -7792,6 +7792,8 @@ function guardCommandShim(describe2, options = {}) {
     }
     if (!cannotUnwind && !finished && !escaped.has(exitKey(code))) throw error2;
     reportNow(error2, exitKey(code));
+    process.off("exit", pin);
+    process.on("exit", pin);
     return exit(decided ?? 0);
   };
   syncBuiltinESMExports();

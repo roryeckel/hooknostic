@@ -303,6 +303,10 @@ export function guardCommandShim(
     }
     if (!cannotUnwind && !finished && !escaped.has(exitKey(code))) throw error;
     reportNow(error, exitKey(code));
+    // Last again, as finish does: an `exit` listener the hook source added
+    // since the guard installed must not override the decided code.
+    process.off("exit", pin);
+    process.on("exit", pin);
     return exit(decided ?? 0);
   } as typeof process.exit;
   // `import { exit } from "node:process"` is a live binding set at startup.

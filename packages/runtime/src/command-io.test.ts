@@ -285,6 +285,23 @@ describe("guardCommandShim", () => {
     expect(exit.mock.calls).toEqual([[2]]);
   });
 
+  it("pins the decided code after the hook source's exit listener when the stub leaves before finish", () => {
+    const guard = guardCommandShim(describeError);
+    // Added after the guard, so it would run after the pin.
+    process.on("exit", () => {
+      process.exitCode = 0;
+    });
+    process.on("uncaughtException", () => process.exit(1));
+
+    guard.decide(2);
+    emitUncaught(new Error("timer threw after the decision"), "uncaughtException");
+    expect(exit.mock.calls).toEqual([[2]]);
+    // What the real exit does next: run the exit listeners, then leave with process.exitCode.
+    process.emit("exit", 2);
+
+    expect(process.exitCode).toBe(2);
+  });
+
   it("still throws from the stub between the decision and finish, so the reply can flush", () => {
     const guard = guardCommandShim(describeError);
 

@@ -879,6 +879,19 @@ export default definePlugin({
       expect(results).toHaveLength(0);
     });
 
+    it("keeps that failure when the hook source's own exit listener resets the exit code", async () => {
+      const { status, results, raw } = await run(
+        atLoad(`
+          process.on("exit", () => { process.exitCode = 0; });
+          process.on("uncaughtException", () => process.exit(0));
+          setTimeout(() => { throw new Error("t"); }, 0);
+        `),
+        "claude",
+      );
+      expect(status, raw).toBe(1);
+      expect(results).toHaveLength(0);
+    });
+
     it("still fails the run for a stray after the last result", async () => {
       // Deterministic rather than timed: the rejection fires once dispatch has
       // set its exit code, and the leaked interval leaves the forced exit to end it.
