@@ -621,7 +621,8 @@ describe("an SDK installed without its optional Zod peer", () => {
 
   it("resolves first when the build's working directory is in a Plug'n'Play project", async () => {
     // esbuild looks for the PnP manifest from absWorkingDir, not from each
-    // importer, so an SDK outside that directory's tree still resolves by PnP.
+    // importer. Once one is found, the walk cannot tell whether PnP or
+    // node_modules serves the SDK's import, so the plugin resolves first.
     const { root, sdkEntry } = await project({ zod: "4.99.0" });
     try {
       const app = join(root, "app");

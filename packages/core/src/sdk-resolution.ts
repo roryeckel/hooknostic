@@ -102,7 +102,7 @@ function owningManifest(file: string, manifests: Map<string, OwningManifest | un
 /** The `zod` package a bare `zod` import from a directory reaches. */
 export type ReachableZod =
   | { kind: "none" }
-  /** A Yarn Plug'n'Play project: no `node_modules` to walk, so esbuild's own PnP resolution decides. */
+  /** A Yarn Plug'n'Play manifest: PnP or `node_modules` may serve the import, so let esbuild's resolution decide. */
   | { kind: "pnp" }
   /** `version` only when the package's manifest names itself `zod`, unlike an npm alias installed as zod. */
   | { kind: "found"; directory: string; version?: string };
@@ -260,9 +260,11 @@ function substitutionDiagnostic(substitution: ZodSubstitution): Diagnostic {
  * than everything else this plugin does.
  *
  * Two cases resolve first instead and read the version from the resolved
- * file's package, as this plugin always did. A Yarn Plug'n'Play project has no
- * `node_modules` to walk; it is found as esbuild finds it, from the build's
- * working directory. And a build whose options change what a bare `zod`
+ * file's package, as this plugin always did. Under a Yarn Plug'n'Play
+ * manifest, found as esbuild finds it, from the build's working directory, the
+ * walk cannot tell whether PnP or `node_modules` serves the SDK's import:
+ * esbuild falls back to `node_modules` for an importer the manifest does not
+ * know. And a build whose options change what a bare `zod`
  * reaches -- an `alias` with a zod key, `nodePaths` or `preserveSymlinks` --
  * cannot be modelled by the walk: esbuild (0.28) applies `alias` only after
  * `onResolve` callbacks have seen the import as written, while a nested
@@ -292,8 +294,9 @@ export function sdkZodFallbackPlugin(onSubstitution: (diagnostic: Diagnostic) =>
         (nodePaths?.length ?? 0) > 0 ||
         preserveSymlinks === true;
       // esbuild looks for a PnP manifest once, walking up from the working
-      // directory, and then resolves every import through it -- including an
-      // SDK that lies outside that directory's tree.
+      // directory. Once it finds one, an importer the manifest has a locator
+      // for resolves through PnP and any other falls back to node_modules,
+      // and the walk cannot tell which serves the SDK's import: resolve first.
       const pnpProject = underPnpManifest(absWorkingDir ?? process.cwd());
       // See resolveOwn: the cache assumes bundleRuntime's resolution options.
       const cacheable =

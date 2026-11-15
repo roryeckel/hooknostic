@@ -59,11 +59,11 @@ from the barrel alone.
    or with no readable version builds with an HN109 warning, not an error,
    because a project rarely controls a transitive Zod. That includes Zod 3.24
    and older, which have no `zod/v4` entry, and a Zod 3 inherited from an
-   unrelated dependency. A Yarn Plug'n'Play project has no `node_modules` to
-   read, and esbuild's `alias` for zod, `nodePaths` and `preserveSymlinks`
-   change what the import reaches. Those builds resolve the SDK's import
-   first and check the version of the package it resolved to. Only the SDK's
-   imports are redirected. User code that imports Zod keeps the project's
+   unrelated dependency. Under a Yarn Plug'n'Play manifest, either PnP or
+   `node_modules` may serve the import, and esbuild's `alias` for zod,
+   `nodePaths` and `preserveSymlinks` change what it reaches. Those builds
+   resolve the SDK's import first and check the version of the package it
+   resolved to. Only the SDK's imports are redirected. User code that imports Zod keeps the project's
    copy, so the artifact then carries two. User code that imports Zod without
    installing it still fails.
 5. **An SDK alias covers the subpath.** esbuild appends a subpath to an alias
