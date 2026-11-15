@@ -299,7 +299,7 @@ export function createHooknosticHooks(
       // Only Hooknostic's own failures land here: a decode, dispatch or apply
       // bug, or a host object that refuses the in-place mutation. A handler's
       // failure never does: dispatch records it in HookResult.errors and run
-      // reports it on console.error. This one is swallowed unreported, where
+      // reports it on console.error. This one is swallowed unreported, whereas
       // the command shims print `hooknostic: <message>` to stderr.
     }
   };
