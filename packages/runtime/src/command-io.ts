@@ -258,6 +258,9 @@ export function guardCommandShim(describe: (error: unknown) => string): CommandS
     reportNow(error, `exit:${exitCodeText(code)}`);
     return exit(decided ?? 0);
   } as typeof process.exit;
+  // `import { exit } from "node:process"` is a live binding set at startup.
+  // claimProtocolStdout syncs it too, but only if it runs after this.
+  syncBuiltinESMExports();
   process.prependListener("exit", () => {
     cannotUnwind = true;
   });

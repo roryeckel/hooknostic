@@ -281,6 +281,12 @@ describe("Copilot command shim with a hook source that owns the process", () => 
     expect(result.stderr).toMatch(/^hooknostic internal \[preToolUse\]: the hook source called process\.exit\(2\)\n/m);
   });
 
+  it("catches a named exit import from node:process too", async () => {
+    const result = await run(hostileSource({ top: `import { exit } from "node:process";\nexit(2);` }));
+    expect(result).toMatchObject({ code: 0, stdout: "" });
+    expect(result.stderr).toMatch(/^hooknostic internal \[preToolUse\]: the hook source called process\.exit\(2\)\n/m);
+  });
+
   it("reports a CLI's main().catch(() => process.exit(1)) once the plugin has loaded", async () => {
     const result = await run(
       hostileSource({ top: `${CLI_MAIN}\nmain().catch(() => process.exit(1));`, body: "await sleep(50)" }),

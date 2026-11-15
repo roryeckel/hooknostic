@@ -8004,6 +8004,7 @@ function guardCommandShim(describe2) {
     reportNow(error2, `exit:${exitCodeText(code)}`);
     return exit(decided ?? 0);
   };
+  syncBuiltinESMExports();
   process.prependListener("exit", () => {
     cannotUnwind = true;
   });
