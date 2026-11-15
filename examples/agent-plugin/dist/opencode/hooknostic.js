@@ -7134,6 +7134,40 @@ var hooks_default = definePlugin({
 // ../../packages/cli/dist/shims/opencode.mjs
 import { dirname as pathDirname, resolve as pathResolve } from "node:path";
 import { fileURLToPath as urlToPath } from "node:url";
+function errorMessage(error2) {
+  try {
+    if (error2 instanceof Error) {
+      return typeof error2.message === "string" ? error2.message : "Error";
+    }
+  } catch {
+  }
+  try {
+    return String(error2);
+  } catch {
+    return "uninspectable thrown value";
+  }
+}
+function debugEnabled(env = globalThis.process?.env) {
+  const flag = env?.["HOOKNOSTIC_DEBUG"];
+  return flag !== void 0 && flag !== "" && flag !== "0";
+}
+function formatInternalError(error2, options2 = {}) {
+  const line = `hooknostic internal${options2.hook ? ` [${options2.hook}]` : ""}: ${errorMessage(error2)}`;
+  if (!options2.stack) return line;
+  try {
+    const stack = error2 instanceof Error ? error2.stack : void 0;
+    return typeof stack === "string" && stack !== "" ? `${line}
+${stack}` : line;
+  } catch {
+    return line;
+  }
+}
+function reportInternalError(error2, hook2, write = (line) => console.error(line)) {
+  try {
+    write(formatInternalError(error2, { ...hook2 !== void 0 ? { hook: hook2 } : {}, stack: debugEnabled() }));
+  } catch {
+  }
+}
 function createCapabilitySet(levels) {
   const levelOf = (id) => (Object.hasOwn(levels, id) ? levels[id] : void 0) ?? "unsupported";
   return {
@@ -7159,19 +7193,6 @@ function truncateNotification(message, limit) {
   const code = message.charCodeAt(limit - 1);
   const splitsPair = code >= 55296 && code <= 56319;
   return message.slice(0, splitsPair ? limit - 1 : limit);
-}
-function errorMessage(error2) {
-  try {
-    if (error2 instanceof Error) {
-      return typeof error2.message === "string" ? error2.message : "Error";
-    }
-  } catch {
-  }
-  try {
-    return String(error2);
-  } catch {
-    return "uninspectable thrown value";
-  }
 }
 async function dispatch(hooks, event, options2) {
   const policy = { ...DEFAULT_RUNTIME, ...options2.policy };
@@ -7682,6 +7703,24 @@ function decodeOpenCodeV2(raw, invocation, enrichment = {}) {
   }
   throw new OpenCodeV2DecodeError(`unmapped v2 callback ${native.hook}`);
 }
+var HooknosticBlock = class extends Error {
+};
+var isBlock = (error2) => {
+  try {
+    return error2 instanceof HooknosticBlock;
+  } catch {
+    return false;
+  }
+};
+async function failingOpen(hook2, work) {
+  try {
+    await work();
+  } catch (error2) {
+    if (isBlock(error2)) throw error2;
+    reportInternalError(error2, hook2);
+  }
+}
+var guarded = (hook2, callback) => (event) => failingOpen(hook2, () => callback(event));
 async function setupOpenCodeV2(plugin, options2, ctx) {
   const targetId = options2.targetId ?? "opencode";
   const events = new Set(plugin.hooks.filter((h) => hookAppliesToTarget(h, targetId)).map((h) => h.event));
@@ -7737,7 +7776,9 @@ async function setupOpenCodeV2(plugin, options2, ctx) {
     }
   };
   const enqueue = (key, work) => {
-    const next = (queues.get(key) ?? Promise.resolve()).then(() => controller.signal.aborted ? void 0 : work()).catch(() => void 0);
+    const next = (queues.get(key) ?? Promise.resolve()).then(() => controller.signal.aborted ? void 0 : work()).catch((error2) => {
+      if (!isBlock(error2)) reportInternalError(error2, "event");
+    });
     queues.set(key, next);
     void next.then(() => {
       if (queues.get(key) === next) queues.delete(key);
@@ -7775,11 +7816,27 @@ async function setupOpenCodeV2(plugin, options2, ctx) {
     const application = planOpenCodeV2Application(result);
     if (application.throwMessage !== void 0) {
       if (event.event === "permission.request") {
-        native.effect = "deny";
-        native.message = application.throwMessage;
+        const effect = native.effect;
+        const message = Object.hasOwn(native, "message") ? { value: native.message } : void 0;
+        try {
+          native.message = application.throwMessage;
+          native.effect = "deny";
+        } catch (error2) {
+          const restores = [
+            () => native.effect = effect,
+            () => message ? native.message = message.value : delete native.message
+          ];
+          for (const restore of restores) {
+            try {
+              restore();
+            } catch {
+            }
+          }
+          throw error2;
+        }
         return;
       }
-      throw new Error(application.throwMessage);
+      throw new HooknosticBlock(application.throwMessage);
     }
     if (application.input !== void 0 && native.input && typeof native.input === "object" && application.input && typeof application.input === "object") {
       const replacement = structuredClone(application.input);
@@ -7791,6 +7848,7 @@ async function setupOpenCodeV2(plugin, options2, ctx) {
     if (application.system && Array.isArray(native.system)) native.system.push(...application.system);
     if (application.synthetic) await post(native, event, application.synthetic);
   };
+  const runFailingOpen = (...args) => failingOpen(args[0], () => run(...args));
   const cleanup = async () => {
     controller.abort();
     await Promise.allSettled(registrations.map((r) => r.dispose()));
@@ -7800,82 +7858,122 @@ async function setupOpenCodeV2(plugin, options2, ctx) {
   try {
     if (events.has("prompt.before") || subscribes)
       registrations.push(
-        await ctx.session.hook("prompt", async (e) => {
-          const sessionID = typeof e.sessionID === "string" ? e.sessionID : void 0;
-          if (sessionID !== void 0) local.add(sessionID);
-          if (readsPrompt && sessionID !== void 0) {
-            if (executions.has(sessionID)) pendingPrompts.delete(sessionID);
-            else pendingPrompts.set(sessionID, { sessionID, messageID: e.messageID });
-          }
-          try {
-            if (events.has("prompt.before")) await run("prompt", e);
-          } catch (error2) {
-            if (sessionID !== void 0) pendingPrompts.delete(sessionID);
-            throw error2;
-          }
-        })
+        // Guarded as a whole: the bookkeeping before dispatch reads the host's
+        // object too, and a throw there would fail the prompt.
+        await ctx.session.hook(
+          "prompt",
+          guarded("prompt", async (e) => {
+            const sessionID = typeof e.sessionID === "string" ? e.sessionID : void 0;
+            if (sessionID !== void 0) local.add(sessionID);
+            if (readsPrompt && sessionID !== void 0) {
+              if (executions.has(sessionID)) pendingPrompts.delete(sessionID);
+              else pendingPrompts.set(sessionID, { sessionID, messageID: e.messageID });
+            }
+            try {
+              if (events.has("prompt.before")) await runFailingOpen("prompt", e);
+            } catch (error2) {
+              if (sessionID !== void 0) pendingPrompts.delete(sessionID);
+              throw error2;
+            }
+          })
+        )
       );
     if (events.has("tool.before"))
-      registrations.push(await ctx.tool.hook("execute.before", (e) => run("execute.before", e)));
+      registrations.push(
+        await ctx.tool.hook(
+          "execute.before",
+          guarded("execute.before", (e) => run("execute.before", e))
+        )
+      );
     if (events.has("tool.after") || events.has("tool.error"))
-      registrations.push(await ctx.tool.hook("execute.after", (e) => run("execute.after", e)));
+      registrations.push(
+        await ctx.tool.hook(
+          "execute.after",
+          guarded("execute.after", (e) => run("execute.after", e))
+        )
+      );
     if (events.has("model.request.before") || readsShell)
       registrations.push(
-        await ctx.session.hook("context", async (e) => {
-          if (readsShell) noteShell(e);
-          await run("context", e);
-        })
+        await ctx.session.hook(
+          "context",
+          guarded("context", async (e) => {
+            if (readsShell) noteShell(e);
+            await run("context", e);
+          })
+        )
       );
     if (events.has("model.request.before"))
-      for (const name of ["title", "generate"]) registrations.push(await ctx.session.hook(name, (e) => run(name, e)));
+      for (const name of ["title", "generate"])
+        registrations.push(
+          await ctx.session.hook(
+            name,
+            guarded(name, (e) => run(name, e))
+          )
+        );
     if (events.has("model.request.before") || events.has("context.compact.before"))
       registrations.push(
-        await ctx.session.hook("compaction", async (e) => {
-          if (events.has("model.request.before")) await run("compaction", e, true);
-          await run("compaction", e);
-        })
+        await ctx.session.hook(
+          "compaction",
+          // Each pass fails open alone, so an internal error in the first cannot
+          // skip the second. Neither pass has a block capability on v2; a block
+          // would still propagate and skip the second, if a pass ever gained one.
+          guarded("compaction", async (e) => {
+            if (events.has("model.request.before")) await runFailingOpen("compaction", e, true);
+            await runFailingOpen("compaction", e);
+          })
+        )
       );
     if (events.has("permission.request")) {
       if (!ctx.permission) throw new Error("OpenCode v2 permission domain is unavailable");
-      registrations.push(await ctx.permission.hook("evaluate", (e) => run("evaluate", e)));
+      registrations.push(
+        await ctx.permission.hook(
+          "evaluate",
+          guarded("evaluate", (e) => run("evaluate", e))
+        )
+      );
     }
     if (subscribes) {
       task = (async () => {
         try {
           for await (const event of ctx.event.subscribe({ signal: controller.signal })) {
-            const data = event.data !== null && typeof event.data === "object" ? event.data : {};
-            const sessionID = typeof data.sessionID === "string" ? data.sessionID : "";
-            if (event.type === "session.created") {
-              const location = data.location ?? event.location;
-              if (typeof location?.directory !== "string" || comparable(location.directory) !== here) continue;
-              local.add(sessionID);
-              if (typeof data.parentID === "string") children.add(sessionID);
-            } else if (!local.has(sessionID)) continue;
-            let execution;
-            if (readsText || readsPrompt) {
-              if (event.type === "session.execution.started") {
-                const prompt = pendingPrompts.get(sessionID);
-                pendingPrompts.delete(sessionID);
-                executions.set(sessionID, { ...prompt ? { prompt } : {}, text: [] });
-              } else if (event.type === "session.text.ended" && readsText) {
-                const running = executions.get(sessionID);
-                if (running !== void 0) {
-                  if (running.text.at(-1)?.["assistantMessageID"] !== data.assistantMessageID) running.text = [];
-                  running.text.push({
-                    assistantMessageID: data.assistantMessageID,
-                    ordinal: data.ordinal,
-                    text: data.text
-                  });
+            try {
+              const data = event.data !== null && typeof event.data === "object" ? event.data : {};
+              const sessionID = typeof data.sessionID === "string" ? data.sessionID : "";
+              if (event.type === "session.created") {
+                const location = data.location ?? event.location;
+                if (typeof location?.directory !== "string" || comparable(location.directory) !== here) continue;
+                local.add(sessionID);
+                if (typeof data.parentID === "string") children.add(sessionID);
+              } else if (!local.has(sessionID)) continue;
+              let execution;
+              if (readsText || readsPrompt) {
+                if (event.type === "session.execution.started") {
+                  const prompt = pendingPrompts.get(sessionID);
+                  pendingPrompts.delete(sessionID);
+                  executions.set(sessionID, { ...prompt ? { prompt } : {}, text: [] });
+                } else if (event.type === "session.text.ended" && readsText) {
+                  const running = executions.get(sessionID);
+                  if (running !== void 0) {
+                    if (running.text.at(-1)?.["assistantMessageID"] !== data.assistantMessageID) running.text = [];
+                    running.text.push({
+                      assistantMessageID: data.assistantMessageID,
+                      ordinal: data.ordinal,
+                      text: data.text
+                    });
+                  }
+                } else if (completions.has(String(event.type))) {
+                  const finished = executions.get(sessionID);
+                  executions.delete(sessionID);
+                  if (finished !== void 0) execution = finished;
                 }
-              } else if (completions.has(String(event.type))) {
-                const finished = executions.get(sessionID);
-                executions.delete(sessionID);
-                if (finished !== void 0) execution = finished;
               }
+              enqueue(sessionID, () => run("event", event, false, execution));
+            } catch (error2) {
+              reportInternalError(error2, "event");
             }
-            enqueue(sessionID, () => run("event", event, false, execution));
           }
-        } catch {
+        } catch (error2) {
+          if (!controller.signal.aborted) reportInternalError(error2, "event");
         }
       })();
     }

@@ -56,6 +56,14 @@ and Pi) report them on `console.error`, so the harness decides whether you see t
 On OpenCode 2.x that means `opencode run --standalone --print-logs` on the builds
 measured, as described above.
 
+A line that starts `hooknostic internal [<native hook>]:` is different. It reports a
+defect in Hooknostic itself, not in your hook: the shim hit an error of its own, such as
+a rewrite the host would not accept, and let the call through as if no hook had run.
+Please report it. Today only the OpenCode 2.x shim writes it, on the same channel, so
+it too is visible only under `--standalone --print-logs`. The other shims also fail open
+on such errors. OpenCode 1.x and Pi do not report them yet, and the command shims print
+them as `hooknostic: <message>`; #179 brings them in line.
+
 ## Keep imported modules free of side effects
 
 Your hook source and everything it imports are bundled into one artifact, and every

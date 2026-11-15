@@ -1,4 +1,4 @@
-import { dispatch, formatHandlerErrors } from "@hooknostic/runtime";
+import { dispatch, formatHandlerErrors, reportInternalError } from "@hooknostic/runtime";
 import type { HookEvent, PluginSpec } from "@hooknostic/sdk";
 import { hookAppliesToTarget } from "@hooknostic/sdk";
 
@@ -26,6 +26,39 @@ export interface OpenCodeV2Context {
   permission?: { hook(name: string, callback: Callback): Promise<Registration> };
   event: { subscribe(options: { signal: AbortSignal }): AsyncIterable<Record<string, unknown>> };
 }
+
+/**
+ * A deliberate block, the one throw the shim means. OpenCode 2.x treats every
+ * throw alike (.capture/opencode-v2-plugin-throw): it denies the call, or fails
+ * the request, with the message model-visible. So anything else a callback
+ * throws is a Hooknostic defect, reported and swallowed rather than let
+ * through as a block.
+ */
+class HooknosticBlock extends Error {}
+
+/** Proxy-safe: `instanceof` on a revoked proxy throws, and that would fail closed. */
+const isBlock = (error: unknown): boolean => {
+  try {
+    return error instanceof HooknosticBlock;
+  } catch {
+    return false;
+  }
+};
+
+/** Fail open on an internal error from `work`; a deliberate block still propagates. */
+async function failingOpen(hook: string, work: () => Promise<void>): Promise<void> {
+  try {
+    await work();
+  } catch (error) {
+    if (isBlock(error)) throw error;
+    reportInternalError(error, hook);
+  }
+}
+
+/** A host callback guarded as a whole, so its own bookkeeping fails open too. */
+const guarded =
+  (hook: string, callback: (event: Record<string, unknown>) => Promise<void>) => (event: Record<string, unknown>) =>
+    failingOpen(hook, () => callback(event));
 
 export async function setupOpenCodeV2(
   plugin: PluginSpec,
@@ -82,8 +115,11 @@ export async function setupOpenCodeV2(
   const STATED_SHELL_SESSIONS = 256;
   const noteShell = (e: Record<string, unknown>) => {
     // Fail open, and to unknown: the event is the host's live object, and a
-    // listener that threw would fail its model request over a dialect. The
-    // old statement goes first, so a read that throws leaves none behind.
+    // throw from the context hook fails the execution
+    // (.capture/opencode-v2-plugin-throw), here over a dialect. Caught here,
+    // not by the callback's guard, so dispatch still runs; and silently, as
+    // an unreadable description is not a defect. The old statement goes
+    // first, so a read that throws leaves none behind.
     try {
       const sessionID = e.sessionID;
       if (typeof sessionID !== "string") return;
@@ -117,10 +153,15 @@ export async function setupOpenCodeV2(
   };
   // Off the subscription loop and serial per session: a turn.stop hook may run
   // for minutes, and awaiting it inline would hold every later event behind it.
+  // Fails open in its own catch, as failingOpen would: wrapping `work` instead
+  // costs the chain a microtask per event, which lets another session's event
+  // overtake this session's next one. A block here has nowhere to go.
   const enqueue = (key: string, work: () => Promise<void>) => {
     const next = (queues.get(key) ?? Promise.resolve())
       .then(() => (controller.signal.aborted ? undefined : work()))
-      .catch(() => undefined);
+      .catch((error: unknown) => {
+        if (!isBlock(error)) reportInternalError(error, "event");
+      });
     queues.set(key, next);
     void next.then(() => {
       if (queues.get(key) === next) queues.delete(key);
@@ -168,11 +209,33 @@ export async function setupOpenCodeV2(
     const application = planOpenCodeV2Application(result);
     if (application.throwMessage !== undefined) {
       if (event.event === "permission.request") {
-        native.effect = "deny";
-        native.message = application.throwMessage;
+        // A deny is written onto the evaluation, not thrown. A write that
+        // throws is an internal error: the callback's guard reports it and the
+        // host's own evaluation stands, as if no hook had run. The host reads
+        // only `effect`, so it goes last, and a write that throws partway puts
+        // back what the host had: a deny half written must not deny.
+        const effect = native.effect;
+        const message = Object.hasOwn(native, "message") ? { value: native.message } : undefined;
+        try {
+          native.message = application.throwMessage;
+          native.effect = "deny";
+        } catch (error) {
+          const restores = [
+            () => (native.effect = effect),
+            () => (message ? (native.message = message.value) : delete native.message),
+          ];
+          for (const restore of restores) {
+            try {
+              restore();
+            } catch {
+              // Nothing more to put back; the first error is the one reported.
+            }
+          }
+          throw error;
+        }
         return;
       }
-      throw new Error(application.throwMessage);
+      throw new HooknosticBlock(application.throwMessage);
     }
     if (
       application.input !== undefined &&
@@ -190,6 +253,7 @@ export async function setupOpenCodeV2(
     if (application.system && Array.isArray(native.system)) native.system.push(...application.system);
     if (application.synthetic) await post(native, event, application.synthetic);
   };
+  const runFailingOpen = (...args: Parameters<typeof run>) => failingOpen(args[0], () => run(...args));
   const cleanup = async () => {
     controller.abort();
     await Promise.allSettled(registrations.map((r) => r.dispose()));
@@ -199,99 +263,145 @@ export async function setupOpenCodeV2(
   try {
     if (events.has("prompt.before") || subscribes)
       registrations.push(
-        await ctx.session.hook("prompt", async (e) => {
-          const sessionID = typeof e.sessionID === "string" ? e.sessionID : undefined;
-          if (sessionID !== undefined) local.add(sessionID);
-          // Recorded before dispatch: the execution it starts cannot begin until
-          // this hook returns. A blocked prompt starts none, so it is dropped.
-          // A prompt admitted while an execution runs is steered into that one,
-          // or queued behind it, and which cannot be told apart here; carrying
-          // it forward could hand its id to a synthetic continuation, which
-          // runs no prompt hook. So it waits for no execution: absent, never
-          // wrong. A pending id from before is dropped for the same reason.
-          if (readsPrompt && sessionID !== undefined) {
-            if (executions.has(sessionID)) pendingPrompts.delete(sessionID);
-            else pendingPrompts.set(sessionID, { sessionID, messageID: e.messageID });
-          }
-          try {
-            if (events.has("prompt.before")) await run("prompt", e);
-          } catch (error) {
-            if (sessionID !== undefined) pendingPrompts.delete(sessionID);
-            throw error;
-          }
-        }),
+        // Guarded as a whole: the bookkeeping before dispatch reads the host's
+        // object too, and a throw there would fail the prompt.
+        await ctx.session.hook(
+          "prompt",
+          guarded("prompt", async (e) => {
+            const sessionID = typeof e.sessionID === "string" ? e.sessionID : undefined;
+            if (sessionID !== undefined) local.add(sessionID);
+            // Recorded before dispatch: the execution it starts cannot begin until
+            // this hook returns. A blocked prompt starts none, so it is dropped.
+            // A prompt admitted while an execution runs is steered into that one,
+            // or queued behind it, and which cannot be told apart here; carrying
+            // it forward could hand its id to a synthetic continuation, which
+            // runs no prompt hook. So it waits for no execution: absent, never
+            // wrong. A pending id from before is dropped for the same reason.
+            if (readsPrompt && sessionID !== undefined) {
+              if (executions.has(sessionID)) pendingPrompts.delete(sessionID);
+              else pendingPrompts.set(sessionID, { sessionID, messageID: e.messageID });
+            }
+            try {
+              // Only a block reaches the catch: an internal error has failed open.
+              if (events.has("prompt.before")) await runFailingOpen("prompt", e);
+            } catch (error) {
+              if (sessionID !== undefined) pendingPrompts.delete(sessionID);
+              throw error;
+            }
+          }),
+        ),
       );
     if (events.has("tool.before"))
-      registrations.push(await ctx.tool.hook("execute.before", (e) => run("execute.before", e)));
+      registrations.push(
+        await ctx.tool.hook(
+          "execute.before",
+          guarded("execute.before", (e) => run("execute.before", e)),
+        ),
+      );
     if (events.has("tool.after") || events.has("tool.error"))
-      registrations.push(await ctx.tool.hook("execute.after", (e) => run("execute.after", e)));
+      registrations.push(
+        await ctx.tool.hook(
+          "execute.after",
+          guarded("execute.after", (e) => run("execute.after", e)),
+        ),
+      );
     // Registered for tool hooks too, where it only listens for the stated shell.
     if (events.has("model.request.before") || readsShell)
       registrations.push(
-        await ctx.session.hook("context", async (e) => {
-          if (readsShell) noteShell(e);
-          await run("context", e); // dispatches only where a hook takes the event
-        }),
+        await ctx.session.hook(
+          "context",
+          guarded("context", async (e) => {
+            if (readsShell) noteShell(e);
+            await run("context", e); // dispatches only where a hook takes the event
+          }),
+        ),
       );
+    // Title too: a throw there drops the title request (.capture/opencode-v2-plugin-throw).
     if (events.has("model.request.before"))
-      for (const name of ["title", "generate"]) registrations.push(await ctx.session.hook(name, (e) => run(name, e)));
+      for (const name of ["title", "generate"])
+        registrations.push(
+          await ctx.session.hook(
+            name,
+            guarded(name, (e) => run(name, e)),
+          ),
+        );
     if (events.has("model.request.before") || events.has("context.compact.before"))
       registrations.push(
-        await ctx.session.hook("compaction", async (e) => {
-          if (events.has("model.request.before")) await run("compaction", e, true);
-          await run("compaction", e);
-        }),
+        await ctx.session.hook(
+          "compaction",
+          // Each pass fails open alone, so an internal error in the first cannot
+          // skip the second. Neither pass has a block capability on v2; a block
+          // would still propagate and skip the second, if a pass ever gained one.
+          guarded("compaction", async (e) => {
+            if (events.has("model.request.before")) await runFailingOpen("compaction", e, true);
+            await runFailingOpen("compaction", e);
+          }),
+        ),
       );
     if (events.has("permission.request")) {
       if (!ctx.permission) throw new Error("OpenCode v2 permission domain is unavailable");
-      registrations.push(await ctx.permission.hook("evaluate", (e) => run("evaluate", e)));
+      registrations.push(
+        await ctx.permission.hook(
+          "evaluate",
+          guarded("evaluate", (e) => run("evaluate", e)),
+        ),
+      );
     }
     if (subscribes) {
       task = (async () => {
         try {
           for await (const event of ctx.event.subscribe({ signal: controller.signal })) {
-            const data =
-              event.data !== null && typeof event.data === "object" ? (event.data as Record<string, unknown>) : {};
-            const sessionID = typeof data.sessionID === "string" ? data.sessionID : "";
-            if (event.type === "session.created") {
-              const location = (data.location ?? event.location) as { directory?: unknown } | undefined;
-              if (typeof location?.directory !== "string" || comparable(location.directory) !== here) continue;
-              local.add(sessionID);
-              // Recorded before queueing, so the child's later stop already sees it.
-              if (typeof data.parentID === "string") children.add(sessionID);
-            } else if (!local.has(sessionID)) continue;
-            // Buffered here, in subscription order, not in the per-session queue:
-            // a completion is queued behind a slow hook, but the text it reports
-            // must be the text that ended before it (captured on 2.0.18:
-            // session.text.ended, then session.step.ended, then succeeded).
-            let execution: OpenCodeV2Execution | undefined;
-            if (readsText || readsPrompt) {
-              if (event.type === "session.execution.started") {
-                const prompt = pendingPrompts.get(sessionID);
-                pendingPrompts.delete(sessionID);
-                executions.set(sessionID, { ...(prompt ? { prompt } : {}), text: [] });
-              } else if (event.type === "session.text.ended" && readsText) {
-                const running = executions.get(sessionID);
-                if (running !== undefined) {
-                  // Only the latest assistant message's segments are kept: a memory
-                  // bound, since the decoder reports only the last message anyway.
-                  if (running.text.at(-1)?.["assistantMessageID"] !== data.assistantMessageID) running.text = [];
-                  running.text.push({
-                    assistantMessageID: data.assistantMessageID,
-                    ordinal: data.ordinal,
-                    text: data.text,
-                  });
+            // Per event: one the shim cannot read must not end the subscription,
+            // and with it every later session.start and turn.stop.
+            try {
+              const data =
+                event.data !== null && typeof event.data === "object" ? (event.data as Record<string, unknown>) : {};
+              const sessionID = typeof data.sessionID === "string" ? data.sessionID : "";
+              if (event.type === "session.created") {
+                const location = (data.location ?? event.location) as { directory?: unknown } | undefined;
+                if (typeof location?.directory !== "string" || comparable(location.directory) !== here) continue;
+                local.add(sessionID);
+                // Recorded before queueing, so the child's later stop already sees it.
+                if (typeof data.parentID === "string") children.add(sessionID);
+              } else if (!local.has(sessionID)) continue;
+              // Buffered here, in subscription order, not in the per-session queue:
+              // a completion is queued behind a slow hook, but the text it reports
+              // must be the text that ended before it (captured on 2.0.18:
+              // session.text.ended, then session.step.ended, then succeeded).
+              let execution: OpenCodeV2Execution | undefined;
+              if (readsText || readsPrompt) {
+                if (event.type === "session.execution.started") {
+                  const prompt = pendingPrompts.get(sessionID);
+                  pendingPrompts.delete(sessionID);
+                  executions.set(sessionID, { ...(prompt ? { prompt } : {}), text: [] });
+                } else if (event.type === "session.text.ended" && readsText) {
+                  const running = executions.get(sessionID);
+                  if (running !== undefined) {
+                    // Only the latest assistant message's segments are kept: a memory
+                    // bound, since the decoder reports only the last message anyway.
+                    if (running.text.at(-1)?.["assistantMessageID"] !== data.assistantMessageID) running.text = [];
+                    running.text.push({
+                      assistantMessageID: data.assistantMessageID,
+                      ordinal: data.ordinal,
+                      text: data.text,
+                    });
+                  }
+                } else if (completions.has(String(event.type))) {
+                  const finished = executions.get(sessionID);
+                  executions.delete(sessionID);
+                  if (finished !== undefined) execution = finished;
                 }
-              } else if (completions.has(String(event.type))) {
-                const finished = executions.get(sessionID);
-                executions.delete(sessionID);
-                if (finished !== undefined) execution = finished;
               }
+              enqueue(sessionID, () => run("event", event, false, execution));
+            } catch (error) {
+              reportInternalError(error, "event");
             }
-            enqueue(sessionID, () => run("event", event, false, execution));
           }
-        } catch {
-          /* Subscription disposal and host shutdown must not create an unhandled rejection. */
+        } catch (error) {
+          // Subscription disposal and host shutdown must not create an unhandled
+          // rejection. Only our own abort is expected; anything else that ends
+          // the subscription ends every later stop and start hook, so it is said.
+          if (!controller.signal.aborted) reportInternalError(error, "event");
         }
       })();
     }

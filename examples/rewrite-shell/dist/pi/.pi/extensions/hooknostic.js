@@ -7124,6 +7124,19 @@ var hooks_default = definePlugin({
 });
 
 // ../../packages/cli/dist/shims/pi.mjs
+function errorMessage(error2) {
+  try {
+    if (error2 instanceof Error) {
+      return typeof error2.message === "string" ? error2.message : "Error";
+    }
+  } catch {
+  }
+  try {
+    return String(error2);
+  } catch {
+    return "uninspectable thrown value";
+  }
+}
 function createCapabilitySet(levels) {
   const levelOf = (id) => (Object.hasOwn(levels, id) ? levels[id] : void 0) ?? "unsupported";
   return {
@@ -7149,19 +7162,6 @@ function truncateNotification(message, limit) {
   const code = message.charCodeAt(limit - 1);
   const splitsPair = code >= 55296 && code <= 56319;
   return message.slice(0, splitsPair ? limit - 1 : limit);
-}
-function errorMessage(error2) {
-  try {
-    if (error2 instanceof Error) {
-      return typeof error2.message === "string" ? error2.message : "Error";
-    }
-  } catch {
-  }
-  try {
-    return String(error2);
-  } catch {
-    return "uninspectable thrown value";
-  }
 }
 async function dispatch(hooks, event, options) {
   const policy = { ...DEFAULT_RUNTIME, ...options.policy };

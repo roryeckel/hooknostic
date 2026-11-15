@@ -4,7 +4,16 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it, vi } from "vitest";
 
 import { analyzeCapabilities, buildPluginIR, resolveTargetAdapter } from "@hooknostic/core";
-import { block, definePlugin, hook, notify, preventStop, replaceInput } from "@hooknostic/sdk";
+import {
+  addContext,
+  block,
+  definePlugin,
+  hook,
+  notify,
+  preventStop,
+  replaceInput,
+  replaceOutput,
+} from "@hooknostic/sdk";
 import { describeAdapterContract } from "@hooknostic/testkit";
 
 import { opencodeHarness } from "../harness.js";
@@ -219,6 +228,8 @@ describe("v2 captured boundary", () => {
         cleanup = ready.cleanup;
         await body(ready.callbacks);
         expect(error).toHaveBeenCalledWith(expect.stringContaining("[boom]: handler exploded"));
+        // A hook's failure, or the block after it, is never a Hooknostic defect.
+        expect(error).not.toHaveBeenCalledWith(expect.stringMatching(/^hooknostic internal/));
       } finally {
         error.mockRestore();
         await cleanup?.();
@@ -248,6 +259,347 @@ describe("v2 captured boundary", () => {
         await expect(permission!(native)).resolves.toBeUndefined();
         expect(native).toMatchObject({ effect: "deny", message: expect.stringContaining("blocked by guard") });
       });
+    });
+  });
+
+  describe("internal errors (#180)", () => {
+    // OpenCode 2.x fails closed on any plugin throw in these domains
+    // (.capture/opencode-v2-plugin-throw), so the shim's own defects must not
+    // reach it: they are reported and the call proceeds as if no hook ran.
+    // Deliberate blocks still throw. Each trigger is a host object the shim
+    // cannot apply to, which escaped every callback before the fix.
+    type Callback = (event: Record<string, unknown>) => Promise<void>;
+    const capabilities = {
+      "tool.before.observe": "exact",
+      "tool.before.block": "exact",
+      "tool.before.input.replace": "exact",
+      "tool.after.observe": "exact",
+      "tool.after.output.replace": "exact",
+      "prompt.before.observe": "exact",
+      "prompt.before.block": "exact",
+      "model.request.before.observe": "approximate",
+      "model.request.before.context.add": "approximate",
+      "context.compact.before.observe": "approximate",
+      "permission.request.observe": "exact",
+      "permission.request.block": "exact",
+      "turn.stop.observe": "approximate",
+    } as const;
+    const fixture = (name: string) =>
+      structuredClone(JSON.parse(readFileSync(fixtures + name, "utf8")).event) as Record<string, unknown>;
+    const internal = (hook: string) => new RegExp(`^hooknostic internal \\[${hook.replace(".", "\\.")}\\]: `, "m");
+    // Spy and setup both inside the try, as for handler errors.
+    const withSpy = async (
+      hooks: Parameters<typeof definePlugin>[0]["hooks"],
+      body: (callbacks: Record<string, Callback>, reports: () => string[]) => Promise<void>,
+      options: {
+        events?: (options: { signal: AbortSignal }) => AsyncIterable<Record<string, unknown>>;
+        console?: () => void;
+      } = {},
+    ) => {
+      const error = vi.spyOn(console, "error").mockImplementation(options.console ?? (() => {}));
+      let cleanup: (() => Promise<void>) | undefined;
+      try {
+        const callbacks: Record<string, Callback> = {};
+        const register = (domain: string) => async (name: string, fn: Callback) => {
+          callbacks[`${domain}:${name}`] = fn;
+          return { dispose: async () => {} };
+        };
+        cleanup = await setupOpenCodeV2(
+          definePlugin({ name: "internal-errors", hooks }),
+          { capabilities },
+          {
+            location: { directory: "." },
+            session: { hook: register("session") },
+            tool: { hook: register("tool") },
+            permission: { hook: register("permission") },
+            event: { subscribe: options.events ?? async function* () {} },
+          },
+        );
+        await body(callbacks, () => error.mock.calls.map((call) => String(call[0])));
+      } finally {
+        error.mockRestore();
+        await cleanup?.();
+      }
+    };
+    const rewrite = hook("tool.before", {
+      id: "rewrite",
+      capabilities: { "tool.before.input.replace": "required" },
+      run: () => replaceInput({ command: "echo rewritten" }),
+    });
+    const frozenCall = () => ({
+      tool: "shell",
+      sessionID: "session",
+      id: "call",
+      input: Object.freeze({ command: "echo original" }),
+    });
+    const guard = (event: "tool.before" | "prompt.before" | "permission.request") =>
+      hook(event, { id: "guard", capabilities: { block: "required" }, run: () => block("blocked by guard") });
+
+    it("T1: lets a tool call through when its rewrite cannot be applied, and reports it", async () => {
+      await withSpy([rewrite], async (callbacks, reports) => {
+        const native = frozenCall();
+        await expect(callbacks["tool:execute.before"]!(native)).resolves.toBeUndefined();
+        expect(native.input).toEqual({ command: "echo original" });
+        expect(reports().filter((line) => internal("execute.before").test(line))).toHaveLength(1);
+      });
+    });
+
+    it("T2: keeps a ran tool's result when its replacement cannot be applied, and reports it", async () => {
+      const replace = hook("tool.after", {
+        id: "replace",
+        capabilities: { "tool.after.output.replace": "required" },
+        run: () => replaceOutput("replaced"),
+      });
+      await withSpy([replace], async (callbacks, reports) => {
+        const native = fixture("tool-after.input.json");
+        const result = Object.freeze({ ...(native.result as object) });
+        native.result = result;
+        await expect(callbacks["tool:execute.after"]!(native)).resolves.toBeUndefined();
+        expect(native.result).toBe(result);
+        expect(result).not.toHaveProperty("content", "replaced");
+        expect(reports().filter((line) => internal("execute.after").test(line))).toHaveLength(1);
+      });
+    });
+
+    it.each([
+      ["prompt", "prompt.input.json"],
+      ["context", "context.input.json"],
+      ["title", "title.input.json"],
+      ["generate", "generate.input.json"],
+      ["compaction", "compaction.input.json"],
+    ])("T3: guards the whole %s callback, not only its dispatch, against a hostile host object", async (name, file) => {
+      const hooks = [
+        hook("prompt.before", { id: "prompt", run() {} }),
+        hook("model.request.before", { id: "request", run() {} }),
+        hook("context.compact.before", { id: "compact", run() {} }),
+        // A tool hook makes the context listener read the stated shell too.
+        hook("tool.before", { id: "tool", run() {} }),
+      ];
+      await withSpy(hooks, async (callbacks, reports) => {
+        const native = fixture(file);
+        Object.defineProperty(native, "sessionID", {
+          get() {
+            throw new Error("host refused");
+          },
+        });
+        await expect(callbacks[`session:${name}`]!(native)).resolves.toBeUndefined();
+        expect(reports().some((line) => internal(name).test(line) && line.includes("host refused"))).toBe(true);
+      });
+    });
+
+    it("T3b: runs the compaction pass after one that failed internally", async () => {
+      const compact = vi.fn();
+      const hooks = [
+        hook("model.request.before", {
+          id: "request",
+          capabilities: { "model.request.before.context.add": "required" },
+          run: () => addContext("extra"),
+        }),
+        hook("context.compact.before", { id: "compact", run: compact }),
+      ];
+      await withSpy(hooks, async (callbacks, reports) => {
+        const native = fixture("compaction.input.json");
+        // Only the model.request.before pass writes to it.
+        native.system = Object.freeze([...(native.system as unknown[])]);
+        await expect(callbacks["session:compaction"]!(native)).resolves.toBeUndefined();
+        expect(compact).toHaveBeenCalledTimes(1);
+        expect(reports().filter((line) => internal("compaction").test(line))).toHaveLength(1);
+      });
+    });
+
+    it("T4: leaves an ask to the host when a deny cannot be applied, and reports it", async () => {
+      await withSpy([guard("permission.request")], async (callbacks, reports) => {
+        const native = Object.freeze(fixture("permission-ask.input.json"));
+        await expect(callbacks["permission:evaluate"]!(native)).resolves.toBeUndefined();
+        expect(native.effect).toBe("ask");
+        expect(reports().filter((line) => internal("evaluate").test(line))).toHaveLength(1);
+      });
+    });
+
+    // A deny half written is a denial: the host reads only `effect`. So a
+    // write that throws partway leaves the evaluation as the host made it.
+    it.each([
+      ["T4b: a message setter that throws", "message"],
+      ["T4c: an effect setter that stores the value, then throws", "effect"],
+    ] as const)("%s leaves the host's effect in place, and reports it", async (_name, key) => {
+      await withSpy([guard("permission.request")], async (callbacks, reports) => {
+        const native = fixture("permission-ask.input.json");
+        let stored = native[key];
+        Object.defineProperty(native, key, {
+          get: () => stored,
+          set(value) {
+            stored = value;
+            throw new Error(`host refused ${key}`);
+          },
+        });
+        await expect(callbacks["permission:evaluate"]!(native)).resolves.toBeUndefined();
+        expect(native.effect).toBe("ask");
+        expect(
+          reports().filter((line) => internal("evaluate").test(line) && line.includes(`host refused ${key}`)),
+        ).toHaveLength(1);
+      });
+    });
+
+    it("T5: keeps the subscription alive past an event it cannot read", async () => {
+      const created = { type: "session.created", data: { sessionID: "ses_s", location: { directory: "." } } };
+      const hostile = { type: "session.execution.succeeded" };
+      Object.defineProperty(hostile, "data", {
+        get() {
+          throw new Error("host refused");
+        },
+      });
+      const good = { type: "session.execution.succeeded", data: { sessionID: "ses_s" } };
+      const stops = vi.fn();
+      await withSpy(
+        [hook("turn.stop", { id: "stop", run: stops })],
+        async (_callbacks, reports) => {
+          await vi.waitFor(() => expect(stops).toHaveBeenCalledTimes(1));
+          await new Promise((resolve) => setTimeout(resolve, 20));
+          expect(stops).toHaveBeenCalledTimes(1);
+          expect(reports().filter((line) => internal("event").test(line))).toHaveLength(1);
+        },
+        {
+          events: async function* () {
+            yield* [created, hostile, good];
+          },
+        },
+      );
+    });
+
+    it("T5b: reports an event whose dispatch throws, and runs the next one", async () => {
+      const created = { type: "session.created", data: { sessionID: "ses_s", location: { directory: "." } } };
+      const good = { type: "session.execution.succeeded", data: { sessionID: "ses_s" } };
+      // Read only once queued: run looks for the stated shell on the envelope.
+      const hostile = { ...good };
+      Object.defineProperty(hostile, "sessionID", {
+        get() {
+          throw new Error("host refused");
+        },
+      });
+      const stops = vi.fn();
+      await withSpy(
+        [hook("turn.stop", { id: "stop", run: stops })],
+        async (_callbacks, reports) => {
+          await vi.waitFor(() => expect(stops).toHaveBeenCalledTimes(1));
+          await new Promise((resolve) => setTimeout(resolve, 20));
+          expect(stops).toHaveBeenCalledTimes(1);
+          expect(
+            reports().filter((line) => internal("event").test(line) && line.includes("host refused")),
+          ).toHaveLength(1);
+        },
+        {
+          events: async function* () {
+            yield* [created, hostile, good];
+          },
+        },
+      );
+    });
+
+    // A revoked proxy makes `instanceof` itself throw, so telling a block
+    // apart from an internal error must not.
+    const revoked = () => {
+      const { proxy, revoke } = Proxy.revocable({}, {});
+      revoke();
+      return proxy;
+    };
+    const throwingRevoked = <T extends object>(target: T, key: string): T =>
+      Object.defineProperty(target, key, {
+        get() {
+          throw revoked();
+        },
+      });
+
+    it("T9: fails open on a thrown revoked proxy, and reports it", async () => {
+      await withSpy([rewrite], async (callbacks, reports) => {
+        const native = throwingRevoked(frozenCall(), "sessionID");
+        await expect(callbacks["tool:execute.before"]!(native)).resolves.toBeUndefined();
+        expect(reports()).toContain("hooknostic internal [execute.before]: uninspectable thrown value");
+      });
+    });
+
+    it("T9b: keeps the session's queue running past a thrown revoked proxy", async () => {
+      const created = { type: "session.created", data: { sessionID: "ses_s", location: { directory: "." } } };
+      const good = { type: "session.execution.succeeded", data: { sessionID: "ses_s" } };
+      const hostile = throwingRevoked({ ...good }, "sessionID");
+      const stops = vi.fn();
+      await withSpy(
+        [hook("turn.stop", { id: "stop", run: stops })],
+        async (_callbacks, reports) => {
+          await vi.waitFor(() => expect(stops).toHaveBeenCalledTimes(1));
+          await new Promise((resolve) => setTimeout(resolve, 20));
+          expect(stops).toHaveBeenCalledTimes(1);
+          expect(reports()).toContain("hooknostic internal [event]: uninspectable thrown value");
+        },
+        {
+          events: async function* () {
+            yield* [created, hostile, good];
+          },
+        },
+      );
+    });
+
+    it("T6: still throws a deliberate block, and does not report it", async () => {
+      await withSpy([guard("tool.before"), guard("prompt.before")], async (callbacks, reports) => {
+        await expect(callbacks["tool:execute.before"]!(frozenCall())).rejects.toThrow("blocked by guard");
+        await expect(callbacks["session:prompt"]!(fixture("prompt.input.json"))).rejects.toThrow("blocked by guard");
+        expect(reports().filter((line) => /^hooknostic internal/m.test(line))).toEqual([]);
+      });
+    });
+
+    it("T7: fails open even when the report itself cannot be written", async () => {
+      await withSpy(
+        [rewrite],
+        async (callbacks) => {
+          const native = frozenCall();
+          await expect(callbacks["tool:execute.before"]!(native)).resolves.toBeUndefined();
+          expect(native.input).toEqual({ command: "echo original" });
+        },
+        {
+          console: () => {
+            throw new Error("console is gone");
+          },
+        },
+      );
+    });
+
+    it("T8: reports a subscription that fails, but not one ended by cleanup", async () => {
+      const error = vi.spyOn(console, "error").mockImplementation(() => {});
+      const subscribe = async (body: (options: { signal: AbortSignal }) => Promise<void>) => {
+        const cleanup = await setupOpenCodeV2(
+          definePlugin({ name: "subscription", hooks: [hook("turn.stop", { id: "stop", run() {} })] }),
+          { capabilities },
+          {
+            location: { directory: "." },
+            session: { hook: async () => ({ dispose: async () => {} }) },
+            tool: { hook: async () => ({ dispose: async () => {} }) },
+            event: {
+              async *subscribe(options) {
+                await body(options);
+                yield* [];
+              },
+            },
+          },
+        );
+        await new Promise((resolve) => setTimeout(resolve, 20));
+        await cleanup();
+        return error.mock.calls.map((call) => String(call[0])).filter((line) => internal("event").test(line));
+      };
+      try {
+        expect(
+          await subscribe(async () => {
+            throw new Error("stream broke");
+          }),
+        ).toEqual(["hooknostic internal [event]: stream broke"]);
+        error.mockClear();
+        expect(
+          await subscribe(async ({ signal }) => {
+            await new Promise((resolve) => signal.addEventListener("abort", resolve));
+            throw new Error("aborted");
+          }),
+        ).toEqual([]);
+      } finally {
+        error.mockRestore();
+      }
     });
   });
 

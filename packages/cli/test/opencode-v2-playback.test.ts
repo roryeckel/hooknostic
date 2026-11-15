@@ -19,6 +19,8 @@ import {
   expectOpenCodeShellDialect,
   openCodeShellDialectExpectation,
   PLAYBACK_HANDLER_ERROR_LINE,
+  PLAYBACK_INTERNAL_ERROR_LINE,
+  PLAYBACK_STRAY_INTERNAL_ERROR_LINE,
   runProcess,
   startModelPlayback,
   traceEvents,
@@ -820,7 +822,7 @@ describe.skipIf(!enabled)("OpenCode v2 offline playback", () => {
     expect(playback.errors).toEqual([]);
     expect(playback.code).toBe(0);
   }, 70000);
-  it.each(["rewrite", "block", "context", "output", "block-prompt", "handler-error"] as const)(
+  it.each(["rewrite", "block", "context", "output", "block-prompt", "handler-error", "internal-error"] as const)(
     "%s reaches its observable effect",
     async (effect) => {
       const root = await mkdtemp(join(await realpath(tmpdir()), "hooknostic-v2-playback-"));
@@ -861,8 +863,8 @@ describe.skipIf(!enabled)("OpenCode v2 offline playback", () => {
                 ? "replace-outputs"
                 : effect === "block-prompt"
                   ? "block-prompt"
-                  : effect === "handler-error"
-                    ? "handler-error"
+                  : effect === "handler-error" || effect === "internal-error"
+                    ? effect
                     : "",
         };
         for (const key of Object.keys(env)) if (/API_KEY|AUTH_TOKEN|SECRET|TOKEN|^OPENCODE/.test(key)) delete env[key];
@@ -881,7 +883,7 @@ describe.skipIf(!enabled)("OpenCode v2 offline playback", () => {
             // `serve --stdio` process it starts, and their console.error
             // reached run's stderr with --print-logs and neither stream nor
             // the log file without it (.capture/opencode-v2-plugin-stderr).
-            ...(effect === "handler-error" ? ["--print-logs"] : []),
+            ...(effect === "handler-error" || effect === "internal-error" ? ["--print-logs"] : []),
             effect === "block-prompt" ? "hooknostic-block-this-prompt" : "Use the shell once, then stop.",
           ],
           { cwd: project, env, timeoutMs: 45000 },
@@ -904,13 +906,22 @@ describe.skipIf(!enabled)("OpenCode v2 offline playback", () => {
         expect(model.requests.length).toBeGreaterThan(1);
         if (effect === "block")
           expect(await readFile(join(project, "hooknostic-blocked.txt"), "utf8").catch(() => null)).toBeNull();
-        // The throw comes before the rewrite, so failing open runs the call as the model sent it.
+        // The throw comes before the rewrite, so failing open runs the call as the
+        // model sent it. An internal error is the rewrite itself failing: without
+        // the shim's guard the host denies the call and no file is written
+        // (.capture/opencode-v2-plugin-throw).
         else
           expect(await readFile(join(project, "hooknostic-tool.txt"), "utf8")).toContain(
-            effect === "handler-error" ? "hooknostic-original" : "hooknostic-rewritten",
+            effect === "handler-error" || effect === "internal-error" ? "hooknostic-original" : "hooknostic-rewritten",
           );
         // #175: in-process, the report's channel is console.error.
         if (effect === "handler-error") expect(result.stderr).toMatch(PLAYBACK_HANDLER_ERROR_LINE);
+        if (effect === "internal-error") {
+          expect(result.stderr).toMatch(PLAYBACK_INTERNAL_ERROR_LINE);
+          // Only the constructed failure: nothing else, such as the subscription
+          // ending as the host shuts down, may be reported as a defect.
+          expect(result.stderr).not.toMatch(PLAYBACK_STRAY_INTERNAL_ERROR_LINE);
+        }
         if (effect === "context")
           expect(
             model.requests.every((request) =>

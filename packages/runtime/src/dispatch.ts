@@ -26,6 +26,8 @@ import {
   meetsMinimum,
 } from "@hooknostic/sdk";
 
+import { errorMessage } from "./report.js";
+
 /** Support levels for the executing target, as data (capability → level). */
 export type CapabilityLevels = Partial<Record<CapabilityId, SupportLevel>>;
 
@@ -124,23 +126,6 @@ function truncateNotification(message: string, limit: number): string {
   const code = message.charCodeAt(limit - 1);
   const splitsPair = code >= 0xd800 && code <= 0xdbff; // high surrogate at the cut
   return message.slice(0, splitsPair ? limit - 1 : limit);
-}
-
-/** Convert an arbitrary thrown value without letting hostile proxies escape dispatch. */
-function errorMessage(error: unknown): string {
-  try {
-    if (error instanceof Error) {
-      return typeof error.message === "string" ? error.message : "Error";
-    }
-  } catch {
-    // `instanceof` and property reads can both invoke hostile proxy traps.
-  }
-
-  try {
-    return String(error);
-  } catch {
-    return "uninspectable thrown value";
-  }
 }
 
 /**

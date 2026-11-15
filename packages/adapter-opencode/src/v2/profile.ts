@@ -190,6 +190,20 @@ export const opencodeV2CapabilityProfiles: CapabilityProfile[] = [
           artifact: ".capture/opencode-v2-plugin-stderr",
           what: "The 2.0.17 handler-error probe repeated with the same results: the report is visible only under run --standalone --print-logs.",
         },
+        {
+          version: "2.0.17",
+          date: "2026-11-14",
+          method: "live-probe",
+          artifact: ".capture/opencode-v2-plugin-throw",
+          what: "Windows loopback probe, isolated state, a plain Error from one plugin callback at a time: execute.before and permission evaluate (allowed, and ask, which then raised no pending permission) denied the call with the message as the model-visible tool error; execute.after replaced the ran tool's result with it; prompt failed run with exit 1 and no model request; context failed the execution (exit 1); generate answered 500; compaction failed. title was dropped and the session succeeded; an unhandled rejection from an event-subscription loop was only logged.",
+        },
+        {
+          version: "2.2.7",
+          date: "2026-11-14",
+          method: "live-probe",
+          artifact: ".capture/opencode-v2-plugin-throw",
+          what: "The 2.0.17 plugin-throw probe repeated with the same results on every domain.",
+        },
       ],
     },
     // Optional event fields (ADR-0027). The turn fields rest on the 2.0.18

@@ -160,15 +160,17 @@ export type PlaybackEffect =
   | "permission-deny" // permission.request.block on any permission prompt
   | "replace-outputs" // tool.after.output.replace
   | "replace-mcp-outputs" // tool.after.output.replace, on MCP tools only
-  | "handler-error"; // tool.before throws, before any effect, so the shim must report it
+  | "handler-error" // tool.before throws, before any effect, so the shim must report it
+  | "internal-error"; // tool.before leaves the shim a rewrite it cannot apply (OpenCode v2 only)
 
 /**
  * Every effect that can be driven together. `handler-error` is left out: its
  * throw comes before every other branch of the tool.before hook, so enabling
  * it would silently disable every other tool.before behaviour driven beside
  * it: context-add, request-approval and the marker-driven block and rewrite.
+ * `internal-error` is left out because it makes the rewrite fail.
  */
-export const ALL_PLAYBACK_EFFECTS: readonly Exclude<PlaybackEffect, "handler-error">[] = [
+export const ALL_PLAYBACK_EFFECTS: readonly Exclude<PlaybackEffect, "handler-error" | "internal-error">[] = [
   "context-add",
   "block-prompt",
   "prevent-stop-once",
@@ -187,6 +189,11 @@ export const PLAYBACK_HANDLER_ERROR_LINE = new RegExp(
   `^hooknostic \\S+ \\[playback-tool\\.before\\]: ${PLAYBACK_HANDLER_ERROR}$`,
   "m",
 );
+
+/** The line the OpenCode v2 shim reports when the `internal-error` rewrite cannot be applied. */
+export const PLAYBACK_INTERNAL_ERROR_LINE = /^hooknostic internal \[execute\.before\]: /m;
+/** Any other internal report, such as one from the subscription as the host shuts down. */
+export const PLAYBACK_STRAY_INTERNAL_ERROR_LINE = /^hooknostic internal(?! \[execute\.before\]: )/m;
 
 function playbackPluginSource(
   events: readonly HookEventName[],
@@ -248,6 +255,14 @@ function playbackPluginSource(
         const command = event.tool?.shell?.command;
         if (effects.includes("handler-error") && "${event}" === "tool.before") {
           throw new Error(${JSON.stringify(PLAYBACK_HANDLER_ERROR)});
+        }
+        // Constructed test infrastructure, not a harness behaviour: no real
+        // host is known to freeze a tool input. The v2 envelope's input is
+        // swapped for a frozen copy, so the shim's in-place rewrite below
+        // throws on the copy; the host's own input object is never touched.
+        if (effects.includes("internal-error") && "${event}" === "tool.before" &&
+            typeof event.raw?.event?.input === "object" && event.raw.event.input !== null) {
+          event.raw.event.input = Object.freeze({ ...event.raw.event.input });
         }${contextAddBranch}
         if (effects.includes("block-prompt") && "${event}" === "prompt.before" &&
             typeof event.prompt === "string" && event.prompt.includes("hooknostic-block-this-prompt")) {

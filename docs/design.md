@@ -771,6 +771,20 @@ Fail-open by default; security-sensitive users may opt into `onHookError: "block
 for events where the adapter can reliably block. The runtime provides an `AbortSignal`
 and translates the timeout to native hook timeout settings where possible.
 
+Shims also fail open on their own internal errors: a defect in Hooknostic, such as a
+rewrite the host object will not take, must not become a block. A deliberate block is
+the one exception. The OpenCode shims, where a block is a throw, tell the two apart by
+throwing blocks as a dedicated class. `onHookError: "block"` governs hook failures only,
+not internal errors.
+
+Reporting is not yet uniform. The OpenCode v2 shim reports internal errors through the
+runtime's `reportInternalError`, as `hooknostic internal [<native hook>]: <message>`,
+with the stack on the following lines under `HOOKNOSTIC_DEBUG`. The report carries no
+HN code, because those name problems a hook author can act on, and it is not
+deduplicated, like handler errors. The OpenCode v1 and Pi shims fail open but swallow
+such errors unreported, and the command shims write `hooknostic: <message>` to stderr.
+#179 moves them onto the same report.
+
 Each native deadline is `ceil((sum of the event's handler budgets + processAllowanceMs) / 1000)`
 seconds: the handler budgets bound what the dispatcher runs, and the allowance covers what
 is not a handler — process start, stdin, decode and stdout flush. A harness that caps an
