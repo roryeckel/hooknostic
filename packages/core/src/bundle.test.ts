@@ -586,6 +586,26 @@ describe("an SDK installed without its optional Zod peer", () => {
       }
     });
 
+    it("names the package directory when nodePaths reach another package installed as zod", async () => {
+      // An npm alias: installed as zod, published under another name, so it
+      // has no Zod version. Report its directory, as the walk path does.
+      const { root, sdkEntry } = await project();
+      try {
+        const aliased = join(root, "vendor", "zod");
+        await mkdir(aliased, { recursive: true });
+        await writeFile(
+          join(aliased, "package.json"),
+          JSON.stringify({ name: "not-zod", version: "4.99.0", type: "module", exports: { ".": "./index.js" } }),
+        );
+        await writeFile(join(aliased, "index.js"), "export const notZod = true;");
+        const result = await bundleRecorded(root, sdkEntry, { nodePaths: [join(root, "vendor")] });
+        expect(await run(root, result.code)).toBe("ok");
+        expect(result.diagnostics).toEqual([substitution("a zod package with no readable version", aliased)]);
+      } finally {
+        await rm(root, { recursive: true, force: true });
+      }
+    });
+
     it("warns when preserveSymlinks reaches a Zod too old for zod/v4", async () => {
       const { root, sdkEntry } = await project({ zod: "3.24.4", v4: false, layout: "pnpm" });
       try {

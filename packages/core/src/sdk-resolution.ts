@@ -338,7 +338,8 @@ export function sdkZodFallbackPlugin(onSubstitution: (diagnostic: Diagnostic) =>
               if (version !== undefined && semver.satisfies(version, range))
                 return direct.errors.length === 0 ? direct : { errors: direct.errors };
               found = {
-                path: owner?.name === "zod" ? owner.directory : resolved.path,
+                // The package directory, as the walk reports, whatever its name.
+                path: owner?.directory ?? resolved.path,
                 ...(version === undefined ? {} : { version }),
                 range,
               };
