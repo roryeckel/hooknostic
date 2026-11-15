@@ -51,7 +51,7 @@ import {
 import type { AnalysisResult } from "./analysis.js";
 import { analyzeCapabilities } from "./analysis.js";
 import { validateGeneratedArtifacts } from "./artifacts.js";
-import { bundleHasMainModuleGuard, bundleRuntime } from "./bundle.js";
+import { bundleHasMainModuleGuard, bundleRuntime, PnpRuntimeRequiredError } from "./bundle.js";
 import { commitStagedOutputs, existingKindProblem } from "./commit.js";
 import type { Diagnostic } from "./diagnostics.js";
 import { hasFatal } from "./diagnostics.js";
@@ -1845,12 +1845,21 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
         const stagingDir = await writeArtifacts(stagingRoot, artifacts, directories);
         staged.push({ key: id, target: id, stagingDir, outputDir: outputFor(id)!.outputDir });
       } catch (error) {
-        diagnostics.push({
-          code: "HN301",
-          severity: "error",
-          target: id,
-          message: `artifact ${phase} failed: ${errorMessage(error)}`,
-        });
+        if (error instanceof PnpRuntimeRequiredError) {
+          // One cause for every target: report it once per build, like a Zod
+          // substitution, keyed by code since each target may name another module.
+          if (!bundleMessages.has(error.diagnostic.code)) {
+            bundleMessages.add(error.diagnostic.code);
+            diagnostics.push(error.diagnostic);
+          }
+        } else {
+          diagnostics.push({
+            code: "HN301",
+            severity: "error",
+            target: id,
+            message: `artifact ${phase} failed: ${errorMessage(error)}`,
+          });
+        }
         target.status = "failed";
         if (target.projection) target.projection.status = "failed";
       }

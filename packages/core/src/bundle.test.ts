@@ -6,12 +6,20 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 
 import type * as Esbuild from "esbuild";
-import { build, type BuildOptions, type Plugin } from "esbuild";
+import { build, type BuildOptions, type Plugin, stop } from "esbuild";
 import { describe, expect, it, vi } from "vitest";
 
-import { bundleHasMainModuleGuard, bundleRuntime } from "./bundle.js";
+// testkit depends on core, so core's tests reach this dependency-free helper by path.
+import { type SyntheticPnpPackage, writeSyntheticPnpProject } from "../../testkit/src/synthetic-pnp.js";
+import { bundleHasMainModuleGuard, bundleRuntime, PnpRuntimeRequiredError } from "./bundle.js";
 import type { Diagnostic } from "./diagnostics.js";
-import { reachableZod, sdkZodFallbackPlugin, withSdkSubpathAliases } from "./sdk-resolution.js";
+import {
+  ownZodNeedsProjectInstall,
+  pnpRuntimeGuardPlugin,
+  reachableZod,
+  sdkZodFallbackPlugin,
+  withSdkSubpathAliases,
+} from "./sdk-resolution.js";
 
 /**
  * Resolve directories of the nested resolves the Zod fallback plugin makes, in
@@ -757,6 +765,141 @@ describe("an SDK installed without its optional Zod peer", () => {
     } finally {
       await rm(root, { recursive: true, force: true });
     }
+  });
+});
+
+describe("a Yarn Plug'n'Play install outside Yarn's runtime (#183)", () => {
+  const SOURCE = 'import { label } from "@hooknostic/sdk/schemas"; console.log(label.parse("ok"));';
+
+  /** The SDK as Yarn would install it, depending on the project's `zod` when `withZod`. */
+  const sdk = (withZod: boolean): SyntheticPnpPackage => ({
+    name: "@hooknostic/sdk",
+    version: "1.0.0",
+    files: {
+      "package.json": JSON.stringify({
+        name: "@hooknostic/sdk",
+        version: "1.0.0",
+        type: "module",
+        exports: { ".": "./dist/index.js", "./schemas": "./dist/schemas.js" },
+        peerDependencies: { zod: "^4.6.7" },
+        peerDependenciesMeta: { zod: { optional: true } },
+      }),
+      LICENSE: "Example SDK license.",
+      "dist/index.js": 'export const root = "root";',
+      "dist/schemas.js": 'import * as z from "zod/v4"; export const label = z.string().min(1);',
+    },
+    ...(withZod ? { dependencies: ["zod"] } : {}),
+  });
+  const zod: SyntheticPnpPackage = {
+    name: "zod",
+    version: "4.99.0",
+    files: {
+      "package.json": JSON.stringify({
+        name: "zod",
+        version: "4.99.0",
+        type: "module",
+        exports: { ".": "./index.js", "./v4": "./v4/index.js" },
+      }),
+      LICENSE: "Project zod license.",
+      "index.js": "export {};",
+      "v4/index.js": 'export const string = () => ({ min: () => ({ parse: (v) => "project zod 4.99.0: " + v }) });',
+    },
+  };
+
+  /**
+   * Remove `root` once esbuild lets go of its zips: its service keeps them
+   * open on Windows until it stops. rm's own retries are asynchronous.
+   */
+  async function removePnpProject(root: string): Promise<void> {
+    await stop();
+    await rm(root, { recursive: true, force: true, maxRetries: 20, retryDelay: 100 });
+  }
+
+  async function run(root: string, code: string): Promise<string> {
+    const artifact = join(root, "hook.mjs");
+    await writeFile(artifact, code);
+    return execFileSync(process.execPath, [artifact], { encoding: "utf8" }).trim();
+  }
+
+  it("fails with HN504 naming the module it cannot read and `yarn hooknostic`", async () => {
+    const root = await zodFreeTemporaryDirectory("hooknostic-pnp-");
+    try {
+      const roots = await writeSyntheticPnpProject(root, "app", [sdk(false)]);
+      const failure: unknown = await bundleRuntime({ source: SOURCE, resolveDir: root }).then(
+        () => undefined,
+        (error: unknown) => error,
+      );
+      expect(failure).toBeInstanceOf(PnpRuntimeRequiredError);
+      expect((failure as PnpRuntimeRequiredError).diagnostic).toEqual({
+        code: "HN504",
+        severity: "error",
+        message:
+          `Yarn Plug'n'Play serves ${join(roots["@hooknostic/sdk"]!, "dist", "schemas.js")} from its install ` +
+          `(${join(root, ".pnp.data.json")}), and this process cannot read it: Hooknostic is running without ` +
+          "Yarn's PnP runtime.",
+        remediation: expect.stringContaining("run `yarn hooknostic`"),
+      });
+    } finally {
+      await removePnpProject(root);
+    }
+  });
+
+  it("stands down under Yarn's runtime, and the SDK bundles the project's Zod", async () => {
+    // Yarn's runtime sets process.versions.pnp. It also lets fs read inside
+    // the zips, which this simulation cannot, so licence notices -- which
+    // read beside each module -- are left out: the guard is what is tested.
+    const root = await zodFreeTemporaryDirectory("hooknostic-pnp-");
+    const versions = process.versions as Record<string, string | undefined>;
+    try {
+      await writeSyntheticPnpProject(root, "app", [sdk(true), zod]);
+      versions["pnp"] = "3";
+      const result = await build({
+        stdin: { contents: SOURCE, resolveDir: root },
+        absWorkingDir: root,
+        bundle: true,
+        format: "esm",
+        platform: "node",
+        write: false,
+        logLevel: "silent",
+        plugins: [pnpRuntimeGuardPlugin(), sdkZodFallbackPlugin()],
+      });
+      expect(await run(root, result.outputFiles[0]!.text)).toBe("project zod 4.99.0: ok");
+    } finally {
+      delete versions["pnp"];
+      await removePnpProject(root);
+    }
+  });
+
+  it("builds a node_modules project inside a real directory named *.zip", async () => {
+    // A directory, not an archive: the guard's path filter matches every
+    // module here, and an ancestor PnP manifest is found, but fs reads them.
+    const parent = await zodFreeTemporaryDirectory("hooknostic-pnp-");
+    const root = join(parent, "x.zip");
+    try {
+      const dependency = join(root, "node_modules", "dep");
+      await mkdir(dependency, { recursive: true });
+      await writeFile(join(root, ".pnp.cjs"), "");
+      await writeFile(join(dependency, "package.json"), JSON.stringify({ name: "dep", version: "1.0.0" }));
+      await writeFile(join(dependency, "LICENSE"), "Example dep license.");
+      await writeFile(join(dependency, "index.js"), 'module.exports = "dep";');
+      const result = await bundleRuntime({
+        source: 'import value from "dep"; console.log(value);',
+        resolveDir: root,
+      });
+      expect(await run(root, result.code)).toBe("dep");
+      expect(result.code).toContain("Example dep license.");
+    } finally {
+      await removePnpProject(parent);
+    }
+  });
+
+  it("blames the project's install for Hooknostic's own Zod only when Hooknostic runs from a Yarn install", () => {
+    // `yarn dlx` installs the CLI in a zip that the project's manifest does not list.
+    const dlx = join(tmpdir(), "dlx-1", ".yarn", "cache", "hooknostic-npm-1.0.0-0.zip", "node_modules", "hooknostic");
+    const installed = join(tmpdir(), "app", "node_modules", "hooknostic", "dist");
+    expect(ownZodNeedsProjectInstall(true, join(dlx, "dist"))).toBe(true);
+    expect(ownZodNeedsProjectInstall(true, installed)).toBe(false);
+    expect(ownZodNeedsProjectInstall(false, join(dlx, "dist"))).toBe(false);
   });
 });
 

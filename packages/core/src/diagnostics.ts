@@ -33,6 +33,7 @@ export const DIAGNOSTIC_CODES = {
   HN501: "invalid configuration",
   HN502: "bundled CLI entry point",
   HN503: "invalid Agent Plugin package",
+  HN504: "Yarn Plug'n'Play install outside Yarn's runtime",
 } as const;
 
 export type DiagnosticCode = keyof typeof DIAGNOSTIC_CODES;

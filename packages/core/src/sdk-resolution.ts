@@ -114,14 +114,80 @@ export type ReachableZod =
  */
 const PNP_MANIFESTS = [".pnp.data.json", ".pnp.cjs", ".pnp.js"];
 
-/** Whether `directory` or one of its ancestors holds a PnP manifest. */
-function underPnpManifest(directory: string): boolean {
+/** The nearest PnP manifest in `directory` or one of its ancestors, as esbuild finds it. */
+function pnpManifest(directory: string): string | undefined {
   for (let current = directory; ;) {
-    if (PNP_MANIFESTS.some((manifest) => existsSync(join(current, manifest)))) return true;
+    const manifest = PNP_MANIFESTS.find((name) => existsSync(join(current, name)));
+    if (manifest !== undefined) return join(current, manifest);
     const parent = dirname(current);
-    if (parent === current) return false;
+    if (parent === current) return undefined;
     current = parent;
   }
+}
+
+/** A path inside a Yarn zip archive or virtual folder (Yarn 2's `$$virtual`, Yarn 3+'s `__virtual__`). */
+export const PNP_PATH = /\.zip[\\/]|[\\/](?:__virtual__|\$\$virtual)[\\/]/;
+
+/**
+ * The `detail` of an esbuild error meaning that Yarn Plug'n'Play serves a
+ * module this process cannot read. `bundleRuntime` turns such a build failure
+ * into one HN504.
+ */
+export const PNP_RUNTIME_REQUIRED = "hooknostic-pnp-runtime-required";
+
+/** What to do about an HN504, as an esbuild note. */
+const PNP_RUNTIME_NOTE = {
+  text:
+    "Run Hooknostic through Yarn from the project: add hooknostic to its devDependencies and run `yarn hooknostic`. " +
+    "npx, a global install, pnpm dlx and yarn dlx do not load the project's Plug'n'Play runtime.",
+};
+
+/**
+ * Fail a build that would read a module from Yarn Plug'n'Play's install when
+ * this process cannot: Hooknostic is running under plain `node`, not through
+ * Yarn's runtime (#183). esbuild reads Yarn's zip archives itself, so the
+ * bundle would otherwise build, but everything Hooknostic reads beside it --
+ * the SDK's manifest for its Zod fallback, licence notices, the project's SDK
+ * -- comes back missing, and the artifact silently comes out wrong.
+ *
+ * It costs nothing under Yarn's runtime (`process.versions.pnp`) or outside a
+ * PnP project, and it refuses only a path the process cannot see: a real
+ * directory whose name ends in `.zip`, or a stray ancestor manifest above a
+ * `node_modules` project, never fires it.
+ */
+export function pnpRuntimeGuardPlugin(): Plugin {
+  return {
+    name: "hooknostic-pnp-runtime",
+    setup(build) {
+      if (process.versions.pnp !== undefined) return;
+      const manifest = pnpManifest(build.initialOptions.absWorkingDir ?? process.cwd());
+      if (manifest === undefined) return;
+      build.onLoad({ filter: PNP_PATH }, (args) => {
+        if (existsSync(args.path)) return undefined;
+        return {
+          errors: [
+            {
+              text:
+                `Yarn Plug'n'Play serves ${args.path} from its install (${manifest}), and this process cannot ` +
+                "read it: Hooknostic is running without Yarn's PnP runtime.",
+              detail: PNP_RUNTIME_REQUIRED,
+              notes: [PNP_RUNTIME_NOTE],
+            },
+          ],
+        };
+      });
+    },
+  };
+}
+
+/**
+ * Whether Hooknostic's own Zod failed to resolve because Hooknostic itself
+ * runs from a Yarn install that the project's PnP manifest does not list, as
+ * under `yarn dlx`. esbuild reads one PnP manifest per build, the project's,
+ * so nothing installed beside the CLI resolves from it.
+ */
+export function ownZodNeedsProjectInstall(pnpProject: boolean, ownDirectory: string): boolean {
+  return pnpProject && PNP_PATH.test(ownDirectory);
 }
 
 /**
@@ -334,7 +400,7 @@ export function sdkZodFallbackPlugin(onSubstitution: (diagnostic: Diagnostic) =>
       // directory. Once it finds one, an importer the manifest has a locator
       // for resolves through PnP and any other falls back to node_modules,
       // and the walk cannot tell which serves the SDK's import: resolve first.
-      const pnpProject = underPnpManifest(absWorkingDir ?? process.cwd());
+      const pnpProject = pnpManifest(absWorkingDir ?? process.cwd()) !== undefined;
       // Every resolve-first option is also a resolution option, so a build
       // that resolves first never caches.
       const cacheable = cachesOwnZod(build.initialOptions);
@@ -395,6 +461,21 @@ export function sdkZodFallbackPlugin(onSubstitution: (diagnostic: Diagnostic) =>
         }
         const own = await resolveOwn(build, args.path, options, cacheable);
         if (own.errors.length > 0) {
+          // Not a broken CLI: one this project's install cannot see (HN504).
+          if (ownZodNeedsProjectInstall(pnpProject, OWN_DIRECTORY)) {
+            return {
+              errors: [
+                {
+                  text:
+                    `Hooknostic's own zod, which the SDK needs here, did not resolve from ${OWN_DIRECTORY}: ` +
+                    "Hooknostic runs from a Yarn install that this project's Plug'n'Play manifest does not list, " +
+                    "as under yarn dlx.",
+                  detail: PNP_RUNTIME_REQUIRED,
+                  notes: [PNP_RUNTIME_NOTE],
+                },
+              ],
+            };
+          }
           // With an out-of-range Zod, never bundle it: a CLI that cannot
           // resolve its own dependency is broken. Say which Zod needed it.
           if (found !== undefined) {

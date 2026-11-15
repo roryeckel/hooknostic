@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import { basename, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
+import { stop as stopEsbuild } from "esbuild";
 import { afterAll, describe, expect, it } from "vitest";
 
 // The version stamped into build reports must track the release version, not
@@ -21,7 +22,7 @@ import { opencodeHarness, opencodeV2Harness } from "@hooknostic/adapter-opencode
 import { piCapabilityProfiles, piHarness } from "@hooknostic/adapter-pi";
 import { AGENT_PLUGIN_MANIFEST_SCHEMA, AGENT_PLUGIN_MCP_SCHEMA, loadAgentPlugin } from "@hooknostic/agent-plugin";
 import { rangeCoversVersion } from "@hooknostic/core";
-import { makeFakeAdapter, syntheticSource } from "@hooknostic/testkit";
+import { makeFakeAdapter, syntheticSource, writeSyntheticPnpProject } from "@hooknostic/testkit";
 
 import { describeMcpCommands, runBuild } from "./build.js";
 import { runCheck } from "./check.js";
@@ -3006,6 +3007,67 @@ ${run.stderr}`,
     ).toBe(2);
     expect(JSON.parse(capture.out()).diagnostics).toEqual([expect.objectContaining({ code: "HN302" })]);
     expect(await readFile(join(existingOutput, "old-marker"), "utf8")).toBe("old");
+  });
+});
+
+describe("hooknostic build under Yarn Plug'n'Play without Yarn's runtime (#183)", () => {
+  it("reports one HN504 for the build and fails every target that bundles from Yarn's install", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "hooknostic-pnp-build-"));
+    try {
+      // A dependency only Yarn's zip cache holds; the SDK comes from the workspace.
+      await writeSyntheticPnpProject(dir, "pnp-app", [
+        {
+          name: "pnp-dep",
+          version: "1.0.0",
+          files: {
+            "package.json": JSON.stringify({ name: "pnp-dep", version: "1.0.0", type: "module", main: "index.js" }),
+            LICENSE: "Example dependency license.",
+            "index.js": 'export const greeting = "hello";',
+          },
+        },
+      ]);
+      await writeFile(
+        join(dir, "hooks.ts"),
+        `import { definePlugin, hook } from "@hooknostic/sdk";
+         import { greeting } from "pnp-dep";
+         export default definePlugin({ name: "pnp-app", hooks: [hook("session.start", { id: greeting, async run() {} })] });`,
+      );
+      await writeFile(
+        join(dir, "hooknostic.config.ts"),
+        `export default {
+          entry: "./hooks.ts",
+          targets: {
+            claude: { version: "${claudeHarness.recommendedRange}", delivery: "package", output: "./dist/claude" },
+            codex: { version: "${CODEX_PLUGIN_MODE_RANGE}", delivery: "package", output: "./dist/codex" },
+          },
+        };`,
+      );
+      const json = captureIO();
+      const code = await runBuild({
+        config: join(dir, "hooknostic.config.ts"),
+        json: true,
+        registry: defaultAdapterRegistry(),
+        io: json.io,
+        evaluate: { alias: { "@hooknostic/sdk": join(REPO, "packages/sdk/src/index.ts") } },
+      });
+      const report = JSON.parse(json.out()) as {
+        diagnostics: { code: string; target?: string; message: string }[];
+        targets: Record<string, { status: string }>;
+      };
+      expect(code, json.out()).toBe(2);
+      // One cause, one report: not one per target, and no HN301 restating it.
+      expect(report.diagnostics.filter((d) => d.code === "HN504")).toEqual([
+        expect.objectContaining({ message: expect.stringContaining(join(".yarn", "cache", "pnp-dep-npm-1.0.0.zip")) }),
+      ]);
+      expect(report.diagnostics.filter((d) => d.code === "HN301")).toEqual([]);
+      expect(report.targets["claude"]?.status).toBe("failed");
+      expect(report.targets["codex"]?.status).toBe("failed");
+      expect(existsSync(join(dir, "dist"))).toBe(false);
+    } finally {
+      // esbuild holds the zip open on Windows until its service stops.
+      await stopEsbuild();
+      await rm(dir, { recursive: true, force: true, maxRetries: 20, retryDelay: 100 });
+    }
   });
 });
 

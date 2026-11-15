@@ -1,11 +1,16 @@
 import { realpath } from "node:fs/promises";
 
-import { build } from "esbuild";
+import { build, type Message } from "esbuild";
 
 import type { RuntimeBundle } from "./adapter.js";
 import { createRequireBanner, licenseNoticesPlugin } from "./bundle-support.mjs";
 import type { Diagnostic } from "./diagnostics.js";
-import { sdkZodFallbackPlugin, withSdkSubpathAliases } from "./sdk-resolution.js";
+import {
+  PNP_RUNTIME_REQUIRED,
+  pnpRuntimeGuardPlugin,
+  sdkZodFallbackPlugin,
+  withSdkSubpathAliases,
+} from "./sdk-resolution.js";
 
 export interface BundleOptions {
   /** Shim entry module source (imports the user entry + adapter shim). */
@@ -22,9 +27,47 @@ export interface BundledRuntime extends RuntimeBundle {
 }
 
 /**
+ * A runtime bundle that needs Yarn's Plug'n'Play runtime, which this process
+ * does not have: `diagnostic` is the HN504 to report, once per build.
+ */
+export class PnpRuntimeRequiredError extends Error {
+  readonly diagnostic: Diagnostic;
+
+  constructor(diagnostic: Diagnostic) {
+    super(diagnostic.message);
+    this.name = "PnpRuntimeRequiredError";
+    this.diagnostic = diagnostic;
+  }
+}
+
+/**
+ * HN504 for an esbuild failure that any PnP guard error is part of. Other
+ * errors in the same failure, such as an import esbuild could not resolve
+ * because the SDK's alias pointed into a zip, follow from the same cause.
+ */
+function pnpRuntimeFailure(error: unknown): PnpRuntimeRequiredError | undefined {
+  const errors = (error as { errors?: unknown } | null)?.errors;
+  if (!Array.isArray(errors)) return undefined;
+  // The first in a stable order, so every target of one build reports the same.
+  const [first] = (errors as Message[])
+    .filter((message) => message.detail === PNP_RUNTIME_REQUIRED)
+    .sort((a, b) => a.text.localeCompare(b.text));
+  if (first === undefined) return undefined;
+  return new PnpRuntimeRequiredError({
+    code: "HN504",
+    severity: "error",
+    message: first.text,
+    ...(first.notes[0] === undefined ? {} : { remediation: first.notes[0].text }),
+  });
+}
+
+/**
  * Bundle the portable runtime + user handlers + adapter shim into one
  * dependency-free ESM module, duplicated per target so every output
  * directory stays independently distributable.
+ *
+ * Throws {@link PnpRuntimeRequiredError} when the bundle needs Yarn's
+ * Plug'n'Play runtime and this process runs without it.
  */
 export async function bundleRuntime(options: BundleOptions): Promise<BundledRuntime> {
   // Give esbuild the same canonical root used to match its output files and
@@ -55,7 +98,13 @@ export async function bundleRuntime(options: BundleOptions): Promise<BundledRunt
     outfile: "hooknostic-runtime.mjs",
     minify: false,
     legalComments: "eof",
-    plugins: [sdkZodFallbackPlugin((diagnostic) => diagnostics.push(diagnostic)), licenseNoticesPlugin()],
+    // The PnP guard first: it must refuse an unreadable module before any
+    // other plugin reads around it.
+    plugins: [
+      pnpRuntimeGuardPlugin(),
+      sdkZodFallbackPlugin((diagnostic) => diagnostics.push(diagnostic)),
+      licenseNoticesPlugin(),
+    ],
     logLevel: "silent",
     banner: {
       js:
@@ -63,6 +112,8 @@ export async function bundleRuntime(options: BundleOptions): Promise<BundledRunt
         createRequireBanner,
     },
     ...(options.alias ? { alias: withSdkSubpathAliases(options.alias) } : {}),
+  }).catch((error: unknown) => {
+    throw pnpRuntimeFailure(error) ?? error;
   });
   const code = result.outputFiles[0]?.text;
   if (code === undefined) throw new Error("esbuild produced no runtime bundle output");
