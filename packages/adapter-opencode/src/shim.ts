@@ -296,9 +296,11 @@ export function createHooknosticHooks(
       await run(native);
     } catch (error) {
       if (error instanceof HooknosticBlock) throw error;
-      // Nowhere to report this yet -- surfacing HookResult.errors is separate
-      // work -- but a stray console write corrupts OpenCode's TUI mid-turn, so
-      // swallowing is the honest option until that channel exists.
+      // Only Hooknostic's own failures land here: a decode, dispatch or apply
+      // bug, or a host object that refuses the in-place mutation. A handler's
+      // failure never does: dispatch records it in HookResult.errors and run
+      // reports it on console.error. This one is swallowed unreported, where
+      // the command shims print `hooknostic: <message>` to stderr.
     }
   };
 
