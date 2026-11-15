@@ -692,17 +692,18 @@ After bundling, both sides of that comparison name the **generated artifact**,
 so a guard that was dormant in the source becomes unconditionally true and its
 command-line body runs on every hook dispatch. A command shim reads the event
 payload before it loads the hook source, so the body finds stdin already
-consumed. Whatever else it does still runs inside the hook, and not all of it
-fails open. A body that throws synchronously while the hook source loads is
-reported as an internal error, and the call proceeds. A body that exits the
-process ends the hook with that exit code and no reply. An async `main()` whose
-rejection nothing handles crashes the process the same way: no shim installs a
-rejection handler, so Node exits 1. A non-zero exit can block: Copilot's
-`preToolUse` denies the call on any, and on Claude Code exit 2 blocks a prompt
-or a compaction.
+consumed. Whatever else it does still runs inside the hook. The command shim's
+process guard (§10.3) keeps it from deciding the call. A body that throws
+synchronously, or calls `process.exit`, while the hook source loads is reported
+as an internal error, and the call proceeds without the hooks. An async
+`main()` that rejects, or exits, later is reported once, and the hooks still
+decide. Before the guard, both ended the process with a non-zero code and no
+reply, and a non-zero exit can block: Copilot's `preToolUse` denies the call on
+any, and on Claude Code exit 2 blocks a prompt or a compaction. The body's side
+effects still happen on every dispatch, so HN502 still warns.
 
 This only happens where the harness **executes** the artifact. An adapter
-declares which it is via `shimExecution`: `"command"` (Claude, Codex — spawned
+declares which it is via `shimExecution`: `"command"` (Claude, Codex, Copilot — spawned
 as `node <artifact>`, so `process.argv[1]` *is* the artifact) or `"module"`
 (OpenCode — imported in-process, so `process.argv[1]` stays the harness's own
 entry and the guard remains false). Adapters that declare neither are treated
@@ -797,6 +798,39 @@ deliberate block, and a payload the decoder says is not ours. The second stays s
 apart from the command shims' `HOOKNOSTIC_DEBUG` "ignored payload" trace. Best-effort
 posts, such as notifications, toasts, permission replies and stop-prevention messages,
 keep their own silent catches, as their capability rationales state.
+
+A command shim shares its process with the hook source, so it also guards that process
+against code outside any handler (#186). The runtime's `guardCommandShim` is the first
+thing each command shim installs, and it stays for the life of the process:
+
+- **Async failures.** `unhandledRejection` and `uncaughtException` listeners report each
+  error object once, in the internal-error format, and the shim carries on. Before the decision
+  the hooks still decide. After it, nothing more is written to stdout. A rejection that
+  `--unhandled-rejections=strict` raises as an uncaught exception first is reported once,
+  from the rejection. Node warns against continuing after an uncaught exception; the
+  shim continues anyway, because the alternative is an exit the harness may read as a
+  block.
+- **`process.exit`.** The hook source's `process.exit` throws a `HookSourceExitError`
+  (`the hook source called process.exit(<code>)`). At load it is a load error; inside a
+  handler it is that handler's error, so `onHookError` applies and an intentional
+  `process.exit(2)` no longer blocks on Claude Code. `onHookError: "block"` is the
+  portable replacement. Where a throw cannot unwind (inside an `uncaughtException`
+  emit, during `exit`, or after the decision), it reports synchronously and leaves with
+  the decided code, or 0 before one. The shim's own exits use the original function.
+- **Exit-code pin.** An `exit` listener sets the exit code to the decided code, or 0
+  before one, over a `process.exitCode` the hook source set and over Node's 13 for an
+  unsettled top-level await. Finishing re-registers it after any `exit` listener the
+  hook source added while it loaded.
+- **Keep the decided code.** A stray failure after the decision neither adds a block
+  nor removes one: Claude Code's exit 2 stays 2, and the report starts on a line of its
+  own after a block reason that did not end in a newline.
+
+Every shape then ends on exit 0 or the decided code, the two exits each harness's
+captured evidence covers. The guard does not cover `process.reallyExit`, which
+`signal-exit` wraps and is left alone, `process.kill(process.pid)`, `process.abort()`, or
+an `exit` listener added after the shim finishes. The in-process shims leave the
+process to their host. So does `hooknostic dispatch`, which runs the source in the CLI's
+own process (#189).
 
 Each native deadline is `ceil((sum of the event's handler budgets + processAllowanceMs) / 1000)`
 seconds: the handler budgets bound what the dispatcher runs, and the allowance covers what
