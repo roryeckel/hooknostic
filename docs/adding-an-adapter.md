@@ -201,15 +201,27 @@ profile for a broad range.
   asserts the line arrives; a registered harness without a row fails there.
   Outside this repository, call `describeHandlerErrorReporting` yourself
   (section 2).
-- Fail open on the shim's own errors too. An in-process shim guards every host
-  callback as a whole, including its bookkeeping before dispatch, because a
-  host may treat any throw as a block: OpenCode 2.x does
-  (`.capture/opencode-v2-plugin-throw`). Throw deliberate blocks as a dedicated
-  class, rethrow only that class, and report everything else through
-  `reportInternalError(error, nativeHook)` from `@hooknostic/runtime`. Make the
-  class check itself unable to throw: `instanceof` on a revoked proxy does. The
-  OpenCode v2 shim is the worked example and, for now, the only shim that
-  reports this way; #179 moves the OpenCode v1, Pi and command shims onto it.
+- Fail open on the shim's own errors too, and say so. Let the decoder's own
+  error class, the "not ours" path, return silently (a command shim may trace
+  it under `HOOKNOSTIC_DEBUG`). Report any other caught error, with the native
+  hook it interrupted: through `reportInternalError(error, nativeHook)` from
+  `@hooknostic/runtime` in-process, or by writing
+  `formatInternalError(error, { hook, stack: debugEnabled() })` and a newline
+  to stderr from a command shim, which still exits 0. Read host objects inside
+  that boundary, not before it: a getter on a stale context throws too. An
+  in-process shim guards every host callback as a whole, including its
+  bookkeeping before dispatch, because a host may treat any throw as a block:
+  OpenCode 2.x does (`.capture/opencode-v2-plugin-throw`). Where a block is a
+  throw, throw deliberate blocks as a dedicated class, rethrow only that class,
+  and never report it. Ask both class checks, the decode error's and the
+  block's, through `isInstance` from `@hooknostic/runtime`: a bare
+  `instanceof` throws on a revoked proxy, and one that throws inside the catch
+  fails closed. A command shim then exits non-zero, which Copilot's
+  `preToolUse` treats as a denial. No cross-adapter guard checks this, so
+  each shim's own tests must: drive an internal error and assert the line, and
+  assert that a not-ours payload and a block produce none. The OpenCode v2
+  shim is the worked example for an in-process shim, the Claude Code shim for
+  a command shim.
 - Declare `publishesNpmPackage: true` only if package delivery emits a manifest
   npm publishes the artifact under. That is what lets a target set `npmName`;
   undeclared, core refuses the coordinate at analysis, before anything is

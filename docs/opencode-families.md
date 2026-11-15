@@ -75,15 +75,22 @@ through. On v2 that report was visible only under
 background service are unmeasured.
 [Capture](../.capture/opencode-v2-plugin-stderr/README.md).
 
-The v2 shim also fails open on its own internal errors, because the v2 host
-fails closed on any error a plugin throws, in one of two ways. A throw from a
+Both families also fail open on the shim's own internal errors, and report
+each one on `console.error` as
+`hooknostic internal [<native hook>]: <message>`. On v1 a throw is how a block
+is delivered, so an internal error that escaped would deny the call; only
+deliberate blocks are rethrown. The best-effort posts (prompts, toasts,
+permission replies) stay silent no-ops when they fail. Whether the v1 TUI
+shows the report is unmeasured.
+
+On v2 the shim guards every callback, because the v2 host fails closed on any
+error a plugin throws, in one of two ways. A throw from a
 tool or permission callback denies the call, and the model sees the message
 as the tool's error. A throw from a prompt, context, generate or compaction
 callback fails the request instead: the run exits 1, the execution or
 compaction fails, or the endpoint answers 500. So the shim catches every error
-of its own, reports it as `hooknostic internal [<native hook>]: <message>` on
-`console.error`, and lets the call proceed as if no hook had run. Like the
-handler-error report, it was visible only under
+of its own, reports it, and lets the call proceed as if no hook had run. Like
+the handler-error report, it was visible only under
 `opencode run --standalone --print-logs`. A deny that cannot be applied leaves
 the host's own permission evaluation in place. Only deliberate blocks still
 throw. [Capture](../.capture/opencode-v2-plugin-throw/README.md).

@@ -1,4 +1,4 @@
-import { dispatch, formatHandlerErrors, reportInternalError } from "@hooknostic/runtime";
+import { dispatch, formatHandlerErrors, isInstance, reportInternalError } from "@hooknostic/runtime";
 import type { HookEvent, PluginSpec } from "@hooknostic/sdk";
 import { hookAppliesToTarget } from "@hooknostic/sdk";
 
@@ -37,13 +37,7 @@ export interface OpenCodeV2Context {
 class HooknosticBlock extends Error {}
 
 /** Proxy-safe: `instanceof` on a revoked proxy throws, and that would fail closed. */
-const isBlock = (error: unknown): boolean => {
-  try {
-    return error instanceof HooknosticBlock;
-  } catch {
-    return false;
-  }
-};
+const isBlock = (error: unknown): boolean => isInstance(error, HooknosticBlock);
 
 /** Fail open on an internal error from `work`; a deliberate block still propagates. */
 async function failingOpen(hook: string, work: () => Promise<void>): Promise<void> {
@@ -185,7 +179,7 @@ export async function setupOpenCodeV2(
         { ...(execution ? { execution } : {}), ...(shell !== undefined ? { shell } : {}) },
       );
     } catch (error) {
-      if (error instanceof OpenCodeV2DecodeError) return;
+      if (isInstance(error, OpenCodeV2DecodeError)) return;
       throw error;
     }
     if (modelRequest) event = { ...event, event: "model.request.before" };

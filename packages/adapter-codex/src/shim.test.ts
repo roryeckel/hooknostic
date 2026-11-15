@@ -57,6 +57,7 @@ describe("Codex command shim stream draining", () => {
       (resolvePromise, rejectPromise) => {
         const child = spawn(process.execPath, [bundlePath], {
           stdio: ["pipe", "pipe", "pipe"],
+          env: { ...process.env, HOOKNOSTIC_DEBUG: "" },
         });
         let stdout = "";
         let stderr = "";
@@ -120,6 +121,7 @@ describe("Codex command shim stream draining", () => {
     }>((resolvePromise, rejectPromise) => {
       const child = spawn(process.execPath, [bundlePath], {
         stdio: ["pipe", "pipe", "pipe"],
+        env: { ...process.env, HOOKNOSTIC_DEBUG: "" },
       });
       let stdout = "";
       let stderr = "";
@@ -289,9 +291,31 @@ describe("Codex command shim plugin loading and exit", () => {
   it("treats a payload that is not JSON as ignored", async () => {
     const result = await runCodexShim(PLUGIN, CAPS, { input: "not json" });
     expect(result).toMatchObject({ code: 0, stdout: "" });
-    expect(result.stderr).not.toContain("hooknostic:");
+    expect(result.stderr).not.toMatch(/^hooknostic /m);
     const traced = await runCodexShim(PLUGIN, CAPS, { input: "not json", env: { HOOKNOSTIC_DEBUG: "1" } });
     expect(traced.stderr).toMatch(/^hooknostic debug: ignored payload: payload is not JSON/m);
+  });
+
+  it("reports a plugin module that throws as an internal error, and fails open", async () => {
+    const THROWING = `throw new Error("plugin module failed");\nexport default {};`;
+    const result = await runCodexShim(THROWING, CAPS);
+    expect(result).toMatchObject({ code: 0, stdout: "" });
+    // One whole line, newline included, naming the native event.
+    expect(result.stderr).toMatch(/^hooknostic internal \[PreToolUse\]: plugin module failed\n/m);
+    const traced = await runCodexShim(THROWING, CAPS, { env: { HOOKNOSTIC_DEBUG: "1" } });
+    expect(traced.code).toBe(0);
+    expect(traced.stderr).toMatch(
+      /^hooknostic internal \[PreToolUse\]: plugin module failed\nError: plugin module failed\n\s+at /m,
+    );
+  });
+
+  it("fails open on a thrown value it cannot inspect", async () => {
+    // `instanceof` on a revoked proxy throws, in the very catch that tells a
+    // payload that is not ours from a defect.
+    const REVOKED = `const { proxy, revoke } = Proxy.revocable({}, {});\nrevoke();\nthrow proxy;\nexport default {};`;
+    const result = await runCodexShim(REVOKED, CAPS);
+    expect(result).toMatchObject({ code: 0, stdout: "" });
+    expect(result.stderr).toMatch(/^hooknostic internal \[PreToolUse\]: uninspectable thrown value\n/m);
   });
 });
 

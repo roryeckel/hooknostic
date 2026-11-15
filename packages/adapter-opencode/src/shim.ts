@@ -1,5 +1,5 @@
 import type { CapabilityLevels } from "@hooknostic/runtime";
-import { dispatch, formatHandlerErrors } from "@hooknostic/runtime";
+import { dispatch, formatHandlerErrors, isInstance, reportInternalError } from "@hooknostic/runtime";
 import type { HookEvent, HookEventName, PluginSpec, RuntimePolicy, SupportLevel } from "@hooknostic/sdk";
 // Value imports must stay on the SDK/runtime: pulling `@hooknostic/core` into
 // the shim bundles esbuild into every generated artifact (see docs/design.md).
@@ -205,7 +205,7 @@ export function createHooknosticHooks(
     try {
       event = decodeOpenCode(native, invocation, enrichment);
     } catch (error) {
-      if (error instanceof OpenCodeDecodeError) return; // fail-open
+      if (isInstance(error, OpenCodeDecodeError)) return; // fail-open
       throw error;
     }
     const result = await dispatch(plugin.hooks, event, {
@@ -289,18 +289,21 @@ export function createHooknosticHooks(
    * `exitCode = 0` on any internal error and the call proceeds; here the same
    * bug did the opposite, which is the worse direction and the one this
    * project's fail-open contract exists to rule out. Only a deliberate
-   * `HooknosticBlock` propagates.
+   * `HooknosticBlock` propagates. `prepare` builds the envelope from the host's
+   * PluginInput, so it runs inside the boundary too.
    */
-  const runFailingOpen = async (native: OpenCodeNativeEvent): Promise<void> => {
+  const runFailingOpen = async (hook: string, prepare: () => OpenCodeNativeEvent): Promise<void> => {
     try {
-      await run(native);
+      await run(prepare());
     } catch (error) {
-      if (error instanceof HooknosticBlock) throw error;
+      if (isInstance(error, HooknosticBlock)) throw error;
       // Only Hooknostic's own failures land here: a decode, dispatch or apply
       // bug, or a host object that refuses the in-place mutation. A handler's
       // failure never does: dispatch records it in HookResult.errors and run
-      // reports it on console.error. This one is swallowed unreported, whereas
-      // the command shims print `hooknostic: <message>` to stderr.
+      // reports it on console.error. A payload that is not ours returned
+      // before this, silently. The rest is a defect, so it is said, on the
+      // same channel, every time.
+      reportInternalError(error, hook);
     }
   };
 
@@ -472,13 +475,17 @@ export function createHooknosticHooks(
   const callback =
     (hook: string): Callback =>
     async (input, output) => {
-      const pending = runFailingOpen({
+      const pending = runFailingOpen(
         hook,
-        directory: pluginInput.directory,
-        ...(pluginInput.worktree !== undefined ? { worktree: pluginInput.worktree } : {}),
-        input,
-        output,
-      } as OpenCodeNativeEvent);
+        () =>
+          ({
+            hook,
+            directory: pluginInput.directory,
+            ...(pluginInput.worktree !== undefined ? { worktree: pluginInput.worktree } : {}),
+            input,
+            output,
+          }) as OpenCodeNativeEvent,
+      );
       inflight.add(pending);
       const settle = () => void inflight.delete(pending);
       void pending.then(settle, settle);

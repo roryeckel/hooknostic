@@ -7147,6 +7147,34 @@ function errorMessage(error2) {
     return "uninspectable thrown value";
   }
 }
+function isInstance(value, type) {
+  try {
+    return value instanceof type;
+  } catch {
+    return false;
+  }
+}
+function debugEnabled(env = globalThis.process?.env) {
+  const flag = env?.["HOOKNOSTIC_DEBUG"];
+  return flag !== void 0 && flag !== "" && flag !== "0";
+}
+function formatInternalError(error2, options = {}) {
+  const line = `hooknostic internal${options.hook ? ` [${options.hook}]` : ""}: ${errorMessage(error2)}`;
+  if (!options.stack) return line;
+  try {
+    const stack = error2 instanceof Error ? error2.stack : void 0;
+    return typeof stack === "string" && stack !== "" ? `${line}
+${stack}` : line;
+  } catch {
+    return line;
+  }
+}
+function reportInternalError(error2, hook2, write = (line) => console.error(line)) {
+  try {
+    write(formatInternalError(error2, { ...hook2 !== void 0 ? { hook: hook2 } : {}, stack: debugEnabled() }));
+  } catch {
+  }
+}
 function createCapabilitySet(levels) {
   const levelOf = (id) => (Object.hasOwn(levels, id) ? levels[id] : void 0) ?? "unsupported";
   return {
@@ -7867,7 +7895,7 @@ function createHooknosticHooks(plugin, options, pluginInput) {
     try {
       event = decodeOpenCode(native, invocation, enrichment);
     } catch (error2) {
-      if (error2 instanceof OpenCodeDecodeError) return;
+      if (isInstance(error2, OpenCodeDecodeError)) return;
       throw error2;
     }
     const result = await dispatch(plugin.hooks, event, {
@@ -7918,11 +7946,12 @@ function createHooknosticHooks(plugin, options, pluginInput) {
       throw new HooknosticBlock2(application.throwMessage);
     }
   };
-  const runFailingOpen = async (native) => {
+  const runFailingOpen = async (hook2, prepare) => {
     try {
-      await run(native);
+      await run(prepare());
     } catch (error2) {
-      if (error2 instanceof HooknosticBlock2) throw error2;
+      if (isInstance(error2, HooknosticBlock2)) throw error2;
+      reportInternalError(error2, hook2);
     }
   };
   const postPrompts = async (event, application) => {
@@ -8019,13 +8048,16 @@ function createHooknosticHooks(plugin, options, pluginInput) {
   };
   const hooks = {};
   const callback = (hook2) => async (input, output) => {
-    const pending = runFailingOpen({
-      hook: hook2,
-      directory: pluginInput.directory,
-      ...pluginInput.worktree !== void 0 ? { worktree: pluginInput.worktree } : {},
-      input,
-      output
-    });
+    const pending = runFailingOpen(
+      hook2,
+      () => ({
+        hook: hook2,
+        directory: pluginInput.directory,
+        ...pluginInput.worktree !== void 0 ? { worktree: pluginInput.worktree } : {},
+        input,
+        output
+      })
+    );
     inflight.add(pending);
     const settle2 = () => void inflight.delete(pending);
     void pending.then(settle2, settle2);

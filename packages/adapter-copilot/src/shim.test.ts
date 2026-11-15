@@ -30,6 +30,7 @@ async function runShim(
   capabilities: Record<string, "exact">,
   args: string[] = ["preToolUse"],
   timeoutMs = 5_000,
+  env: NodeJS.ProcessEnv = {},
 ): Promise<{ stdout: string; stderr: string; code: number | null }> {
   const dir = await mkdtemp(join(tmpdir(), "hooknostic-copilot-shim-"));
   cleanup.push(dir);
@@ -50,7 +51,7 @@ async function runShim(
   return new Promise((resolvePromise, rejectPromise) => {
     const child = spawn(process.execPath, [bundlePath, ...args], {
       stdio: ["pipe", "pipe", "pipe"],
-      env: { ...process.env, HOOKNOSTIC_DEBUG: "" },
+      env: { ...process.env, HOOKNOSTIC_DEBUG: "", ...env },
     });
     let stdout = "";
     let stderr = "";
@@ -135,6 +136,47 @@ describe("Copilot command shim", () => {
     );
     expect(result.code).toBe(0);
     expect(result.stdout).toBe("");
+    // Not ours is not a defect: nothing is reported.
+    expect(result.stderr).not.toMatch(/^hooknostic /m);
+  });
+
+  it("treats a payload that is not JSON as ignored, and traces it only under HOOKNOSTIC_DEBUG", async () => {
+    const PLUGIN = `import { definePlugin, hook } from "@hooknostic/sdk";
+       export default definePlugin({ name: "noop", hooks: [hook("tool.before", { id: "noop", async run() {} })] });`;
+    const caps = { "tool.before.observe": "exact" } as const;
+    const quiet = await runShim(PLUGIN, "not json", caps);
+    expect(quiet).toMatchObject({ code: 0, stdout: "", stderr: "" });
+    const traced = await runShim(PLUGIN, "not json", caps, undefined, undefined, { HOOKNOSTIC_DEBUG: "1" });
+    expect(traced).toMatchObject({ code: 0, stdout: "" });
+    expect(traced.stderr).toMatch(/^hooknostic debug: ignored payload: payload is not JSON/m);
+  });
+
+  it("reports a plugin module that throws as an internal error, and fails open", async () => {
+    const THROWING = `throw new Error("plugin module failed");\nexport default {};`;
+    const caps = { "tool.before.observe": "exact" } as const;
+    const result = await runShim(THROWING, await fixture("tool-before.input.json"), caps);
+    expect(result).toMatchObject({ code: 0, stdout: "" });
+    // One whole line, newline included, naming the native event.
+    expect(result.stderr).toMatch(/^hooknostic internal \[preToolUse\]: plugin module failed\n/m);
+    const traced = await runShim(THROWING, await fixture("tool-before.input.json"), caps, undefined, undefined, {
+      HOOKNOSTIC_DEBUG: "1",
+    });
+    expect(traced.code).toBe(0);
+    expect(traced.stderr).toMatch(
+      /^hooknostic internal \[preToolUse\]: plugin module failed\nError: plugin module failed\n\s+at /m,
+    );
+  });
+
+  it("fails open on a thrown value it cannot inspect, rather than denying the call", async () => {
+    // `instanceof` on a revoked proxy throws, in the very catch that tells a
+    // payload that is not ours from a defect. The exit 1 that followed is a
+    // denial on preToolUse, where any non-zero exit blocks.
+    const REVOKED = `const { proxy, revoke } = Proxy.revocable({}, {});\nrevoke();\nthrow proxy;\nexport default {};`;
+    const result = await runShim(REVOKED, await fixture("tool-before.input.json"), {
+      "tool.before.observe": "exact",
+    });
+    expect(result).toMatchObject({ code: 0, stdout: "" });
+    expect(result.stderr).toMatch(/^hooknostic internal \[preToolUse\]: uninspectable thrown value\n/m);
   });
 
   it("flushes a response larger than the pipe buffer before exiting", async () => {

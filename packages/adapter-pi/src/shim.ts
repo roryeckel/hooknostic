@@ -1,5 +1,5 @@
 import type { CapabilityLevels } from "@hooknostic/runtime";
-import { dispatch, formatHandlerErrors } from "@hooknostic/runtime";
+import { dispatch, formatHandlerErrors, isInstance, reportInternalError } from "@hooknostic/runtime";
 import type { HookEventName, PluginSpec, RuntimePolicy, SupportLevel } from "@hooknostic/sdk";
 // Value imports must stay on the SDK/runtime: pulling `@hooknostic/core` into
 // the shim bundles esbuild into every generated artifact (see docs/design.md).
@@ -108,7 +108,7 @@ export function createHooknosticExtension(plugin: PluginSpec, options: PiShimOpt
         options.nativeMcp === undefined ? {} : { nativeMcp: options.nativeMcp },
       );
     } catch (error) {
-      if (error instanceof PiDecodeError) return { result: undefined, application: {} }; // fail-open
+      if (isInstance(error, PiDecodeError)) return { result: undefined, application: {} }; // fail-open
       throw error;
     }
     const dispatchResult = await dispatch(plugin.hooks, event, {
@@ -188,17 +188,23 @@ export function createHooknosticExtension(plugin: PluginSpec, options: PiShimOpt
     return { result: Object.keys(result).length > 0 ? result : undefined, application };
   };
 
+  /**
+   * Fail open: an unintended throw here would deny the user's action (pi
+   * treats a handler throw as an error surface, and an in-process bug must
+   * never break the session). `prepare` reads the host's live objects, so it
+   * runs inside the boundary too. A payload that is not ours returned from
+   * `run` before this, silently; anything else is a Hooknostic defect, said
+   * on console.error, the channel handler errors use, every time.
+   */
   const runFailingOpen = async (
-    native: PiNativeEvent,
-    enrichment: PiEnrichment,
+    name: string,
+    prepare: () => { native: PiNativeEvent; enrichment: PiEnrichment },
   ): Promise<{ result: unknown; application: PiApplication }> => {
     try {
+      const { native, enrichment } = prepare();
       return await run(native, enrichment);
-    } catch {
-      // Fail open: an unintended throw here would deny the user's action
-      // (pi treats a handler throw as an error surface, and an in-process
-      // bug must never break the session). console.error is safe here, but
-      // the honest option is a silent no-op result.
+    } catch (error) {
+      reportInternalError(error, name);
       return { result: undefined, application: {} };
     }
   };
@@ -207,49 +213,52 @@ export function createHooknosticExtension(plugin: PluginSpec, options: PiShimOpt
     const handler =
       (name: string): PiHandler =>
       async (event, ctx) => {
-        const ctxCwd = (ctx as { cwd?: unknown } | undefined)?.cwd;
-        const ctxMode = (ctx as { mode?: unknown } | undefined)?.mode;
-        const eventCwd = (event as { cwd?: unknown }).cwd;
-        const cwd = typeof ctxCwd === "string" ? ctxCwd : typeof eventCwd === "string" ? eventCwd : process.cwd();
-        const native: PiNativeEvent = {
-          event: event as Record<string, unknown>,
-          ctx: { cwd, ...(typeof ctxMode === "string" ? { mode: ctxMode } : {}) },
-        };
-        const enrichment: PiEnrichment = {};
-        if (name === "agent_settled" && readsTurnFields) {
-          try {
-            const manager = (ctx as { sessionManager?: { getBranch?: () => unknown } } | undefined)?.sessionManager;
-            const branch = manager?.getBranch?.();
-            if (branch !== undefined) enrichment.branch = branch;
-          } catch {
-            // An unavailable native read leaves optional fields absent; the hook still runs.
+        const { result, application } = await runFailingOpen(name, () => {
+          const ctxCwd = (ctx as { cwd?: unknown } | undefined)?.cwd;
+          const ctxMode = (ctx as { mode?: unknown } | undefined)?.mode;
+          const eventCwd = (event as { cwd?: unknown }).cwd;
+          const cwd = typeof ctxCwd === "string" ? ctxCwd : typeof eventCwd === "string" ? eventCwd : process.cwd();
+          const native: PiNativeEvent = {
+            event: event as Record<string, unknown>,
+            ctx: { cwd, ...(typeof ctxMode === "string" ? { mode: ctxMode } : {}) },
+          };
+          const enrichment: PiEnrichment = {};
+          if (name === "agent_settled" && readsTurnFields) {
+            try {
+              const manager = (ctx as { sessionManager?: { getBranch?: () => unknown } } | undefined)?.sessionManager;
+              const branch = manager?.getBranch?.();
+              if (branch !== undefined) enrichment.branch = branch;
+            } catch {
+              // An unavailable native read leaves optional fields absent; the hook still runs.
+            }
           }
-        }
-        // Whose `details` an MCP-named result carries: pi's MCP extension, or
-        // another extension under the same kind of name (.capture/pi-mcp).
-        const toolName = (event as { toolName?: unknown }).toolName;
-        if (
-          name === "tool_result" &&
-          options.nativeMcp !== false &&
-          typeof toolName === "string" &&
-          toolName.startsWith(PI_MCP_PREFIX)
-        ) {
-          try {
-            const source = registeredToolSource(pi, toolName);
-            if (source !== undefined) enrichment.toolSource = source;
-          } catch {
-            // An unavailable native read leaves the split absent; the hook still runs.
+          // Whose `details` an MCP-named result carries: pi's MCP extension, or
+          // another extension under the same kind of name (.capture/pi-mcp).
+          const toolName = (event as { toolName?: unknown }).toolName;
+          if (
+            name === "tool_result" &&
+            options.nativeMcp !== false &&
+            typeof toolName === "string" &&
+            toolName.startsWith(PI_MCP_PREFIX)
+          ) {
+            try {
+              const source = registeredToolSource(pi, toolName);
+              if (source !== undefined) enrichment.toolSource = source;
+            } catch {
+              // An unavailable native read leaves the split absent; the hook still runs.
+            }
           }
-        }
-        const { result, application } = await runFailingOpen(native, enrichment);
+          return { native, enrichment };
+        });
 
         // Warning, not info: Pi's own status line replaced an info notice after
         // reload, resume and fork (.capture/pi/README.md). Print mode has no UI
-        // and shows nothing. A missing ctx.ui is a silent no-op.
+        // and shows nothing. A missing ctx.ui is a silent no-op, and so is one
+        // that cannot be read: ctx is the host's live object, read in the try.
         if (name === "session_start" && application.notices !== undefined) {
-          const ui = (ctx as { ui?: { notify?: (message: string, level: string) => void } } | undefined)?.ui;
           for (const message of application.notices) {
             try {
+              const ui = (ctx as { ui?: { notify?: (message: string, level: string) => void } } | undefined)?.ui;
               ui?.notify?.(message, "warning");
             } catch {
               // Fail open.

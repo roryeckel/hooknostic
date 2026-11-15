@@ -690,9 +690,16 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
 
 After bundling, both sides of that comparison name the **generated artifact**,
 so a guard that was dormant in the source becomes unconditionally true and its
-command-line body runs on every hook dispatch — typically consuming the
-harness's stdin before the dispatcher can read the event payload, which
-presents as a hook that silently receives nothing.
+command-line body runs on every hook dispatch. A command shim reads the event
+payload before it loads the hook source, so the body finds stdin already
+consumed. Whatever else it does still runs inside the hook, and not all of it
+fails open. A body that throws synchronously while the hook source loads is
+reported as an internal error, and the call proceeds. A body that exits the
+process ends the hook with that exit code and no reply. An async `main()` whose
+rejection nothing handles crashes the process the same way: no shim installs a
+rejection handler, so Node exits 1. A non-zero exit can block: Copilot's
+`preToolUse` denies the call on any, and on Claude Code exit 2 blocks a prompt
+or a compaction.
 
 This only happens where the harness **executes** the artifact. An adapter
 declares which it is via `shimExecution`: `"command"` (Claude, Codex — spawned
@@ -774,16 +781,22 @@ and translates the timeout to native hook timeout settings where possible.
 Shims also fail open on their own internal errors: a defect in Hooknostic, such as a
 rewrite the host object will not take, must not become a block. A deliberate block is
 the one exception. The OpenCode shims, where a block is a throw, tell the two apart by
-throwing blocks as a dedicated class. `onHookError: "block"` governs hook failures only,
-not internal errors.
+throwing blocks as a dedicated class. Every shim asks its block and decode-error class
+checks through the runtime's `isInstance`, which answers false where `instanceof` would
+throw, as it does on a revoked proxy.
+`onHookError: "block"` governs hook failures only, not internal errors.
 
-Reporting is not yet uniform. The OpenCode v2 shim reports internal errors through the
-runtime's `reportInternalError`, as `hooknostic internal [<native hook>]: <message>`,
-with the stack on the following lines under `HOOKNOSTIC_DEBUG`. The report carries no
-HN code, because those name problems a hook author can act on, and it is not
-deduplicated, like handler errors. The OpenCode v1 and Pi shims fail open but swallow
-such errors unreported, and the command shims write `hooknostic: <message>` to stderr.
-#179 moves them onto the same report.
+Every shim reports what it fails open over, as
+`hooknostic internal [<native hook>]: <message>`, with the stack on the following lines
+under `HOOKNOSTIC_DEBUG`. The in-process shims (OpenCode v1 and v2, Pi) report through
+the runtime's `reportInternalError` on `console.error`. The command shims (Claude Code,
+Codex, Copilot) write `formatInternalError` and a newline to stderr, and still exit 0.
+The report carries no HN code, because those name problems a hook author can act on,
+and it is not deduplicated, like handler errors. Two things are never reported: a
+deliberate block, and a payload the decoder says is not ours. The second stays silent,
+apart from the command shims' `HOOKNOSTIC_DEBUG` "ignored payload" trace. Best-effort
+posts, such as notifications, toasts, permission replies and stop-prevention messages,
+keep their own silent catches, as their capability rationales state.
 
 Each native deadline is `ceil((sum of the event's handler budgets + processAllowanceMs) / 1000)`
 seconds: the handler budgets bound what the dispatcher runs, and the allowance covers what

@@ -17,6 +17,20 @@ export function errorMessage(error: unknown): string {
   }
 }
 
+/**
+ * `value instanceof type`, or false when the check itself throws, as it does on
+ * a revoked proxy. A shim asks it inside its fail-open catch, to tell a decode
+ * error or a deliberate block from a defect, so a check that threw there would
+ * fail closed.
+ */
+export function isInstance<T>(value: unknown, type: new (...args: never[]) => T): value is T {
+  try {
+    return value instanceof type;
+  } catch {
+    return false;
+  }
+}
+
 /** Whether `HOOKNOSTIC_DEBUG` is set to a non-empty value other than `0`. */
 export function debugEnabled(env: Record<string, string | undefined> | undefined = globalThis.process?.env): boolean {
   const flag = env?.["HOOKNOSTIC_DEBUG"];
