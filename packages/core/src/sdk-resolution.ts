@@ -1,8 +1,8 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { basename, dirname, extname, isAbsolute, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import type { Plugin } from "esbuild";
+import type { ImportKind, Plugin, PluginBuild, ResolveResult } from "esbuild";
 import semver from "semver";
 
 import type { Diagnostic } from "./diagnostics.js";
@@ -44,6 +44,22 @@ interface OwningManifest {
   zodPeer?: string;
 }
 
+interface Manifest {
+  name?: unknown;
+  version?: unknown;
+  peerDependencies?: { zod?: unknown };
+}
+
+/** The manifest at `path`; an unreadable or non-object one names nothing. */
+function readManifest(path: string): Manifest {
+  try {
+    const manifest: unknown = JSON.parse(readFileSync(path, "utf8"));
+    return typeof manifest === "object" && manifest !== null ? (manifest as Manifest) : {};
+  } catch {
+    return {};
+  }
+}
+
 /**
  * The package that owns `file`: its nearest manifest that has a name.
  * `manifests` caches lookups by directory; each build passes its own, so a
@@ -61,12 +77,8 @@ function owningManifest(file: string, manifests: Map<string, OwningManifest | un
     visited.push(directory);
     const path = join(directory, "package.json");
     if (existsSync(path)) {
-      let manifest: { name?: unknown; version?: unknown; peerDependencies?: { zod?: unknown } } = {};
-      try {
-        manifest = JSON.parse(readFileSync(path, "utf8")) as typeof manifest;
-      } catch {
-        // An unreadable manifest names nothing; keep walking, as for a nameless one.
-      }
+      // An unreadable manifest names nothing; keep walking, as for a nameless one.
+      const manifest = readManifest(path);
       // Nested manifests that only set the module type (zod/v3, zod/v4) name nothing.
       if (typeof manifest.name === "string") {
         const zodPeer = manifest.peerDependencies?.zod;
@@ -87,14 +99,83 @@ function owningManifest(file: string, manifests: Map<string, OwningManifest | un
   return found;
 }
 
+/** The `zod` package a bare `zod` import from a directory reaches. */
+export type ReachableZod =
+  | { kind: "none" }
+  /** A Yarn Plug'n'Play project: no `node_modules` to walk, so esbuild's own PnP resolution decides. */
+  | { kind: "pnp" }
+  /** `version` only when the package's manifest names itself `zod`, unlike an npm alias installed as zod. */
+  | { kind: "found"; directory: string; version?: string };
+
+/** The PnP manifests esbuild looks for, as it walks up from an importer. */
+const PNP_MANIFESTS = [".pnp.data.json", ".pnp.cjs", ".pnp.js"];
+
+/**
+ * Walk the `node_modules` lookup path from `directory`, as esbuild does for a
+ * bare specifier: each ancestor's `node_modules/zod`, skipping ancestors that
+ * are themselves named `node_modules`. The first one found is the package
+ * esbuild resolves `zod/v4` against -- it does not walk on when that package's
+ * exports map lacks the subpath -- so its manifest is the version to check,
+ * including a Zod 3.24 that has no `./v4`. Pass the importer's real path
+ * (esbuild resolves symlinks), which puts pnpm's `.pnpm/<sdk>/node_modules` on
+ * the path. `require.resolve("zod/package.json")` would not do: Zod 3.0-3.8
+ * export no `./package.json`, and Node's CommonJS lookup adds `NODE_PATH` and
+ * global folders that esbuild does not search.
+ */
+export function reachableZod(directory: string): ReachableZod {
+  for (let current = directory; ;) {
+    if (PNP_MANIFESTS.some((manifest) => existsSync(join(current, manifest)))) return { kind: "pnp" };
+    if (basename(current) !== "node_modules") {
+      const candidate = join(current, "node_modules", "zod");
+      if (existsSync(candidate)) {
+        const manifest = readManifest(join(candidate, "package.json"));
+        return {
+          kind: "found",
+          directory: candidate,
+          ...(manifest.name === "zod" && typeof manifest.version === "string" ? { version: manifest.version } : {}),
+        };
+      }
+    }
+    const parent = dirname(current);
+    if (parent === current) return { kind: "none" };
+    current = parent;
+  }
+}
+
 const FALLBACK = "hooknostic-sdk-zod-fallback";
 /** Where Hooknostic's own dependencies resolve: the CLI's `dist`, or core's `src` in the workspace. */
 const OWN_DIRECTORY = dirname(fileURLToPath(import.meta.url));
 
+/**
+ * Hooknostic's own Zod, by import kind and path, for the life of the process:
+ * the CLI's install does not change under a running CLI. A cached file that has
+ * since disappeared is resolved again.
+ */
+const ownResolutions = new Map<string, ResolveResult>();
+
+/**
+ * Resolve `path` from Hooknostic's own install. `cache` is false for a build
+ * whose options reshape resolution, as a `zod` alias does: a nested resolve
+ * applies the alias here too, so that answer holds for that build alone.
+ */
+async function resolveOwn(
+  build: PluginBuild,
+  path: string,
+  options: { kind: ImportKind; importer: string; pluginData: string },
+  cache: boolean,
+): Promise<ResolveResult> {
+  const key = `${options.kind}\0${path}`;
+  const cached = cache ? ownResolutions.get(key) : undefined;
+  if (cached !== undefined && existsSync(cached.path)) return cached;
+  const own = await build.resolve(path, { ...options, resolveDir: OWN_DIRECTORY });
+  if (cache && own.errors.length === 0) ownResolutions.set(key, own);
+  return own;
+}
+
 /** A Zod the SDK reached outside its peer range, and the copy bundled instead. */
 interface ZodSubstitution {
   range: string;
-  /** The package root the SDK's import resolved into, or the resolved file when no manifest owns it. */
+  /** The real path of the zod package the SDK's import reached, or the resolved file when no manifest owns it. */
   foundPath: string;
   foundVersion?: string;
   ownPath: string;
@@ -112,7 +193,7 @@ function substitutionDiagnostic(substitution: ZodSubstitution): Diagnostic {
     code: "HN109",
     severity: "warn",
     message:
-      `the SDK's zod import resolved to ${found} at ${substitution.foundPath}, outside the SDK's zod peer range ` +
+      `the SDK's zod import reached ${found} at ${substitution.foundPath}, outside the SDK's zod peer range ` +
       `${substitution.range}; the runtime bundles Hooknostic's own ${own} from ${substitution.ownPath} instead, ` +
       "while user code that imports zod still bundles the project's copy.",
     remediation: `install a zod that satisfies ${substitution.range} in the project, so the SDK and user code share one copy.`,
@@ -127,18 +208,39 @@ function substitutionDiagnostic(substitution: ZodSubstitution): Diagnostic {
  * project that authors hooks without it installs none, and a strict package
  * manager then gives the project's SDK no Zod to resolve. The compiler always
  * has one -- the published CLI depends on Zod from the same range -- so a Zod
- * import made by the SDK that cannot resolve from the SDK resolves from here
+ * import made by the SDK that cannot use the project's Zod resolves from here
  * instead.
  *
  * An optional peer also means nothing stops a package manager from handing the
- * SDK an older Zod that the project inherited from an unrelated dependency:
- * npm with `legacy-peer-deps` hoists one beside it without a peer conflict, and
- * a project rarely controls that dependency. The SDK's import then resolves
- * from here too, and `onSubstitution` receives an HN109 warning rather than the
- * build failing. The range comes
- * from the SDK's own manifest. A manifest whose range is not a semver range --
- * the workspace's `catalog:` reference, which only `pnpm pack` rewrites -- has no
- * floor to enforce, and its resolution is used as before.
+ * SDK an older Zod: npm with `legacy-peer-deps` hoists one that the project
+ * inherited from an unrelated dependency beside it without a peer conflict,
+ * and pnpm links a project's own Zod 3 as the peer with only a warning. The
+ * SDK's import then resolves from here too, and `onSubstitution` receives an
+ * HN109 warning rather than the build failing. The range comes from the SDK's
+ * own manifest. A manifest whose range is not a semver range -- the
+ * workspace's `catalog:` reference, which only `pnpm pack` rewrites -- has no
+ * floor to enforce, and the reached Zod is used as is.
+ *
+ * The version checked is the one {@link reachableZod} reads, before anything
+ * resolves, from the zod package the SDK's import reaches: the package esbuild
+ * takes that import from, whether or not it provides `zod/v4`. So a Zod 3.24
+ * without the subpath is out of range and reported, and only a project with no
+ * reachable Zod stays silent. An in-range Zod is left to esbuild untouched:
+ * reading one manifest replaces a nested `build.resolve()`, which cost more
+ * than everything else this plugin does.
+ *
+ * Two cases resolve first instead and read the version from the resolved
+ * file's package, as this plugin always did. A Yarn Plug'n'Play project has no
+ * `node_modules` to walk. And a build whose options change what a bare `zod`
+ * reaches -- an `alias` with a zod key, `nodePaths` or `preserveSymlinks` --
+ * cannot be modelled by the walk: esbuild (0.28) applies `alias` only after
+ * `onResolve` callbacks have seen the import as written, while a nested
+ * `build.resolve()` does apply it.
+ *
+ * Hooknostic's own Zod resolves once per import kind and path for the life of
+ * the process ({@link resolveOwn}), so a Zod-free project pays one nested
+ * resolve, in its first bundle. Reports stay per build: `build.ts` dedupes
+ * them across one build's targets, and a later build must warn again.
  *
  * Only the SDK's own imports are redirected. A project whose Zod satisfies the
  * range keeps one shared copy, the one its SDK resolves; user code that imports
@@ -151,42 +253,67 @@ export function sdkZodFallbackPlugin(onSubstitution: (diagnostic: Diagnostic) =>
     setup(build) {
       const manifests = new Map<string, OwningManifest | undefined>();
       const reported = new Set<string>();
+      const { alias, nodePaths, preserveSymlinks } = build.initialOptions;
+      const optionsResolveFirst =
+        Object.keys(alias ?? {}).some((key) => key === "zod" || key.startsWith("zod/")) ||
+        (nodePaths?.length ?? 0) > 0 ||
+        preserveSymlinks === true;
       build.onResolve({ filter: /^zod(?:\/|$)/ }, async (args) => {
         // `<stdin>` (the generated shim entry) is no path, and no package owns it.
         if (args.pluginData === FALLBACK || !isAbsolute(args.importer)) return undefined;
         const sdk = owningManifest(args.importer, manifests);
         if (sdk?.name !== SDK) return undefined;
         const options = { kind: args.kind, importer: args.importer, pluginData: FALLBACK };
-        const direct = await build.resolve(args.path, { ...options, resolveDir: args.resolveDir });
         const range = sdk.zodPeer !== undefined && semver.validRange(sdk.zodPeer) !== null ? sdk.zodPeer : undefined;
-        let found: OwningManifest | undefined;
-        if (direct.errors.length === 0) {
-          if (range === undefined) return direct;
-          found = owningManifest(direct.path, manifests);
-          // A prerelease is outside the range, as a package manager would treat it.
-          if (found?.name === "zod" && found.version !== undefined && semver.satisfies(found.version, range))
-            return direct;
-        }
-        const own = await build.resolve(args.path, { ...options, resolveDir: OWN_DIRECTORY });
-        // With no Zod at all, report the project-side failure: that is the
-        // resolution a reader can act on. With an out-of-range one, never
-        // bundle it: a CLI that cannot resolve its own dependency is broken.
-        if (own.errors.length > 0) return { errors: direct.errors.length > 0 ? direct.errors : own.errors };
-        if (direct.errors.length === 0 && range !== undefined) {
-          const foundPath = found?.name === "zod" ? found.directory : direct.path;
-          if (!reported.has(foundPath)) {
-            reported.add(foundPath);
-            const mine = owningManifest(own.path, manifests);
-            onSubstitution(
-              substitutionDiagnostic({
-                range,
-                foundPath,
-                ...(found?.name === "zod" && found.version !== undefined ? { foundVersion: found.version } : {}),
-                ownPath: mine?.directory ?? own.path,
-                ...(mine?.version === undefined ? {} : { ownVersion: mine.version }),
-              }),
-            );
+        const reachable = optionsResolveFirst ? undefined : reachableZod(args.resolveDir);
+        /** The Zod the SDK would have used, when it is out of range or versionless. */
+        let found: { path: string; version?: string } | undefined;
+        let direct: ResolveResult | undefined;
+        if (reachable === undefined || reachable.kind === "pnp") {
+          direct = await build.resolve(args.path, { ...options, resolveDir: args.resolveDir });
+          if (direct.errors.length === 0) {
+            if (range === undefined) return direct;
+            const owner = owningManifest(direct.path, manifests);
+            // A prerelease is outside the range, as a package manager would treat it.
+            if (owner?.name === "zod" && owner.version !== undefined && semver.satisfies(owner.version, range))
+              return direct;
+            found =
+              owner?.name === "zod"
+                ? { path: owner.directory, ...(owner.version === undefined ? {} : { version: owner.version }) }
+                : { path: direct.path };
           }
+        } else if (reachable.kind === "found") {
+          // In range, or no floor to enforce: esbuild resolves it as it would without this plugin.
+          if (range === undefined || (reachable.version !== undefined && semver.satisfies(reachable.version, range)))
+            return undefined;
+          // The real path, as esbuild names a resolved package: pnpm's store entry, not a link to it.
+          found = {
+            path: realpathSync.native(reachable.directory),
+            ...(reachable.version === undefined ? {} : { version: reachable.version }),
+          };
+        }
+        const own = await resolveOwn(build, args.path, options, !optionsResolveFirst);
+        if (own.errors.length > 0) {
+          // With an out-of-range Zod, never bundle it: a CLI that cannot
+          // resolve its own dependency is broken.
+          if (found !== undefined) return { errors: own.errors };
+          // With no Zod at all, report the project-side failure: that is the
+          // resolution a reader can act on.
+          direct ??= await build.resolve(args.path, { ...options, resolveDir: args.resolveDir });
+          return { errors: direct.errors.length > 0 ? direct.errors : own.errors };
+        }
+        if (found !== undefined && range !== undefined && !reported.has(found.path)) {
+          reported.add(found.path);
+          const mine = owningManifest(own.path, manifests);
+          onSubstitution(
+            substitutionDiagnostic({
+              range,
+              foundPath: found.path,
+              ...(found.version === undefined ? {} : { foundVersion: found.version }),
+              ownPath: mine?.directory ?? own.path,
+              ...(mine?.version === undefined ? {} : { ownVersion: mine.version }),
+            }),
+          );
         }
         return own;
       });
