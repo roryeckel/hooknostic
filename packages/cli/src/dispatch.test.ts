@@ -800,7 +800,8 @@ export default definePlugin({
       const child = spawnSync(
         process.execPath,
         [CLI_BIN, "dispatch", "--config", join(dir, "hooknostic.config.ts"), "--target", target, ...flags],
-        { input: EVENTS.join(""), encoding: "utf8", timeout: 60_000 },
+        // Debug stacks add stderr lines these tests count, so the caller's setting must not leak in.
+        { input: EVENTS.join(""), encoding: "utf8", timeout: 60_000, env: { ...process.env, HOOKNOSTIC_DEBUG: "" } },
       );
       const results = child.stdout
         .split("\n")
