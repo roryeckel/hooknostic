@@ -1255,6 +1255,7 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
   }
 
   const mainGuardTargets: string[] = [];
+  const bundleMessages = new Set<string>();
   try {
     const skillPolicyPlans: ReturnType<typeof planProjectSkillPolicies> =
       componentSource === undefined
@@ -1339,6 +1340,12 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
             resolveDir: configDir,
             ...(Object.keys(alias).length === 0 ? {} : { alias }),
           });
+          // Every target bundles the same SDK, so report a Zod substitution once.
+          for (const diagnostic of bundle.diagnostics) {
+            if (bundleMessages.has(diagnostic.message)) continue;
+            bundleMessages.add(diagnostic.message);
+            diagnostics.push(diagnostic);
+          }
           if (adapter.shimExecution === "command" && bundleHasMainModuleGuard(bundle.code)) mainGuardTargets.push(id);
           phase = "generation";
           hookArtifacts.push(...(await adapter.compile(ir, spec, bundle, { runtime: runtimePolicy })));

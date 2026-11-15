@@ -20,6 +20,7 @@ export const DIAGNOSTIC_CODES = {
   HN106: "Agent Plugin behavior deviates from the specification",
   HN107: "project wiring is read from the root checkout, not this linked worktree",
   HN108: "event field not produced exactly",
+  HN109: "SDK's Zod outside its peer range",
   HN201: "required capability unsupported",
   HN202: "event unavailable",
   HN203: "target version outside adapter data",

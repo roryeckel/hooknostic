@@ -4,6 +4,7 @@ import { build } from "esbuild";
 
 import type { RuntimeBundle } from "./adapter.js";
 import { createRequireBanner, licenseNoticesPlugin } from "./bundle-support.mjs";
+import type { Diagnostic } from "./diagnostics.js";
 import { sdkZodFallbackPlugin, withSdkSubpathAliases } from "./sdk-resolution.js";
 
 export interface BundleOptions {
@@ -15,15 +16,21 @@ export interface BundleOptions {
   alias?: Record<string, string>;
 }
 
+export interface BundledRuntime extends RuntimeBundle {
+  /** Build-time findings about what was bundled, such as an HN109 Zod substitution. */
+  diagnostics: Diagnostic[];
+}
+
 /**
  * Bundle the portable runtime + user handlers + adapter shim into one
  * dependency-free ESM module, duplicated per target so every output
  * directory stays independently distributable.
  */
-export async function bundleRuntime(options: BundleOptions): Promise<RuntimeBundle> {
+export async function bundleRuntime(options: BundleOptions): Promise<BundledRuntime> {
   // Give esbuild the same canonical root used to match its output files and
   // collect license notices, including Windows short directory names.
   const resolveDir = await realpath(options.resolveDir);
+  const diagnostics: Diagnostic[] = [];
   const result = await build({
     stdin: {
       contents: options.source,
@@ -48,7 +55,7 @@ export async function bundleRuntime(options: BundleOptions): Promise<RuntimeBund
     outfile: "hooknostic-runtime.mjs",
     minify: false,
     legalComments: "eof",
-    plugins: [sdkZodFallbackPlugin(), licenseNoticesPlugin()],
+    plugins: [sdkZodFallbackPlugin((diagnostic) => diagnostics.push(diagnostic)), licenseNoticesPlugin()],
     logLevel: "silent",
     banner: {
       js:
@@ -59,7 +66,7 @@ export async function bundleRuntime(options: BundleOptions): Promise<RuntimeBund
   });
   const code = result.outputFiles[0]?.text;
   if (code === undefined) throw new Error("esbuild produced no runtime bundle output");
-  return { code };
+  return { code, diagnostics };
 }
 
 /**

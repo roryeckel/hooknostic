@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readdir, realpath, rm, writeFile } from "node:fs/promises";
+import { readFileSync } from "node:fs";
+import { mkdir, mkdtemp, readdir, realpath, rm, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
@@ -59,8 +60,15 @@ if (plugin.hooks[0]?.capabilities["tool.before.block"] !== "required") throw new
 `;
 
 async function run(command, args, cwd) {
-  const result = await runProcess(command, args, { cwd, timeoutMs: 120_000 });
+  const result = await runProcess(command, args, { cwd, timeoutMs: 240_000 });
   if (!result.ok) throw new Error(`${command} failed (${result.exitCode}): ${result.stdout}${result.stderr}`);
+  return result;
+}
+
+/** Version of the package whose manifest `specifier` names, resolved from `from`. */
+function installedVersion(specifier, from) {
+  const path = createRequire(join(from, "package.json")).resolve(specifier);
+  return { path, version: JSON.parse(readFileSync(path, "utf8")).version };
 }
 
 /** A consumer project with a strict tsconfig that also checks the SDK's declarations. */
@@ -112,6 +120,93 @@ try {
     `Without zod, @hooknostic/sdk/schemas must fail to load: ${schemas.stdout}${schemas.stderr}`,
   );
   console.log("Packed SDK without Zod: root types and authoring API passed; schemas subpath needs Zod");
+
+  // An npm project that declares no Zod but inherits zod@3.25.76 from an
+  // unrelated dependency, hoisted beside the SDK (below), so the SDK's schemas
+  // can reach it. GHSA-mrhx-c7xc-m3w5
+  // affects that release's own v4 entry: the build must bundle an in-range Zod
+  // and warn HN109 instead (ADR-0040). The CLI is installed on its own, as a
+  // global or `npx` CLI is: in the project's tree its Zod satisfies the SDK's
+  // peer edge too, and npm would hoist that one instead.
+  await run("pnpm", ["--filter", "hooknostic", "pack", "--pack-destination", directory], root);
+  const cliTarball = (await readdir(directory)).find((name) => /^hooknostic-\d.*\.tgz$/.test(name));
+  assert.ok(cliTarball, "CLI tarball is missing");
+  const tarball = (name) => pathToFileURL(join(directory, name)).href;
+  const cliInstall = await mkdtemp(join(directory, "npm-cli-"));
+  await writeFile(
+    join(cliInstall, "package.json"),
+    JSON.stringify({
+      private: true,
+      dependencies: { "@hooknostic/sdk": sdk, hooknostic: tarball(cliTarball) },
+      // The CLI's own SDK dependency is this release; take it from the same tarball.
+      overrides: { "@hooknostic/sdk": "$@hooknostic/sdk" },
+    }),
+  );
+  await run("npm", ["install", "--ignore-scripts", "--no-audit", "--no-fund"], cliInstall);
+  const pinned = await mkdtemp(join(directory, "pinned-zod-"));
+  await writeFile(
+    join(pinned, "package.json"),
+    JSON.stringify({
+      name: "@example/pinned-zod",
+      version: "1.0.0",
+      main: "index.js",
+      dependencies: { zod: "3.25.76" },
+    }),
+  );
+  await writeFile(join(pinned, "index.js"), "module.exports = {};");
+  await run("pnpm", ["pack", "--pack-destination", directory], pinned);
+  const pinnedTarball = (await readdir(directory)).find((name) => name.startsWith("example-pinned-zod-"));
+  assert.ok(pinnedTarball, "pinned-zod tarball is missing");
+  const npmProject = await mkdtemp(join(directory, "npm-consumer-"));
+  await writeFile(
+    join(npmProject, "package.json"),
+    JSON.stringify({
+      private: true,
+      type: "module",
+      dependencies: { "@example/pinned-zod": tarball(pinnedTarball), "@hooknostic/sdk": sdk },
+    }),
+  );
+  await mkdir(join(npmProject, "src"));
+  await writeFile(
+    join(npmProject, "hooknostic.config.ts"),
+    readFileSync(join(root, "examples/basic/hooknostic.config.ts"), "utf8"),
+  );
+  await writeFile(join(npmProject, "src/hooks.ts"), readFileSync(join(root, "examples/basic/src/hooks.ts"), "utf8"));
+  // npm's default peer handling installs an in-range Zod for the optional peer
+  // once any Zod is in the tree, nesting the old one. Projects that set
+  // legacy-peer-deps (npm 3-6 behaviour, still common in .npmrc) ignore the
+  // peer, and npm hoists zod@3.25.76 beside the SDK with no ERESOLVE.
+  await run("npm", ["install", "--legacy-peer-deps", "--ignore-scripts", "--no-audit", "--no-fund"], npmProject);
+  // The layout under test, asserted rather than assumed: the old Zod is hoisted
+  // and reachable from the SDK, and the CLI's in-range Zod is its own.
+  const sdkDirectory = join(npmProject, "node_modules/@hooknostic/sdk");
+  const reached = installedVersion("zod/package.json", sdkDirectory);
+  assert.equal(reached.version, "3.25.76", `the SDK must reach the hoisted Zod, got ${reached.path}`);
+  assert.equal(dirname(reached.path), join(npmProject, "node_modules/zod"));
+  const cliZod = installedVersion("zod/package.json", join(cliInstall, "node_modules/hooknostic"));
+  assert.ok(semver.satisfies(cliZod.version, range), `the CLI's Zod ${cliZod.version} must satisfy ${range}`);
+  const cli = join(cliInstall, "node_modules/hooknostic/bin/hooknostic.mjs");
+  const warning = /^HN109 SDK's Zod outside its peer range \[warn\]$/m;
+  const named = `the SDK's zod import resolved to zod@3.25.76 at ${join(npmProject, "node_modules", "zod")}`;
+  let reported = "";
+  for (const command of ["check", "build"]) {
+    const output = (await run(process.execPath, [cli, command, "--config", "hooknostic.config.ts"], npmProject)).stdout;
+    assert.match(output, warning, `${command} must warn HN109:\n${output}`);
+    assert.ok(output.includes(named), `${command}'s HN109 must name the found Zod:\n${output}`);
+    assert.ok(output.includes(`Hooknostic's own zod@${cliZod.version}`), `${command} must name the bundled Zod`);
+    assert.equal(output.match(/^HN109 /gm).length, 1, `${command} reports HN109 once, not per target`);
+    reported = output
+      .slice(output.search(warning))
+      .split(/\n(?=HN\d{3} |PASS |BUILT |FAIL )/)[0]
+      .trim();
+  }
+  for (const artifact of ["dist/claude/runtime/hooknostic.mjs", "dist/codex/.codex/hooknostic/hooknostic.mjs"]) {
+    const code = readFileSync(join(npmProject, artifact), "utf8");
+    assert.ok(code.includes(`zod@${cliZod.version}`), `${artifact} must carry the CLI's Zod notice`);
+    assert.ok(!code.includes("zod@3.25.76"), `${artifact} must not bundle zod@3.25.76`);
+    assert.doesNotMatch(code, /^\/\/ node_modules\/zod\//m, `${artifact} must not bundle the hoisted Zod`);
+  }
+  console.log(`npm consumer with a hoisted zod@3.25.76: bundled zod@${cliZod.version} and warned HN109\n\n${reported}`);
 } finally {
   await rm(directory, { recursive: true, force: true });
 }
