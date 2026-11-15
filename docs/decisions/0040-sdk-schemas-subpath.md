@@ -63,7 +63,12 @@ from the barrel alone.
    `node_modules` may serve the import, and esbuild's `alias` for zod,
    `nodePaths` and `preserveSymlinks` change what it reaches. Those builds
    resolve the SDK's import first and check the version of the package it
-   resolved to. Only the SDK's imports are redirected. User code that imports Zod keeps the project's
+   resolved to. A Plug'n'Play build requires Yarn's runtime (`yarn hooknostic`):
+   without it, as under plain `node`, `npx`, a global install or `pnpm dlx`,
+   or under `yarn dlx` when the build needs Hooknostic's own Zod, it fails with
+   HN504 rather than bundle around what this process cannot read (#183;
+   supporting those invocations is #190).
+   Only the SDK's imports are redirected. User code that imports Zod keeps the project's
    copy, so the artifact then carries two. User code that imports Zod without
    installing it still fails.
 5. **An SDK alias covers the subpath.** esbuild appends a subpath to an alias

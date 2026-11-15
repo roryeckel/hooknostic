@@ -662,7 +662,8 @@ Plugin component unsupported, **HN206** Agent Plugin component below the minimum
 (still emitted under `onBelowMinimum: "warn"`), **HN301** adapter
 generation failure, **HN302** output commit failure, **HN401** unsupported effect returned
 at runtime, **HN501** invalid configuration, **HN502** bundled CLI entry point,
-**HN503** invalid Agent Plugin input, unsafe path, or unmergeable overlay.
+**HN503** invalid Agent Plugin input, unsafe path, or unmergeable overlay,
+**HN504** Yarn Plug'n'Play install outside Yarn's runtime.
 **HN103** an effect was truncated or dropped by a runtime budget.
 **HN104** a declared executable mode cannot apply to a skill the target discovers
 in place. **HN105** a declared MCP environment names a server that cannot receive
@@ -684,6 +685,17 @@ the runtime bundles Hooknostic's own Zod instead. It is a warning, reported once
 per build, and it names the version and path found, the range, and the copy
 bundled. A project with no reachable Zod gets Hooknostic's copy without one.
 User code that imports Zod still bundles the project's copy (ADR-0040).
+**HN504** a build under a Yarn Plug'n'Play manifest needs a module from Yarn's
+install that this process cannot read, because Hooknostic is running without
+Yarn's PnP runtime: under plain `node`, `npx`, a global install or `pnpm dlx`.
+esbuild reads Yarn's zip archives itself, but what Hooknostic reads beside a
+module -- the SDK's manifest, licence notices -- would come back missing, so
+the build fails instead of bundling around it. `yarn dlx` loads a runtime, but
+not the project's, so a build that needs Hooknostic's own Zod fails the same
+way. It is an error, reported once per build, naming the module and the PnP
+manifest, or under `yarn dlx` where Hooknostic's own Zod failed to resolve. Run Hooknostic through Yarn from the project, `yarn hooknostic`,
+with `hooknostic` as a devDependency (ADR-0040; supporting the other
+invocations is #190).
 
 #### HN502 — bundled CLI entry point
 

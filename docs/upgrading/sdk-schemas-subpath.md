@@ -83,7 +83,13 @@ in one of two cases:
   project's copy, so the artifact then carries two. Install a Zod in the
   range to share one.
 
-Under Yarn Plug'n'Play, run Hooknostic through Yarn (`yarn hooknostic`).
+Under Yarn Plug'n'Play, install `hooknostic` as a devDependency and run it
+through Yarn (`yarn hooknostic`), which loads the project's PnP runtime.
+`npx`, a global install and `pnpm dlx` run without it, and the build fails
+with HN504. `yarn dlx` fails with HN504 when the build needs Hooknostic's own
+Zod, because its install is not in the project's PnP manifest. Supporting
+those invocations is tracked in
+[#190](https://github.com/roryeckel/hooknostic/issues/190).
 
 Keep the SDK and CLI on the same Hooknostic release: an older CLI cannot bundle
 against this SDK. Rebuild or re-sync with the new CLI to regenerate owned
