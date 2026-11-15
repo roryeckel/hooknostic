@@ -91,19 +91,34 @@ it("includes the SDK's own license in standalone runtimes as well as third-party
   expect(result.code).toContain((await readFile(zodLicense, "utf8")).replaceAll("\r\n", "\n").trim());
 });
 
+/** The `node_modules/zod` that Node resolution from `directory` would reach, if any. */
+function strayZod(directory: string): string | undefined {
+  for (let current = directory; ; current = dirname(current)) {
+    if (existsSync(join(current, "node_modules/zod"))) return join(current, "node_modules/zod");
+    if (dirname(current) === current) return undefined;
+  }
+}
+
+/**
+ * A fresh temporary directory from which no Zod is reachable: a stray Zod in
+ * an ancestor of the temporary directory would satisfy imports a test expects
+ * to find nothing.
+ */
+async function zodFreeTemporaryDirectory(prefix: string): Promise<string> {
+  const root = await mkdtemp(join(await realpath(tmpdir()), prefix));
+  const stray = strayZod(root);
+  if (stray !== undefined) {
+    await rm(root, { recursive: true, force: true });
+    throw new Error(`precondition: no Zod may be reachable from ${tmpdir()}, but ${stray} is`);
+  }
+  return root;
+}
+
 describe("an SDK installed without its optional Zod peer", () => {
   /** The stand-in SDK's declared peer range; the plugin reads it from the manifest. */
   const PEER = "^4.6.7";
   const ownZodManifest = createRequire(import.meta.url).resolve("zod/package.json");
   const ownZodVersion = (JSON.parse(readFileSync(ownZodManifest, "utf8")) as { version: string }).version;
-
-  /** The `node_modules/zod` that Node resolution from `directory` would reach, if any. */
-  function strayZod(directory: string): string | undefined {
-    for (let current = directory; ; current = dirname(current)) {
-      if (existsSync(join(current, "node_modules/zod"))) return join(current, "node_modules/zod");
-      if (dirname(current) === current) return undefined;
-    }
-  }
 
   const link = (target: string, path: string) =>
     symlink(target, path, process.platform === "win32" ? "junction" : "dir");
@@ -161,14 +176,8 @@ describe("an SDK installed without its optional Zod peer", () => {
       peer?: string;
     } = {},
   ): Promise<{ root: string; sdkEntry: string }> {
-    const root = await mkdtemp(join(await realpath(tmpdir()), "hooknostic-no-zod-"));
-    // Without a stand-in, "no Zod" must mean none at all: a stray Zod in an
-    // ancestor of the temporary directory would satisfy these imports instead.
-    const stray = strayZod(root);
-    if (stray !== undefined) {
-      await rm(root, { recursive: true, force: true });
-      throw new Error(`precondition: no Zod may be reachable from ${tmpdir()}, but ${stray} is`);
-    }
+    // Without a stand-in, "no Zod" must mean none at all.
+    const root = await zodFreeTemporaryDirectory("hooknostic-no-zod-");
     const pnpm = options.layout === "pnpm";
     const version = options.zod === undefined ? undefined : (options.zod ?? "unversioned");
     const store = join(root, "node_modules/.pnpm");
@@ -594,7 +603,7 @@ describe("reachableZod", () => {
   });
 
   it("finds none where no zod is on the lookup path", async () => {
-    const root = await mkdtemp(join(await realpath(tmpdir()), "hooknostic-reachable-"));
+    const root = await zodFreeTemporaryDirectory("hooknostic-reachable-");
     try {
       await mkdir(join(root, "app/src"), { recursive: true });
       expect(reachableZod(join(root, "app/src"))).toEqual({ kind: "none" });
