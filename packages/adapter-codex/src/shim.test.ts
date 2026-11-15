@@ -289,9 +289,22 @@ describe("Codex command shim plugin loading and exit", () => {
   it("treats a payload that is not JSON as ignored", async () => {
     const result = await runCodexShim(PLUGIN, CAPS, { input: "not json" });
     expect(result).toMatchObject({ code: 0, stdout: "" });
-    expect(result.stderr).not.toContain("hooknostic:");
+    expect(result.stderr).not.toMatch(/^hooknostic /m);
     const traced = await runCodexShim(PLUGIN, CAPS, { input: "not json", env: { HOOKNOSTIC_DEBUG: "1" } });
     expect(traced.stderr).toMatch(/^hooknostic debug: ignored payload: payload is not JSON/m);
+  });
+
+  it("reports a plugin module that throws as an internal error, and fails open", async () => {
+    const THROWING = `throw new Error("plugin module failed");\nexport default {};`;
+    const result = await runCodexShim(THROWING, CAPS);
+    expect(result).toMatchObject({ code: 0, stdout: "" });
+    // One whole line, newline included, naming the native event.
+    expect(result.stderr).toMatch(/^hooknostic internal \[PreToolUse\]: plugin module failed\n/m);
+    const traced = await runCodexShim(THROWING, CAPS, { env: { HOOKNOSTIC_DEBUG: "1" } });
+    expect(traced.code).toBe(0);
+    expect(traced.stderr).toMatch(
+      /^hooknostic internal \[PreToolUse\]: plugin module failed\nError: plugin module failed\n\s+at /m,
+    );
   });
 });
 

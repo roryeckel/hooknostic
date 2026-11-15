@@ -30,6 +30,7 @@ async function runShim(
   capabilities: Record<string, "exact">,
   args: string[] = ["preToolUse"],
   timeoutMs = 5_000,
+  env: NodeJS.ProcessEnv = {},
 ): Promise<{ stdout: string; stderr: string; code: number | null }> {
   const dir = await mkdtemp(join(tmpdir(), "hooknostic-copilot-shim-"));
   cleanup.push(dir);
@@ -50,7 +51,7 @@ async function runShim(
   return new Promise((resolvePromise, rejectPromise) => {
     const child = spawn(process.execPath, [bundlePath, ...args], {
       stdio: ["pipe", "pipe", "pipe"],
-      env: { ...process.env, HOOKNOSTIC_DEBUG: "" },
+      env: { ...process.env, HOOKNOSTIC_DEBUG: "", ...env },
     });
     let stdout = "";
     let stderr = "";
@@ -135,6 +136,24 @@ describe("Copilot command shim", () => {
     );
     expect(result.code).toBe(0);
     expect(result.stdout).toBe("");
+    // Not ours is not a defect: nothing is reported.
+    expect(result.stderr).not.toMatch(/^hooknostic /m);
+  });
+
+  it("reports a plugin module that throws as an internal error, and fails open", async () => {
+    const THROWING = `throw new Error("plugin module failed");\nexport default {};`;
+    const caps = { "tool.before.observe": "exact" } as const;
+    const result = await runShim(THROWING, await fixture("tool-before.input.json"), caps);
+    expect(result).toMatchObject({ code: 0, stdout: "" });
+    // One whole line, newline included, naming the native event.
+    expect(result.stderr).toMatch(/^hooknostic internal \[preToolUse\]: plugin module failed\n/m);
+    const traced = await runShim(THROWING, await fixture("tool-before.input.json"), caps, undefined, undefined, {
+      HOOKNOSTIC_DEBUG: "1",
+    });
+    expect(traced.code).toBe(0);
+    expect(traced.stderr).toMatch(
+      /^hooknostic internal \[preToolUse\]: plugin module failed\nError: plugin module failed\n\s+at /m,
+    );
   });
 
   it("flushes a response larger than the pipe buffer before exiting", async () => {

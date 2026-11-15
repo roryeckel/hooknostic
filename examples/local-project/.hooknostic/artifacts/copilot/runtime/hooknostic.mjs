@@ -7487,6 +7487,17 @@ function debugEnabled(env = globalThis.process?.env) {
   const flag = env?.["HOOKNOSTIC_DEBUG"];
   return flag !== void 0 && flag !== "" && flag !== "0";
 }
+function formatInternalError(error2, options = {}) {
+  const line = `hooknostic internal${options.hook ? ` [${options.hook}]` : ""}: ${errorMessage(error2)}`;
+  if (!options.stack) return line;
+  try {
+    const stack = error2 instanceof Error ? error2.stack : void 0;
+    return typeof stack === "string" && stack !== "" ? `${line}
+${stack}` : line;
+  } catch {
+    return line;
+  }
+}
 function createCapabilitySet(levels) {
   const levelOf = (id) => (Object.hasOwn(levels, id) ? levels[id] : void 0) ?? "unsupported";
   return {
@@ -8196,6 +8207,11 @@ async function readStdin() {
   for await (const chunk of process.stdin) data += chunk;
   return data;
 }
+function statedHook(payload) {
+  const record2 = payload;
+  const name = typeof record2?.hook_event_name === "string" ? record2.hook_event_name : record2?.hookName;
+  return typeof name === "string" ? name : void 0;
+}
 async function writeStream(stream, contents) {
   if (stream.writableEnded || stream.destroyed) return;
   await new Promise((resolve) => {
@@ -8206,14 +8222,16 @@ async function runCopilotCommandShim(source, options) {
   let exitCode = 0;
   const stdout = claimProtocolStdout();
   const trace = debugTracer();
+  let hook2 = process.argv[2];
   try {
-    const plugin = await loadCommandPlugin(source);
     let nativeEvent;
     try {
       nativeEvent = JSON.parse(await readStdin());
     } catch (error2) {
       throw new CopilotDecodeError(`payload is not JSON: ${error2 instanceof Error ? error2.message : String(error2)}`);
     }
+    hook2 = statedHook(nativeEvent) ?? hook2;
+    const plugin = await loadCommandPlugin(source);
     const invocation = {
       targetId: "copilot",
       ...options.harnessVersion !== void 0 ? { harnessVersion: options.harnessVersion } : {}
@@ -8244,7 +8262,9 @@ async function runCopilotCommandShim(source, options) {
   } catch (error2) {
     if (error2 instanceof CopilotDecodeError) trace?.(`ignored payload: ${error2.message}`);
     else {
-      await writeStream(process.stderr, `hooknostic: ${error2 instanceof Error ? error2.message : String(error2)}`);
+      const line = formatInternalError(error2, { ...hook2 !== void 0 ? { hook: hook2 } : {}, stack: debugEnabled() });
+      await writeStream(process.stderr, `${line}
+`);
     }
     exitCode = 0;
   }

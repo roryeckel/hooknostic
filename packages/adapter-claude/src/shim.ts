@@ -2,12 +2,14 @@ import type { CapabilityLevels } from "@hooknostic/runtime";
 import {
   claimProtocolStdout,
   type CommandPluginSource,
+  debugEnabled,
   debugTracer,
   describeDecodedEvent,
   describeHookResult,
   dispatch,
   finishCommandShim,
   formatHandlerErrors,
+  formatInternalError,
   loadCommandPlugin,
 } from "@hooknostic/runtime";
 import type { RuntimePolicy, SupportLevel } from "@hooknostic/sdk";
@@ -37,6 +39,12 @@ async function readStdin(): Promise<string> {
   return data;
 }
 
+/** The native event a payload states, read without decoding it. */
+function statedHook(payload: unknown): string | undefined {
+  const name = (payload as { hook_event_name?: unknown } | null)?.hook_event_name;
+  return typeof name === "string" ? name : undefined;
+}
+
 /** Write and wait for the flush. A stream a handler ended or destroyed is skipped, not fatal. */
 async function writeStream(stream: NodeJS.WriteStream, contents: string): Promise<void> {
   if (stream.writableEnded || stream.destroyed) return;
@@ -55,14 +63,18 @@ export async function runClaudeCommandShim(source: CommandPluginSource, options:
   let exitCode = 0;
   const stdout = claimProtocolStdout();
   const trace = debugTracer();
+  let hook: string | undefined;
   try {
-    const plugin = await loadCommandPlugin(source);
     let nativeEvent: unknown;
     try {
       nativeEvent = JSON.parse(await readStdin());
     } catch (error) {
       throw new ClaudeDecodeError(`payload is not JSON: ${error instanceof Error ? error.message : String(error)}`);
     }
+    // Read before the plugin loads, so a plugin that fails to load is reported
+    // against the event it interrupted. Parsed JSON has no getters to throw.
+    hook = statedHook(nativeEvent);
+    const plugin = await loadCommandPlugin(source);
     const invocation = {
       targetId: "claude",
       ...(options.harnessVersion !== undefined ? { harnessVersion: options.harnessVersion } : {}),
@@ -100,7 +112,9 @@ export async function runClaudeCommandShim(source: CommandPluginSource, options:
   } catch (error) {
     if (error instanceof ClaudeDecodeError) trace?.(`ignored payload: ${error.message}`);
     else {
-      await writeStream(process.stderr, `hooknostic: ${error instanceof Error ? error.message : String(error)}`);
+      // A Hooknostic defect, not a hook's: the same line the in-process shims report.
+      const line = formatInternalError(error, { ...(hook !== undefined ? { hook } : {}), stack: debugEnabled() });
+      await writeStream(process.stderr, `${line}\n`);
     }
     exitCode = 0; // fail-open
   }
