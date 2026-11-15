@@ -57,6 +57,7 @@ describe("Codex command shim stream draining", () => {
       (resolvePromise, rejectPromise) => {
         const child = spawn(process.execPath, [bundlePath], {
           stdio: ["pipe", "pipe", "pipe"],
+          env: { ...process.env, HOOKNOSTIC_DEBUG: "" },
         });
         let stdout = "";
         let stderr = "";
@@ -120,6 +121,7 @@ describe("Codex command shim stream draining", () => {
     }>((resolvePromise, rejectPromise) => {
       const child = spawn(process.execPath, [bundlePath], {
         stdio: ["pipe", "pipe", "pipe"],
+        env: { ...process.env, HOOKNOSTIC_DEBUG: "" },
       });
       let stdout = "";
       let stderr = "";

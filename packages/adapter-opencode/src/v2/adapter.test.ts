@@ -1,7 +1,7 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { analyzeCapabilities, buildPluginIR, resolveTargetAdapter } from "@hooknostic/core";
 import {
@@ -263,6 +263,14 @@ describe("v2 captured boundary", () => {
   });
 
   describe("internal errors (#180)", () => {
+    // Reports gain a stack under HOOKNOSTIC_DEBUG; the lines asserted here have none.
+    beforeEach(() => {
+      vi.stubEnv("HOOKNOSTIC_DEBUG", "");
+    });
+    afterEach(() => {
+      vi.unstubAllEnvs();
+    });
+
     // OpenCode 2.x fails closed on any plugin throw in these domains
     // (.capture/opencode-v2-plugin-throw), so the shim's own defects must not
     // reach it: they are reported and the call proceeds as if no hook ran.

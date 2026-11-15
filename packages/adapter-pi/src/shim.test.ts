@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { PluginSpec } from "@hooknostic/sdk";
 import { definePlugin, hook, notify, replaceInput } from "@hooknostic/sdk";
@@ -44,6 +44,14 @@ async function fire(
 }
 
 describe("createHooknosticExtension", () => {
+  // Internal-error reports gain a stack under HOOKNOSTIC_DEBUG; the lines asserted here have none.
+  beforeEach(() => {
+    vi.stubEnv("HOOKNOSTIC_DEBUG", "");
+  });
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   it.each([
     { fixture: "tool-call-bash", portable: "tool.before", native: "tool_call" },
     { fixture: "agent-settled-resumed", portable: "turn.stop", native: "agent_settled" },

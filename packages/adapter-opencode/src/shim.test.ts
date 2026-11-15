@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   addContext,
@@ -92,6 +92,14 @@ function internalLines(spy: { mock: { calls: unknown[][] } }): unknown[] {
 }
 
 describe("createHooknosticHooks", () => {
+  // Internal-error reports gain a stack under HOOKNOSTIC_DEBUG; the lines asserted here have none.
+  beforeEach(() => {
+    vi.stubEnv("HOOKNOSTIC_DEBUG", "");
+  });
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   it("copies __proto__ as an own data key without changing live argument identity or prototype", async () => {
     const replacement = JSON.parse('{"__proto__":{"injected":"yes"},"command":"echo safe"}');
     const plugin = definePlugin({
