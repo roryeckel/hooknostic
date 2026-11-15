@@ -18,7 +18,7 @@ import {
 import { runBuild } from "./build.js";
 import type { CommandIO } from "./check.js";
 import { runCheck } from "./check.js";
-import { runDispatch } from "./dispatch.js";
+import { runDispatchWith } from "./dispatch.js";
 import { runDoctor } from "./doctor.js";
 import { runInit } from "./init.js";
 import { runInspect } from "./inspect.js";
@@ -339,22 +339,24 @@ export async function runCli(argv: string[], options?: RunCliOptions): Promise<n
         const writes: Promise<void>[] = [];
         let code: number;
         try {
-          code = await runDispatch({
-            ...(typeof parsed.values["config"] === "string" ? { config: parsed.values["config"] } : {}),
-            target,
-            input,
-            registry,
-            ...(guarded === undefined ? {} : { onEventStart: guarded.onEventStart, onEventEnd: guarded.onEventEnd }),
-            io:
-              protocol === undefined
-                ? io
-                : {
-                    stdout: (text) => {
-                      writes.push(protocol.writeReply(`${text}\n`));
+          code = await runDispatchWith(
+            {
+              ...(typeof parsed.values["config"] === "string" ? { config: parsed.values["config"] } : {}),
+              target,
+              input,
+              registry,
+              io:
+                protocol === undefined
+                  ? io
+                  : {
+                      stdout: (text) => {
+                        writes.push(protocol.writeReply(`${text}\n`));
+                      },
+                      stderr: io.stderr,
                     },
-                    stderr: io.stderr,
-                  },
-          });
+            },
+            guarded === undefined ? {} : { onEventStart: guarded.onEventStart, onEventEnd: guarded.onEventEnd },
+          );
         } catch (error) {
           // The catch below answers 2; the guard's up-front 1 must not override it.
           guarded?.fail();

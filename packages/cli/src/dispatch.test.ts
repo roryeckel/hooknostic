@@ -21,8 +21,9 @@ import { stageUserModule } from "@hooknostic/core";
 import type { PluginSpec } from "@hooknostic/sdk";
 
 import { runCli } from "./cli.js";
-import type { DispatchResult } from "./dispatch.js";
+import type { DispatchCommandOptions, DispatchEventsOptions, DispatchResult } from "./dispatch.js";
 import { DISPATCH_NATIVE_EVENT, dispatchEvents } from "./dispatch.js";
+import * as api from "./index.js";
 import { defaultAdapterRegistry } from "./registry.js";
 
 const HERE = fileURLToPath(new URL(".", import.meta.url));
@@ -930,6 +931,22 @@ export default definePlugin({
         await runCli(["check", "--unguarded", "--config", join(dir, "hooknostic.config.ts")], { io: cli.io }),
       ).toBe(2);
       expect(cli.err()).toContain("--unguarded is only supported by dispatch");
+    });
+
+    it("keeps the guard's event hooks out of the package's API", async () => {
+      // Type-level, so `pnpm build`'s tsc enforces it: neither public options
+      // type, nor the public functions' parameters, may carry the hooks.
+      type Leaked = Extract<
+        keyof DispatchEventsOptions | keyof DispatchCommandOptions | keyof Parameters<typeof api.dispatchEvents>[0],
+        `onEvent${string}`
+      >;
+      const leaked: [Leaked] extends [never] ? "none" : Leaked = "none";
+      const arity: [Parameters<typeof api.dispatchEvents>["length"], Parameters<typeof api.runDispatch>["length"]] = [
+        1, 1,
+      ];
+      expect([leaked, arity]).toEqual(["none", [1, 1]]);
+      expect(Object.keys(api)).not.toContain("dispatchEventsWith");
+      expect(Object.keys(api)).not.toContain("runDispatchWith");
     });
 
     it("never guards an in-process runCli with an injected io", async () => {

@@ -53,25 +53,30 @@ export interface DispatchEventsOptions {
   registry: AdapterRegistry;
   /** Module resolution overrides for fixture/self-hosted evaluation. */
   evaluate?: EvaluateOptions;
-  /**
-   * Told when event `index` (0-based) starts, before a command target loads
-   * its module for it, with how the target's shim runs.
-   *
-   * @internal For the `hooknostic dispatch` command's guard; not a stable API.
-   */
-  onEventStart?(index: number, execution: "command" | "module" | undefined): void;
-  /**
-   * Awaited once event `index` has its result, before the next event starts.
-   *
-   * @internal For the `hooknostic dispatch` command's guard; not a stable API.
-   */
-  onEventEnd?(index: number): Promise<void>;
 }
 
 export interface DispatchCommandOptions extends Omit<DispatchEventsOptions, "events"> {
   /** JSON Lines, one portable event per line. */
   input: string;
   io: CommandIO;
+}
+
+/**
+ * Told as each event runs, for the `hooknostic dispatch` command's guard
+ * (#189). Internal: the package's entry re-exports neither this nor the
+ * `...With` functions that take it, so the public options stay as they were.
+ */
+export interface DispatchEventHooks {
+  /**
+   * Event `index` (0-based) starts, with how the target's shim runs. A
+   * command target then loads a fresh module instance for it, so what that
+   * load does falls inside the event. The first event instead reuses the
+   * instance loaded before any event to analyse the hooks, so what that load
+   * does synchronously happens before this is called for index 0.
+   */
+  onEventStart?(index: number, execution: "command" | "module" | undefined): void;
+  /** Awaited once event `index` has its result, before the next event starts. */
+  onEventEnd?(index: number): Promise<void>;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -318,6 +323,14 @@ function completeEvent(
  * would send (ADR-0023).
  */
 export async function dispatchEvents(options: DispatchEventsOptions): Promise<DispatchOutcome> {
+  return dispatchEventsWith(options, {});
+}
+
+/** {@link dispatchEvents}, telling `hooks` as each event runs. Internal. */
+export async function dispatchEventsWith(
+  options: DispatchEventsOptions,
+  hooks: DispatchEventHooks,
+): Promise<DispatchOutcome> {
   const configPath = resolve(options.config ?? "hooknostic.config.ts");
   const loaded = await loadConfig(configPath, options.evaluate);
   if (!loaded.config) return { ok: false, errors: [formatDiagnostics(loaded.diagnostics)] };
@@ -390,7 +403,7 @@ export async function dispatchEvents(options: DispatchEventsOptions): Promise<Di
     };
     const results: DispatchResult[] = [];
     for (const [index, { event, shellDialect }] of events.entries()) {
-      options.onEventStart?.(index, adapter.shimExecution);
+      hooks.onEventStart?.(index, adapter.shimExecution);
       // A command harness starts a fresh process for every dispatch, so no
       // module state may carry between events there; an in-process one keeps a
       // single instance for its lifetime.
@@ -406,7 +419,7 @@ export async function dispatchEvents(options: DispatchEventsOptions): Promise<Di
         ...(event.harness.version === undefined ? {} : { harnessVersion: event.harness.version }),
       });
       results.push({ ...result, target: options.target, native });
-      await options.onEventEnd?.(index);
+      await hooks.onEventEnd?.(index);
     }
     return { ok: true, results };
   } catch (error) {
@@ -422,6 +435,11 @@ export async function dispatchEvents(options: DispatchEventsOptions): Promise<Di
  * allowed, so event N is line N.
  */
 export async function runDispatch(options: DispatchCommandOptions): Promise<number> {
+  return runDispatchWith(options, {});
+}
+
+/** {@link runDispatch}, telling `hooks` as each event runs. Internal. */
+export async function runDispatchWith(options: DispatchCommandOptions, hooks: DispatchEventHooks): Promise<number> {
   const { input, io, ...rest } = options;
   const lines = input.split(/\r?\n/);
   if (lines.at(-1) === "") lines.pop();
@@ -435,7 +453,9 @@ export async function runDispatch(options: DispatchCommandOptions): Promise<numb
     }
   });
   const outcome =
-    problems.length > 0 ? { ok: false as const, errors: problems } : await dispatchEvents({ ...rest, events });
+    problems.length > 0
+      ? { ok: false as const, errors: problems }
+      : await dispatchEventsWith({ ...rest, events }, hooks);
   if (!outcome.ok) {
     for (const error of outcome.errors) io.stderr(error);
     return 2;
