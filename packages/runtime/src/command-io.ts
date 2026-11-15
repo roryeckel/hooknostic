@@ -5,7 +5,7 @@ import { Writable } from "node:stream";
 
 import type { HookEvent, HookResult, PluginSpec } from "@hooknostic/sdk";
 
-import { debugEnabled } from "./report.js";
+import { debugEnabled, isInstance } from "./report.js";
 
 /** What a command shim is given: the plugin, or a loader it calls once stdout is claimed. */
 export type CommandPluginSource = PluginSpec | (() => Promise<{ default: PluginSpec }>);
@@ -115,6 +115,10 @@ export class HookSourceExitError extends Error {
   }
 }
 
+function exitKey(code: unknown): string {
+  return `exit:${exitCodeText(code)}`;
+}
+
 function exitCodeText(code: unknown): string {
   try {
     return code === undefined ? "" : String(code);
@@ -204,8 +208,11 @@ export function guardCommandShim(describe: (error: unknown) => string): CommandS
     reported.add(key);
     return true;
   };
+  // Each exit is a new HookSourceExitError, so one code is one report: a
+  // hook source that exits from a loop it keeps alive must not flood stderr.
+  const keyOf = (error: unknown): unknown => (isInstance(error, HookSourceExitError) ? exitKey(error.code) : error);
   const report = async (error: unknown): Promise<void> => {
-    if (!firstTime(error)) return;
+    if (!firstTime(keyOf(error))) return;
     const text = line(error);
     if (text !== undefined) await write(text);
   };
@@ -259,7 +266,7 @@ export function guardCommandShim(describe: (error: unknown) => string): CommandS
   process.exit = function exitFromHookSource(code?: number | string | null): never {
     const error = new HookSourceExitError(code);
     if (!cannotUnwind && !finished) throw error;
-    reportNow(error, `exit:${exitCodeText(code)}`);
+    reportNow(error, exitKey(code));
     return exit(decided ?? 0);
   } as typeof process.exit;
   // `import { exit } from "node:process"` is a live binding set at startup.

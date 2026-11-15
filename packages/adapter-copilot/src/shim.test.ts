@@ -31,7 +31,10 @@ async function runShim(
   args: string[] = ["preToolUse"],
   timeoutMs = 5_000,
   env: NodeJS.ProcessEnv = {},
-): Promise<{ stdout: string; stderr: string; code: number | null; elapsedMs: number }> {
+  // For a hook source that keeps the process alive on purpose: kill it here and
+  // resolve with what it wrote, rather than reject at the deadline.
+  killAfterMs?: number,
+): Promise<{ stdout: string; stderr: string; code: number | null; elapsedMs: number; killed: boolean }> {
   const dir = await mkdtemp(join(tmpdir(), "hooknostic-copilot-shim-"));
   cleanup.push(dir);
   const pluginPath = join(dir, "hooks.ts");
@@ -56,10 +59,12 @@ async function runShim(
     });
     let stdout = "";
     let stderr = "";
+    let killed = false;
     const timer = setTimeout(() => {
       child.kill();
-      rejectPromise(new Error("Copilot shim did not exit"));
-    }, 3_000);
+      if (killAfterMs === undefined) rejectPromise(new Error("Copilot shim did not exit"));
+      else killed = true;
+    }, killAfterMs ?? 3_000);
     child.stdout.setEncoding("utf8").on("data", (chunk: string) => (stdout += chunk));
     child.stderr.setEncoding("utf8").on("data", (chunk: string) => (stderr += chunk));
     child.on("error", (error) => {
@@ -68,7 +73,7 @@ async function runShim(
     });
     child.on("close", (code) => {
       clearTimeout(timer);
-      resolvePromise({ stdout, stderr, code, elapsedMs: Date.now() - startedAt });
+      resolvePromise({ stdout, stderr, code, elapsedMs: Date.now() - startedAt, killed });
     });
     child.stdin.end(input);
   });
@@ -226,8 +231,8 @@ describe("Copilot command shim with a hook source that owns the process", () => 
   // A bundled CLI's main(), reading the stdin the shim already consumed.
   const CLI_MAIN = `async function main() { console.log(JSON.parse(await readAll())); }`;
 
-  async function run(source: string, env: NodeJS.ProcessEnv = {}) {
-    return runShim(source, await fixture("tool-before.input.json"), CAPS, undefined, undefined, env);
+  async function run(source: string, env: NodeJS.ProcessEnv = {}, killAfterMs?: number) {
+    return runShim(source, await fixture("tool-before.input.json"), CAPS, undefined, undefined, env, killAfterMs);
   }
 
   it("reports a CLI main() that rejects, once, and still replies", async () => {
@@ -361,6 +366,23 @@ describe("Copilot command shim with a hook source that owns the process", () => 
       hostileSource({ top: `process.on("beforeExit", () => process.exit(3));\nawait new Promise(() => {});` }),
     );
     expect(result).toMatchObject({ code: 0, stdout: "" });
+    expect(result.stderr.match(INTERNAL)).toHaveLength(1);
+    expect(result.stderr).toMatch(/^hooknostic internal \[preToolUse\]: the hook source called process\.exit\(3\)\n/m);
+  });
+
+  it("reports a prepended beforeExit listener's exit once, however often it loops", async () => {
+    // Ahead of the guard's own beforeExit listener the stub throws, the loop
+    // empties and beforeExit comes round again: the process stays alive until
+    // the harness times it out. Killed here after a second; one line, not a flood.
+    const result = await run(
+      hostileSource({
+        top: `process.prependListener("beforeExit", () => process.exit(3));\nawait new Promise(() => {});`,
+      }),
+      {},
+      1_000,
+    );
+    expect(result.killed).toBe(true);
+    expect(result.stdout).toBe("");
     expect(result.stderr.match(INTERNAL)).toHaveLength(1);
     expect(result.stderr).toMatch(/^hooknostic internal \[preToolUse\]: the hook source called process\.exit\(3\)\n/m);
   });

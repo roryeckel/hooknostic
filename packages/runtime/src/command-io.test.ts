@@ -243,6 +243,19 @@ describe("guardCommandShim", () => {
     expect(written).toEqual(["hooknostic internal [Test]: rejected twice over\n"]);
   });
 
+  it("reports a hook source's exit once per exit code, though each call throws a new error", async () => {
+    const guard = guardCommandShim(describeError);
+
+    await guard.report(new HookSourceExitError(3));
+    await guard.report(new HookSourceExitError(3));
+    await guard.report(new HookSourceExitError(1));
+
+    expect(written).toEqual([
+      "hooknostic internal [Test]: the hook source called process.exit(3)\n",
+      "hooknostic internal [Test]: the hook source called process.exit(1)\n",
+    ]);
+  });
+
   it("starts a report on a line of its own after a write that ended mid-line", async () => {
     const guard = guardCommandShim(describeError);
 

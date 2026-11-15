@@ -7909,6 +7909,9 @@ var HookSourceExitError = class extends Error {
     this.code = code;
   }
 };
+function exitKey(code) {
+  return `exit:${exitCodeText(code)}`;
+}
 function exitCodeText(code) {
   try {
     return code === void 0 ? "" : String(code);
@@ -7949,8 +7952,9 @@ function guardCommandShim(describe2) {
     reported.add(key);
     return true;
   };
+  const keyOf = (error2) => isInstance(error2, HookSourceExitError) ? exitKey(error2.code) : error2;
   const report = async (error2) => {
-    if (!firstTime(error2)) return;
+    if (!firstTime(keyOf(error2))) return;
     const text = line(error2);
     if (text !== void 0) await write(text);
   };
@@ -7989,7 +7993,7 @@ function guardCommandShim(describe2) {
   process.exit = function exitFromHookSource(code) {
     const error2 = new HookSourceExitError(code);
     if (!cannotUnwind && !finished) throw error2;
-    reportNow(error2, `exit:${exitCodeText(code)}`);
+    reportNow(error2, exitKey(code));
     return exit(decided ?? 0);
   };
   syncBuiltinESMExports();
