@@ -2,7 +2,7 @@ import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { basename, dirname, extname, isAbsolute, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import type { ImportKind, Plugin, PluginBuild, ResolveResult } from "esbuild";
+import type { BuildOptions, ImportKind, Plugin, PluginBuild, ResolveResult } from "esbuild";
 import semver from "semver";
 
 import type { Diagnostic } from "./diagnostics.js";
@@ -167,12 +167,53 @@ const OWN_DIRECTORY = dirname(fileURLToPath(import.meta.url));
  */
 const ownResolutions = new Map<string, ResolveResult>();
 
+/** Whether an esbuild `alias` map redirects a zod import. */
+function aliasesZod(alias: Record<string, string> | undefined): boolean {
+  return Object.keys(alias ?? {}).some((key) => key === "zod" || key.startsWith("zod/"));
+}
+
 /**
- * Resolve `path` from Hooknostic's own install. The cache key is only the
- * import kind and path, which holds while every caching build resolves alike:
- * the `node` platform with esbuild's default conditions and main fields, as
- * `bundleRuntime` sets. `cache` is false for any other build, and for one
- * whose options reshape resolution, as a `zod` alias does: a nested resolve
+ * The esbuild options that can change what a path resolves to from
+ * `OWN_DIRECTORY`: the lookup itself (`conditions`, `mainFields`,
+ * `resolveExtensions`, `nodePaths`, `preserveSymlinks`, `platform`), path
+ * mapping (`alias`, `tsconfig`, `tsconfigRaw`), and what is bundled at all
+ * (`external`, `packages`). `absWorkingDir` moves no lookup that starts from
+ * `OWN_DIRECTORY`.
+ */
+const RESOLUTION_OPTIONS = [
+  "alias",
+  "conditions",
+  "external",
+  "mainFields",
+  "nodePaths",
+  "packages",
+  "platform",
+  "preserveSymlinks",
+  "resolveExtensions",
+  "tsconfig",
+  "tsconfigRaw",
+] as const satisfies readonly (keyof BuildOptions)[];
+
+/**
+ * Whether a build may use the process-lifetime cache of Hooknostic's own Zod.
+ * The cache key holds only an import's kind and path, so that answer must not
+ * depend on the build: each of {@link RESOLUTION_OPTIONS} must be absent, as a
+ * key, even one set to its default value. Two exceptions are what
+ * `bundleRuntime` sets: `platform` must be `"node"` (an unset one is esbuild's
+ * browser default), and an `alias` may map packages other than zod.
+ */
+function cachesOwnZod(options: BuildOptions): boolean {
+  return RESOLUTION_OPTIONS.every((key) => {
+    if (key === "platform") return options.platform === "node";
+    if (key === "alias") return !aliasesZod(options.alias);
+    return !(key in options);
+  });
+}
+
+/**
+ * Resolve `path` from Hooknostic's own install, through the process-lifetime
+ * cache when `cache` is set ({@link cachesOwnZod}). A build whose options
+ * reshape resolution, as a `zod` alias does, must not cache: a nested resolve
  * applies the alias here too, so that answer holds for that build alone.
  */
 async function resolveOwn(
@@ -287,20 +328,16 @@ export function sdkZodFallbackPlugin(onSubstitution: (diagnostic: Diagnostic) =>
     setup(build) {
       const manifests = new Map<string, OwningManifest | undefined>();
       const reported = new Set<string>();
-      const { absWorkingDir, alias, conditions, mainFields, nodePaths, platform, preserveSymlinks } =
-        build.initialOptions;
-      const optionsResolveFirst =
-        Object.keys(alias ?? {}).some((key) => key === "zod" || key.startsWith("zod/")) ||
-        (nodePaths?.length ?? 0) > 0 ||
-        preserveSymlinks === true;
+      const { absWorkingDir, alias, nodePaths, preserveSymlinks } = build.initialOptions;
+      const optionsResolveFirst = aliasesZod(alias) || (nodePaths?.length ?? 0) > 0 || preserveSymlinks === true;
       // esbuild looks for a PnP manifest once, walking up from the working
       // directory. Once it finds one, an importer the manifest has a locator
       // for resolves through PnP and any other falls back to node_modules,
       // and the walk cannot tell which serves the SDK's import: resolve first.
       const pnpProject = underPnpManifest(absWorkingDir ?? process.cwd());
-      // See resolveOwn: the cache assumes bundleRuntime's resolution options.
-      const cacheable =
-        !optionsResolveFirst && conditions === undefined && mainFields === undefined && platform === "node";
+      // Every resolve-first option is also a resolution option, so a build
+      // that resolves first never caches.
+      const cacheable = cachesOwnZod(build.initialOptions);
       build.onResolve({ filter: /^zod(?:\/|$)/ }, async (args) => {
         // `<stdin>` (the generated shim entry) is no path, and no package owns it.
         if (args.pluginData === FALLBACK || !isAbsolute(args.importer)) return undefined;

@@ -5,12 +5,35 @@ import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 
+import type * as Esbuild from "esbuild";
 import { build, type BuildOptions, type Plugin } from "esbuild";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { bundleHasMainModuleGuard, bundleRuntime } from "./bundle.js";
 import type { Diagnostic } from "./diagnostics.js";
 import { reachableZod, sdkZodFallbackPlugin, withSdkSubpathAliases } from "./sdk-resolution.js";
+
+/**
+ * Resolve directories of the nested resolves the Zod fallback plugin makes, in
+ * every esbuild build in this file. bundleRuntime takes no plugins, so esbuild
+ * is wrapped to put a recorder ahead of each build's own; it resolves nothing.
+ */
+const fallbackResolves = vi.hoisted(() => [] as string[]);
+vi.mock("esbuild", async (importOriginal) => {
+  const esbuild = await importOriginal<typeof Esbuild>();
+  const recorder: Plugin = {
+    name: "fallback-resolve-recorder",
+    setup(recorded) {
+      recorded.onResolve({ filter: /^zod(?:\/|$)/ }, (args) => {
+        if (args.pluginData === "hooknostic-sdk-zod-fallback") fallbackResolves.push(args.resolveDir);
+        return undefined;
+      });
+    },
+  };
+  const wrapped = (options: BuildOptions) =>
+    esbuild.build({ ...options, plugins: [recorder, ...(options.plugins ?? [])] });
+  return { ...esbuild, build: wrapped as typeof esbuild.build };
+});
 
 it("executes bundled CommonJS builtins without the source dependency tree", async () => {
   const root = await mkdtemp(join(tmpdir(), "hooknostic-cjs-"));
@@ -239,6 +262,23 @@ describe("an SDK installed without its optional Zod peer", () => {
 
   const FALLBACK = "hooknostic-sdk-zod-fallback";
 
+  /** The esbuild options these tests vary. */
+  type ResolutionOptions = Pick<
+    BuildOptions,
+    | "absWorkingDir"
+    | "alias"
+    | "conditions"
+    | "external"
+    | "mainFields"
+    | "nodePaths"
+    | "packages"
+    | "platform"
+    | "preserveSymlinks"
+    | "resolveExtensions"
+    | "tsconfig"
+    | "tsconfigRaw"
+  >;
+
   /**
    * Bundle `source` with esbuild directly, a recorder ahead of the fallback
    * plugin: `nested` lists the resolve directory of every nested resolve the
@@ -247,10 +287,7 @@ describe("an SDK installed without its optional Zod peer", () => {
   async function bundleRecorded(
     root: string,
     sdkEntry: string,
-    extra: Pick<
-      BuildOptions,
-      "absWorkingDir" | "alias" | "conditions" | "mainFields" | "nodePaths" | "platform" | "preserveSymlinks"
-    > = {},
+    extra: ResolutionOptions = {},
     source = SOURCE,
   ): Promise<{ code: string; diagnostics: Diagnostic[]; nested: string[] }> {
     const nested: string[] = [];
@@ -677,10 +714,16 @@ describe("an SDK installed without its optional Zod peer", () => {
     }
   });
 
-  const uncachedOptions: [string, Pick<BuildOptions, "conditions" | "mainFields" | "platform">][] = [
-    ["conditions", { conditions: ["hooknostic-test"] }],
-    ["mainFields", { mainFields: ["module", "main"] }],
-    ["a browser platform", { platform: "browser" }],
+  const uncachedOptions: [string, (root: string) => ResolutionOptions][] = [
+    ["conditions", () => ({ conditions: ["hooknostic-test"] })],
+    ["mainFields", () => ({ mainFields: ["module", "main"] })],
+    ["a browser platform", () => ({ platform: "browser" })],
+    ["resolveExtensions", () => ({ resolveExtensions: [".ts", ".js", ".mjs"] })],
+    ["tsconfig", (root) => ({ tsconfig: join(root, "tsconfig.json") })],
+    ["tsconfigRaw", () => ({ tsconfigRaw: "{}" })],
+    ["external", () => ({ external: ["hooknostic-unrelated-package"] })],
+    // Present at all, even at its default value.
+    ["packages", () => ({ packages: "bundle" })],
   ];
   for (const [name, options] of uncachedOptions) {
     it(`resolves Hooknostic's own Zod afresh under ${name}`, async () => {
@@ -688,8 +731,9 @@ describe("an SDK installed without its optional Zod peer", () => {
       // can change what that path resolves to.
       const { root, sdkEntry } = await project();
       try {
-        await bundleRecorded(root, sdkEntry, options);
-        const second = await bundleRecorded(root, sdkEntry, options);
+        await writeFile(join(root, "tsconfig.json"), "{}");
+        await bundleRecorded(root, sdkEntry, options(root));
+        const second = await bundleRecorded(root, sdkEntry, options(root));
         expect(second.nested).toEqual([import.meta.dirname]);
         expect(second.diagnostics).toEqual([]);
       } finally {
@@ -697,6 +741,23 @@ describe("an SDK installed without its optional Zod peer", () => {
       }
     });
   }
+
+  it("caches Hooknostic's own Zod across bundleRuntime builds", async () => {
+    // bundleRuntime's options are what the cache is for: the node platform
+    // and an alias for the SDK, which maps no zod import.
+    const { root, sdkEntry } = await project();
+    try {
+      const bundle = () => bundleRuntime({ source: SOURCE, resolveDir: root, alias: { "@hooknostic/sdk": sdkEntry } });
+      await bundle();
+      const before = fallbackResolves.length;
+      const second = await bundle();
+      expect(fallbackResolves.slice(before)).toEqual([]);
+      expect(second.diagnostics).toEqual([]);
+      expect(await run(root, second.code)).toBe("ok");
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
 });
 
 describe("reachableZod", () => {
