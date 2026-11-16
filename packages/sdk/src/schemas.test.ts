@@ -357,6 +357,19 @@ describe("canonical schemas", () => {
       ]);
     });
 
+    it("still stops config-level checks after an aborting issue inside a named record", () => {
+      // A wrong-typed value aborts in Zod 4, so master never ran the
+      // config-level checks for this input. This pins that the record's raw
+      // issues keep their own `continue` flags, unlike the too_small issue
+      // above, which never aborts; it also fails if a Zod release changes
+      // these semantics underneath `_zod.run`.
+      const result = hooknosticConfigSchema.safeParse({ targets: { claude: { ...packageTarget, adapter: 5 } } });
+
+      expect(pathsAndMessages(result)).toEqual([
+        { path: ["targets", "claude", "adapter"], message: expect.stringContaining("expected string") },
+      ]);
+    });
+
     it("keeps config-level issues beside the __proto__ name issue", () => {
       const result = hooknosticConfigSchema.safeParse({ targets: ownProto(packageTarget) });
 
