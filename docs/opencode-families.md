@@ -46,6 +46,27 @@ can finish before its child, and the child's result then starts another parent
 execution. That execution reports `turn.stop` without
 `correlation.turnId`, receives any pending notice, and is subject to prevention
 like any other. Prevention does not wait for a running child.
+[Capture](../.capture/opencode-v2-audit/README.md).
+
+V2 reports a finished subagent as `agent.stop` (validated on 2.0.17, 2.2.6
+and 2.3.0). When a child session the plugin saw created in its own location
+succeeds or fails, the child's own `turn.stop` fires first, under the child's
+session id, and `agent.stop` follows under the parent's. Its `session.id` and
+`correlation.parentAgentId` are the parent, `agent.id` and
+`correlation.agentId` the child, `agent.type` the agent the child was created
+with, and `lastMessage`, when a hook declares it, the child's last text. A
+`turn.stop` hook therefore also runs for each child, and cannot yet tell a
+child's stop from a top-level one (#232). On Claude, by its hook
+documentation, a subagent's stop is a `SubagentStop` and not a `Stop`.
+`agent.stop` is observe-only: the child's result has already gone back to the
+parent, or been queued for it, so prevention and notices are unsupported and
+nothing is posted. Each completion dispatches, so a follow-up to the same
+child (the subagent tool's `sessionID`) reports again with the same
+`agent.id`. Not reported: a child created before plugin setup or in another
+location, and an interrupted child. Before 2.3.0 a subagent runs in the
+foreground by default. With the tool's opt-in `background` argument, a child
+still running when `opencode run --standalone` exits is cut off and reports
+nothing: observed on 2.0.17, while 2.2.6 waited for the same child.
 [Capture](../.capture/opencode-v2-audit/README.md). Legacy SSE
 remains unsupported. SSE receives no fallback
 GET after a failed POST in the captured baseline. Default MCP OAuth discovery,
@@ -136,8 +157,8 @@ the tool's opt-in `background` argument was not probed. From 2.3.0 it always
 runs in the background: `tool.after` fires as the child starts and
 carries a launch notice (`raw.event.result.output.status` is `running`), and the
 child's result reaches the parent later as a user-role `<subagent>` message that
-no portable hook reports. Hooknostic has no portable field for a subagent's result;
-reporting a background child's completion is follow-up work. Code Mode MCP
+no tool hook reports. In both cases the child's completion is reported as
+`agent.stop`, whose `lastMessage` carries the child's last text. Code Mode MCP
 calls emit both the outer `execute` and an inner native tool hook. Both remain
 `kind: "other"` because reliable MCP identity normalization is not implemented;
 hooks matching `kind: "mcp"` do not cover those calls. Raw inputs and names

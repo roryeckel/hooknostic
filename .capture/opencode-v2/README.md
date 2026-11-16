@@ -183,7 +183,8 @@ to run only this increment's checks after bundling.
 ## Remaining-capability audit
 
 The later `results`, `notifications`, `provider-anthropic`, `provider-responses`,
-`subagent`, `subagent-late`, `project-oauth` and `package-oauth` drives are
+`subagent`, `subagent-late`, `subagent-fail`, `subagent-followup`,
+`subagent-opt-in`, `project-oauth` and `package-oauth` drives are
 described in `../opencode-v2-audit`. They extend the initial coverage above
 without changing the earlier captures. They establish typed tool errors, richer
 replacement delivery, native server-to-TUI toast delivery, two additional HTTP
@@ -249,6 +250,77 @@ user-interrupt completion and `stop-audit/outcomes.json`. The `stop-*` mutants
 in `verify-mutations.mjs` remove the success gate, the child gate, the notice's
 `resume: false`, notice ordering, per-post fail-open and the per-session event
 queue; each fails its unit or playback test.
+
+The stage's child also dispatches one `agent.stop`, under the parent, after
+its own `turn.stop` (#231). The playback hook prevents once per event and
+session, so that `agent.stop` does not use up the parent's own `turn.stop`
+prevention: keyed by session alone, the parent's first stop was never
+prevented and the drive timed out. The shim posts nothing for `agent.stop`,
+so every count above is unchanged.
+
+## Subagent completion as agent.stop (#231)
+
+Question: when did OpenCode v2 first expose what `agent.stop` needs, and what
+does a plugin see when a subagent child finishes?
+
+Every signal predates the adapter. The first supported build, 2.0.17, was
+published on 2026-09-25 and the adapter added on 2026-09-26; dates are the
+npm registry's publish times.
+
+| Signal | First seen | Evidence |
+| --- | --- | --- |
+| The child's own `session.execution.started`, `session.text.ended` and `session.execution.succeeded` or `failed`, on the plugin's event subscription | 2.0.0 (2026-09-11) | Loopback drives on 2.0.0 and 2.1.4 with the opt-in `background` argument (out of range, so not profile records, ADR-0008); `fixtures/opencode/2.0/subagent-stop` on 2.0.17 and 2.3.0 |
+| The parent/child link: `session.created` `parentID` and `agent`, and the subagent tool result's `sessionID` | 2.0.0 | The same drives; `session-created-child` on 2.0.17 |
+| The parent's `session.inbox.enqueued` item, `metadata { source: "subagent", childID, agent, state }` | 2.0.0 for an opt-in background child; every child from 2.3.0 | The same drives; `subagent-background/inbox-subagent-completed.json` on 2.3.0. 2.3.0 dropped the event's `location` |
+| The child's last text, from its `session.text.ended` | 2.0.0 | The same drives |
+
+Two later changes matter. From 2.3.0 every subagent runs in the background
+(above and `../opencode-v2-audit`). And `opencode run --standalone` waits for
+a background child on 2.2.6, where it did not on 2.0.17 (below). Release
+notes date that change to 2.2.6. The builds between were not probed.
+
+The shim therefore remembers each child's `parentID` and `agent` from its
+`session.created`, in the plugin's own location. When that child's own
+execution succeeds or fails, it queues the child's `turn.stop` as before and
+then `agent.stop` in the same per-session queue. `session.id` and
+`correlation.parentAgentId` are the parent, `agent.id` and
+`correlation.agentId` the child, and `agent.type` its agent. `lastMessage` is
+the child's buffered text, and is buffered only when a hook declares it. The
+inbox item is not used: it exists only for background children. Nothing is
+posted for `agent.stop`. The child's result has already gone back to the
+parent, or been queued for it, and a post under the parent's id would steer
+the parent.
+
+What was probed, each on Windows with isolated state and the loopback model
+(constructed replies, no paid model):
+
+- `subagent` on 2.0.17 (foreground) and 2.3.0 (background): the child's
+  `turn.stop`, then one `agent.stop` with every field. Promoted with
+  `promote-audits.mjs subagent-stop <2.0.17-root> <2.3.0-root>`.
+- `subagent-late` on 2.3.0: the same order when the child outlives the
+  parent's first execution.
+- `subagent-fail`: the child's model request answers HTTP 400, so it fails
+  within seconds (a 500 is retried for about 90 s). One `agent.stop`, with no
+  `lastMessage`, on 2.0.17 and 2.3.0.
+- `subagent-followup`: a second `subagent` call sends a follow-up to the same
+  child by its `sessionID`. Two `agent.stop`s, same `agent.id`, each with its
+  own execution's text, on 2.0.17 and 2.3.0.
+- `subagent-opt-in`: the opt-in `background: true` argument on 2.0.17 and
+  2.2.6. On 2.0.17, a child that finished while `run` was still going
+  dispatched `agent.stop`. With `HKN_CHILD_DELAY_MS=3000` (constructed timing,
+  unset by default), `run --standalone` exited first: the child only started,
+  and neither its `turn.stop` nor `agent.stop` dispatched. 2.2.6 waited for the
+  same late child, and its result started a second parent execution.
+- `stop` on 2.0.17, 2.2.6 and 2.3.0, and with `HKN_CHILD_DELAY_MS=6000` on
+  2.3.0: one `agent.stop`, and every other count as before.
+
+Not probed, and not claimed: a child created before plugin setup or in another
+location (recognizing one would need a `session.get` lookup), an interrupted
+child, a 2.3.0 inbox item whose `state` is not `completed`, the opt-in
+`background` argument on builds other than 2.0.17 and 2.2.6, and deeper
+nesting. A child created before plugin setup or elsewhere dispatches no
+`agent.stop`, and an interrupted child dispatches only its own `turn.stop`.
+`agent.start`, and agent ids on the child's own `turn.stop`, are #232.
 
 ## Nested checkouts
 

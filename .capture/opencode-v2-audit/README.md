@@ -14,6 +14,9 @@ node --experimental-strip-types .capture/opencode-v2/drive.mjs provider-anthropi
 node --experimental-strip-types .capture/opencode-v2/drive.mjs provider-responses
 node --experimental-strip-types .capture/opencode-v2/drive.mjs subagent
 node --experimental-strip-types .capture/opencode-v2/drive.mjs subagent-late
+node --experimental-strip-types .capture/opencode-v2/drive.mjs subagent-fail
+node --experimental-strip-types .capture/opencode-v2/drive.mjs subagent-followup
+node --experimental-strip-types .capture/opencode-v2/drive.mjs subagent-opt-in
 node --experimental-strip-types .capture/opencode-v2/drive.mjs project-oauth
 node --experimental-strip-types .capture/opencode-v2/drive.mjs package-oauth
 ```
@@ -198,7 +201,7 @@ Consequences, with no adapter behaviour change:
   result starts in the parent is a top-level execution: it dispatches
   `turn.stop` without `correlation.turnId`, and prevention and notices apply to it.
 - Reporting a background child's completion as `agent.stop` is follow-up work
-  (#231).
+  (#231, done below).
 
 Playback derives the 2.3.0 boundary from the `captured` validation record that
 names `tool-subagent-background-after.input.json`. The subagent test checks the
@@ -221,4 +224,75 @@ Mutants, each run against the named build, killed, and restored byte for byte:
 
 Not probed, and not claimed: a subagent called with `background: true` before
 2.3.0, a child that fails or is interrupted, a `subagent` call that sends a
-follow-up to a running child by `sessionID`, and deeper nesting.
+follow-up to a running child by `sessionID`, and deeper nesting. The first
+three were partly probed later for #231, below.
+
+## Subagent completion as agent.stop (Windows, 2.0.17, 2.2.6 and 2.3.0, 2026-11-16)
+
+Question: can a v2 plugin report a finished subagent as `agent.stop` (#231),
+and on which builds? The signal history, the design and the gaps are in
+`../opencode-v2/README.md` (Subagent completion as agent.stop).
+
+Method: the `subagent`, `subagent-late`, `subagent-fail`, `subagent-followup`,
+`subagent-opt-in` and `stop` drives against the native executables of 2.0.17,
+2.2.6 and 2.3.0, each in a private prefix, with isolated state and the
+loopback model. No paid model or real credential was used. Replies, failures
+and delays are constructed:
+
+- `subagent-fail` answers the child's model request with HTTP 400.
+- `subagent-followup` makes a second `subagent` call with the first child's
+  `sessionID`, read from the tool result, and answers the follow-up with
+  different text.
+- `subagent-opt-in` passes `background: true`, which the tool offers up to
+  2.2.7. `HKN_CHILD_DELAY_MS` holds that child's reply back (unset by
+  default).
+
+The 2.0.17 and 2.3.0 `subagent` roots were promoted with
+`promote-audits.mjs subagent-stop <2.0.17-root> <2.3.0-root>`.
+
+Observations:
+
+- In every drive, on every build, a child that succeeded or failed dispatched
+  its own `turn.stop` under its session id. One `agent.stop` followed at once,
+  under the parent's session id. It had the child as `agent.id` and
+  `correlation.agentId`, the parent as `correlation.parentAgentId`,
+  `agent.type: general`, the child's text, if any, as `lastMessage`, and no
+  turn id.
+- A child failed by HTTP 400 dispatched `agent.stop` with no `lastMessage`. On
+  2.0.17 the parent's `subagent` call then ended as `tool.error`. On 2.3.0 the
+  parent had already received the launch notice.
+- A follow-up to the same child ran a second child execution: a second
+  `agent.stop`, same `agent.id`, with the follow-up's text. On 2.3.0 the
+  parent's last execution started from the child's result, without a turn id.
+- With `background: true` on 2.0.17, a prompt child dispatched `agent.stop`
+  while `run` was still going, and its result started a second parent
+  execution. With the child 3 s late, `run --standalone` exited after the
+  parent's first execution. The child only started: no completion, no
+  `turn.stop`, no `agent.stop`. 2.2.6 waited for the same late child, and
+  `agent.stop` dispatched.
+- The `stop` drive's child added one `agent.stop` and changed no other count.
+  It had to prevent once per event and session (above), not per session.
+
+Mutants, each killed on 2.0.17 and restored byte for byte. Unit tests replay
+both captured sequences, so each unit mutant fails in both:
+
+| Mutant | Change | Killed by |
+| --- | --- | --- |
+| `agent-stop-decode` | The decoder ignores the child | The `subagent-stop` decode case (U1) |
+| `agent-stop-session` | The child's id as `session.id` | The `subagent-stop` decode case (U1) |
+| `agent-stop-subscription` | An `agent.stop` hook alone does not subscribe | U2 |
+| `agent-stop-parent-link` | The child's `parentID` is not remembered | U2 |
+| `agent-stop-completion-filter` | Every child event is queued a second time | U2 (a second `session.start`) |
+| `agent-stop-text` | Text is buffered only for a `turn.stop` declaration | U3 |
+| `agent-stop-post-guard` | `post` no longer refuses `agent.stop` | U4 |
+| `agent-stop-child-turn-stop` | The child's own `turn.stop` is skipped | U5 |
+| `agent-stop-succeeded-only` | Only a succeeded child is reported | U6 |
+| `agent-stop-parent-link-playback` | As `agent-stop-parent-link` | P1, the subagent drive |
+| `agent-stop-order` | `agent.stop` queued before the child's `turn.stop` | P2, the late-child test |
+| `agent-stop-succeeded-only-playback` | As `agent-stop-succeeded-only` | P3, `subagent-fail` |
+| `agent-stop-once-per-child` | A child is forgotten after its first stop | P4, `subagent-followup` |
+| `agent-stop-prevent-key` | Playback prevents once per session, not per event | P5, the stop test: the lifecycle probe times out |
+| `agent-stop-post-guard-playback` | `post` no longer refuses `agent.stop`, and `agent.stop.prevent` is rated | P5: the parent's last request carries the stop reason twice. The post joined its running execution, so no execution count changed |
+
+`apply.ts` plans stop messages for both stop events, so the guard in `post` is
+the one gate that keeps them off the parent.
