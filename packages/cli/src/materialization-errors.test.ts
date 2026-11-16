@@ -57,7 +57,12 @@ function captureIO() {
   };
 }
 
-async function fixture(): Promise<string> {
+const PROVIDER = `{
+            id: "fixture",
+            plan() { return { command: process.execPath, args: ["-e", ""] }; },
+          }`;
+
+async function fixture(provider = PROVIDER): Promise<string> {
   const root = await mkdtemp(join(tmpdir(), "hooknostic-materialization-errors-"));
   roots.push(root);
   await writeFile(
@@ -71,10 +76,7 @@ async function fixture(): Promise<string> {
       components: {
         root: ".",
         materialize: [{
-          provider: {
-            id: "fixture",
-            plan() { return { command: process.execPath, args: ["-e", ""] }; },
-          },
+          provider: ${provider},
           inputs: { lock: "packages.lock" },
           into: "generated",
         }],
@@ -137,5 +139,38 @@ describe("materialization staging diagnostics", () => {
         message: expect.stringContaining("could not remove temporary materialization directory"),
       }),
     );
+  });
+});
+
+describe("a provider's thrown value that cannot be inspected (#199)", () => {
+  const check = async (provider: string) => {
+    const config = await fixture(provider);
+    const capture = captureIO();
+    await expect(runCheck({ config, json: true, registry: defaultAdapterRegistry(), io: capture.io })).resolves.toBe(2);
+    return JSON.parse(capture.stdout()) as { diagnostics: { code: string; severity: string; message: string }[] };
+  };
+
+  it("is the provider's HN501 when its plan throws one", async () => {
+    const report = await check(`{ id: "fixture", plan() { throw Object.create(null); } }`);
+    expect(report.diagnostics.filter((d) => d.severity === "error")).toEqual([
+      expect.objectContaining({ code: "HN501", message: 'materializer "fixture" failed: uninspectable thrown value' }),
+    ]);
+  });
+
+  it("is HN301 when the provider's id getter throws one while that failure is reported", async () => {
+    // Validation reads the id first; only the report of plan's failure gets the throw.
+    const report = await check(`(() => {
+      let planned = false;
+      return {
+        get id() { if (planned) throw Object.create(null); return "fixture"; },
+        plan() { planned = true; throw new Error("plan boom"); },
+      };
+    })()`);
+    expect(report.diagnostics.filter((d) => d.severity === "error")).toEqual([
+      expect.objectContaining({
+        code: "HN301",
+        message: "package materialization execution failed: uninspectable thrown value",
+      }),
+    ]);
   });
 });

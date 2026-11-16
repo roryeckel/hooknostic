@@ -246,6 +246,35 @@ describe("materializePackages", () => {
     expect(planned).toBe(false);
   });
 
+  it.each([
+    ["a null-prototype object", () => Object.create(null) as unknown],
+    [
+      "a revoked Proxy",
+      () => {
+        const revocable = Proxy.revocable({}, {});
+        revocable.revoke();
+        return revocable.proxy as unknown;
+      },
+    ],
+  ])("reports a provider whose plan throws %s as its own problem (#199)", async (_, make) => {
+    const root = await scratch("hooknostic-materialize-hostile-");
+    const staging = await scratch("hooknostic-materialize-staging-");
+    await writeFile(join(root, "input"), "data");
+    const provider = definePackageMaterializer({
+      id: "hostile",
+      plan() {
+        throw make();
+      },
+    });
+
+    const result = await materializePackages({
+      root,
+      staging,
+      declarations: [{ provider, inputs: { source: "input" }, into: "generated" }],
+    });
+    expect(result).toEqual({ trees: [], problems: ['materializer "hostile" failed: uninspectable thrown value'] });
+  });
+
   it("reports a missing provider command", async () => {
     const root = await scratch("hooknostic-materialize-missing-tool-");
     const staging = await scratch("hooknostic-materialize-staging-");

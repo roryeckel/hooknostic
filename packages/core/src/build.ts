@@ -29,6 +29,7 @@ import {
   skillPolicyCount,
   validateContainedCommands,
 } from "@hooknostic/agent-plugin";
+import { errorMessage } from "@hooknostic/runtime";
 import {
   type HooknosticConfig,
   meetsMinimum,
@@ -320,10 +321,6 @@ async function validDirectProjectCwd(
 
 export function levelsFromMatrix(matrix: CapabilityMatrix): Partial<Record<string, SupportLevel>> {
   return Object.fromEntries(Object.entries(matrix).map(([id, entry]) => [id, entry.level]));
-}
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }
 
 function materializedSourceCollisionProblems(
