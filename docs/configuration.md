@@ -18,6 +18,10 @@ targets receive components; hooks retain their configured target set.
 
 Every target has a version range, `delivery`, and output directory. A target name
 defaults to its adapter id; set `adapter` explicitly for multiple named targets.
+A target name, and a name in `components.excludeFor`, `components.mcpOverrides`, its
+`servers`, or a materializer's `inputs`, cannot be `__proto__`, because JavaScript treats
+that name as an object's prototype; such a configuration fails with HN501. A server named
+`__proto__` can still have `components.mcpEnvironment` entries.
 
 - `delivery: "package"`: native distributable output. Components require package identity.
 - `delivery: "project"`: project artifacts. Direct components and synchronization use

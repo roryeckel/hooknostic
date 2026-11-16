@@ -185,6 +185,119 @@ export const targetConfigSchema = z
   })
   .strict();
 
+const PROTOTYPE_KEY_MESSAGE = `"__proto__" cannot be used as a name: JavaScript treats it as an object's prototype, not an ordinary key`;
+// Judgement call: say what happened without assuming how (Object.create({...})
+// replaces a prototype too), and do not suggest a computed `__proto__` key,
+// which is rejected here as well.
+const REPLACED_PROTOTYPE_MESSAGE = `${PROTOTYPE_KEY_MESSAGE}; this record's prototype was replaced (for example by an object literal entry written as __proto__: {...}), and a computed ["__proto__"] key is not accepted either, so use a plain object and choose another name`;
+
+/**
+ * A record keyed by user-chosen names. Zod 4 skips an own `__proto__` key
+ * before its key schema runs, so neither a key refinement nor a refinement of
+ * the parsed record ever sees it, and the entry silently vanishes. Parse the
+ * record, keep its issues as Zod reported them, then inspect the raw input.
+ *
+ * `reject` (the default) refuses the name, because these names become keys of
+ * plain objects downstream. `preserve` validates the entry and keeps it as an
+ * own data property instead.
+ */
+function namedRecord<K extends z.core.$ZodRecordKey, V extends z.ZodType>(
+  key: K,
+  value: V,
+  prototypeKey: "reject" | "preserve" = "reject",
+) {
+  const record = z.record(key, value);
+  type Output = z.output<typeof record>;
+
+  if (prototypeKey === "preserve") {
+    // Unchanged from the mcpEnvironment schema this replaced, including when it
+    // reads `__proto__`: only after the record itself has parsed.
+    return z.unknown().transform((input, context): Output => {
+      const parsed = record.safeParse(input);
+      if (!parsed.success) {
+        for (const issue of parsed.error.issues) context.addIssue({ ...issue });
+        return z.NEVER;
+      }
+      const entries: [PropertyKey, unknown][] = Object.entries(parsed.data);
+      // Parse the own `__proto__` entry explicitly, then rebuild with
+      // Object.fromEntries so the name survives without invoking
+      // Object.prototype's inherited setter.
+      if (
+        typeof input === "object" &&
+        input !== null &&
+        Object.prototype.propertyIsEnumerable.call(input, "__proto__")
+      ) {
+        const prototypeEntry = value.safeParse((input as Record<string, unknown>)["__proto__"]);
+        if (!prototypeEntry.success) {
+          for (const issue of prototypeEntry.error.issues)
+            context.addIssue({ ...issue, path: ["__proto__", ...issue.path] });
+          return z.NEVER;
+        }
+        entries.push(["__proto__", prototypeEntry.data]);
+      }
+      return Object.fromEntries(entries) as Output;
+    });
+  }
+
+  return z.unknown().transform((input, context): Output => {
+    // Run the record on raw issues rather than through safeParse. safeParse
+    // finalizes its issues, which drops their `continue` flag, so re-adding
+    // them aborted the enclosing object's refinements (the config-level
+    // cross-field checks), and per-call parse options never reached them.
+    // The enclosing parse prefixes and finalizes these issues as it would a
+    // plain z.record's.
+    //
+    // `_zod.run` is an internal Zod API (`@internal` in zod/v4/core), relied on
+    // across the SDK's `zod` peer range ^4.6.7 because no public API gives
+    // master's result: re-adding finalized issues with `continue: true` runs
+    // the config-level checks after an invalid_type where master stops, and
+    // an intersection drops a one-sided invalid_key. The tests that pin
+    // config-level issues beside, and stopped by, a record issue guard it.
+    // This context lacks the caller's per-call options, which only Zod's own
+    // nested key-issue explanations would have used.
+    const run = record._zod.run({ value: input, issues: [] }, { async: false });
+    // No record value schema here is asynchronous. A plain Error, because a
+    // value reference into z.core would bundle Zod's whole core namespace.
+    if (run instanceof Promise) throw new Error("namedRecord does not support asynchronous value schemas");
+    const rejectedAsRecord = run.issues.some((issue) => (issue.path ?? []).length === 0);
+    context.issues.push(...run.issues);
+
+    // The name issue does not abort either, so config-level checks still run
+    // on the remaining entries, as they did when the entry was dropped.
+    const problem = prototypeKeyProblem(input, rejectedAsRecord);
+    if (problem !== undefined)
+      context.addIssue({ code: "custom", path: ["__proto__"], message: problem, continue: true });
+    return run.value as Output;
+  });
+}
+
+/**
+ * The message for a `__proto__` name the raw record input carries, if any.
+ * Looking runs Proxy traps Zod's own record parse never runs: getPrototypeOf,
+ * and getOwnPropertyDescriptor for `__proto__`. A trap that throws counts as
+ * nothing detected, so the record's own result stands, as it did before.
+ */
+function prototypeKeyProblem(input: unknown, rejectedAsRecord: boolean): string | undefined {
+  if (typeof input !== "object" || input === null) return undefined;
+  try {
+    if (Object.prototype.propertyIsEnumerable.call(input, "__proto__")) return PROTOTYPE_KEY_MESSAGE;
+    // An object literal's `__proto__: {...}` entry sets the prototype instead
+    // of adding a key, so the record parses as if the entry were absent.
+    // Records made by Object.create(null), Object.fromEntries or JSON.parse
+    // keep a null or Object.prototype prototype; arrays, Maps and class
+    // instances already fail as "expected record" and keep only that issue.
+    if (rejectedAsRecord) return undefined;
+    // Compare structurally rather than with this realm's Object.prototype: a
+    // record from another realm (vm, an iframe) has that realm's, and every
+    // realm's Object.prototype has a null prototype of its own.
+    const prototype: unknown = Object.getPrototypeOf(input);
+    if (prototype !== null && Object.getPrototypeOf(prototype) !== null) return REPLACED_PROTOTYPE_MESSAGE;
+  } catch {
+    return undefined;
+  }
+  return undefined;
+}
+
 const projectMcpServerOverrideSchema = z
   .object({
     args: z.array(z.string()).optional(),
@@ -196,35 +309,15 @@ const projectMcpServerOverrideSchema = z
 const projectMcpTargetOverrideSchema = z
   .object({
     startupTimeoutMs: z.number().int().positive().max(MAX_TIMER_DELAY_MS).optional(),
-    servers: z.record(z.string().min(1), projectMcpServerOverrideSchema).optional(),
+    // Rejected for now: a `__proto__` server would lose its startupTimeoutMs
+    // in the build's per-server map (#200). Relax this once that is fixed.
+    servers: namedRecord(z.string().min(1), projectMcpServerOverrideSchema).optional(),
   })
   .strict();
 
-const mcpEnvironmentValueSchema = z.array(z.string().min(1));
-const mcpEnvironmentRecordSchema = z.record(z.string().min(1), mcpEnvironmentValueSchema);
-
-const mcpEnvironmentSchema = z.unknown().transform((value, context): Record<string, string[]> => {
-  const parsed = mcpEnvironmentRecordSchema.safeParse(value);
-  if (!parsed.success) {
-    for (const issue of parsed.error.issues) context.addIssue({ ...issue });
-    return z.NEVER;
-  }
-
-  const entries = Object.entries(parsed.data);
-  // Zod 4 skips `__proto__` record entries, including their validation. Parse
-  // that own entry explicitly, then rebuild with Object.fromEntries so the
-  // server name survives without invoking Object.prototype's inherited setter.
-  if (typeof value === "object" && value !== null && Object.prototype.propertyIsEnumerable.call(value, "__proto__")) {
-    const prototypeEntry = mcpEnvironmentValueSchema.safeParse((value as Record<string, unknown>)["__proto__"]);
-    if (!prototypeEntry.success) {
-      for (const issue of prototypeEntry.error.issues)
-        context.addIssue({ ...issue, path: ["__proto__", ...issue.path] });
-      return z.NEVER;
-    }
-    entries.push(["__proto__", prototypeEntry.data]);
-  }
-  return Object.fromEntries(entries);
-});
+// MCP environment entries named `__proto__` were already validated and kept as
+// own data properties, and that support is documented, so they stay preserved.
+const mcpEnvironmentSchema = namedRecord(z.string().min(1), z.array(z.string().min(1)), "preserve");
 
 export const hooknosticConfigSchema = z
   .object({
@@ -235,16 +328,16 @@ export const hooknosticConfigSchema = z
     entry: z.string().min(1).optional(),
     compatibility: compatibilityPolicySchema.optional(),
     runtime: runtimePolicySchema.optional(),
-    targets: z.record(z.string().min(1), targetConfigSchema),
+    targets: namedRecord(z.string().min(1), targetConfigSchema),
     components: z
       .object({
         root: z.string().min(1).optional(),
         skills: z.array(z.string().min(1)).optional(),
         mcp: z.string().min(1).optional(),
-        mcpOverrides: z.record(z.string().min(1), projectMcpTargetOverrideSchema).optional(),
+        mcpOverrides: namedRecord(z.string().min(1), projectMcpTargetOverrideSchema).optional(),
         targets: z.array(z.string().min(1)).min(1).optional(),
         exclude: z.array(z.string().min(1)).optional(),
-        excludeFor: z.record(z.string().min(1), z.array(z.string().min(1))).optional(),
+        excludeFor: namedRecord(z.string().min(1), z.array(z.string().min(1))).optional(),
         executableFiles: z.array(z.string().min(1)).optional(),
         mcpEnvironment: mcpEnvironmentSchema.optional(),
         runtimePackage: z
@@ -260,7 +353,7 @@ export const hooknosticConfigSchema = z
             z
               .object({
                 provider: packageMaterializerSchema,
-                inputs: z.record(z.string(), z.string().min(1)),
+                inputs: namedRecord(z.string(), z.string().min(1)),
                 into: z.string().min(1),
               })
               .strict(),

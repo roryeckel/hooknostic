@@ -46,6 +46,40 @@ subpath is an export-map entry, so TypeScript needs the export-aware module
 resolution (`node16`, `nodenext` or `bundler`) that the root entry already
 requires.
 
+One change ships in the same release. `hooknosticConfigSchema` now rejects
+`__proto__` as a target name and as a name in `components.excludeFor`,
+`components.mcpOverrides`, its `servers` and a materializer's `inputs`, where
+Zod 4 used to drop the entry without a diagnostic. To see that name, those five
+fields now validate through a transform that inspects the raw input, as
+`components.mcpEnvironment` already did. If your code does more with the schema
+than parse with it:
+
+- Each of those fields is a `ZodPipe` of `z.unknown()` into a transform
+  (inside `ZodOptional` where the field is optional), no longer a `ZodRecord`.
+  `keyType` and `valueType` are `undefined` on them, so
+  `hooknosticConfigSchema.shape.targets.valueType` no longer reaches the target
+  schema; import `targetConfigSchema` instead.
+- `z.input<typeof hooknosticConfigSchema>` types those fields as `unknown`.
+- `z.toJSONSchema` already refused the configuration schema by default, because
+  of `mcpEnvironment`. With `unrepresentable: "any"`, those fields now come out
+  as `{}` rather than as object schemas.
+- `z.encode` and `z.safeEncode` no longer work with `hooknosticConfigSchema`.
+  `targets` is required and is now a one-way transform, so encoding any
+  configuration throws `ZodEncodeError` ("Encountered unidirectional transform
+  during encode"). Before, it worked when `components.mcpEnvironment` was
+  absent.
+- Per-call parse options such as `error` and `reportInput` still reach issues
+  inside those fields, with one exception: the explanation Zod nests inside an
+  `invalid_key` issue, for a name that fails its own schema such as an empty
+  target name. That explanation keeps the message from the schema's or
+  `z.config()`'s error map and omits `input`.
+
+The output types, `HooknosticConfig` and the other types you write
+configuration with are unchanged. Whether a configuration parses changes only
+where `__proto__` is involved: an own `__proto__` name, or a record whose
+prototype was replaced, for example by an object literal entry written as
+`__proto__: {...}`.
+
 ## Install Zod only where you import the schemas
 
 Code that imports `@hooknostic/sdk/schemas` needs `zod@^4.6.7` installed beside

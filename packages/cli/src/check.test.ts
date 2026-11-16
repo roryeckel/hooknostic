@@ -656,6 +656,36 @@ describe("hooknostic check", () => {
     }
   });
 
+  it("reports a target named __proto__ as HN501 instead of dropping it", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "hooknostic-cli-proto-target-"));
+    tempDirs.push(dir);
+    const config = join(dir, "hooknostic.config.ts");
+    await writeFile(
+      config,
+      `export default {
+        entry: "./hooks.ts",
+        targets: { ["__proto__"]: { adapter: "alpha", version: ">=1 <2", delivery: "project", output: "./out" } },
+      };`,
+      "utf8",
+    );
+    await writeFile(join(dir, "hooks.ts"), `export default { name: "proto-target", hooks: [] };`, "utf8");
+
+    for (const run of [runCheck, runBuild]) {
+      const capture = captureIO();
+      expect(await run({ config, json: true, registry: registry(), io: capture.io, evaluate: EVALUATE })).toBe(2);
+      const diagnostics = JSON.parse(capture.out()).diagnostics as { code: string; message: string }[];
+      expect(diagnostics).toContainEqual(
+        expect.objectContaining({
+          code: "HN501",
+          message: expect.stringContaining('invalid configuration: targets.__proto__: "__proto__" cannot be used'),
+        }),
+      );
+      expect(diagnostics.map((diagnostic) => diagnostic.message)).not.toContainEqual(
+        expect.stringContaining("no targets"),
+      );
+    }
+  });
+
   it("reports unsupported deliveries before generation", async () => {
     const dir = await mkdtemp(join(tmpdir(), "hooknostic-cli-mode-"));
     tempDirs.push(dir);

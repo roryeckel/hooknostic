@@ -92,7 +92,10 @@ same. Capability declarations remain partial maps: declaring one capability
 does not require listing every registered capability. Strict canonical objects
 still reject unknown keys, and the base event envelope still allows extra
 event-specific fields. MCP environment entries named `__proto__` remain
-validated and preserved as own data properties.
+validated and preserved as own data properties. In 0.12.0, Zod 4 drops a
+`__proto__` target name, or a `__proto__` name in `components.excludeFor`,
+`components.mcpOverrides`, its `servers` or a materializer's `inputs`,
+without a diagnostic. Later releases reject those names with HN501.
 
 V4 changes some validation and inference behavior:
 
