@@ -52,9 +52,9 @@ load, with HN501 and esbuild's error:
 ERROR: No matching export in "node_modules/@hooknostic/sdk/dist/index.js" for import "effectSchema"
 ```
 
-One change ships in the same release, 0.13.0. Zod 4 used to drop a `__proto__`
-name without a diagnostic. `hooknosticConfigSchema` now rejects it in four fields:
-as a target name and as a name in `components.excludeFor`,
+One change ships in the same release, 0.13.0. Zod 4 used to drop a
+`__proto__` name without a diagnostic. `hooknosticConfigSchema` now rejects
+it in four fields: as a target name and as a name in `components.excludeFor`,
 `components.mcpOverrides` and a materializer's `inputs`. In
 `components.mcpOverrides.<target>.servers` it now keeps a server named
 `__proto__`, as `components.mcpEnvironment` already did. To see that name, those

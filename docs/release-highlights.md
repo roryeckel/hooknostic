@@ -133,14 +133,15 @@ breaking changes come first, each with its upgrade step.
     `Created no files.` when it created nothing. It writes "1 file", not
     "1 files". Under `--json`, success gains `"ok": true` and an `unchanged`
     array, and failure gains `unchanged` too; no existing field changes.
-  - **`init --local` with a `--config` that names a directory or `hooks.ts`,
-    or with a `hooks.ts` that is a directory:** it now exits 2 and writes
-    nothing. Before, it exited 0 after writing what it could: `hooks.ts`
-    beside a `--config` directory, the configuration into `hooks.ts`, or the
-    configuration alone.
+  - **`init --local` when the configuration path or `hooks.ts` is a
+    directory, or when `--config` names `hooks.ts`:** it now exits 2 and
+    writes nothing. That includes `--config .` and `--config ""`. Before, it
+    exited 0 after writing what it could: `hooks.ts` beside the directory,
+    the configuration into `hooks.ts`, or the configuration alone.
 
-  To upgrade, update any parser of these reports and of `init`'s output.
-  Successful `inspect --json` output is unchanged.
+  To upgrade, update any parser of these reports and of `init`'s output, and
+  give `--config` the configuration file's path, not a directory or
+  `hooks.ts`. Successful `inspect --json` output is unchanged.
 - **Expect new stderr lines.** Lines starting `hooknostic internal` may appear
   where earlier releases were silent, or where a hook used to end non-zero.
   Each one names an error that was previously swallowed or fatal. The line can
@@ -197,6 +198,11 @@ breaking changes come first, each with its upgrade step.
   run, even beside a configuration that fails to load. `doctor` with a project
   configuration warns too, and `recover` warns beside a load failure.
   - Any difference counts, prereleases included. Build metadata is ignored.
+  - Under `yarn dlx` in a Plug'n'Play project, HN110 stays silent: looking
+    up the project's SDK there would load the project's PnP runtime beside
+    dlx's and break the build
+    ([#216](https://github.com/roryeckel/hooknostic/issues/216)). Run
+    `yarn hooknostic` to get the check.
   - The message names the SDK's path, relative to the configuration's
     directory when the SDK is inside it, so a committed build report names no
     machine's path.
@@ -296,15 +302,6 @@ breaking changes come first, each with its upgrade step.
   represent startup timeouts, a target-wide timeout whose only server is
   `__proto__` now reports HN205.
 
-### Yarn Plug'n'Play
-
-- **`yarn dlx` builds as it did in 0.12.x.** In a Plug'n'Play project,
-  HN110's lookup of the project's SDK, new in this release, loaded the
-  project's PnP runtime beside dlx's. That made `yarn dlx` fail with HN501
-  whenever dlx shared Yarn's global cache with the project. HN110 now stays
-  silent under `yarn dlx`, so it builds as before; it remains unsupported
-  ([#216](https://github.com/roryeckel/hooknostic/issues/216)).
-
 ### Documentation
 
 - The shell-name lists drop `exec_command`, which never reaches a hook.
@@ -319,17 +316,16 @@ breaking changes come first, each with its upgrade step.
   one.
 - **Yarn Plug'n'Play needs Yarn's runtime.** `npx`, global installs,
   `pnpm dlx` and `yarn dlx` are unsupported
-  ([#190](https://github.com/roryeckel/hooknostic/issues/190)). `yarn dlx`
-  passes the opt-in Yarn suite on Windows (Node 22 and 24) and on Linux with
-  Node 24. On Linux with Node 22, `yarn dlx` that shares Yarn's global cache
-  with the project fails with HN501 ("controlled by multiple pnpapi
-  instances") whatever the Zod.
+  ([#190](https://github.com/roryeckel/hooknostic/issues/190)). With the
+  project's Zod in range, `yarn dlx` builds on Windows (Node 22 and 24) and
+  on Linux with Node 24; otherwise it fails with HN504. On Linux with Node
+  22, `yarn dlx` that shares Yarn's global cache with the project fails
+  with HN501 ("controlled by multiple pnpapi instances") whatever the Zod.
 - **HN110 compares release numbers, not contents.** A CLI before 0.13.0
-  never warns. `dispatch` does not check, and `yarn dlx` in a Plug'n'Play
-  project is not checked. `doctor` does not report HN110 for a package-only
-  or hooks-only configuration, or for one that fails to load. `sync` and
-  `verify` don't check a configuration with no project-delivery targets or no
-  `project.root`.
+  never warns. `dispatch` does not check. `doctor` does not report HN110 for
+  a package-only or hooks-only configuration, or for one that fails to load.
+  `sync` and `verify` don't check a configuration with no project-delivery
+  targets or no `project.root`.
 - **On OpenCode v2, reports are visible only with `--print-logs`.**
   `opencode run --standalone --print-logs` is the only path measured to show
   plugin output. The TUI and the background service are unmeasured.
@@ -337,8 +333,9 @@ breaking changes come first, each with its upgrade step.
   notice.** OpenCode 2.3.0 always runs subagents in the background, so the
   hook sees "The subagent is working in the background...", not the child's
   result, which reaches the parent later as a separate message. 2.3.0 is
-  inside the declared `>=2.0.17 <3` range but not yet validated; the latest
-  version validated by scheduled playback is 2.2.6
+  inside OpenCode v2's recommended and validated `>=2.0.17 <3` ranges, but
+  scheduled playback fails its subagent check there; the latest version to
+  pass scheduled playback is 2.2.6
   ([#219](https://github.com/roryeckel/hooknostic/issues/219)).
 - **The guards cover accidental failures in the `hooknostic` command and the
   shims.** Your code runs as trusted code, and Hooknostic is not a sandbox:
