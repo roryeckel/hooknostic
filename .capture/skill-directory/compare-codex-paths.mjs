@@ -52,7 +52,8 @@ function run(command, args, cwd, env, input = "", timeoutMs = 180000) {
     const timer = setTimeout(() => { timedOut = true; child.kill(); child.stdout.destroy(); child.stderr.destroy(); }, timeoutMs);
     child.on("error", error => { clearTimeout(timer); reject(error); });
     child.on("close", code => { clearTimeout(timer); resolvePromise({ code, timedOut, stdout, stderr }); });
-    child.stdin.on("error", error => { if (error.code !== "EPIPE") reject(error); });
+    // EPIPE on Windows and Linux; macOS can report ENOTCONN or ECONNRESET for the same closed reader.
+    child.stdin.on("error", error => { if (!["EPIPE", "ENOTCONN", "ECONNRESET"].includes(error.code)) reject(error); });
     child.stdin.end(input);
   });
 }
