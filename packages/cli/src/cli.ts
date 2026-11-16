@@ -87,13 +87,16 @@ function removeAtExit(directory: string): void {
  * Run `hooknostic dispatch`'s hooks under the command-shim guard (#189), so a
  * hook source that exits, rejects, or throws from a timer is reported
  * against the event it interrupted rather than ending the run. One guard for
- * the run, since it owns process listeners, scoped per event.
+ * the run, since it owns process listeners, scoped per event. A load that
+ * never settles fails dispatch with 2 (#201).
  *
  * Exit codes: dispatch's own 2 stands; otherwise 1 when anything was
  * reported outside a handler, else 0. Until the run finishes, leaving is 1:
  * the results are not all out.
  */
 function guardDispatch() {
+  // The config's load only: dispatch loads the hook source outside any window (#201).
+  const windows: LoadWindows = {};
   let strays = 0;
   let label: string | undefined;
   let execution: "command" | "module" | undefined;
@@ -110,6 +113,8 @@ function guardDispatch() {
   const clause = () => `the ${adapter} shim runs in the harness's process and does not intercept it`;
   const guard = guardCommandShim(
     (error) => {
+      // The config's own diagnostic reports it.
+      if (failOpenLoad(windows, error)) return undefined;
       strays += 1;
       // After a clean finish, a stray still fails the run; a 2 stays a 2.
       if (finishedWith === 0) guard.decide(1);
@@ -135,7 +140,16 @@ function guardDispatch() {
   );
   // Before anything can end the process.
   guard.decide(1);
+  // The config loads in a window, as every command's does: a failure in it,
+  // or a loop that empties under it, is the config's HN501 (#201).
+  const evaluation: EvaluationGuard = {
+    watch: (directory, work) => watchLoad(guard, windows, directory, work),
+  };
   return {
+    evaluation,
+    // The hook source gets a stall check only, so what its loads do stays
+    // attributed to the event, as a command shim's would be.
+    watchStall,
     onEventStart(index: number, shim: { id: string; execution: "command" | "module" | undefined }) {
       label = `event ${index + 1}`;
       adapter = shim.id;
@@ -274,6 +288,25 @@ async function watchLoad<T>(
     return value;
   } finally {
     if (windows.current === self) windows.current = undefined;
+    process.off("beforeExit", stalled);
+  }
+}
+
+/**
+ * Settle as `work`, one load of dispatch's hook source, does, or reject with
+ * an {@link EvaluationStalledError} should the event loop empty while it is
+ * pending (#201). Unlike `watchLoad`, no window: no routing, no drain.
+ */
+async function watchStall<T>(work: Promise<T>): Promise<T> {
+  let stalled!: () => void;
+  const stall = new Promise<never>((_, reject) => {
+    stalled = () => reject(new EvaluationStalledError());
+  });
+  stall.catch(() => {});
+  process.on("beforeExit", stalled);
+  try {
+    return await Promise.race([work, stall]);
+  } finally {
     process.off("beforeExit", stalled);
   }
 }
@@ -594,6 +627,7 @@ async function runCommand(argv: string[], options: RunCliOptions | undefined, ow
         const protocol = ownsProcess ? claimProtocolStdout() : undefined;
         const writes: Promise<void>[] = [];
         let code: number;
+        if (guarded !== undefined) setEvaluationGuard(guarded.evaluation);
         try {
           code = await runDispatchWith(
             {
@@ -612,7 +646,13 @@ async function runCommand(argv: string[], options: RunCliOptions | undefined, ow
                     },
             },
             {
-              ...(guarded === undefined ? {} : { onEventStart: guarded.onEventStart, onEventEnd: guarded.onEventEnd }),
+              ...(guarded === undefined
+                ? {}
+                : {
+                    onEventStart: guarded.onEventStart,
+                    onEventEnd: guarded.onEventEnd,
+                    watchStall: guarded.watchStall,
+                  }),
               ...(protocol === undefined ? {} : { onStaged: removeAtExit }),
             },
           );
@@ -634,6 +674,8 @@ async function runCommand(argv: string[], options: RunCliOptions | undefined, ow
             else guarded.fail();
           }
           throw error;
+        } finally {
+          if (guarded !== undefined) setEvaluationGuard(undefined);
         }
         if (protocol !== undefined) {
           if (guarded === undefined) finishCommandShim(code);
