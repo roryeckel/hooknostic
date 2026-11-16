@@ -170,8 +170,28 @@ function guardDispatch() {
   };
 }
 
-/** Wait out earlier writes to `stream`; a stream a handler ended or destroyed is skipped. */
+// As claimProtocolStdout's release bounds its own flush: well inside the
+// harness allowance, and only ever waited out by a stream that is stuck.
+const FLUSH_BOUND_MS = 500;
+
+/**
+ * Wait out earlier writes to `stream`, for at most FLUSH_BOUND_MS: user code
+ * may have replaced `write` with one that never calls back, and the forced
+ * exit that ends a leaked handle comes only after this. A stream a handler
+ * ended or destroyed is skipped. The timer stays referenced: with a stuck
+ * stream nothing else may keep the loop alive until it fires.
+ */
 function flush(stream: NodeJS.WriteStream): Promise<void> {
+  let timer: NodeJS.Timeout | undefined;
+  return Promise.race([
+    flushed(stream).finally(() => clearTimeout(timer)),
+    new Promise<void>((resolve) => {
+      timer = setTimeout(resolve, FLUSH_BOUND_MS);
+    }),
+  ]);
+}
+
+function flushed(stream: NodeJS.WriteStream): Promise<void> {
   return new Promise<void>((resolve) => {
     try {
       // A consumer that closed the pipe early (`| head`) fails this write

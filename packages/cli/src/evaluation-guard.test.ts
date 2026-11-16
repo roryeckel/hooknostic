@@ -291,6 +291,22 @@ describe("a handle user code leaks", () => {
     SPAWNS_TIMEOUT_MS,
   );
 
+  it("cannot hold open a command whose output never reports flushed", async () => {
+    // A write that drops its callback: the command's last flush never hears back.
+    const result = await run(
+      ["check"],
+      atLoad(
+        "config",
+        `const write = process.stdout.write.bind(process.stdout);
+process.stdout.write = (chunk, encoding) => write(chunk, typeof encoding === "string" ? encoding : undefined);
+${LEAK}`,
+      ),
+    );
+
+    expect({ signal: result.signal, status: result.status }).toEqual({ signal: null, status: 0 });
+    expect(result.stdout).toContain("check passed");
+  });
+
   it("cannot hold open a command that succeeded", async () => {
     const result = await run(["build"], atLoad("entry", LEAK));
 
