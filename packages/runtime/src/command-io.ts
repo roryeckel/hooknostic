@@ -183,7 +183,8 @@ export interface CommandShimGuardOptions {
  *   leaves with the decided code, or 0 before one.
  * - An `exit` listener pins the exit code to the decided code, or 0 before
  *   one, over `process.exitCode` set by the hook source and over code 13 for
- *   an unsettled top-level await.
+ *   an unsettled top-level await. It moves to the end of the `exit`
+ *   listeners on `finish`, when the stub leaves, and on `beforeExit`.
  *
  * It targets accidental failures: a hook source that deliberately rearranges
  * Node's process listeners can defeat it, because it runs as trusted code.
@@ -191,7 +192,9 @@ export interface CommandShimGuardOptions {
  * `process.abort()`, an `exit` listener added after the pin last moved to
  * the end (on `finish`, a stub leave, or `beforeExit`) -- say from a
  * `beforeExit` listener or after `finish` on a forced exit -- an `exit`
- * listener that throws (Node skips the rest, the pin too, and exits 7), a hook source's
+ * listener that throws, which skips the listeners after it, the pin too (exit
+ * 7 when leaving from an exit the guard could not unwind, Node's 13 under an
+ * unsettled top-level await), a hook source's
  * own uncaughtException or uncaughtExceptionMonitor listener that throws or
  * exits ahead of the guard (exit 7), an uncaught-exception capture callback,
  * removing the guard's listeners, and a line the hook source left

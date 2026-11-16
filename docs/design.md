@@ -880,8 +880,12 @@ thing each command shim installs, and it stays for the life of the process:
   The shim's own exits use the original function.
 - **Exit-code pin.** An `exit` listener sets the exit code to the decided code, or 0
   before one, over a `process.exitCode` the hook source set and over Node's 13 for an
-  unsettled top-level await. Finishing re-registers it after any `exit` listener the
-  hook source added while it loaded.
+  unsettled top-level await. It moves to the end of the `exit` listeners, after any
+  the hook source added, on every path into an exit the guard sees coming: finishing,
+  the stub leaving, and `beforeExit`, which covers a loop that empties before the shim
+  finishes, as under a top-level await that never settles. If the forced exit after
+  finishing throws, because an `exit` listener of the hook source's threw, the shim
+  calls it again; Node is leaving by then and skips the listeners.
 - **Keep the decided exit code.** Each command shim records the decided code as soon as
   `apply` produces it, before it writes the reply. From then on a stray failure keeps
   the decided exit code, so it neither adds a block nor removes one: Claude Code's exit
@@ -901,7 +905,12 @@ not cover these:
 
 - `process.reallyExit`, which `signal-exit` wraps and the guard leaves alone;
   `process.kill(process.pid)`; `process.abort()`; or an `exit` listener added after the
-  shim finishes.
+  pin last moved to the end, such as one a `beforeExit` listener adds, or one added after
+  the shim finishes when the forced exit ends it.
+- An `exit` listener that throws. Node skips the listeners after it, the pin among them.
+  Leaving from an exit the guard could not unwind, the process then exits 7; under a
+  top-level await that never settles, Node's 13 stands. After the shim finishes, the
+  decided code stands, and the throw goes unreported on a forced exit.
 - A listener of the hook source's own on `uncaughtException` or
   `uncaughtExceptionMonitor` that throws, or that exits ahead of the guard. For
   example, `(e) => { throw e }`, or a monitor listener prepended to call
@@ -935,12 +944,15 @@ source in the CLI's own process and guards it (#189):
   0 ms tail or a microtask rejection is labelled `[event N]`; that label is best effort.
 - It decides 1 up front: until every result is written, a process the hook source ends
   is a failure, with some or all result lines missing, since they are written at the end.
-  The stub's leave path re-registers the exit-code pin last, as `finish` does, so an
-  `exit` listener the hook source added cannot reset that 1. The run then exits 1 if
+  The pin moving to the end on the stub's leave path, `finish` and `beforeExit` keeps an
+  `exit` listener the hook source added from resetting that 1, including under a
+  top-level await that never settles. An `exit` listener that throws, or one added after
+  the pin last moved, can still change it, as listed above. The run then exits 1 if
   anything was reported outside a handler, and a report after the last result moves a 0
   to 1. Dispatch's own 2 takes precedence, and handler errors stay 0. If dispatch itself
   throws, the CLI still releases stdout and finishes with 2, so a leaked handle cannot
-  hold it open.
+  hold it open. A run that ends early skips dispatch's own cleanup, so the CLI also
+  removes the staged hooks' temp directory from an `exit` listener.
 - On a module target, whose shim does not intercept `process.exit`, the guard's `onExit`
   queues each exit code once per event. If the guard reports that exit, its line gets a
   note that the adapter's shim does not intercept it; otherwise the note gets its own

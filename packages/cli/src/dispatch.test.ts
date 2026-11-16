@@ -1005,7 +1005,9 @@ export default definePlugin({
         const dir = await project(onSecondEvent(""), GUARD_TARGETS);
         // The config leaks a handle. An adapter name that resolves through the
         // registry's prototype makes dispatch throw outside its own error
-        // handling, which is the path under test; it is a defect of its own.
+        // handling, which is the path under test. That lookup is a defect of
+        // its own (#195): once it is fixed, this test needs another route to
+        // an unexpected throw, or it passes without reaching that path.
         await writeFile(
           join(dir, "hooknostic.config.ts"),
           `setInterval(() => {}, 60_000);

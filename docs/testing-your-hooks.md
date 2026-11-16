@@ -118,9 +118,9 @@ replacement input that is not a plain object with HN401. Rejected effects obey
 `hooknostic dispatch` runs your source under the same guard as the command shims
 (see [Writing hooks safely](writing-hooks-safely.md#see-why-a-hook-did-nothing-hooknostic_debug)).
 A rejection nothing handles, an exception thrown from a timer or callback, or a
-`process.exit` call outside a handler is reported on stderr against the event it
-interrupted, and dispatch exits 1. Usually the run carries on and every event
-still gets its result line:
+`process.exit` call after the source loads, outside a handler, is reported on
+stderr against the event it interrupted, and dispatch exits 1. Usually the run
+carries on and every event still gets its result line:
 
 ```text
 hooknostic internal [event 2]: stray rejection
@@ -128,9 +128,11 @@ hooknostic internal [event 2]: stray rejection
 
 Some failures still end the run early, though with exit 1 rather than the hook
 source's own code. That happens when your own `uncaughtException` listener calls
-`process.exit`, or when the same `process.exit` call repeats within one event, as
-from `setInterval`. Result lines are written only at the end, so some or all of
-them are then missing.
+`process.exit`, when the same `process.exit` call repeats within one event, as
+from `setInterval`, or when a top-level `await` in your source never settles. The
+last one prints nothing of dispatch's own, only Node's warning about the unsettled
+`await`. Result lines are written only at the end, so some or all of them are then
+missing.
 
 The event number is best effort. Dispatch waits one zero-delay timer after each
 event, so a rejected promise or a `setTimeout(..., 0)` your handler left behind
@@ -177,7 +179,7 @@ somewhere that outlives a process, such as a file.
 | Code | Meaning |
 | --- | --- |
 | `0` | Every event was dispatched. The effects and errors are in the output. |
-| `1` | Your hook source failed outside a handler, or ended the process before every result was written; some or all result lines may be missing. The reports are on stderr; see [When the hook source fails outside a handler](#when-the-hook-source-fails-outside-a-handler). |
+| `1` | Your hook source failed outside a handler, or ended the process before every result was written; some or all result lines may be missing. The reports are on stderr, except for a top-level `await` that never settles, where the only line is Node's warning about it; see [When the hook source fails outside a handler](#when-the-hook-source-fails-outside-a-handler). |
 | `2` | Nothing was dispatched: an unreadable or invalid event, an unknown target, a configuration without an `entry`, or hooks the target could not be built for. The reasons go to stderr, numbered by event. It takes precedence over `1`. |
 
 ## What dispatch does not cover
@@ -197,7 +199,10 @@ dispatched one at a time, in the same process.
 
 The guard has the shims' limits. `process.kill(process.pid)`, `process.abort()`
 and `process.reallyExit` still end the run, and a failure later than the exit's
-250 ms grace after the last result goes unreported.
+250 ms grace after the last result goes unreported. An `exit` listener of your own
+that throws skips the guard's listeners after it: a run that ends early then exits
+with Node's code, 7 or 13, rather than 1. One added late, from a `beforeExit`
+listener, can change the exit code too.
 
 Checks that require a live native object also remain in the shim. Dispatch can
 validate a Pi replacement's shape, but cannot establish whether the harness's

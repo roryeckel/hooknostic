@@ -107,10 +107,13 @@ guard and exit code 1.)
 ## Amendments — 2026-11-15
 
 **The process** now also runs the hook source under the command-shim guard
-(#186, #189), so a hook source can no longer choose the run's exit code, and it
-usually cannot end the run early. The command shims ship this guard; without it,
-dispatch exited with the hook source's own exit code and usually printed no
-results.
+(#186, #189). The command shims ship this guard; without it, dispatch exited
+with the hook source's own exit code and usually printed no results. Now a hook
+source's `process.exit`, rejections, uncaught exceptions, `process.exitCode` and
+`exit` listeners no longer choose the run's exit code, and it usually cannot end
+the run early. The guard's documented limits remain (design §10.3): among them,
+an `exit` listener that throws skips the guard's own, so a run that ends early
+then exits with Node's code, 7 or 13.
 
 - **Exit codes.** `0` and `2` keep their meanings. A new `1` means the hook
   source failed outside a handler: a rejection nothing handled, a throw from a
@@ -119,7 +122,8 @@ results.
   Usually every event still has its result. Where the guard cannot unwind, as
   with the hook source's own `uncaughtException` listener that exits or an exit
   repeated within one event, the run ends early with `1` and some or all result
-  lines missing: until the run finishes, leaving counts as `1`. `2` takes
+  lines missing: until the run finishes, leaving counts as `1`. So does a
+  top-level `await` that never settles, whose only stderr is Node's own warning. `2` takes
   precedence over `1`, and handler errors stay in `errors` with exit `0`.
 - **Per target.** On a command target, `process.exit` in a handler is that
   handler's error, as in its shim. On a module target the error is the same,
