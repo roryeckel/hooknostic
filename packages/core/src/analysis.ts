@@ -167,7 +167,10 @@ export function analyzeCapabilities(
   const targets: Record<string, TargetAnalysis> = {};
 
   const configuredTargets = Object.keys(config.targets);
-  const selection = selectedTargets ?? configuredTargets;
+  // Once per name, in first-seen order: `--target nosuch,nosuch` is one
+  // mistake, and `--target claude,claude` analyses claude once rather than
+  // reporting its diagnostics twice.
+  const selection = [...new Set(selectedTargets ?? configuredTargets)];
 
   if (selectedTargets !== undefined && selectedTargets.length === 0) {
     diagnostics.push({

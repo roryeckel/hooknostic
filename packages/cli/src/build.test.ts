@@ -3201,6 +3201,139 @@ describe("a CLI and a project SDK on different releases (HN110, #194)", () => {
   });
 });
 
+describe("an undeclared --target names itself whether or not the config has an entry (#207)", () => {
+  const SDK_ALIAS = { alias: { "@hooknostic/sdk": join(REPO, "packages/sdk/src/index.ts") } };
+  const notDeclared = (target: string) => ({
+    code: "HN501",
+    target,
+    message: `target "${target}" is not declared in the configuration.`,
+  });
+  const hn501 = (out: string) =>
+    (JSON.parse(out) as { diagnostics: { code: string; target?: string; message: string }[] }).diagnostics
+      .filter((d) => d.code === "HN501")
+      .map(({ code, target, message }) => ({ code, target, message }));
+
+  async function fixture(kind: "package-only" | "components-only" | "with-entry"): Promise<string> {
+    const dir = await mkdtemp(join(tmpdir(), `hooknostic-207-${kind}-`));
+    cleanupDirs.push(dir);
+    const range = JSON.stringify(claudeHarness.recommendedRange);
+    if (kind === "package-only") {
+      await writeFile(join(dir, "plugin.json"), JSON.stringify({ $schema: AGENT_PLUGIN_MANIFEST_SCHEMA, name: "p" }));
+      await writeFile(
+        join(dir, "hooknostic.config.ts"),
+        `export default {
+          components: { root: ".", targets: ["claude"] },
+          targets: { claude: { version: ${range}, delivery: "package", output: "./dist/claude" } },
+        };`,
+      );
+    } else if (kind === "components-only") {
+      await mkdir(join(dir, "skills/sample"), { recursive: true });
+      await writeFile(join(dir, "skills/sample/SKILL.md"), "---\nname: sample\ndescription: Sample\n---\nBody.\n");
+      await writeFile(
+        join(dir, "hooknostic.config.ts"),
+        `export default {
+          project: { root: "." },
+          components: { skills: ["./skills"] },
+          targets: { claude: { version: ${range}, delivery: "project", output: ".hooknostic/artifacts/claude" } },
+        };`,
+      );
+    } else {
+      await writeFile(
+        join(dir, "hooks.ts"),
+        `import { definePlugin, hook } from "@hooknostic/sdk";
+         export default definePlugin({ name: "p", hooks: [hook("session.start", { id: "s", async run() {} })] });`,
+      );
+      await writeFile(
+        join(dir, "hooknostic.config.ts"),
+        `export default {
+          entry: "./hooks.ts",
+          targets: { claude: { version: ${range}, delivery: "package", output: "./dist/claude" } },
+        };`,
+      );
+    }
+    return dir;
+  }
+
+  async function run(command: "build" | "check", dir: string, targets: string[]) {
+    const capture = captureIO();
+    const options = {
+      config: join(dir, "hooknostic.config.ts"),
+      targets,
+      json: true,
+      registry: defaultAdapterRegistry(),
+      io: capture.io,
+      evaluate: SDK_ALIAS,
+    };
+    const code = await (command === "build" ? runBuild(options) : runCheck(options));
+    return { code, out: capture.out() };
+  }
+
+  it.each([
+    ["package-only", "nosuch"],
+    ["package-only", "toString"],
+    ["components-only", "nosuch"],
+    ["components-only", "toString"],
+  ] as const)("reports HN501 for a %s config selecting %s, from build and check", async (kind, target) => {
+    // With no entry and no configured target selected, nothing loads. The build
+    // used to stop there, before analysis, with exit 2 and no diagnostic at all.
+    const dir = await fixture(kind);
+    for (const command of ["build", "check"] as const) {
+      const { code, out } = await run(command, dir, [target]);
+      expect(code, `${command}: ${out}`).toBe(2);
+      expect(hn501(out), `${command}: ${out}`).toEqual([notDeclared(target)]);
+    }
+    expect(existsSync(join(dir, "hooknostic-build.json"))).toBe(false);
+  });
+
+  it("prints the diagnostic and the check verdict in text mode for an entry-less config", async () => {
+    // A failure without analysis takes check's bare error path instead, which
+    // prints no verdict, so this pins that analysis is what reports it.
+    const dir = await fixture("package-only");
+    const capture = captureIO();
+    expect(
+      await runCheck({
+        config: join(dir, "hooknostic.config.ts"),
+        targets: ["nosuch"],
+        registry: defaultAdapterRegistry(),
+        io: capture.io,
+      }),
+      capture.out() + capture.err(),
+    ).toBe(2);
+    expect(capture.out()).toContain('target "nosuch" is not declared in the configuration.');
+    expect(capture.out()).toContain("check failed: fix the errors above");
+  });
+
+  it.each([
+    ["with-entry", ["nosuch"]],
+    ["package-only", ["claude", "nosuch"]],
+    ["components-only", ["claude", "nosuch"]],
+  ] as const)("reports a %s config's undeclared target once, alongside %j", async (kind, targets) => {
+    // Paths that already reached analysis keep exactly one report; an early
+    // check of the selection would add a second, or, being fatal, would stop
+    // an entry-less build before analysis ever saw the declared target.
+    const dir = await fixture(kind);
+    for (const command of ["build", "check"] as const) {
+      const { code, out } = await run(command, dir, [...targets]);
+      expect(code, `${command}: ${out}`).toBe(2);
+      expect(hn501(out), `${command}: ${out}`).toEqual([notDeclared("nosuch")]);
+      if (command === "check")
+        expect(Object.keys(JSON.parse(out).targets), out).toEqual(targets.filter((id) => id !== "nosuch"));
+    }
+  });
+
+  it.each(["with-entry", "package-only"] as const)(
+    "reports an undeclared target named twice once, for a %s config",
+    async (kind) => {
+      const dir = await fixture(kind);
+      for (const command of ["build", "check"] as const) {
+        const { code, out } = await run(command, dir, ["nosuch", "nosuch"]);
+        expect(code, `${command}: ${out}`).toBe(2);
+        expect(hn501(out), `${command}: ${out}`).toEqual([notDeclared("nosuch")]);
+      }
+    },
+  );
+});
+
 describe("hooknostic doctor", () => {
   it("reports detection status per adapter", async () => {
     const { io, out } = captureIO();
