@@ -6,8 +6,9 @@ happens when code fails, yours or Hooknostic's. The command shims,
 `hooknostic dispatch` and every other command now run your config and hook
 source under a guard. A rejection, a timer that throws or a `process.exit` is
 reported, rather than ending the process with its own exit code or a stack
-trace, and a leaked handle no longer hangs a command. Every shim reports the errors it absorbs, in one format, and fails
-open. A new warning, HN110, names a CLI and an SDK from different releases.
+trace, and a leaked handle no longer hangs a command. Every shim reports the
+errors it absorbs, in one format, and fails open. A new warning, HN110, names
+a CLI and an SDK from different releases.
 
 Several of these changes affect exit codes and output that scripts read. The
 breaking changes come first, each with its upgrade step.
@@ -17,7 +18,7 @@ breaking changes come first, each with its upgrade step.
 - **Upgrade the SDK and CLI together.** An older CLI's shims import the schemas
   from the SDK root and cannot bundle against this SDK. Keep
   `@hooknostic/sdk`, `@hooknostic/agent-plugin` and the `hooknostic` CLI on
-  the same release. From this release, the CLI warns HN110 when it and the
+  the same release. From 0.13.0, the CLI warns HN110 when it and the
   project's SDK differ.
 - **The SDK's schemas move to `@hooknostic/sdk/schemas`.** Every `*Schema`
   export moves from `@hooknostic/sdk` to the subpath, including
@@ -47,21 +48,10 @@ breaking changes come first, each with its upgrade step.
   fails too. This is intended. To upgrade, add `hooknostic` as a
   devDependency and run `yarn hooknostic`. npm, pnpm and Yarn `node_modules`
   projects are unaffected.
-- **`runCli` no longer takes over its caller's process.** Only the
-  `hooknostic` command guards what it evaluates. The exported
-  `runCli(argv, options)` never replaces `process.exit`, adds process
-  listeners, claims stdout or forces an exit, with or without an `io`. A
-  config or hook source it evaluates behaves like any module your program
-  imports. Its `process.exit` ends your process, and a handle it leaks keeps
-  your process alive.
-  - Since 0.2.0, `runCli(["dispatch", ...])` without an `io` claimed stdout
-    and forced an exit after its results. It now does neither. Without an
-    `io`, whatever the hook source writes to stdout, such as its own
-    `console.log`, now shares stdout with the result lines. Before, it was
-    moved to stderr.
-  - To upgrade, pass an `io` to keep result lines apart from hook output. If
-    you relied on the guard, the stdout claim or the forced exit, run the
-    `hooknostic` binary as a child process instead.
+- **Rebuild packages or re-sync projects.** Artifact bytes change even when
+  your sources don't, so a project integration created by 0.12.x reports its
+  hook files as modified until `sync` runs again. That is expected. Sync,
+  then verify.
 - **A hook source's exit no longer decides a shim's exit code.** In the
   Claude Code, Codex and Copilot shims, a rejection nothing handles, a timer
   that throws or a call to `process.exit` is reported as one
@@ -75,63 +65,48 @@ breaking changes come first, each with its upgrade step.
   `build`, `sync`, `verify`, `recover`, `doctor` and `inspect --config` load
   them under a guard. A load that fails is HN501, and the command exits 2.
   That covers a top-level throw, a `process.exit`, a rejection, a timer that
-  throws, and a top-level `await` or thenable default export that never
-  settles. Before, these exited 3, 1 or 13, exited 0 without a word, or hung
-  on a leaked handle.
+  throws, a top-level `await` or thenable default export that never settles,
+  and a default export that throws when read, from a getter or a proxy. The
+  message names the cause, as in
+  `failed to load config <path>: the config called process.exit(3)`. Before,
+  these exited with your code's own exit code or Node's 1 or 13, exited 0
+  without a word, or hung on a leaked handle.
   - A failure after the load is a `hooknostic internal` line, and the command
     still exits 2. That takes precedence over `verify`'s drift exit 1. It does
     not hold back output: `build` or `sync` may already have written its
     changes.
+  - A timer or socket your code leaves open no longer keeps a command running
+    once it has reported, and a load that fails no longer leaves a
+    `hooknostic-eval-*` directory in the temporary directory.
   - To upgrade, expect exit 2 where a script used to see your code's own exit
-    code, a crash or a hang, and fix the failure the message names.
-- **`hooknostic dispatch` has new exit codes.**
-  - Exit **1** is new. The hook source failed outside a handler after it
-    loaded, or ended the process before every result was written. The
-    reports go to stderr, labelled with the event, and usually every result
-    line is still written.
-  - A load that fails exits **2** with no results. That includes a load that
-    never settles, and a config that rejects or throws from a timer while it
-    loads.
+    code, a crash or a hang, and fix the failure the message names. See
+    [design §10.3](design.md#103-error-and-timeout-policy).
+- **`hooknostic dispatch` runs under the shims' guard, with new exit codes.**
+  - Exit **1** is new. The hook source failed outside a handler, with a
+    rejection nothing handles or a timer that throws (at load or later) or a
+    `process.exit` after it loaded, or it ended the process before every
+    result was written. Each failure is reported on stderr against the event
+    it interrupted, as in `hooknostic internal [event 2]: stray rejection`,
+    and usually every result line is still written.
+  - A load that fails exits **2** with no results. The config fails as it does
+    under `check`, with HN501, including when it rejects or throws from a
+    timer while it loads. A load that never settles is a load failure, with a
+    message that names what it waits on.
   - Before, the hook source's own exit code, Node's 1 or 13 ended the run,
     usually with no result lines.
   - A `process.exit` inside a handler is that handler's error. The run exits
-    0 on a command target, as the shim does, or 1 with a one-line note on a
-    module target (OpenCode, Pi).
-  - Exit 2 takes precedence over 1.
+    0 on a command target, as the shim does, or 1 on a module target
+    (OpenCode, Pi), with a note that the shim in the harness does not
+    intercept it.
+  - Exit 2 takes precedence over 1. The staged hook bundle's temporary
+    directory is removed even when the run ends early.
 
   To upgrade, note that a caller that treats any non-zero exit as failure now
   fails on a stray rejection or timer throw in the hook source. Fix it, or pass
-  `--unguarded` to get the raw crash and the hook source's own exit code. See
-  [exit codes](testing-your-hooks.md#exit-codes).
-- **`__proto__` names are no longer dropped silently.** Zod 4 skipped a record
-  entry named `__proto__`, so such a name vanished without a diagnostic. A lone
-  `__proto__` target, for example, failed as `configuration declares no
-  targets.`
-  - `__proto__` now fails with HN501 as a target name, and as a name in
-    `components.excludeFor`, `components.mcpOverrides` and a materializer's
-    `inputs`.
-  - An MCP server may be named `__proto__`.
-    `components.mcpOverrides.<target>.servers` now keeps and validates an own
-    `__proto__` entry, as `components.mcpEnvironment` already did, and the
-    override reaches every adapter's project output.
-  - An object literal entry written as `__proto__: {...}` sets the record's
-    prototype instead of adding an entry. It now fails with HN501 in all of
-    these records, `components.mcpEnvironment` included. 0.12.0 dropped it
-    silently, unless its value was an array.
-  - Inside `components.mcpEnvironment`, a bad entry no longer hides a bad
-    `__proto__` entry or a configuration-level issue, and per-call parse
-    options (`error`, `reportInput`) now reach its issues.
-
-  To upgrade, rename a target or key that was `__proto__`. To name an MCP
-  server `__proto__`, write the key as a computed `["__proto__"]` key. If your
-  code does more with `hooknosticConfigSchema` than parse with it, note that the
-  five changed fields are now `ZodPipe`s, not `ZodRecord`s. Their `keyType`
-  and `valueType` are `undefined`, `z.input` types them as `unknown`, and
-  `z.encode` and `z.safeEncode` throw on every configuration. Import
-  `targetConfigSchema` directly rather than reaching for it through
-  `.shape.targets`. See
-  [importing SDK schemas](upgrading/sdk-schemas-subpath.md) and
-  [configuration](configuration.md).
+  `--unguarded` to keep the previous path, with the hook source's own exit
+  code and Node's stack trace; other commands reject the flag. See
+  [when the hook source fails outside a handler](testing-your-hooks.md#when-the-hook-source-fails-outside-a-handler)
+  and [exit codes](testing-your-hooks.md#exit-codes).
 - **Some error and JSON output changes.** A usage or configuration mistake
   prints a plain message, followed by the usage for a usage error. Before, it
   printed `hooknostic: unexpected error:` and a stack. Exit codes are
@@ -154,10 +129,6 @@ breaking changes come first, each with its upgrade step.
 
   To upgrade, update any parser of these failure reports. Successful
   `inspect --json` output is unchanged.
-- **Rebuild packages or re-sync projects.** Artifact bytes change even when
-  your sources don't, so a project integration created by 0.12.x reports its
-  hook files as modified until `sync` runs again. That is expected. Sync,
-  then verify.
 - **Expect new stderr lines.** Lines starting `hooknostic internal` may appear
   where earlier releases were silent, or where a hook used to end non-zero.
   Each one names an error that was previously swallowed or fatal. The line can
@@ -166,6 +137,45 @@ breaking changes come first, each with its upgrade step.
   and its stack under `HOOKNOSTIC_DEBUG`, then point into your code. Otherwise
   it reports a Hooknostic defect worth filing. See
   [writing hooks safely](writing-hooks-safely.md#see-why-a-hook-did-nothing-hooknostic_debug).
+- **`__proto__` names are no longer dropped silently.** Zod 4 skipped a record
+  entry named `__proto__`, so such a name vanished without a diagnostic. A lone
+  `__proto__` target, for example, failed as `configuration declares no
+  targets.`
+  - `__proto__` now fails with HN501 as a target name, and as a name in
+    `components.excludeFor`, `components.mcpOverrides` and a materializer's
+    `inputs`.
+  - An MCP server may be named `__proto__`.
+    `components.mcpOverrides.<target>.servers` now keeps and validates an own
+    `__proto__` entry, as `components.mcpEnvironment` already did, and the
+    override reaches every adapter's project output.
+  - An object literal entry written as `__proto__: {...}` sets the record's
+    prototype instead of adding an entry. It now fails with HN501 in all of
+    these records, `components.mcpEnvironment` included. 0.12.0 dropped it
+    silently, unless its value was an array.
+  - Inside `components.mcpEnvironment`, a bad entry no longer hides a bad
+    `__proto__` entry or a configuration-level issue, and per-call parse
+    options (`error`, `reportInput`) now reach its issues.
+
+  To upgrade, rename a target or key that was `__proto__`. To name an MCP
+  server `__proto__`, write the key as a computed `["__proto__"]` key. If your
+  code inspects or encodes `hooknosticConfigSchema` rather than only parsing
+  with it, five of its fields changed shape: see
+  [importing SDK schemas](upgrading/sdk-schemas-subpath.md) and
+  [configuration](configuration.md).
+- **`runCli` no longer takes over its caller's process.** This affects only
+  programs that call the exported `runCli(argv, options)`. It never replaces
+  `process.exit`, adds process listeners, claims stdout or forces an exit,
+  with or without an `io`. A config or hook source it evaluates behaves like
+  any module your program imports. Its `process.exit` ends your process, and
+  a handle it leaks keeps your process alive.
+  - Since 0.2.0, `runCli(["dispatch", ...])` without an `io` claimed stdout,
+    set `process.exitCode`, and armed a forced exit after its results. It now
+    does none of these. Without an `io`, whatever the hook source writes to
+    stdout, such as its own `console.log`, now shares stdout with the result
+    lines. Before, it was moved to stderr.
+  - To upgrade, pass an `io` to keep result lines apart from hook output. If
+    you relied on the guard, the stdout claim or the forced exit, run the
+    `hooknostic` binary as a child process instead.
 
 ## What is new
 
@@ -183,37 +193,6 @@ breaking changes come first, each with its upgrade step.
     Plug'n'Play.
   - HN110 never changes an exit code. In `--json` output and
     `hooknostic-build.json`, it is one more diagnostic.
-- **`hooknostic dispatch` runs under the command shims' guard.** A failure
-  outside a handler no longer ends the run with no results. It is reported
-  against the event it interrupted, as in
-  `hooknostic internal [event 2]: stray rejection`, and the remaining events
-  still get their results. On a module target, an intercepted `process.exit`
-  also gets a note saying that the shim in the harness does not intercept it.
-  - A config fails to load as it does under `check`, with HN501. A load that
-    never settles is a load failure, with a message that names what it waits
-    on.
-  - `--unguarded` keeps the previous path, with the hook source's own exit
-    code and Node's stack trace. Other commands reject the flag.
-  - The staged hook bundle's temporary directory is removed even when the run
-    ends early.
-
-  See
-  [when the hook source fails outside a handler](testing-your-hooks.md#when-the-hook-source-fails-outside-a-handler).
-- **Every command guards what it evaluates.** For `check`, `build`, `sync`,
-  `verify`, `recover`, `doctor` and `inspect --config`, a failure in your
-  config or hook source is reported as HN501. Examples:
-  `failed to load config <path>: the config called process.exit(3)`, and
-  `failed to load entry <path>: its top-level await never settles`. Changes
-  beyond the exit codes above:
-  - A hook source whose default export throws when read, from a getter or a
-    proxy, is HN501 `invalid plugin source: reading the default export
-    threw: ...`.
-  - A timer or socket your code leaves open no longer keeps a command
-    running once it has reported.
-  - A load that fails, or that ends the process, no longer leaves a
-    `hooknostic-eval-*` directory in the temporary directory.
-
-  See [design §10.3](design.md#103-error-and-timeout-policy).
 - **Generated runtimes bring their own Zod when yours cannot serve.** Every
   runtime still validates effects with Zod. A build uses your project's Zod
   for the SDK's schemas when it is in the SDK's peer range, sharing one copy
@@ -287,25 +266,25 @@ breaking changes come first, each with its upgrade step.
 
 ### Names that match `Object.prototype` members
 
-- **Adapter and target names are looked up by own key.** In `dispatch`,
-  `doctor` and `inspect --config`, a name such as `toString`, `constructor`
-  or `__proto__` now fails as unknown, with the usual message. Before, it
-  crashed or gave the wrong message.
-- **MCP server names are looked up by own key.**
-  - An `mcpOverrides.<target>.servers` entry named `toString` or `valueOf`,
-    when no such server exists, now fails as an unknown server, where it was
-    accepted silently. `constructor` and `hasOwnProperty` get the same error
-    instead of the stdio-only one.
-  - Codex no longer fails TOML generation when a server's name matches an
-    `Object.prototype` member. OpenCode no longer writes a non-numeric
-    `timeout` for a server named `__proto__`. Both now give such a server a
-    target-wide startup timeout.
-  - Claude Code and Pi, which cannot represent startup timeouts, now report
-    HN205 for a target-wide timeout whose only server is named `__proto__`.
-- **Target names are looked up by own key in builds.** A target named
-  `toString` or `constructor` is reported in the build report even when it
-  fails early. It no longer receives another target's exclusion patterns or
-  MCP override.
+- **Adapter and target names are looked up by own key.** A name such as
+  `toString`, `constructor` or `__proto__` now fails as unknown in
+  `dispatch`, `doctor` and `inspect --config`, where it crashed or gave the
+  wrong message. A target with such a name appears in the build report even
+  when it fails early, and no longer receives another target's exclusion
+  patterns or MCP override.
+- **MCP server names are looked up by own key.** An
+  `mcpOverrides.<target>.servers` entry named after an `Object.prototype`
+  member, with no such server, now fails as an unknown server. Such a server
+  no longer breaks Codex's TOML generation, a server named `__proto__` no
+  longer gets a non-numeric OpenCode `timeout`, and on both a target-wide
+  startup timeout now reaches it. On Claude Code and Pi, which cannot
+  represent startup timeouts, a target-wide timeout whose only server is
+  `__proto__` now reports HN205.
+
+### Yarn Plug'n'Play
+
+- TODO(#216): `yarn dlx` ... describe the HN110 regression fix and the
+  re-measured `yarn dlx` behaviour before release (#216).
 
 ### Documentation
 
@@ -325,31 +304,25 @@ breaking changes come first, each with its upgrade step.
 - **HN110 compares release numbers, not contents.** A CLI before 0.13.0
   never warns. `dispatch` does not check. `doctor` does not report HN110 for a
   package-only or hooks-only configuration, or for one that fails to load.
+  `sync` and `verify` don't check a configuration with no project-delivery
+  targets or no `project.root`.
 - **On OpenCode v2, reports are visible only with `--print-logs`.**
   `opencode run --standalone --print-logs` is the only path measured to show
   plugin output. The TUI and the background service are unmeasured.
-- **The guards cover accidental failures, not deliberate ones.** A hook
-  source runs as trusted code, and Hooknostic is not a sandbox. Code that
-  rearranges Node's process listeners can defeat a guard. Examples include a
-  prepended `uncaughtException` listener, a capture callback, or removing
-  every listener. `process.kill(process.pid)`, `process.abort()` and
-  `process.reallyExit` still end the process. See
-  [writing hooks safely](writing-hooks-safely.md#keep-imported-modules-free-of-side-effects).
-- **A load that never settles while a leaked handle keeps the loop alive
-  still hangs**, in every command and in `dispatch`. With work still pending,
-  it cannot be told apart from a slow load.
-- **Attribution is best effort.** A failure is reported against the load or
-  the `dispatch` event in which it lands, not necessarily the one that
-  scheduled it. `dispatch` writes its result lines at the end, so a run that
-  ends early loses some or all of them.
-- **Only the `hooknostic` command is guarded.** `runCli`, `dispatchEvents()`,
-  `buildProject()` and the other programmatic APIs run user code in your
-  process.
+- **The guards cover accidental failures in the `hooknostic` command and the
+  shims.** Your code runs as trusted code, and Hooknostic is not a sandbox:
+  rearranging Node's process listeners can defeat a guard, and
+  `process.kill(process.pid)`, `process.abort()` and `process.reallyExit`
+  still end the process. A load that never settles while a leaked handle
+  keeps the loop alive still hangs. Attribution to a load or a `dispatch`
+  event is best effort, and a `dispatch` run that ends early loses some or
+  all of its result lines. `runCli`, `dispatchEvents()`, `buildProject()` and
+  the other programmatic APIs install no guard. See
+  [design §10.3](design.md#103-error-and-timeout-policy).
 - **`onHookError: "block"` does not cover internal errors.** Hooknostic's own
   failures always fail open.
 - **No harness support range claim changes.** The new captures add
   `validatedOn` evidence for OpenCode 2.0.17 and 2.2.7 without widening any
   range.
 
-Start with the [README](../README.md); the [release runbook](releases.md)
-describes preparation, draft creation, and publication.
+Start with the [README](../README.md).
