@@ -1013,7 +1013,7 @@ export default definePlugin({
       // The throw skips the listeners after it: a pin only at the end would leave Node's 13.
       expect(status, raw).toBe(2);
       expect(results).toHaveLength(0);
-      // Then the guard reports the listener's throw itself.
+      // The guard may then report the listener's throw itself.
       expect(stderr[0]).toBe("failed to dispatch through entry ./hooks.ts: its top-level await never settles");
       expect(evalDirs).toEqual([]);
     });
