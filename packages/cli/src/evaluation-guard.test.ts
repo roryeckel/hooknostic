@@ -3,6 +3,7 @@ import { mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
 import { syncBuiltinESMExports } from "node:module";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
@@ -68,7 +69,16 @@ interface RunOptions {
   files?: Record<string, string>;
   /** What node runs instead of the CLI: its arguments, given the project's paths. */
   node?: (paths: { dir: string; configPath: string }) => string[];
+  /**
+   * The run hangs once stderr matches this: kill it, as a user would, once
+   * its temp directory holds no staged module or after KILL_GRACE_MS. The
+   * kill runs no `exit` listener, so only what the run removed itself is gone.
+   */
+  killAfter?: RegExp;
 }
+
+// How long a hung run may take to remove its staged modules before the kill.
+const KILL_GRACE_MS = 5_000;
 
 const tempDirs: string[] = [];
 afterAll(async () => {
@@ -113,9 +123,22 @@ async function run(args: string[], fixture: Fixture, options: RunOptions = {}): 
   // As `| head` does: the consumer goes once it has read what it wanted.
   if (options.closeStdoutEarly) child.stdout.once("data", () => child.stdout.destroy());
   child.stderr.setEncoding("utf8").on("data", (chunk: string) => (stderr += chunk));
-  const [status, signal] = await new Promise<[number | null, NodeJS.Signals | null]>((done) =>
+  const closed = new Promise<[number | null, NodeJS.Signals | null]>((done) =>
     child.on("close", (code, killedBy) => done([code, killedBy])),
   );
+  const killAfter = options.killAfter;
+  if (killAfter !== undefined) {
+    const staged = async () => (await readdir(temp)).some((name) => name.startsWith("hooknostic-eval-"));
+    void (async () => {
+      // Should the child exit first, or be killed by SPAWN_TIMEOUT_MS, there is nothing to kill.
+      const ended = closed.then(() => true);
+      while (!killAfter.test(stderr)) if (await Promise.race([ended, delay(20, false)])) return;
+      const deadline = Date.now() + KILL_GRACE_MS;
+      while (Date.now() < deadline && (await staged())) await delay(20);
+      child.kill("SIGKILL");
+    })();
+  }
+  const [status, signal] = await closed;
   stdout = stdout.replace(/\r\n/g, "\n");
   stderr = stderr.replace(/\r\n/g, "\n");
   const evalDirs = (await readdir(temp)).filter((name) => name.startsWith("hooknostic-eval-"));
@@ -331,6 +354,35 @@ ${LEAK}`,
     expect({ signal: result.signal, status: result.status }).toEqual({ signal: null, status: 0 });
     expect(result.stdout).toContain("check passed");
   });
+
+  it(
+    "leaves no staged config behind a load that hangs on its default export, when the run is killed",
+    async () => {
+      // The leaked handle keeps the loop alive, so the stall is never seen and
+      // the run hangs, as design A10.3 lists. Its import has resolved, so the
+      // staged module is no longer needed, and must be gone before a kill,
+      // which no exit listener survives. Only the adoption calls `then`.
+      const config = `${LEAK}\nexport default { then() { process.stderr.write("adopting\\n"); } };`;
+      const cases = [["check"], ["dispatch", "--target", "claude"]];
+      const results = await runAll(cases, (args) =>
+        run(
+          args,
+          { config },
+          { killAfter: /adopting/, input: `${JSON.stringify({ event: "prompt.before", prompt: "hi" })}\n` },
+        ),
+      );
+
+      expect(
+        results.map((result, index) => ({
+          id: cases[index]![0],
+          adopting: result.stderr.includes("adopting"),
+          killed: result.signal !== null,
+          left: result.evalDirs,
+        })),
+      ).toEqual(cases.map(([id]) => ({ id, adopting: true, killed: true, left: [] })));
+    },
+    SPAWNS_TIMEOUT_MS,
+  );
 
   it("cannot hold open a command that succeeded", async () => {
     const result = await run(["build"], atLoad("entry", LEAK));

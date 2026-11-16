@@ -132,10 +132,17 @@ async function evaluateModule(file: string, subject: "config" | "entry", options
     }
   }
   let imported = false;
+  // Once: an early removal and the one below would race on Windows (EPERM).
+  let disposing: Promise<void> | undefined;
+  const dispose = () => (disposing ??= staged.dispose());
   try {
     const evaluation = (async () => {
       const mod = (await import(staged.href)) as { default?: unknown };
       imported = true;
+      // The import no longer needs the staged module: remove it now, as the
+      // unguarded path does, so an adoption that hangs until the run is
+      // killed, which no exit listener survives, cannot keep it (#201).
+      void dispose().catch(() => {});
       // Returned from an async function, so a thenable default export is
       // adopted, as an async config may rely on. The guard watches the
       // adoption too, so one that never settles is a stall it reports.
@@ -150,7 +157,7 @@ async function evaluateModule(file: string, subject: "config" | "entry", options
       throw new Error(`the config called process.exit(${exitCodeText(error.code)})`);
     throw error;
   } finally {
-    await staged.dispose();
+    await dispose();
   }
 }
 
