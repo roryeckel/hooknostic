@@ -179,7 +179,21 @@ export async function loadConfig(
     return { diagnostics };
   }
 
-  const parsed = hooknosticConfigSchema.safeParse(evaluated);
+  let parsed: ReturnType<typeof hooknosticConfigSchema.safeParse>;
+  try {
+    parsed = hooknosticConfigSchema.safeParse(evaluated);
+  } catch (error) {
+    // safeParse reports an invalid value, but a getter or Proxy trap on the
+    // default export can throw while Zod reads it (#199).
+    diagnostics.push({
+      code: "HN501",
+      severity: "error",
+      message: `failed to load config ${configPath}: reading its default export threw: ${errorMessage(error)}`,
+      location: { file: configPath },
+      remediation: "the config must be a TypeScript module whose default export is defineConfig({...}).",
+    });
+    return { diagnostics };
+  }
   if (!parsed.success) {
     for (const issue of parsed.error.issues) {
       diagnostics.push({

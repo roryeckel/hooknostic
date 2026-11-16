@@ -621,6 +621,28 @@ describe("hooknostic check", () => {
     expect(report.diagnostics[0].code).toBe("HN501");
   });
 
+  it("reports a config whose getter throws as HN501, not an unexpected error (#199)", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "hooknostic-cli-throwing-config-"));
+    tempDirs.push(dir);
+    const config = join(dir, "hooknostic.config.ts");
+    await writeFile(
+      config,
+      `export default { entry: "./hooks.ts", get targets() { throw new Error("targets getter"); } };`,
+      "utf8",
+    );
+    const { io, out } = captureIO();
+    // Exit 2 either way: the report's shape is what changed.
+    await runCli(["check", "--config", config, "--json"], { registry: registry(), io });
+    const report = JSON.parse(out());
+    expect(report.errors).toBeUndefined();
+    expect(report.diagnostics).toEqual([
+      expect.objectContaining({
+        code: "HN501",
+        message: `failed to load config ${config}: reading its default export threw: targets getter`,
+      }),
+    ]);
+  });
+
   it("keeps empty project targets invalid for ordinary check and build", async () => {
     const dir = await mkdtemp(join(tmpdir(), "hooknostic-cli-empty-targets-"));
     tempDirs.push(dir);

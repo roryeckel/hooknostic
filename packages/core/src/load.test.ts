@@ -190,6 +190,60 @@ describe("loadConfig", () => {
     expect(result.diagnostics[0]).toMatchObject({ code: "HN501", severity: "error" });
   });
 
+  describe("reports a default export that throws while it is validated as HN501 (#199)", () => {
+    const REVOKED = `const revocable = Proxy.revocable({}, {}); revocable.revoke();`;
+    const throwing = (value: string) => `export default { entry: "./hooks.ts", get targets() { throw ${value}; } };`;
+    it.each([
+      ["a throwing getter", throwing(`new Error("targets getter")`), "targets getter"],
+      // A top-level revoked Proxy fails in evaluation, where `then` is read; a nested one reaches validation.
+      [
+        "a nested revoked Proxy",
+        `${REVOKED} export default { entry: "./hooks.ts", targets: revocable.proxy };`,
+        /^Cannot perform '\w+' on a proxy that has been revoked$/,
+      ],
+      [
+        "a Proxy whose ownKeys trap throws",
+        `export default new Proxy({ entry: "./hooks.ts", targets: {} }, { ownKeys() { throw new Error("ownKeys trap"); } });`,
+        "ownKeys trap",
+      ],
+      [
+        "a Proxy whose getPrototypeOf trap throws",
+        `export default new Proxy({ entry: "./hooks.ts", targets: {} }, { getPrototypeOf() { throw new Error("getPrototypeOf trap"); } });`,
+        "getPrototypeOf trap",
+      ],
+      [
+        "a materializer provider whose id getter throws",
+        `export default { components: { root: ".", materialize: [{ provider: { get id() { throw new Error("provider id getter"); }, plan() {} }, inputs: {}, into: "x" }] }, targets: {} };`,
+        "provider id getter",
+      ],
+      ["a thrown string", throwing(`"thrown string"`), "thrown string"],
+      ["a thrown null", throwing("null"), "null"],
+      ["a thrown null-prototype object", throwing("Object.create(null)"), "uninspectable thrown value"],
+      ["a thrown revoked Proxy", `${REVOKED} ${throwing("revocable.proxy")}`, "uninspectable thrown value"],
+    ])("%s", async (_, source, detail) => {
+      const dir = await fixtureDir();
+      const file = join(dir, "hooknostic.config.ts");
+      await writeFile(file, source, "utf8");
+      const result = await loadConfig(file, OPTIONS);
+      expect(result.config).toBeUndefined();
+      expect(result.diagnostics).toEqual([
+        {
+          code: "HN501",
+          severity: "error",
+          message: expect.any(String),
+          location: { file },
+          remediation: "the config must be a TypeScript module whose default export is defineConfig({...}).",
+        },
+      ]);
+      const prefix = `failed to load config ${file}: reading its default export threw: `;
+      const message = result.diagnostics[0]!.message;
+      expect(message.slice(0, prefix.length)).toBe(prefix);
+      const rendered = message.slice(prefix.length);
+      if (typeof detail === "string") expect(rendered).toBe(detail);
+      else expect(rendered).toMatch(detail);
+    });
+  });
+
   it("loads configs under a tilde directory (8.3 short-name regression, vitest#7084)", async () => {
     // GitHub's Windows runners expose TEMP as C:\Users\RUNNER~1\...; the "~"
     // percent-encodes to %7E and the vitest runner could not import() that
