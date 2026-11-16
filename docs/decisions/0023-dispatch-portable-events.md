@@ -145,8 +145,7 @@ source's own `uncaughtException` listener ends it with Node's 7.
 **The other commands** that evaluate the config or the hook source in the CLI's
 process (`check`, `build`, `sync`, `verify`, `recover`, `doctor`, and
 `inspect --config`) now run that evaluation under the same guard (#193). A
-failure while a module loads is that load's HN501, and the command exits `2`;
-`inspect --config` still prints its config's as an unexpected error (#208).
+failure while a module loads is that load's HN501, and the command exits `2`.
 One after every load is reported as `hooknostic internal: ...` and makes the
 exit code at least `2`, but it does not undo what `build` or `sync` already
 wrote. A leaked handle no longer holds the command open. They have no
