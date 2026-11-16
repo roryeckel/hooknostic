@@ -237,38 +237,68 @@ describe("files that already exist (#217)", () => {
   );
 });
 
+// Runs init in text and JSON mode from cwd, expecting exit 2 with message
+// and nothing written anywhere under root.
+async function expectRefused(root: string, cwd: string, args: string[], message: string) {
+  const before = await snapshot(root);
+  const previous = process.cwd();
+  process.chdir(cwd);
+  try {
+    const text = await init(args);
+    expect(text.code).toBe(2);
+    expect(text.out).toEqual([]);
+    expect(text.err).toEqual([message]);
+
+    const json = await init([...args, "--json"]);
+    expect(json.code).toBe(2);
+    expect(json.err).toEqual([]);
+    expect(json.out).toHaveLength(1);
+    expect(JSON.parse(json.out[0]!)).toStrictEqual({
+      schemaVersion: 1,
+      command: "init",
+      ok: false,
+      created: [],
+      unchanged: [],
+      errors: [message],
+    });
+  } finally {
+    process.chdir(previous);
+  }
+  expect(await snapshot(root)).toEqual(before);
+}
+
 describe("a target that is a directory (#217)", () => {
-  // --config . and --config "" resolve to the cwd itself, the same path as
-  // dir here; testing them directly would need a chdir.
-  it.each([
-    ["a directory", ""],
-    ["a directory with a trailing separator", sep],
-  ])("fails with 2 and writes nothing when --config names %s", async (_, suffix) => {
+  const hint = (dir: string) =>
+    `init failed: cannot create ${dir}: it is a directory; --config names the configuration file, such as ${join(dir, "hooknostic.config.ts")}`;
+  const noNesting = (dir: string) =>
+    `init failed: cannot create ${dir}: it is a directory; --config names the configuration file, not a directory`;
+
+  // Each case: the directory to make under proj ("" for proj itself), the
+  // init arguments, and the expected message. init runs with proj as cwd.
+  it.each<[string, string, (dir: string) => string[], (dir: string) => string]>([
+    ["--config names a directory", "cfgdir", (dir) => ["--config", dir], hint],
+    ["--config names a directory with a trailing separator", "cfgdir", (dir) => ["--config", dir + sep], hint],
+    ["--config is .", "", () => ["--config", "."], hint],
+    ['--config is ""', "", () => ["--config", ""], hint],
+    [
+      "--config names a directory called hooknostic.config.ts",
+      "hooknostic.config.ts",
+      (dir) => ["--config", dir],
+      noNesting,
+    ],
+    ["--config names a directory called my.config.ts", "my.config.ts", (dir) => ["--config", dir], noNesting],
+    [
+      "the default config path is a directory and --config was not given",
+      "hooknostic.config.ts",
+      () => [],
+      (dir) => `init failed: cannot create ${dir}: it is a directory`,
+    ],
+  ])("fails with 2 and writes nothing when %s", async (_, name, args, message) => {
     const { root, proj } = await project();
     try {
-      const dir = join(proj, "cfgdir");
-      await mkdir(dir);
-      const before = await snapshot(root);
-      const message = `init failed: cannot create ${dir}: it is a directory; --config names the configuration file, such as ${join(dir, "hooknostic.config.ts")}`;
-
-      const text = await init(["--config", dir + suffix]);
-      expect(text.code).toBe(2);
-      expect(text.out).toEqual([]);
-      expect(text.err).toEqual([message]);
-
-      const json = await init(["--config", dir + suffix, "--json"]);
-      expect(json.code).toBe(2);
-      expect(json.err).toEqual([]);
-      expect(json.out).toHaveLength(1);
-      expect(JSON.parse(json.out[0]!)).toStrictEqual({
-        schemaVersion: 1,
-        command: "init",
-        ok: false,
-        created: [],
-        unchanged: [],
-        errors: [message],
-      });
-      expect(await snapshot(root)).toEqual(before);
+      const dir = join(proj, name);
+      if (name) await mkdir(dir);
+      await expectRefused(root, proj, args(dir), message(dir));
     } finally {
       await rm(root, { recursive: true, force: true });
     }

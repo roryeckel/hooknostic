@@ -499,7 +499,7 @@ async function runCommand(argv: string[], options: RunCliOptions | undefined, ow
       case "init":
         if (!parsed.values["local"]) return usage("init requires --local");
         return await runInit(
-          typeof parsed.values["config"] === "string" ? parsed.values["config"] : "hooknostic.config.ts",
+          typeof parsed.values["config"] === "string" ? parsed.values["config"] : undefined,
           registry,
           io,
           parsed.values["json"] === true,

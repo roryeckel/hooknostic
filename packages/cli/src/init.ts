@@ -1,21 +1,24 @@
 import { type FileHandle, mkdir, open, stat, unlink } from "node:fs/promises";
-import { dirname, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 
 import type { AdapterRegistry } from "@hooknostic/core";
 import { errorMessage } from "@hooknostic/runtime";
 
 import type { CommandIO } from "./check.js";
 
+const DEFAULT_CONFIG = "hooknostic.config.ts";
+
 const fileNoun = (count: number) => (count === 1 ? "file" : "files");
 const indent = (paths: string[]) => paths.map((path) => `  ${path}`);
 
+/** `config` is the --config value, or undefined when it was not given. */
 export async function runInit(
-  config: string,
+  config: string | undefined,
   registry: AdapterRegistry,
   io: CommandIO,
   json: boolean,
 ): Promise<number> {
-  const path = resolve(config);
+  const path = resolve(config ?? DEFAULT_CONFIG);
   const root = dirname(path);
   const targets = Object.fromEntries(
     Object.values(registry)
@@ -71,10 +74,15 @@ export async function runInit(
       continue;
     }
     if (isDirectory) {
+      const message = `init failed: cannot create ${file}: it is a directory`;
+      // The --config hint only helps when --config was given, and a file
+      // suggested inside a directory already named like a config would
+      // only nest the mistake.
+      if (file !== path || config === undefined) return fail(message);
       return fail(
-        file === path
-          ? `init failed: cannot create ${file}: it is a directory; --config names the configuration file, such as ${join(file, "hooknostic.config.ts")}`
-          : `init failed: cannot create ${file}: it is a directory`,
+        basename(file).endsWith(".config.ts")
+          ? `${message}; --config names the configuration file, not a directory`
+          : `${message}; --config names the configuration file, such as ${join(file, DEFAULT_CONFIG)}`,
       );
     }
     present.add(file!);
