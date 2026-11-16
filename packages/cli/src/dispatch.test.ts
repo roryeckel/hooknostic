@@ -3,7 +3,7 @@ import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { syncBuiltinESMExports } from "node:module";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { afterAll, describe, expect, it, vi } from "vitest";
 
@@ -30,6 +30,7 @@ const HERE = fileURLToPath(new URL(".", import.meta.url));
 const SDK_PATH = resolve(HERE, "../../sdk/src/index.ts");
 const EVALUATE = { alias: { "@hooknostic/sdk": SDK_PATH } };
 const CLI_BIN = resolve(HERE, "../bin/hooknostic.mjs");
+const CLI_INDEX = pathToFileURL(resolve(HERE, "../dist/index.js")).href;
 
 const tempDirs: string[] = [];
 afterAll(async () => {
@@ -1087,28 +1088,50 @@ export default definePlugin({
     it.each([{ flags: [] as string[] }, { flags: ["--unguarded"] }])(
       "leaves with 2 when dispatch throws unexpectedly, though a handle leaked ($flags)",
       async ({ flags }) => {
+        // A temp directory of the run's own, so other tests' staging cannot show up in it.
+        const temp = await mkdtemp(join(tmpdir(), "hooknostic-dispatch-temp-"));
+        tempDirs.push(temp);
         const dir = await project(onSecondEvent(""), GUARD_TARGETS);
-        // The config leaks a handle. An adapter name that resolves through the
-        // registry's prototype makes dispatch throw outside its own error
-        // handling, which is the path under test. That lookup is a defect of
-        // its own (#195): once it is fixed, this test needs another route to
-        // an unexpected throw, or it passes without reaching that path.
+        // The config leaks a handle, so only the guard's exit can end the run.
         await writeFile(
           join(dir, "hooknostic.config.ts"),
           `setInterval(() => {}, 60_000);
-          export default { entry: "./hooks.ts", targets: { claude: {
-            adapter: "toString", version: ${JSON.stringify(claudeHarness.recommendedRange)}, delivery: "package", output: "./dist/claude",
-          } } };`,
+          export default { entry: "./hooks.ts", targets: ${GUARD_TARGETS} };`,
+        );
+        // A copy of the bin whose adapter throws as dispatch resolves the
+        // target: outside dispatch's own error handling, which is the path
+        // under test. runCli still guards the run, as no io is injected.
+        await writeFile(
+          join(dir, "throwing-cli.mjs"),
+          `import { defaultAdapterRegistry, runCli } from ${JSON.stringify(CLI_INDEX)};
+const registry = defaultAdapterRegistry();
+registry.claude = { ...registry.claude, resolveTarget() { throw new Error("adapter exploded"); } };
+process.exitCode = await runCli(process.argv.slice(2), { registry });`,
         );
         const child = spawnSync(
           process.execPath,
-          [CLI_BIN, "dispatch", "--config", join(dir, "hooknostic.config.ts"), "--target", "claude", ...flags],
-          { input: EVENTS.join(""), encoding: "utf8", timeout: 20_000, env: { ...process.env, HOOKNOSTIC_DEBUG: "" } },
+          [
+            join(dir, "throwing-cli.mjs"),
+            "dispatch",
+            "--config",
+            join(dir, "hooknostic.config.ts"),
+            "--target",
+            "claude",
+            ...flags,
+          ],
+          {
+            input: EVENTS.join(""),
+            encoding: "utf8",
+            timeout: 20_000,
+            env: { ...process.env, HOOKNOSTIC_DEBUG: "", TEMP: temp, TMP: temp, TMPDIR: temp },
+          },
         );
         // Killed by the timeout, it would have no status.
         expect(child.signal, child.stderr).toBeNull();
         expect(child.status).toBe(2);
         expect(child.stderr).toContain("hooknostic: unexpected error:");
+        expect(child.stderr).toContain("adapter exploded");
+        expect((await readdir(temp)).filter((name) => name.startsWith("hooknostic-eval-"))).toEqual([]);
       },
     );
 
