@@ -608,6 +608,57 @@ describe("canonical schemas", () => {
       });
     });
 
+    it("keeps an own __proto__ server name from another realm and rejects a replaced one", () => {
+      const project = (servers: unknown) => ({
+        project: { root: "." },
+        components: { mcp: "./mcp.json", mcpOverrides: { client: { servers } } },
+        targets: { client: projectTarget },
+      });
+      const keptProto = (record: unknown) => Object.getOwnPropertyDescriptor(record, "__proto__")?.value as unknown;
+
+      // Each record has an own `__proto__` key under the other realm's Object.prototype.
+      const servers = runInNewContext(
+        `Object.fromEntries([["__proto__", { args: ["serve"] }], ["other", { args: [] }]])`,
+      );
+      expect(Object.getPrototypeOf(servers)).not.toBe(Object.prototype);
+      const parsedServers = hooknosticConfigSchema.safeParse(project(servers));
+      expect(pathsAndMessages(parsedServers)).toEqual([]);
+      if (parsedServers.success)
+        expect(keptProto(parsedServers.data.components!.mcpOverrides!.client!.servers)).toEqual({ args: ["serve"] });
+
+      const mcpEnvironment = runInNewContext(`Object.fromEntries([["__proto__", ["TOKEN"]], ["other", ["OTHER"]]])`);
+      const parsedEnvironment = hooknosticConfigSchema.safeParse({
+        components: { root: ".", mcpEnvironment },
+        targets: { claude: packageTarget },
+      });
+      expect(pathsAndMessages(parsedEnvironment)).toEqual([]);
+      if (parsedEnvironment.success)
+        expect(keptProto(parsedEnvironment.data.components!.mcpEnvironment)).toEqual(["TOKEN"]);
+
+      // A whole config from the other realm: every record in it is foreign.
+      const foreignConfig = runInNewContext(
+        `(${JSON.stringify(project(null))})`.replace(
+          '"servers":null',
+          `"servers":Object.fromEntries([["__proto__", { args: ["serve"] }]])`,
+        ),
+      );
+      const parsedConfig = hooknosticConfigSchema.safeParse(foreignConfig);
+      expect(pathsAndMessages(parsedConfig)).toEqual([]);
+      if (parsedConfig.success)
+        expect(keptProto(parsedConfig.data.components!.mcpOverrides!.client!.servers)).toEqual({ args: ["serve"] });
+
+      // Another realm's object literal still replaces the record's prototype.
+      const foreignLiteral = runInNewContext(`({ __proto__: { args: ["serve"] }, other: { args: [] } })`);
+      expect(pathsAndMessages(hooknosticConfigSchema.safeParse(project(foreignLiteral)))).toEqual([
+        {
+          path: ["components", "mcpOverrides", "client", "servers", "__proto__"],
+          message: expect.stringContaining(
+            'to name a server "__proto__", write the key as a computed ["__proto__"] key',
+          ),
+        },
+      ]);
+    });
+
     // mcpEnvironment uses the same checked mode as servers (#206). Its
     // successful own-key behaviour is pinned by the tests above this block.
     describe("an MCP environment entry named __proto__", () => {
