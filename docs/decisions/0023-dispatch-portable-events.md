@@ -137,5 +137,16 @@ source's own `uncaughtException` listener ends it with Node's 7.
 - **Scope.** Only the CLI is guarded. `dispatchEvents()` and `runCli` with an
   injected `io` run in the caller's process and install nothing. `--unguarded`
   keeps the earlier behaviour for a developer who wants the raw crash; other
-  commands reject it. `build` and `check` load the source unguarded too, which
-  is tracked separately (#193).
+  commands reject it.
+
+## Amendments — 2026-11-15 (second)
+
+**The other commands** that evaluate the config or the hook source in the CLI's
+process (`check`, `build`, `sync`, `verify`, `recover`, `doctor`, and
+`inspect --config`) now run that evaluation under the same guard (#193). A
+failure while a module loads is that load's HN501, and the command exits `2`.
+One after every load is reported as `hooknostic internal: ...` and makes the
+exit code at least `2`, but it does not undo what `build` or `sync` already
+wrote. A leaked handle no longer holds the command open. They have no
+`--unguarded`, and `runCli` with an injected `io` still installs nothing. The
+limits are in design §10.3.

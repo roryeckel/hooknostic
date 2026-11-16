@@ -661,7 +661,8 @@ version outside adapter data, **HN204** artifact mode unsupported, **HN205** val
 Plugin component unsupported, **HN206** Agent Plugin component below the minimum fidelity
 (still emitted under `onBelowMinimum: "warn"`), **HN301** adapter
 generation failure, **HN302** output commit failure, **HN401** unsupported effect returned
-at runtime, **HN501** invalid configuration, **HN502** bundled CLI entry point,
+at runtime, **HN501** invalid configuration or hook source, including a config or
+hook source that fails while it loads (§10.3), **HN502** bundled CLI entry point,
 **HN503** invalid Agent Plugin input, unsafe path, or unmergeable overlay,
 **HN504** Yarn Plug'n'Play install outside Yarn's runtime.
 **HN103** an effect was truncated or dropped by a runtime budget.
@@ -967,6 +968,51 @@ source in the CLI's own process and guards it (#189):
 - `--unguarded` skips the guard and keeps the earlier behaviour. `dispatchEvents()` and
   an in-process `runCli` with an injected `io` never install it: they share the
   caller's process.
+
+Every other command that evaluates the config or the hook source in the CLI's own
+process (`check`, `build`, `sync`, `verify`, `recover`, `doctor`, and `inspect
+--config`) runs that evaluation under the same guard (#193):
+
+- It installs the guard on the first evaluation and keeps it for the life of the
+  process. A command that evaluates nothing runs as before.
+- Each load is a window: the `import()`, adopting the default export, and one
+  zero-delay timer, so a microtask rejection or a 0 ms tail belongs to it. Each
+  window starts with `scope()`, so an exit code that escaped earlier throws again
+  there.
+- A `process.exit`, a rejection or a timer throw inside a window fails that load,
+  and so does an event loop that empties under it. The command reports it as
+  **HN501**: `failed to load config|entry <path>: <message>`. A config's exit reads
+  `the config called process.exit(<code>)`; the entry's keeps the runtime's
+  `the hook source called process.exit(<code>)`. A load that can never settle
+  reads `its top-level await never settles` or `its default export is a thenable
+  that never settles`. The command exits 2.
+- A throw while reading the entry's default export, from a getter or a proxy, is
+  HN501 as well: `invalid plugin source: reading the default export threw:
+  <message>`.
+- The guard decides 2 up front: until the command finishes, a process that user
+  code ends is a failure. An exit the guard cannot unwind, such as one from the
+  source's own `uncaughtException` listener, leaves with 2 and a `hooknostic
+  internal` line.
+- A failure outside every window is a stray. It is reported as a `hooknostic
+  internal` line, with its stack under `HOOKNOSTIC_DEBUG`, and the exit code
+  becomes at least 2, so verify's drift exit of 1 becomes 2.
+- The command leaves through the guard's `finish`, after flushing stdout and
+  stderr, so a handle that user code leaked cannot hold it open. A consumer that
+  closes stdout early does not fail the command. A run that ends early skips the
+  load's own cleanup, so the CLI also removes each staged module's temp directory
+  from an `exit` listener.
+
+The limits:
+
+- A stray does not hold back what the command writes. `build` or `sync` may
+  already have written its output by the time a stray fails the command.
+- Attribution is best effort. A failure after the window's zero-delay timer is a
+  stray, even if the load scheduled it, and one inside a window is that load's,
+  even if a module loaded earlier scheduled it.
+- A load that never settles while a handle it leaked keeps the loop alive still
+  hangs: the loop never empties, so there is no stall to detect.
+- `buildProject()`, `runProject()`, `loadConfig()`, the `run*` command functions
+  and an in-process `runCli` with an injected `io` never install the guard.
 
 Each native deadline is `ceil((sum of the event's handler budgets + processAllowanceMs) / 1000)`
 seconds: the handler budgets bound what the dispatcher runs, and the allowance covers what
