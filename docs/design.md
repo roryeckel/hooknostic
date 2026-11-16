@@ -703,7 +703,10 @@ may cause, and so does `recover`, which reports it only beside a load failure.
 It never changes an exit code: `check` and `build` print it, and `sync` and
 `verify` list it with their other build diagnostics. It is silent when no SDK
 resolves, when either version is not valid semver, and in this repository's
-workspace, whose examples resolve `packages/sdk` at the CLI's own version. Add
+workspace, whose examples resolve `packages/sdk` at the CLI's own version. It
+is also silent under another install's Plug'n'Play runtime, as under
+`yarn dlx` in a Plug'n'Play project: looking up the project's SDK there would
+load its runtime beside dlx's and break the build (#216). Add
 `hooknostic` to the project's devDependencies at the same version as its
 `@hooknostic/sdk`, and run that CLI: `npx hooknostic` from the project
 directory, or `yarn hooknostic` under Yarn Plug'n'Play. Without a local
@@ -719,7 +722,10 @@ not the project's, so a build that needs Hooknostic's own Zod fails the same
 way. It is an error, reported once per build, naming the module and the PnP
 manifest, or under `yarn dlx` where Hooknostic's own Zod failed to resolve.
 Under `yarn hooknostic` itself, where the CLI is in the project's install, a
-failure to resolve Hooknostic's own Zod keeps esbuild's error instead. Run
+failure to resolve Hooknostic's own Zod keeps esbuild's error instead. On
+Linux with Node 22, `yarn dlx` sharing Yarn's global cache with the project
+fails with HN501 "controlled by multiple pnpapi instances", whatever the Zod
+(#190). Run
 Hooknostic through Yarn from the project, `yarn hooknostic`, with
 `hooknostic` as a devDependency (ADR-0040; supporting the other invocations
 is #190).
