@@ -159,4 +159,7 @@ never does, with or without an injected `io`: before this, a call without one
 did all of that for `dispatch` (claiming stdout and forcing the exit since this
 ADR's first version), which could end or take over a host program. A
 programmatic `runCli` call now leaves the process to its caller, as
-`dispatchEvents()` always has.
+`dispatchEvents()` always has. One consequence for `dispatch` without an
+`io`: what the hook source writes to stdout now shares it with the result
+lines, where the claimed stdout used to move it to stderr. Pass an `io` to
+keep the two apart.
