@@ -51,8 +51,8 @@ One change ships in the same release. `hooknosticConfigSchema` now rejects
 `components.mcpOverrides`, its `servers` and a materializer's `inputs`, where
 Zod 4 used to drop the entry without a diagnostic. To see that name, those five
 fields now validate through a transform that inspects the raw input, as
-`components.mcpEnvironment` already did. If your code inspects the schema
-rather than only parsing with it:
+`components.mcpEnvironment` already did. If your code does more with the schema
+than parse with it:
 
 - Each of those fields is a `ZodPipe` of `z.unknown()` into a transform
   (inside `ZodOptional` where the field is optional), no longer a `ZodRecord`.
@@ -63,6 +63,11 @@ rather than only parsing with it:
 - `z.toJSONSchema` already refused the configuration schema by default, because
   of `mcpEnvironment`. With `unrepresentable: "any"`, those fields now come out
   as `{}` rather than as object schemas.
+- `z.encode` and `z.safeEncode` no longer work with `hooknosticConfigSchema`.
+  `targets` is required and is now a one-way transform, so encoding any
+  configuration throws `ZodEncodeError` ("Encountered unidirectional transform
+  during encode"). Before, it worked when `components.mcpEnvironment` was
+  absent.
 - Per-call parse options such as `error` and `reportInput` still reach issues
   inside those fields, with one exception: the explanation Zod nests inside an
   `invalid_key` issue, for a name that fails its own schema such as an empty
