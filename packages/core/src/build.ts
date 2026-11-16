@@ -409,8 +409,8 @@ function resolveProjectSdk(configDir: string): string | undefined {
 /**
  * HN110 for a build or project command whose config is in `configDir`: this
  * CLI against the SDK it would bundle (#194). An `evaluate` alias names that
- * SDK when it is a path; a bare package name has no manifest to walk up from,
- * so the project's own SDK stands in.
+ * SDK when it is an absolute path; a bare package name has no manifest to walk
+ * up from, so the project's own SDK stands in.
  */
 export function projectSdkReleaseSkew(configDir: string, evaluate?: EvaluateOptions): Diagnostic | undefined {
   const alias = evaluate?.alias?.["@hooknostic/sdk"];

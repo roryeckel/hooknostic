@@ -693,18 +693,21 @@ of the SDK package the build resolves, the one it bundles. Any difference in
 version counts, prereleases included, because the two are released in
 lockstep; build metadata (`+local.1`) is ignored, as semver orders it. The
 message names the SDK's directory relative to the configuration's directory
-when it is inside it, so a committed build report names no machine's path. It
-is a warning, reported once per run, even when the configuration fails to
-load, so `check`, `build`, `sync` and `verify` all report it beside a load
-failure that the skew may cause. It never changes an exit code: `check` and
-`build` print it, and `sync` and `verify` list it with their other build
-diagnostics. It is silent when no SDK resolves, when either version is not
-valid semver, and in this repository's workspace, whose examples resolve
-`packages/sdk` at the CLI's own version. Add `hooknostic` to the project's
-devDependencies at the same version as its `@hooknostic/sdk`, and run that
-CLI: `npx hooknostic` from the project directory, or `yarn hooknostic` under
-Yarn Plug'n'Play. Without a local install, and always under Plug'n'Play,
-`npx` fetches the registry's latest instead.
+when it is inside it, and says so:
+`at node_modules/@hooknostic/sdk (relative to the config's directory)`. A
+committed build report then names no machine's path. It is a warning, reported
+at most once per run, even when the configuration fails to load, so `check`,
+`build`, `sync` and `verify` all report it beside a load failure that the skew
+may cause, and so does `recover`, which reports it only beside a load failure.
+It never changes an exit code: `check` and `build` print it, and `sync` and
+`verify` list it with their other build diagnostics. It is silent when no SDK
+resolves, when either version is not valid semver, and in this repository's
+workspace, whose examples resolve `packages/sdk` at the CLI's own version. Add
+`hooknostic` to the project's devDependencies at the same version as its
+`@hooknostic/sdk`, and run that CLI: `npx hooknostic` from the project
+directory, or `yarn hooknostic` under Yarn Plug'n'Play. Without a local
+install, and always under Plug'n'Play, `npx` fetches the registry's latest
+instead.
 **HN504** a build under a Yarn Plug'n'Play manifest needs a module from Yarn's
 install that this process cannot read, because Hooknostic is running without
 Yarn's PnP runtime: under plain `node`, `npx`, a global install or `pnpm dlx`.
