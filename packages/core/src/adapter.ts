@@ -513,6 +513,11 @@ export interface HarnessAdapter {
 
 export type AdapterRegistry = Record<string, HarnessAdapter>;
 
+/** The adapter registered as `id`: an own entry only, so `toString` or `__proto__` is unknown, not inherited (#195). */
+export function registeredAdapter(registry: AdapterRegistry, id: string): HarnessAdapter | undefined {
+  return Object.hasOwn(registry, id) ? registry[id] : undefined;
+}
+
 export interface TargetAdapterResolution {
   adapter?: HarnessAdapter;
   diagnostics: Diagnostic[];

@@ -19,6 +19,7 @@ import {
   hookPluginRoot,
   levelsFromMatrix,
   loadConfig,
+  registeredAdapter,
   resolveTargetAdapter,
   stageUserModule,
   statedMcpEvents,
@@ -341,7 +342,8 @@ export async function dispatchEventsWith(
   const loaded = await loadConfig(configPath, options.evaluate);
   if (!loaded.config) return { ok: false, errors: [formatDiagnostics(loaded.diagnostics)] };
   const config = loaded.config;
-  const targetConfig = config.targets[options.target];
+  // Own keys only: `--target toString` is not configured, not inherited (#195).
+  const targetConfig = Object.hasOwn(config.targets, options.target) ? config.targets[options.target] : undefined;
   if (targetConfig === undefined) {
     const configured = Object.keys(config.targets).join(", ") || "none";
     return {
@@ -350,7 +352,7 @@ export async function dispatchEventsWith(
     };
   }
   const adapterId = targetConfig.adapter ?? options.target;
-  let adapter = options.registry[adapterId];
+  let adapter = registeredAdapter(options.registry, adapterId);
   if (adapter === undefined)
     return { ok: false, errors: [`no adapter is registered as ${JSON.stringify(adapterId)}.`] };
   const spec = targetSpecFromConfig(options.target, targetConfig);

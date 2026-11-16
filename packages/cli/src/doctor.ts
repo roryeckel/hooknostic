@@ -9,6 +9,7 @@ import {
   loadConfig,
   mcpAmbientCommands,
   type ProjectCommandResult,
+  registeredAdapter,
   resolveTargetAdapter,
   runProject,
   targetSpecFromConfig,
@@ -116,7 +117,7 @@ export async function runDoctor(options: DoctorCommandOptions): Promise<number> 
   if (loaded) {
     if (loaded.config) {
       const selected = Object.entries(loaded.config.targets).flatMap(([name, target]) => {
-        const registered = options.registry[target.adapter ?? name];
+        const registered = registeredAdapter(options.registry, target.adapter ?? name);
         if (!registered) return [];
         const adapter = resolveTargetAdapter(registered, targetSpecFromConfig(name, target)).adapter;
         return adapter ? [{ ...adapter, ...(registered.detect ? { detect: registered.detect } : {}) }] : [];

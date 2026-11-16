@@ -5,12 +5,14 @@ import { join } from "node:path";
 
 import { describe, expect, it, vi } from "vitest";
 
+import { claudeHarness } from "@hooknostic/adapter-claude";
 import { codexAdapter, codexHarness } from "@hooknostic/adapter-codex";
 import { opencodeAdapter, opencodeHarness, opencodeV2Harness } from "@hooknostic/adapter-opencode";
 import { type HarnessAdapter, runProject } from "@hooknostic/core";
 import { makeFakeAdapter } from "@hooknostic/testkit";
 
 import { resolveOnPath, runDoctor } from "./doctor.js";
+import { defaultAdapterRegistry } from "./registry.js";
 
 function fakeIO() {
   const out: string[] = [];
@@ -164,6 +166,27 @@ describe("doctor version comparison", () => {
       await rm(root, { recursive: true, force: true });
     }
   });
+
+  it.each(["toString", "__proto__"])(
+    "reports adapter %s, inherited from Object.prototype, as unregistered (#195)",
+    async (adapter) => {
+      const root = await mkdtemp(join(tmpdir(), "hooknostic-doctor-inherited-"));
+      try {
+        const configPath = join(root, "hooknostic.config.ts");
+        await writeFile(join(root, "hooks.ts"), `export default { name: "inherited-adapter", hooks: [] };`);
+        await writeFile(
+          configPath,
+          `export default { entry: "./hooks.ts", targets: { claude: { adapter: ${JSON.stringify(adapter)}, version: ${JSON.stringify(claudeHarness.recommendedRange)}, delivery: "package", output: "dist" } } };`,
+        );
+        const { io, out } = fakeIO();
+        expect(await runDoctor({ config: configPath, json: true, registry: defaultAdapterRegistry(), io })).toBe(2);
+        const payload = JSON.parse(out.join(""));
+        expect(payload.configurationErrors).toContain('no adapter is registered for target "claude".');
+      } finally {
+        await rm(root, { recursive: true, force: true });
+      }
+    },
+  );
 
   it("reports Codex wiring synchronized into a linked worktree as HN107, naming the root checkout", async () => {
     const scratch = await realpath(await mkdtemp(join(tmpdir(), "hooknostic-doctor-worktree-")));

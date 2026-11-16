@@ -688,6 +688,37 @@ export default definePlugin({
     expect(!outcome.ok && outcome.errors.join("\n")).toContain("HN201");
   });
 
+  describe("names inherited from Object.prototype (#195)", () => {
+    const claudeTarget = (adapter?: string) => `{ claude: {
+      ${adapter === undefined ? "" : `adapter: ${JSON.stringify(adapter)},`}
+      version: ${JSON.stringify(claudeHarness.recommendedRange)}, delivery: "package", output: "./dist/claude",
+    } }`;
+    const outcome = async (dir: string, target: string) =>
+      dispatchEvents({
+        config: join(dir, "hooknostic.config.ts"),
+        target,
+        events: [{ event: "prompt.before", prompt: "hi" }],
+        registry: defaultAdapterRegistry(),
+        evaluate: EVALUATE,
+      });
+
+    it.each(["toString", "__proto__"])("refuses adapter %s as unregistered", async (adapter) => {
+      const dir = await project(HOOKS, claudeTarget(adapter));
+      expect(await outcome(dir, "claude")).toEqual({
+        ok: false,
+        errors: [`no adapter is registered as ${JSON.stringify(adapter)}.`],
+      });
+    });
+
+    it.each(["toString", "__proto__"])("refuses --target %s as not configured", async (target) => {
+      const dir = await project(HOOKS, claudeTarget());
+      expect(await outcome(dir, target)).toEqual({
+        ok: false,
+        errors: [`target ${JSON.stringify(target)} is not configured; configured targets: claude.`],
+      });
+    });
+  });
+
   it("hands hooks the ctx.plugin.root the built runtime would resolve", async () => {
     // Reported through block, the one tool.before effect every target honours.
     const rooted = `

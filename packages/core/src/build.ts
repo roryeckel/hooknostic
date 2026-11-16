@@ -38,7 +38,7 @@ import {
 } from "@hooknostic/sdk";
 
 import type { AdapterRegistry, CapabilityMatrix, GeneratedArtifact, HarnessAdapter, TargetSpec } from "./adapter.js";
-import { resolveTargetAdapter, targetSpecFromConfig } from "./adapter.js";
+import { registeredAdapter, resolveTargetAdapter, targetSpecFromConfig } from "./adapter.js";
 import {
   type AgentPluginProjectionResolution,
   analyzeAgentPluginProjection,
@@ -754,7 +754,7 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
   const adapterFor = (id: string): HarnessAdapter | undefined => {
     const target = config.targets[id];
     if (!target) return undefined;
-    const registered = options.registry[target.adapter ?? id];
+    const registered = registeredAdapter(options.registry, target.adapter ?? id);
     return registered && (resolveTargetAdapter(registered, targetSpecFromConfig(id, target)).adapter ?? registered);
   };
   const componentTargetIds = new Set(config.components?.targets ?? Object.keys(config.targets));

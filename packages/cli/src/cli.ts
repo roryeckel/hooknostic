@@ -307,7 +307,7 @@ export async function runCli(argv: string[], options?: RunCliOptions): Promise<n
         if (typeof parsed.values["config"] === "string") {
           const loaded = await loadConfig(resolve(parsed.values["config"]));
           if (!loaded.config) throw new Error(loaded.diagnostics.map((d) => d.message).join("\n"));
-          const configured = loaded.config.targets[target];
+          const configured = Object.hasOwn(loaded.config.targets, target) ? loaded.config.targets[target] : undefined;
           if (!configured) throw new Error(`target ${target} is not configured`);
           parsed.values["version"] ??= configured.version;
           parsed.values["delivery"] ??= configured.delivery;

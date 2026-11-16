@@ -356,9 +356,10 @@ describe("analyzeCapabilities", () => {
     expect(analysis.diagnostics[0]).toMatchObject({ code: "HN501", target: "mystery" });
   });
 
-  it("does not treat inherited registry properties as adapters", () => {
+  it.each(["toString", "__proto__"])("does not treat inherited registry property %s as an adapter", (name) => {
+    // fromEntries defines an own key, even for __proto__.
     const targets = Object.fromEntries([
-      ["toString", { version: "1", delivery: "package", output: "./d" }],
+      [name, { version: "1", delivery: "package", output: "./d" }],
     ]) as HooknosticConfig["targets"];
     const analysis = analyzeCapabilities(
       ir([hook("session.start", { id: "s", async run() {} })]),
@@ -366,7 +367,7 @@ describe("analyzeCapabilities", () => {
       registry(),
     );
     expect(analysis.ok).toBe(false);
-    expect(analysis.diagnostics[0]).toMatchObject({ code: "HN501", target: "toString" });
+    expect(analysis.diagnostics[0]).toMatchObject({ code: "HN501", target: name });
   });
 
   it("rejects unsupported deliveries during analysis", () => {
