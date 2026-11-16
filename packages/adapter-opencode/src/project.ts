@@ -93,7 +93,12 @@ export async function projectComponents(
     if (translated.omitted.length)
       throw new Error(translated.omitted.map((item) => `${item.name}: ${item.reason}`).join("; "));
     const declarations = Object.entries(translated.servers).map(([name, server]) => {
-      const timeout = options.mcpStartupTimeoutMs?.[name];
+      // Own keys only: a server named `__proto__` must not read an inherited
+      // member (#200).
+      const timeout =
+        options.mcpStartupTimeoutMs && Object.hasOwn(options.mcpStartupTimeoutMs, name)
+          ? options.mcpStartupTimeoutMs[name]
+          : undefined;
       return [name, { ...server, ...(timeout === undefined ? {} : { timeout }) }] as const;
     });
     const directEnvironmentResolution =
