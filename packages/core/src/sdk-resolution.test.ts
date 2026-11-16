@@ -245,5 +245,31 @@ describe("projectSdkReleaseSkew (HN110)", () => {
       expect(diagnostic).toMatchObject({ code: "HN110" });
       expect(diagnostic?.message).toContain("is 0.11.9,");
     });
+
+    it("is silent when Yarn throws for the CLI's own directory (several APIs already loaded)", async () => {
+      const { root } = await project(sdkManifest("0.11.9"), { pnp: true });
+      expect(projectSdkReleaseSkew(root)).toMatchObject({ code: "HN110" });
+      versions["pnp"] = "3";
+      nodeModule.findPnpApi = () => {
+        throw new Error("controlled by multiple pnpapi instances");
+      };
+      expect(projectSdkReleaseSkew(root)).toBeUndefined();
+    });
+
+    it("still warns under Yarn 2, which has no findPnpApi", async () => {
+      const { root } = await project(sdkManifest("0.11.9"), { pnp: true });
+      versions["pnp"] = "3";
+      expect(projectSdkReleaseSkew(root)).toMatchObject({ code: "HN110" });
+    });
+
+    it("still checks an absolute SDK alias under yarn dlx", async () => {
+      // An alias is read from disk, never resolved through Yarn: no runtime to load.
+      const { root } = await project(sdkManifest(CLI), { pnp: true });
+      const aliased = await project(sdkManifest("0.10.0"));
+      simulateRuntime(join(tmpdir(), "elsewhere-dlx"));
+      const diagnostic = projectSdkReleaseSkew(root, { alias: { "@hooknostic/sdk": aliased.entry } });
+      expect(diagnostic).toMatchObject({ code: "HN110" });
+      expect(diagnostic?.message).toContain("is 0.10.0,");
+    });
   });
 });
