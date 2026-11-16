@@ -1,3 +1,4 @@
+import { errorMessage } from "@hooknostic/runtime";
 import type {
   CapabilityId,
   EventFieldId,
@@ -60,6 +61,26 @@ export { hookAppliesToTarget } from "@hooknostic/sdk";
  * Source-model problems are HN501 diagnostics, never thrown.
  */
 export function buildPluginIR(spec: unknown): BuildIRResult {
+  // The spec is the entry's default export: user code, whose getters and
+  // proxies run on every read, and it is read twice on purpose (below). A
+  // throw from any read is a problem with the source, not a crash.
+  try {
+    return buildPluginIRFrom(spec);
+  } catch (error) {
+    return {
+      diagnostics: [
+        {
+          code: "HN501",
+          severity: "error",
+          message: `invalid plugin source: reading the default export threw: ${errorMessage(error)}`,
+          remediation: "export default definePlugin({...}) built from hook() calls in the entry module.",
+        },
+      ],
+    };
+  }
+}
+
+function buildPluginIRFrom(spec: unknown): BuildIRResult {
   const diagnostics: Diagnostic[] = [];
 
   const parsed = pluginSpecSchema.safeParse(spec);

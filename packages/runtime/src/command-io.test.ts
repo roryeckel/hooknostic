@@ -5,6 +5,7 @@ import * as nodeProcess from "node:process";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { finishCommandShim, guardCommandShim, HookSourceExitError } from "./command-io.js";
+import { errorMessage, isInstance } from "./report.js";
 
 vi.mock("node:fs", async (original) => ({ ...(await original<Record<string, unknown>>()), writeSync: vi.fn() }));
 
@@ -473,6 +474,31 @@ describe("guardCommandShim", () => {
     vi.advanceTimersByTime(250);
 
     expect(exit.mock.calls).toEqual([[0]]);
+    expect(writeSync).not.toHaveBeenCalled();
+  });
+
+  it("writes nothing for an error describe takes itself, and still reports it only once", async () => {
+    vi.useFakeTimers();
+    const taken = new Error("taken by the caller");
+    const describeTaking = vi.fn((error: unknown) =>
+      isInstance(error, Error) && error.message === "described" ? describeError(error) : undefined,
+    );
+    const guard = guardCommandShim(describeTaking);
+
+    process.emit("unhandledRejection", taken, Promise.resolve());
+    await guard.report(taken);
+    // After finish the stub leaves, and its report is a synchronous write.
+    guard.finish(2);
+    process.exit(3);
+    process.exit(3);
+    await guard.report(new Error("described"));
+
+    expect(describeTaking.mock.calls.map(([error]) => errorMessage(error))).toEqual([
+      "taken by the caller",
+      "the hook source called process.exit(3)",
+      "described",
+    ]);
+    expect(written).toEqual(["hooknostic internal [Test]: described\n"]);
     expect(writeSync).not.toHaveBeenCalled();
   });
 

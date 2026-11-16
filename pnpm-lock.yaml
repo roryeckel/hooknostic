@@ -513,6 +513,9 @@ importers:
       '@hooknostic/agent-plugin':
         specifier: workspace:*
         version: link:../agent-plugin
+      '@hooknostic/runtime':
+        specifier: workspace:*
+        version: link:../runtime
       '@hooknostic/sdk':
         specifier: workspace:*
         version: link:../sdk

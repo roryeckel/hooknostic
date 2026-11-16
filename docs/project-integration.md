@@ -118,7 +118,11 @@ broad target range that includes them must narrow the target to enforce it.
 
 Commands accept `--config` and `--json`. Exit codes are 0 for success, 1 for
 verification drift, and 2 for invalid configuration, conflicts, or operational
-failure. A dry run with planned changes succeeds; conflicts fail. Project commands
+failure. The config and hook source run in the CLI's process: one that fails while
+it loads is HN501, and one that fails later, from a timer or a rejection nothing
+handles, is reported as a `hooknostic internal` line. Either exits 2, which takes
+precedence over drift's 1, though `sync` may already have written its changes. A
+dry run with planned changes succeeds; conflicts fail. Project commands
 reject `--target`: removing a project target from configuration schedules removal
 of its owned files and entries on the next sync. To remove the final project
 target, leave `project.root` and the portable source configured, set `targets: {}`,

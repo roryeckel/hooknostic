@@ -179,8 +179,20 @@ describe("public package outputs", () => {
     const cli = await import(pathToFileURL(resolve(packageRoot, "dist/index.js")).href);
     expect(cli.runCli).toBeTypeOf("function");
     expect(cli.runBuild).toBeTypeOf("function");
-    // The binary reuses the programmatic bundle instead of duplicating it.
-    expect(await readFile(resolve(packageRoot, "dist/hooknostic.mjs"), "utf8")).toContain('from "./index.js"');
+    // The binary reuses the programmatic bundle instead of duplicating it: it
+    // imports the command's own entry, which shares the bundle's chunks, and
+    // which the package does not export (only the command owns its process).
+    expect(await readFile(resolve(packageRoot, "dist/hooknostic.mjs"), "utf8")).toContain('from "./main.js"');
+    const chunksOf = async (entry: string) =>
+      [...(await readFile(resolve(packageRoot, "dist", entry), "utf8")).matchAll(/from "\.\/(chunk-[^"]+)"/g)].map(
+        (match) => match[1],
+      );
+    const shared = await chunksOf("index.js");
+    expect(shared.length).toBeGreaterThan(0);
+    const own = await chunksOf("main.js");
+    expect(own.length).toBeGreaterThan(0);
+    expect(own.every((chunk) => shared.includes(chunk))).toBe(true);
+    expect(cli).not.toHaveProperty("main");
   });
 
   it("ships prebundled adapter shims whose only external import is the SDK", async () => {

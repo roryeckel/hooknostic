@@ -212,6 +212,42 @@ describe("buildPluginIR", () => {
     }
   });
 
+  it("reports a default export whose reads throw as HN501, never throwing itself", () => {
+    const thrownBy = (thrown: unknown) => ({
+      name: "getter",
+      get hooks(): never {
+        throw thrown;
+      },
+    });
+    const valid = definePlugin({ name: "second-read", hooks: [hook("session.start", { id: "s", async run() {} })] });
+    // Validation reads `hooks` once; building the IR reads it again.
+    let reads = 0;
+    const secondRead = {
+      name: "second-read",
+      get hooks() {
+        if (++reads > 1) throw new Error("threw on the second read");
+        return valid.hooks;
+      },
+    };
+    const results = [thrownBy(new Error("getter threw")), thrownBy(Object.create(null)), secondRead].map((spec) => {
+      let result: ReturnType<typeof buildPluginIR> | undefined;
+      expect(() => (result = buildPluginIR(spec))).not.toThrow();
+      return result;
+    });
+    expect(results.map((result) => result?.ir)).toEqual([undefined, undefined, undefined]);
+    expect(results.map((result) => result?.diagnostics.map(({ code, message }) => ({ code, message })))).toEqual([
+      [{ code: "HN501", message: "invalid plugin source: reading the default export threw: getter threw" }],
+      [
+        {
+          code: "HN501",
+          message: "invalid plugin source: reading the default export threw: uninspectable thrown value",
+        },
+      ],
+      [{ code: "HN501", message: "invalid plugin source: reading the default export threw: threw on the second read" }],
+    ]);
+    expect(reads).toBe(2);
+  });
+
   it("rejects matchers on non-tool events (bypassing the type layer)", () => {
     const plugin = definePlugin({
       name: "bad-match",

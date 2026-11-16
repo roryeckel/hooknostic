@@ -205,9 +205,13 @@ export interface CommandShimGuardOptions {
  * one guard and calls `scope()` as each event starts, so a failure that recurs
  * in a later event is reported against it too. `options.onExit` hears every
  * intercepted exit.
+ *
+ * `describe` returns `undefined` when its caller took the error itself, as
+ * the CLI does for a failure it reports against a module load: nothing is
+ * written, and the error still counts as reported.
  */
 export function guardCommandShim(
-  describe: (error: unknown) => string,
+  describe: (error: unknown) => string | undefined,
   options: CommandShimGuardOptions = {},
 ): CommandShimGuard {
   const exit = process.exit;
@@ -241,7 +245,8 @@ export function guardCommandShim(
   };
   const line = (error: unknown): string | undefined => {
     try {
-      return `${midLine ? "\n" : ""}${describe(error)}\n`;
+      const text = describe(error);
+      return text === undefined ? undefined : `${midLine ? "\n" : ""}${text}\n`;
     } catch {
       return undefined;
     }

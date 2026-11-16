@@ -4,8 +4,9 @@ import { resolve } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { parseArgs } from "node:util";
 
-import type { AdapterRegistry } from "@hooknostic/core";
-import { loadConfig, runProject } from "@hooknostic/core";
+import type { AdapterRegistry, EvaluationGuard } from "@hooknostic/core";
+import { EvaluationStalledError, loadConfig, runProject, setEvaluationGuard } from "@hooknostic/core";
+import type { CommandShimGuard } from "@hooknostic/runtime";
 import {
   claimProtocolStdout,
   debugEnabled,
@@ -67,8 +68,9 @@ async function readStdin(): Promise<string> {
 
 /**
  * Remove `directory` when the process exits. Dispatch removes its staged
- * hooks when it returns, but a hook source can end the process before then;
- * an `exit` listener still runs, and must be synchronous and never throw.
+ * hooks when it returns, and every command a module it evaluated, but user
+ * code can end the process before then; an `exit` listener still runs, and
+ * must be synchronous and never throw.
  */
 function removeAtExit(directory: string): void {
   process.on("exit", () => {
@@ -168,7 +170,219 @@ function guardDispatch() {
   };
 }
 
+// As claimProtocolStdout's release bounds its own flush: well inside the
+// harness allowance, and only ever waited out by a stream that is stuck.
+const FLUSH_BOUND_MS = 500;
+
+/**
+ * Wait out earlier writes to `stream`, for at most FLUSH_BOUND_MS: user code
+ * may have replaced `write` with one that never calls back, and the forced
+ * exit that ends a leaked handle comes only after this. A stream a handler
+ * ended or destroyed is skipped. The timer stays referenced: with a stuck
+ * stream nothing else may keep the loop alive until it fires.
+ */
+function flush(stream: NodeJS.WriteStream): Promise<void> {
+  let timer: NodeJS.Timeout | undefined;
+  return Promise.race([
+    flushed(stream).finally(() => clearTimeout(timer)),
+    new Promise<void>((resolve) => {
+      timer = setTimeout(resolve, FLUSH_BOUND_MS);
+    }),
+  ]);
+}
+
+function flushed(stream: NodeJS.WriteStream): Promise<void> {
+  return new Promise<void>((resolve) => {
+    try {
+      // A consumer that closed the pipe early (`| head`) fails this write
+      // (EPIPE, or ENOTCONN or ECONNRESET on macOS), and the command is
+      // finishing anyway: the guard must not see it as an uncaught error, and
+      // turn the exit code into 2.
+      stream.on("error", () => {});
+      while (stream.writableCorked > 0) stream.uncork();
+      if (stream.writableEnded || stream.destroyed) return resolve();
+      stream.write("", () => resolve());
+    } catch {
+      resolve();
+    }
+  });
+}
+
+/** A module load in its window: what the guard's `describe` fails instead of reporting. */
+interface LoadWindow {
+  failed: boolean;
+  fail(error: unknown): void;
+}
+
+/** The load whose window is open, if any; shared by a guard's `describe` and `watchLoad`. */
+interface LoadWindows {
+  current?: LoadWindow | undefined;
+}
+
+/**
+ * For a guard's `describe`: fail the load whose window is open with `error`,
+ * so its own diagnostic reports it. False when there is none, or it already
+ * failed, and the caller reports `error` itself.
+ */
+function failOpenLoad(windows: LoadWindows, error: unknown): boolean {
+  const open = windows.current;
+  if (open === undefined || open.failed) return false;
+  open.fail(error);
+  return true;
+}
+
+/**
+ * Settle as `work`, one module load, does, within its window (#193): the
+ * import, adopting the default export, and one zero-delay drain. It rejects
+ * first with a failure `failOpenLoad` routes to it, or with an
+ * {@link EvaluationStalledError} should the event loop empty while it is
+ * pending. `directory`, the staged module, is removed even if the process
+ * ends first. Install `guard` before the first load.
+ */
+async function watchLoad<T>(
+  guard: CommandShimGuard,
+  windows: LoadWindows,
+  directory: string,
+  work: Promise<T>,
+): Promise<T> {
+  // A failure that recurs in this load is reported against it too.
+  guard.scope();
+  removeAtExit(directory);
+  let reject!: (error: unknown) => void;
+  const failure = new Promise<never>((_, fail) => {
+    reject = fail;
+  });
+  failure.catch(() => {});
+  const self: LoadWindow = {
+    failed: false,
+    fail(error) {
+      if (self.failed) return;
+      self.failed = true;
+      reject(error);
+    },
+  };
+  // The loop emptied, so the load can never settle: with nothing left to
+  // run, the process would exit 13 for a top-level await, or 0.
+  const stalled = () => self.fail(new EvaluationStalledError());
+  windows.current = self;
+  process.on("beforeExit", stalled);
+  try {
+    const value = await Promise.race([work, failure]);
+    // A microtask rejection or a zero-delay tail belongs to this load.
+    await Promise.race([delay(0), failure]);
+    return value;
+  } finally {
+    if (windows.current === self) windows.current = undefined;
+    process.off("beforeExit", stalled);
+  }
+}
+
+/**
+ * Run the config and the hook source that a command other than dispatch
+ * evaluates under the command-shim guard (#193). The guard is installed on
+ * the first evaluation, since it owns process listeners, and kept for the
+ * life of the process; a command that evaluates nothing runs as before.
+ *
+ * A process.exit, rejection, or timer throw inside a load's window fails
+ * that load, which the command reports as HN501, and so does an event loop
+ * that empties under it (`watchLoad`). One outside every window is a stray:
+ * reported as an internal error, it makes the exit code at least 2. Strays
+ * do not hold back what a command writes; build or sync may already have
+ * written its output.
+ *
+ * Until the command finishes, leaving is 2: whatever ended the process, the
+ * command did not.
+ */
+function guardEvaluation() {
+  let guard: CommandShimGuard | undefined;
+  const windows: LoadWindows = {};
+  let finished: number | undefined;
+  let strays = 0;
+  const install = (): CommandShimGuard => {
+    if (guard !== undefined) return guard;
+    const installed = guardCommandShim((error) => {
+      // The load's own diagnostic reports it.
+      if (failOpenLoad(windows, error)) return undefined;
+      strays += 1;
+      // After the command finished, a stray still fails it; a 2 stays a 2.
+      if (finished !== undefined && finished < 2) installed.decide(2);
+      return formatInternalError(error, { stack: debugEnabled() });
+    });
+    // Before anything can end the process.
+    installed.decide(2);
+    guard = installed;
+    return installed;
+  };
+  const evaluation: EvaluationGuard = {
+    watch: (directory, work) => watchLoad(install(), windows, directory, work),
+  };
+  return {
+    evaluation,
+    installed: () => guard !== undefined,
+    /** Report a throw that escaped the command, as a stray. */
+    report: (error: unknown) => install().report(error),
+    /** Leave with `code`, or 2 if anything strayed; returns the code. */
+    async finish(code: number): Promise<number> {
+      if (guard === undefined) return code;
+      // The forced exit below must not cut a piped report short.
+      await flush(process.stdout);
+      await flush(process.stderr);
+      // After the flush, so a stray during it still counts.
+      const final = strays > 0 && code < 2 ? 2 : code;
+      finished = final;
+      guard.finish(final);
+      return final;
+    },
+  };
+}
+
+/**
+ * Run a `hooknostic` command line in the caller's process, and resolve with
+ * its exit code. The caller keeps the process: this never replaces
+ * `process.exit`, adds process listeners, takes over stdout, or forces an exit,
+ * whether or not `options.io` is given. So a config or hook source that exits,
+ * rejects, throws from a timer or leaks a handle affects the caller's process
+ * as it would any code the caller imports; only the `hooknostic` command
+ * guards against that (docs/design.md §10.3).
+ */
 export async function runCli(argv: string[], options?: RunCliOptions): Promise<number> {
+  return runCommandLine(argv, options, { ownsProcess: false });
+}
+
+/**
+ * The `hooknostic` command's entry (bin.ts). It owns its process, so it alone
+ * installs what is process-global: the guard around what a command evaluates
+ * (#193), dispatch's guard (#189), dispatch's claim on stdout, the exit-time
+ * removal of staged modules, and the forced exit that ends a leaked handle.
+ * Not exported from the package entry; tests may pass a registry.
+ */
+export async function main(argv: string[], options?: Pick<RunCliOptions, "registry">): Promise<number> {
+  return runCommandLine(argv, options, { ownsProcess: true });
+}
+
+async function runCommandLine(
+  argv: string[],
+  options: RunCliOptions | undefined,
+  { ownsProcess }: { ownsProcess: boolean },
+): Promise<number> {
+  // Dispatch keeps its own guard (#189).
+  if (!ownsProcess || argv[0] === "dispatch") return runCommand(argv, options, ownsProcess);
+  const guarded = guardEvaluation();
+  setEvaluationGuard(guarded.evaluation);
+  let code: number;
+  try {
+    code = await runCommand(argv, options, ownsProcess);
+  } catch (error) {
+    if (!guarded.installed()) throw error;
+    await guarded.report(error);
+    code = 2;
+  } finally {
+    setEvaluationGuard(undefined);
+  }
+  return guarded.finish(code);
+}
+
+async function runCommand(argv: string[], options: RunCliOptions | undefined, ownsProcess: boolean): Promise<number> {
   const io: CommandIO = options?.io ?? {
     stdout: (t) => console.log(t),
     stderr: (t) => console.error(t),
@@ -342,13 +556,13 @@ export async function runCli(argv: string[], options?: RunCliOptions): Promise<n
           typeof parsed.values["events"] === "string"
             ? await readFile(resolve(parsed.values["events"]), "utf8")
             : await readStdin();
-        // Hooks run in this process. Without an injected io this is the real
-        // CLI, so it treats them as a command shim does: their stdout stays out
-        // of the result lines, a handle one leaks cannot hold the process open,
-        // and, unless --unguarded, the hook source cannot end the run (#189).
+        // Hooks run in this process. The hooknostic command owns it, so it
+        // treats them as a command shim does: their stdout stays out of the
+        // result lines, a handle one leaks cannot hold the process open, and,
+        // unless --unguarded, the hook source cannot end the run (#189).
         // The guard goes first: it owns process.exit before anything loads.
-        const guarded = options?.io === undefined && parsed.values["unguarded"] !== true ? guardDispatch() : undefined;
-        const protocol = options?.io === undefined ? claimProtocolStdout() : undefined;
+        const guarded = ownsProcess && parsed.values["unguarded"] !== true ? guardDispatch() : undefined;
+        const protocol = ownsProcess ? claimProtocolStdout() : undefined;
         const writes: Promise<void>[] = [];
         let code: number;
         try {
