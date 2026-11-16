@@ -46,6 +46,15 @@ subpath is an export-map entry, so TypeScript needs the export-aware module
 resolution (`node16`, `nodenext` or `bundler`) that the root entry already
 requires.
 
+One change ships in the same release. `hooknosticConfigSchema` now rejects
+`__proto__` as a target name and as a name in `components.excludeFor`,
+`components.mcpOverrides`, its `servers` and a materializer's `inputs`, where
+Zod 4 used to drop the entry without a diagnostic. Those fields now validate
+through a transform that also inspects the raw input, so
+`z.input<typeof hooknosticConfigSchema>` types them as `unknown`, as it already
+typed `components.mcpEnvironment`. Their output types are unchanged, and so are
+`HooknosticConfig` and the other types you write configuration with.
+
 ## Install Zod only where you import the schemas
 
 Code that imports `@hooknostic/sdk/schemas` needs `zod@^4.6.7` installed beside
