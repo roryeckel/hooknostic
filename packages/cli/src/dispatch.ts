@@ -14,6 +14,7 @@ import {
   buildPluginIR,
   effectiveCompatibility,
   effectiveRuntime,
+  EvaluationStalledError,
   formatDiagnostics,
   formatSchemaIssue,
   hookPluginRoot,
@@ -22,10 +23,11 @@ import {
   registeredAdapter,
   resolveTargetAdapter,
   stageUserModule,
+  stalledLoadMessage,
   statedMcpEvents,
   targetSpecFromConfig,
 } from "@hooknostic/core";
-import { dispatch, errorMessage } from "@hooknostic/runtime";
+import { dispatch, errorMessage, isInstance } from "@hooknostic/runtime";
 import type { EventFieldId, HookEvent, HookEventName, HookResult, PluginSpec, ShellDialect } from "@hooknostic/sdk";
 import { fieldsForEvent, isToolScopedEvent, readEventField, SHELL_DIALECTS } from "@hooknostic/sdk";
 import { baseHookEventSchema } from "@hooknostic/sdk/schemas";
@@ -84,6 +86,12 @@ export interface DispatchEventHooks {
    * returns: a process that ends before then can remove it itself.
    */
   onStaged?(directory: string): void;
+  /**
+   * Settle as `load`, one load of the hook source, does, or reject with an
+   * `EvaluationStalledError` should the event loop empty while it is
+   * pending (#201).
+   */
+  watchStall?<T>(load: Promise<T>): Promise<T>;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -379,8 +387,21 @@ export async function dispatchEventsWith(
   hooks.onStaged?.(staged.directory);
   try {
     let instances = 0;
-    const load = async () =>
-      ((await import(`${staged.href}?instance=${instances++}`)) as { default?: unknown }).default;
+    const load = async (): Promise<unknown> => {
+      let imported = false;
+      const loading = (async () => {
+        const mod = (await import(`${staged.href}?instance=${instances++}`)) as { default?: unknown };
+        imported = true;
+        // Returned from an async function, so a thenable default export is adopted.
+        return mod.default;
+      })();
+      try {
+        return await (hooks.watchStall === undefined ? loading : hooks.watchStall(loading));
+      } catch (error) {
+        if (isInstance(error, EvaluationStalledError)) throw new Error(stalledLoadMessage(imported));
+        throw error;
+      }
+    };
     const first = await load();
     const ir = buildPluginIR(first);
     if (!ir.ir) return { ok: false, errors: [formatDiagnostics(ir.diagnostics)] };

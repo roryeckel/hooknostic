@@ -79,6 +79,8 @@ report it.
 `hooknostic dispatch` runs your source under the same guard, so these reports appear in
 your tests, labelled with the event, before you ship (see
 [Testing your hooks](testing-your-hooks.md#when-the-hook-source-fails-outside-a-handler)).
+A config or hook source whose top-level `await` or thenable default export never settles
+is a load failure there, and dispatch exits 2.
 
 `check`, `build`, `sync`, `verify` and `doctor` load your config and hook source in their
 own process too, under the same guard; `recover` and `inspect --config` load only the

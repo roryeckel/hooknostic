@@ -128,11 +128,9 @@ hooknostic internal [event 2]: stray rejection
 
 Some failures still end the run early, though with exit 1 rather than the hook
 source's own code. That happens when your own `uncaughtException` listener calls
-`process.exit`, when the same `process.exit` call repeats within one event, as
-from `setInterval`, or when a top-level `await` in your source never settles. The
-last one prints nothing of dispatch's own, only Node's warning about the unsettled
-`await`. Result lines are written only at the end, so some or all of them are then
-missing.
+`process.exit`, or when the same `process.exit` call repeats within one event, as
+from `setInterval`. Result lines are written only at the end, so some or all of
+them are then missing.
 
 The event number is best effort. Dispatch waits one zero-delay timer after each
 event, so a rejected promise or a `setTimeout(..., 0)` your handler left behind
@@ -157,6 +155,20 @@ What `process.exit` does depends on where it is called and on the target:
 - **At the top level of your source**: a load failure, exit 2, with
   `failed to dispatch through entry ./hooks.ts: the hook source called process.exit(3)`.
 
+A load that never settles is a load failure too, with exit 2 and no results. That
+is a top-level `await` that never settles, or a default export that is a thenable
+that never settles. For your hook source, on whichever event's load it happens:
+
+```text
+failed to dispatch through entry ./hooks.ts: its top-level await never settles
+failed to dispatch through entry ./hooks.ts: its default export is a thenable that never settles
+```
+
+For the config, the same two messages come as HN501,
+`failed to load config <path>: ...`, as `check` and `build` report them. A
+rejection, a timer throw or a `process.exit` while the config loads is also its
+HN501, with exit 2 and no results.
+
 To see the raw crash instead, pass `--unguarded`. The source can then end the
 run with its own exit code and stack trace, and because result lines are
 written at the end, none appear. Other commands reject the flag.
@@ -179,8 +191,8 @@ somewhere that outlives a process, such as a file.
 | Code | Meaning |
 | --- | --- |
 | `0` | Every event was dispatched. The effects and errors are in the output. |
-| `1` | Your hook source failed outside a handler, or ended the process before every result was written; some or all result lines may be missing. The reports are on stderr, except for a top-level `await` that never settles, where the only line is Node's warning about it; see [When the hook source fails outside a handler](#when-the-hook-source-fails-outside-a-handler). |
-| `2` | Nothing was dispatched: an unreadable or invalid event, an unknown target, a configuration without an `entry`, or hooks the target could not be built for. The reasons go to stderr, numbered by event. It takes precedence over `1`. |
+| `1` | Your hook source failed outside a handler, or ended the process before every result was written; some or all result lines may be missing. The reports are on stderr; see [When the hook source fails outside a handler](#when-the-hook-source-fails-outside-a-handler). |
+| `2` | Nothing was dispatched: an unreadable or invalid event, an unknown target, a configuration without an `entry`, a config or hook source that fails to load, including one that never settles, or hooks the target could not be built for. The reasons go to stderr, numbered by event. It takes precedence over `1`. |
 
 ## What dispatch does not cover
 
@@ -202,7 +214,9 @@ and `process.reallyExit` still end the run, and a failure later than the exit's
 250 ms grace after the last result goes unreported. An `exit` listener of your own
 that throws while the run is leaving from inside your own `uncaughtException`
 listener ends it with Node's 7 rather than 1. One added late, from a `beforeExit`
-listener, can change the exit code too.
+listener, can change the exit code too. A load that never settles while a handle
+your source leaked, such as an interval, keeps the process alive hangs the run:
+with work still pending, it cannot be told apart from a slow load.
 
 Checks that require a live native object also remain in the shim. Dispatch can
 validate a Pi replacement's shape, but cannot establish whether the harness's

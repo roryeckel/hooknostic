@@ -334,7 +334,10 @@ describe("loadPluginSource → buildPluginIR", () => {
 describe("evaluating user modules", () => {
   const CONFIG = `{ entry: "./hooks.ts", targets: { claude: { version: ">=2.1 <3", delivery: "package", output: "./x" } } }`;
 
-  afterEach(() => setEvaluationGuard(undefined));
+  afterEach(() => {
+    setEvaluationGuard(undefined);
+    delete (globalThis as { waiting?: unknown }).waiting;
+  });
 
   it("renders a load failure whose thrown value cannot be inspected", async () => {
     const dir = await fixtureDir();
@@ -363,18 +366,33 @@ describe("evaluating user modules", () => {
 
   it("hands each evaluation to the CLI's guard, and names what stalled or exited", async () => {
     const dir = await fixtureDir();
-    await writeFile(join(dir, "tla.ts"), `await new Promise(() => {});\nexport default ${CONFIG};`);
-    await writeFile(join(dir, "thenable.ts"), `export default { then() {} };`);
+    // Each module says when it waits on what never settles: the top-level
+    // await before its import resolves, the thenable once it is adopted.
+    await writeFile(
+      join(dir, "tla.ts"),
+      `globalThis.waiting?.();\nawait new Promise(() => {});\nexport default ${CONFIG};`,
+    );
+    await writeFile(join(dir, "thenable.ts"), `export default { then() { globalThis.waiting?.(); } };`);
     await writeFile(join(dir, "plain.ts"), `export default ${CONFIG};`);
+    const signal = globalThis as { waiting?: () => void };
     const watched: string[] = [];
     // As the CLI's guard fails a load: the stall once the loop would empty,
-    // here once the module had time to import.
+    // here once the module waits; an exit once the load has run. Not after
+    // a fixed delay, which a slow import under load outlasts (#193).
     let failure: () => unknown = () => new EvaluationStalledError();
     setEvaluationGuard({
       async watch(directory, evaluation) {
         watched.push(directory);
         evaluation.catch(() => {});
-        await new Promise((resolve) => setTimeout(resolve, 300));
+        await Promise.race([
+          new Promise<void>((resolve) => {
+            signal.waiting = resolve;
+          }),
+          evaluation.then(
+            () => {},
+            () => {},
+          ),
+        ]);
         throw failure();
       },
     });

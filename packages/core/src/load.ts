@@ -108,6 +108,14 @@ export class EvaluationStalledError extends Error {
   }
 }
 
+/**
+ * Internal (#201): what a load that stalled waits on, by whether its import
+ * resolved. Dispatch, which loads its hook source itself, says the same.
+ */
+export function stalledLoadMessage(imported: boolean): string {
+  return imported ? "its default export is a thenable that never settles" : "its top-level await never settles";
+}
+
 async function evaluateModule(file: string, subject: "config" | "entry", options?: EvaluateOptions): Promise<unknown> {
   const staged = await stageUserModule(file, options);
   // Read once: the CLI clears it when its command returns.
@@ -124,10 +132,17 @@ async function evaluateModule(file: string, subject: "config" | "entry", options
     }
   }
   let imported = false;
+  // Once: an early removal and the one below would race on Windows (EPERM).
+  let disposing: Promise<void> | undefined;
+  const dispose = () => (disposing ??= staged.dispose());
   try {
     const evaluation = (async () => {
       const mod = (await import(staged.href)) as { default?: unknown };
       imported = true;
+      // The import no longer needs the staged module: remove it now, as the
+      // unguarded path does, so an adoption that hangs until the run is
+      // killed, which no exit listener survives, cannot keep it (#201).
+      void dispose().catch(() => {});
       // Returned from an async function, so a thenable default export is
       // adopted, as an async config may rely on. The guard watches the
       // adoption too, so one that never settles is a stall it reports.
@@ -135,17 +150,14 @@ async function evaluateModule(file: string, subject: "config" | "entry", options
     })();
     return await guard.watch(staged.directory, evaluation);
   } catch (error) {
-    if (isInstance(error, EvaluationStalledError))
-      throw new Error(
-        imported ? "its default export is a thenable that never settles" : "its top-level await never settles",
-      );
+    if (isInstance(error, EvaluationStalledError)) throw new Error(stalledLoadMessage(imported));
     // The runtime's message names the hook source, which a config is not.
-    // Dispatch runs without this guard, and keeps it.
+    // Dispatch loads its hook source itself, and keeps it.
     if (subject === "config" && isInstance(error, HookSourceExitError))
       throw new Error(`the config called process.exit(${exitCodeText(error.code)})`);
     throw error;
   } finally {
-    await staged.dispose();
+    await dispose();
   }
 }
 

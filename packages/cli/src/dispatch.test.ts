@@ -856,20 +856,37 @@ export default definePlugin({
     const EVENTS = ["first", "second", "third"].map(
       (prompt) => `${JSON.stringify({ event: "prompt.before", prompt })}\n`,
     );
-    const run = async (hooks: string, target: string, flags: string[] = [], targets = GUARD_TARGETS) => {
+    const run = async (
+      hooks: string,
+      target: string,
+      flags: string[] = [],
+      targets = GUARD_TARGETS,
+      config?: string,
+    ) => {
       const dir = await project(hooks, targets);
+      const configPath = join(dir, "hooknostic.config.ts");
+      if (config !== undefined) await writeFile(configPath, config);
+      // A temp directory of the run's own, so what its staging leaves behind shows up, and only that.
+      const temp = await mkdtemp(join(tmpdir(), "hooknostic-dispatch-temp-"));
+      tempDirs.push(temp);
       const child = spawnSync(
         process.execPath,
-        [CLI_BIN, "dispatch", "--config", join(dir, "hooknostic.config.ts"), "--target", target, ...flags],
-        // Debug stacks add stderr lines these tests count, so the caller's setting must not leak in.
-        { input: EVENTS.join(""), encoding: "utf8", timeout: 60_000, env: { ...process.env, HOOKNOSTIC_DEBUG: "" } },
+        [CLI_BIN, "dispatch", "--config", configPath, "--target", target, ...flags],
+        {
+          input: EVENTS.join(""),
+          encoding: "utf8",
+          timeout: 60_000,
+          // Debug stacks add stderr lines these tests count, so the caller's setting must not leak in.
+          env: { ...process.env, HOOKNOSTIC_DEBUG: "", TEMP: temp, TMP: temp, TMPDIR: temp },
+        },
       );
       const results = child.stdout
         .split("\n")
         .filter(Boolean)
         .map((line) => JSON.parse(line) as DispatchResult);
       const stderr = child.stderr.split(/\r?\n/).filter(Boolean);
-      return { status: child.status, results, stderr, raw: child.stderr };
+      const evalDirs = (await readdir(temp)).filter((name) => name.startsWith("hooknostic-eval-"));
+      return { status: child.status, results, stderr, raw: child.stderr, configPath, evalDirs };
     };
 
     it.each(["claude", "opencode"])(
@@ -970,21 +987,23 @@ export default definePlugin({
       expect(results).toHaveLength(0);
     });
 
-    it("keeps that failure when the loop empties under a never-settling top-level await", async () => {
-      const { status, results, raw } = await run(
+    it("fails the load when the loop empties under a never-settling top-level await, whatever the exit listener sets", async () => {
+      const { status, results, stderr, raw, evalDirs } = await run(
         atLoad(`
           process.on("exit", () => { process.exitCode = 0; });
           await new Promise(() => {});
         `),
         "claude",
       );
-      // Not 0 from the hook source's listener, nor Node's 13: the run never finished.
-      expect(status, raw).toBe(1);
+      // Not 0 from the hook source's listener, nor Node's 13: a load failure (#201).
+      expect(status, raw).toBe(2);
       expect(results).toHaveLength(0);
+      expect(stderr).toEqual(["failed to dispatch through entry ./hooks.ts: its top-level await never settles"]);
+      expect(evalDirs).toEqual([]);
     });
 
-    it("keeps that failure when an exit listener throws under a never-settling top-level await", async () => {
-      const { status, results, raw } = await run(
+    it("fails the load when an exit listener throws under a never-settling top-level await", async () => {
+      const { status, results, stderr, raw, evalDirs } = await run(
         atLoad(`
           process.on("exit", () => { throw new Error("exit listener threw"); });
           await new Promise(() => {});
@@ -992,8 +1011,11 @@ export default definePlugin({
         "claude",
       );
       // The throw skips the listeners after it: a pin only at the end would leave Node's 13.
-      expect(status, raw).toBe(1);
+      expect(status, raw).toBe(2);
       expect(results).toHaveLength(0);
+      // The guard may then report the listener's throw itself.
+      expect(stderr[0]).toBe("failed to dispatch through entry ./hooks.ts: its top-level await never settles");
+      expect(evalDirs).toEqual([]);
     });
 
     it("still ends on the forced exit when the hook source's exit listener throws", async () => {
@@ -1207,6 +1229,117 @@ process.exitCode = await main(process.argv.slice(2), { registry });`,
         expect((await readdir(temp)).filter((name) => name.startsWith("hooknostic-eval-"))).toEqual([]);
       },
     );
+
+    describe("a load that never settles (#201)", () => {
+      const PLAIN = atLoad("");
+      const CONFIG = `export default { entry: "./hooks.ts", targets: ${GUARD_TARGETS} };`;
+      const TLA = "await new Promise(() => {});";
+      const THENABLE = "export default { then() {} };";
+      const NEVER_TLA = "its top-level await never settles";
+      const NEVER_THENABLE = "its default export is a thenable that never settles";
+      const trimmed = (stderr: string[]) => stderr.map((line) => line.trim());
+
+      it.each([
+        ["top-level await", `${TLA}\n${CONFIG}`, NEVER_TLA],
+        ["thenable", THENABLE, NEVER_THENABLE],
+      ])("fails the config's load as HN501 (%s)", async (_shape, config, message) => {
+        const { status, results, stderr, raw, configPath, evalDirs } = await run(
+          PLAIN,
+          "claude",
+          [],
+          GUARD_TARGETS,
+          config,
+        );
+        expect(status, raw).toBe(2);
+        expect(results).toHaveLength(0);
+        expect(trimmed(stderr)).toContain(`failed to load config ${configPath}: ${message}`);
+        expect(raw).not.toContain("unsettled top-level await");
+        expect(evalDirs).toEqual([]);
+      });
+
+      it.each([
+        ["top-level await", "claude", `${TLA}\n${PLAIN}`, NEVER_TLA],
+        ["thenable", "claude", THENABLE, NEVER_THENABLE],
+        ["top-level await", "opencode", `${TLA}\n${PLAIN}`, NEVER_TLA],
+        // A command target loads a fresh instance for each later event: only event 2's stalls.
+        [
+          "top-level await in event 2's instance",
+          "claude",
+          `globalThis.loads = (globalThis.loads ?? 0) + 1; if (globalThis.loads === 2) ${TLA}\n${PLAIN}`,
+          NEVER_TLA,
+        ],
+      ])("fails dispatch through the entry (%s, %s)", async (_shape, target, hooks, message) => {
+        const { status, results, stderr, raw, evalDirs } = await run(hooks, target);
+        expect(status, raw).toBe(2);
+        expect(results).toHaveLength(0);
+        expect(stderr).toEqual([`failed to dispatch through entry ./hooks.ts: ${message}`]);
+        expect(evalDirs).toEqual([]);
+      });
+
+      it("names the thenable, not the top-level await, once the entry's import resolved", async () => {
+        // A top-level await that settles: the import resolves, and only the default export waits.
+        const { status, stderr, raw } = await run(`await Promise.resolve();\n${THENABLE}`, "opencode");
+        expect(status, raw).toBe(2);
+        expect(stderr).toEqual([`failed to dispatch through entry ./hooks.ts: ${NEVER_THENABLE}`]);
+      });
+
+      it("leaves no staged config behind when the config ends the run while it loads", async () => {
+        // The exit cannot unwind inside the guard's uncaughtException emit, so
+        // only an exit listener can remove the config's staged directory.
+        const { status, results, raw, evalDirs } = await run(
+          PLAIN,
+          "claude",
+          [],
+          GUARD_TARGETS,
+          `process.on("uncaughtException", () => process.exit(0));
+          setTimeout(() => { throw new Error("t"); }, 0);
+          await new Promise((resolve) => setTimeout(resolve, 50));
+          ${CONFIG}`,
+        );
+        // The results are not all out.
+        expect(status, raw).toBe(1);
+        expect(results).toHaveLength(0);
+        expect(evalDirs).toEqual([]);
+      });
+
+      it.each([
+        ["rejection", `Promise.reject(new Error("load rejection"));`, "load rejection"],
+        ["timer throw", `setTimeout(() => { throw new Error("load timer threw"); }, 0);`, "load timer threw"],
+        ["process.exit", "process.exit(3);", "the config called process.exit(3)"],
+      ])("fails the config's load as HN501 for a %s while it loads", async (_shape, prelude, message) => {
+        const { status, results, stderr, raw, configPath, evalDirs } = await run(
+          PLAIN,
+          "claude",
+          [],
+          GUARD_TARGETS,
+          `${prelude}\n${CONFIG}`,
+        );
+        // As build and check report it, and before any event runs.
+        expect(status, raw).toBe(2);
+        expect(results).toHaveLength(0);
+        expect(trimmed(stderr)).toContain(`failed to load config ${configPath}: ${message}`);
+        expect(raw).not.toContain("hooknostic internal");
+        expect(evalDirs).toEqual([]);
+      });
+
+      it("keeps a rejection at the entry's load a stray of the event it lands in", async () => {
+        // No window around the entry: a command target's every instance rejects, each in its event.
+        const { status, results, stderr, raw } = await run(
+          atLoad(`Promise.reject(new Error("load rejection"));`),
+          "claude",
+        );
+        expect(status, raw).toBe(1);
+        expect(results).toHaveLength(3);
+        expect(stderr).toEqual([1, 2, 3].map((n) => `hooknostic internal [event ${n}]: load rejection`));
+      });
+
+      it("leaves a load that never settles raw under --unguarded", async () => {
+        const { status, results, raw } = await run(`${TLA}\n${PLAIN}`, "claude", ["--unguarded"]);
+        expect(status, raw).toBe(13);
+        expect(results).toHaveLength(0);
+        expect(raw).toContain("unsettled top-level await");
+      });
+    });
 
     it("keeps the guard's event hooks out of the package's API", async () => {
       // Type-level, so `pnpm build`'s tsc enforces it: neither public options
