@@ -183,11 +183,13 @@ to run only this increment's checks after bundling.
 ## Remaining-capability audit
 
 The later `results`, `notifications`, `provider-anthropic`, `provider-responses`,
-`subagent`, `project-oauth` and `package-oauth` drives are described in
-`../opencode-v2-audit`. They extend the initial coverage above without changing
-the earlier captures. They establish typed tool errors, richer replacement
-delivery, native server-to-TUI toast delivery, two additional HTTP provider
-paths, foreground subagent execution, and default MCP OAuth with refresh.
+`subagent`, `subagent-late`, `project-oauth` and `package-oauth` drives are
+described in `../opencode-v2-audit`. They extend the initial coverage above
+without changing the earlier captures. They establish typed tool errors, richer
+replacement delivery, native server-to-TUI toast delivery, two additional HTTP
+provider paths, foreground subagent execution (background from 2.3.0, where
+`subagent-late` makes the child finish after its parent), and default MCP OAuth
+with refresh.
 A generated user-only notification, WebSocket/provider OAuth, search execution
 and SSE remain outside verified support.
 
@@ -227,6 +229,20 @@ minutes: a notice is deferred to the session's next run.
 
 A detached `session.synthetic` call also succeeded, so no receiver requirement
 is claimed.
+
+**From 2.3.0 the child runs in the background** (Windows, 2026-11-16,
+`../opencode-v2-audit`). Its result reaches the parent as a user-role
+`<subagent>` message instead of the tool result. If the result arrives after
+the prevention continuation has ended, it starts a third parent execution,
+which no prompt hook started: it dispatches `turn.stop` without a turn id, and
+the earlier notice reaches the model in its request. Prevention does not wait
+for the child. So one prompt can end in several top-level stops. The stage now
+waits for the child's own success and then for an idle parent, rather than for
+two parent completions, and records the launch status and the requests that
+carry the `<subagent>` message. Playback accepts the one extra parent execution
+and stop on 2.3.0 and later only. To check the stage against a late child, set
+`HKN_CHILD_DELAY_MS` (constructed timing; 6000 was used) before
+`drive.mjs stop`. 2.2.7 kept the child in the foreground with the same delay.
 
 `promote-stops.mjs <stop-root>` promotes the child `session.created`, the
 user-interrupt completion and `stop-audit/outcomes.json`. The `stop-*` mutants
