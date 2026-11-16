@@ -187,7 +187,7 @@ recording what remains visible. See [ADR-0038](decisions/0038-per-target-compone
 
 | Command | Result |
 | --- | --- |
-| `init --local` | Create missing project configuration and empty hooks without overwriting files |
+| `init --local` | Create the missing config and `hooks.ts`, listing any that already exist as left unchanged; never overwrites. A `--config` that names a directory fails with exit 2. |
 | `check` | Compile and validate in memory; no target artifacts written |
 | `build` | Write artifacts and the build report |
 | `sync --dry-run` | Preview project reconciliation and conflicts |
