@@ -458,8 +458,9 @@ void buildProject({ configPath: process.argv[2], registry: defaultAdapterRegistr
       const cases = [
         ["buildProject, config", { config: NEVER }, "build"],
         ["buildProject, entry", { entry: NEVER }, "build"],
-        // Dispatch keeps its own guard, which does not watch its loads (#201).
-        ["dispatch, config", { config: NEVER }, "dispatch"],
+        // Dispatch's own guard watches its config's load since #201
+        // (dispatch.test.ts); --unguarded loads it as a programmatic caller does.
+        ["dispatch --unguarded, config", { config: NEVER }, "dispatch"],
       ] as const;
       const results = await runAll([...cases], ([, fixture, how]) =>
         how === "build"
@@ -467,7 +468,7 @@ void buildProject({ configPath: process.argv[2], registry: defaultAdapterRegistr
               files: { "build-project.mjs": BUILD },
               node: ({ dir, configPath }) => [join(dir, "build-project.mjs"), configPath],
             })
-          : run(["dispatch", "--target", "claude"], fixture, {
+          : run(["dispatch", "--target", "claude", "--unguarded"], fixture, {
               input: `${JSON.stringify({ event: "prompt.before", prompt: "hi" })}\n`,
             }),
       );
