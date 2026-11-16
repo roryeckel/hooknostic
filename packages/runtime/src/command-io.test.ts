@@ -329,6 +329,20 @@ describe("guardCommandShim", () => {
     expect(process.exitCode).toBe(2);
   });
 
+  it("still pins the decided code when the hook source's exit listener throws as the loop empties", () => {
+    const guard = guardCommandShim(describeError);
+    process.on("exit", () => {
+      throw new Error("exit listener threw");
+    });
+
+    guard.decide(2);
+    process.emit("beforeExit", 0);
+    // Node skips the listeners after a throwing one, so only a pin ahead of it still runs.
+    expect(() => process.emit("exit", 13)).toThrow("exit listener threw");
+
+    expect(process.exitCode).toBe(2);
+  });
+
   it("still throws from the stub between the decision and finish, so the reply can flush", () => {
     const guard = guardCommandShim(describeError);
 

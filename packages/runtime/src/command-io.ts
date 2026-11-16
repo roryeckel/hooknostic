@@ -277,13 +277,16 @@ export function guardCommandShim(
       // Listeners must never throw.
     }
   };
-  // The pin must be the last `exit` listener, or one the hook source added
-  // since it was registered can reset the code. Moved to the end on every
-  // path into an exit the guard sees coming: finish, the stub leaving, and
-  // beforeExit.
+  // Two copies of the pin. One stays where the guard installed it, ahead of
+  // every `exit` listener the hook source adds: a listener of its own that
+  // throws skips the listeners after it, so only a pin ahead of it still
+  // sets the code. The other must run last, or a listener the hook source
+  // added since can reset the code, so it moves to the end on every path into
+  // an exit the guard sees coming: finish, the stub leaving, and beforeExit.
+  const pinLast = (): void => pin();
   const repin = (): void => {
-    process.off("exit", pin);
-    process.on("exit", pin);
+    process.off("exit", pinLast);
+    process.on("exit", pinLast);
   };
 
   // Set for the length of an emit, and reset once its listeners have run. The
@@ -344,6 +347,7 @@ export function guardCommandShim(
     cannotUnwind = true;
   });
   process.on("exit", pin);
+  process.on("exit", pinLast);
 
   return {
     write,

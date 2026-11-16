@@ -349,6 +349,19 @@ describe("Claude command shim with a hook source that owns the process", () => {
     expect(result.stdout).toBe("");
   });
 
+  it("exits 0 when an exit listener throws under a never-settling top-level await", async () => {
+    const result = await runShim(
+      source({
+        top: `process.on("exit", () => { throw new Error("exit listener threw"); });\nawait new Promise(() => {});`,
+      }),
+      FIXTURE,
+      CAPS,
+    );
+    // The throw skips the listeners after it: a pin only at the end would leave Node's 13.
+    expect(result.code, result.stderr).toBe(0);
+    expect(result.stdout).toBe("");
+  });
+
   it("still leaves on the forced exit when the hook source's exit listener throws", async () => {
     const result = await runShim(
       source({

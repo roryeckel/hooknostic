@@ -7762,9 +7762,10 @@ function guardCommandShim(describe2, options = {}) {
     } catch {
     }
   };
+  const pinLast = () => pin();
   const repin = () => {
-    process.off("exit", pin);
-    process.on("exit", pin);
+    process.off("exit", pinLast);
+    process.on("exit", pinLast);
   };
   const holdUnwind = () => {
     cannotUnwind = true;
@@ -7803,6 +7804,7 @@ function guardCommandShim(describe2, options = {}) {
     cannotUnwind = true;
   });
   process.on("exit", pin);
+  process.on("exit", pinLast);
   return {
     write,
     report,

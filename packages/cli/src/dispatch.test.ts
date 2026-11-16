@@ -923,6 +923,19 @@ export default definePlugin({
       expect(results).toHaveLength(0);
     });
 
+    it("keeps that failure when an exit listener throws under a never-settling top-level await", async () => {
+      const { status, results, raw } = await run(
+        atLoad(`
+          process.on("exit", () => { throw new Error("exit listener threw"); });
+          await new Promise(() => {});
+        `),
+        "claude",
+      );
+      // The throw skips the listeners after it: a pin only at the end would leave Node's 13.
+      expect(status, raw).toBe(1);
+      expect(results).toHaveLength(0);
+    });
+
     it("still ends on the forced exit when the hook source's exit listener throws", async () => {
       const { status, results, raw } = await run(
         atLoad(`process.on("exit", () => { throw new Error("exit listener threw"); }); setInterval(() => {}, 60_000);`),
