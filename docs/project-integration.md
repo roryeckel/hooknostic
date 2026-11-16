@@ -107,7 +107,7 @@ broad target range that includes them must narrow the target to enforce it.
 
 | Command | Effect |
 | --- | --- |
-| `init --local` | Create the missing config and `hooks.ts`, listing any that already exist as left unchanged; never overwrites. A `--config` that names a directory fails with exit 2. |
+| `init --local` | Create the missing config and `hooks.ts` without overwrite, installation, or activation, listing any that already exist as left unchanged. A `--config` that names a directory or `hooks.ts` fails with exit 2. |
 | `check` | Validate and generate in memory; no target artifacts are written. Trusted materializers may use network or persistent caches. |
 | `build` | Write compiler artifacts only |
 | `sync --dry-run` | Show planned changes and conflicts; no writes |
