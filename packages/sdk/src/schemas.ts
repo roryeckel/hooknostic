@@ -245,9 +245,16 @@ function namedRecord<K extends z.core.$ZodRecordKey, V extends z.ZodType>(
     // them aborted the enclosing object's refinements (the config-level
     // cross-field checks), and per-call parse options never reached them.
     // The enclosing parse prefixes and finalizes these issues as it would a
-    // plain z.record's. `_zod.run` is the parse entry Zod 4 types in
-    // zod/v4/core; this context lacks the caller's per-call options, which
-    // only Zod's own nested key-issue explanations would have used.
+    // plain z.record's.
+    //
+    // `_zod.run` is an internal Zod API (`@internal` in zod/v4/core), relied on
+    // across the SDK's `zod` peer range ^4.6.7 because no public API gives
+    // master's result: re-adding finalized issues with `continue: true` runs
+    // the config-level checks after an invalid_type where master stops, and
+    // an intersection drops a one-sided invalid_key. The tests that pin
+    // config-level issues beside, and stopped by, a record issue guard it.
+    // This context lacks the caller's per-call options, which only Zod's own
+    // nested key-issue explanations would have used.
     const run = record._zod.run({ value: input, issues: [] }, { async: false });
     // No record value schema here is asynchronous. A plain Error, because a
     // value reference into z.core would bundle Zod's whole core namespace.
