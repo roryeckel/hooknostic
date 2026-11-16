@@ -148,7 +148,8 @@ audit files alone.
 
 Observations on 2.3.0:
 
-- The `subagent` tool always runs the child in the background. Its
+- The `subagent` tool always runs the child in the background; its schema no
+  longer has a `background` argument. Its
   `execute.after` fires as the child starts, before the child's first model
   request: `status: completed`, `result.output.status: running`, and a launch
   notice as `result.content`. So `tool.after` reports the notice, never the
@@ -174,10 +175,15 @@ Observations on 2.3.0:
   in that execution's request, beside the `<subagent>` message, with no further
   user prompt. Nine `turn.stop` dispatches, three without a turn id.
 
+Up to 2.2.7 the tool's schema offers an opt-in `background` argument and says
+the foreground is the default (also in the 2.0.17 capture). No drive passes it.
 2.2.7 ran the same children in the foreground in the `subagent`,
 `subagent-late` and delayed stop drives: `result.output.status: completed`
 with the child's result, the result in the tool message, no inbox item, and
-two parent executions on the stop drive. So the change is at 2.3.0.
+two parent executions on the stop drive. So up to 2.2.7 a subagent runs in the
+foreground by default, and from 2.3.0 it always runs in the background. A
+subagent called with `background: true` before 2.3.0 was not probed; nothing
+here says how it behaves.
 
 Consequences, with no adapter behaviour change:
 
@@ -209,10 +215,10 @@ Mutants, each run against the named build, killed, and restored byte for byte:
 | --- | --- | --- |
 | `subagent-background-boundary` | The boundary record's version moved to 2.0.17 | The subagent test on 2.0.17; the late and stop tests too |
 | `audit-subagent` (existing) | `subagent` classified `other` | The subagent test on 2.3.0 |
-| `subagent-late-turn-id` | The shim keeps a pending prompt id past the execution it starts | The late test on 2.3.0, and the stop test on every build, whose prevention continuation no prompt starts either. The late test alone let it survive on 2.2.6 |
+| `subagent-late-turn-id` | The shim keeps a pending prompt id past the execution it starts | The late test on 2.3.0, and the stop test on every build, whose prevention continuation no prompt starts either. The late test alone let it survive before 2.3.0 |
 | (manual) | The decoder reads `result.output` instead of `result.content` | The `tool-subagent-background-after` decode case |
 | (manual) | The stop drive no longer waits for the child's success | The stop test on 2.3.0 with `HKN_CHILD_DELAY_MS=6000` |
 
-Not probed, and not claimed: a child that fails or is interrupted, a
-`subagent` call that sends a follow-up to a running child by `sessionID`, and
-deeper nesting.
+Not probed, and not claimed: a subagent called with `background: true` before
+2.3.0, a child that fails or is interrupted, a `subagent` call that sends a
+follow-up to a running child by `sessionID`, and deeper nesting.

@@ -128,9 +128,11 @@ export async function setupOpenCodeV2(
     }
   };
   // Posting after an interrupted or failed execution would override it. A child
-  // posts nothing either: its result goes to its parent, as the tool result up
-  // to 2.2.7, and from 2.3.0, where subagents run in the background, as a later
-  // user message that may start another parent execution, whose stop does post.
+  // posts nothing either: its result goes to its parent. Up to 2.2.7 a subagent
+  // runs in the foreground by default and its result is the tool result (the
+  // opt-in background argument was not probed); from 2.3.0 it always runs in the
+  // background and its result is a later user message that may start another
+  // parent execution, whose stop does post.
   const post = async (
     native: Record<string, unknown>,
     event: HookEvent,

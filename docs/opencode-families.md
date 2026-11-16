@@ -38,10 +38,12 @@ succeeded execution of a top-level session, prevention with `resume` and a
 notice without it, and both become user-role messages the model reads. A notice
 starts no execution, and nothing shows it until the session next runs. Failed
 and interrupted executions and subagent children post nothing, and there is no
-`stop_hook_active` flag, so a hook that always prevents loops. From OpenCode
-2.3.0 subagents run in the background, so one prompt can end in several
-top-level stops. The parent can finish before its child, and the child's result
-then starts another parent execution. That execution reports `turn.stop` without
+`stop_hook_active` flag, so a hook that always prevents loops. Up to OpenCode
+2.2.7 a subagent runs in the foreground by default (the tool's opt-in
+`background` argument was not probed); from 2.3.0 it always runs in the
+background. There one prompt can end in several top-level stops: the parent
+can finish before its child, and the child's result then starts another parent
+execution. That execution reports `turn.stop` without
 `correlation.turnId`, receives any pending notice, and is subject to prevention
 like any other. Prevention does not wait for a running child.
 [Capture](../.capture/opencode-v2-audit/README.md). Legacy SSE
@@ -129,8 +131,9 @@ is the ADR-0015 default. [Capture](../.capture/opencode-disabled-mcp/README.md).
 Tool classification covers captured file read/write/edit/glob/grep, webfetch,
 websearch and subagent names; shell normalization includes `workdir`. Websearch
 coverage is limited to admission. A subagent runs in a separate session. Up to
-2.2.7 it runs in the foreground, and `tool.after` carries its result. From 2.3.0
-it always runs in the background: `tool.after` fires as the child starts and
+2.2.7 it runs in the foreground by default, and `tool.after` carries its result;
+the tool's opt-in `background` argument was not probed. From 2.3.0 it always
+runs in the background: `tool.after` fires as the child starts and
 carries a launch notice (`raw.event.result.output.status` is `running`), and the
 child's result reaches the parent later as a user-role `<subagent>` message that
 no portable hook reports. Hooknostic has no portable field for a subagent's result;
