@@ -123,7 +123,8 @@ source's own `uncaughtException` listener ends it with Node's 7.
   with the hook source's own `uncaughtException` listener that exits or an exit
   repeated within one event, the run ends early with `1` and some or all result
   lines missing: until the run finishes, leaving counts as `1`. So does a
-  top-level `await` that never settles, whose only stderr is Node's own warning. `2` takes
+  top-level `await` that never settles, whose only stderr is Node's own warning
+  (until #201; see the third amendment). `2` takes
   precedence over `1`, and handler errors stay in `errors` with exit `0`.
 - **Per target.** On a command target, `process.exit` in a handler is that
   handler's error, as in its shim. On a module target the error is the same,
@@ -162,3 +163,28 @@ programmatic `runCli` call now leaves the process to its caller, as
 `io`: what the hook source writes to stdout now shares it with the result
 lines, where the claimed stdout used to move it to stderr. Pass an `io` to
 keep the two apart.
+
+## Amendments — 2026-11-16
+
+**A load that never settles is a load failure** (#201). A config or hook
+source whose top-level `await` or thenable default export never settled used
+to end a guarded run with `1`, no results, and only Node's warning on stderr.
+Now the run exits `2` with no results, as the testing guide already promised
+for a load failure at the top level:
+
+- **The config** loads in the same window as the other commands' (second
+  amendment). A stall is its HN501, `failed to load config <path>: its
+  top-level await never settles` or `its default export is a thenable that
+  never settles`, and its staged directory is removed even if the run ends
+  early. A `process.exit`, a rejection or a timer throw while it loads is
+  HN501 as well. Before this, a rejection or a timer throw there was a stray,
+  exit `1` with every result; it now matches `check` and `build`.
+- **The hook source** gets a stall check on every load, including the fresh
+  instance a command target takes for each event, and nothing more:
+  `failed to dispatch through entry <entry>: ...`, exit `2`. A rejection or a
+  timer throw while it loads stays a stray labelled `[event N]`. A window
+  would have attributed that to the load instead.
+- **Unchanged:** `--unguarded`, which still leaves Node's `13`;
+  `dispatchEvents()` and the exported `runCli`, which install nothing; and a
+  load that never settles while a handle it leaked keeps the loop alive,
+  which still hangs (design A10.3).
