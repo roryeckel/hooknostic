@@ -173,11 +173,12 @@ export function sdkReleaseSkew(
 }
 
 /**
- * `directory` as HN110 names it: relative to the project, with forward
- * slashes, when the project contains it, because the build report that carries
- * the message may be committed, and an absolute path differs by machine and can
- * name a home directory. Otherwise absolute. The SDK's path is real (Node
- * resolves symlinks), so the project's real path is tried too.
+ * `directory` as HN110 names it: relative to the config's directory, with
+ * forward slashes and saying so, when that directory contains it, because the
+ * build report that carries the message may be committed, and an absolute path
+ * differs by machine and can name a home directory. Otherwise absolute. The
+ * SDK's path is real (Node resolves symlinks), so the project's real path is
+ * tried too.
  */
 function shownPath(directory: string, projectDirectory: string): string {
   let real = projectDirectory;
@@ -189,7 +190,7 @@ function shownPath(directory: string, projectDirectory: string): string {
   for (const base of [projectDirectory, real]) {
     const path = relative(base, directory);
     if (path !== "" && path !== ".." && !path.startsWith(`..${sep}`) && !isAbsolute(path))
-      return path.replaceAll("\\", "/");
+      return `${path.replaceAll("\\", "/")} (relative to the config's directory)`;
   }
   return directory;
 }

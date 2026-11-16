@@ -100,7 +100,9 @@ describe("sdkReleaseSkew (HN110)", () => {
     expect(diagnostic).toMatchObject({ code: "HN110", severity: "warn" });
     expect(diagnostic?.message).toContain(`this hooknostic is ${CLI}`);
     // Forward slashes on every platform: the build report may be committed.
-    expect(diagnostic?.message).toContain("@hooknostic/sdk at node_modules/@hooknostic/sdk is 0.13.0-rc.1,");
+    expect(diagnostic?.message).toContain(
+      "@hooknostic/sdk at node_modules/@hooknostic/sdk (relative to the config's directory) is 0.13.0-rc.1,",
+    );
     expect(diagnostic?.message).toContain("mixes one release's SDK with another release's compiler and shims");
   });
 
@@ -120,7 +122,9 @@ describe("sdkReleaseSkew (HN110)", () => {
     const link = join(parent, "project");
     await symlink(root, link, "junction");
     try {
-      expect(sdkReleaseSkew(entry, CLI, link)?.message).toContain("@hooknostic/sdk at node_modules/@hooknostic/sdk ");
+      expect(sdkReleaseSkew(entry, CLI, link)?.message).toContain(
+        "@hooknostic/sdk at node_modules/@hooknostic/sdk (relative to the config's directory) is 0.11.9,",
+      );
     } finally {
       // Unlink the junction itself: a recursive remove would descend into the project.
       await rm(link, { force: true });

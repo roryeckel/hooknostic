@@ -3116,7 +3116,9 @@ describe("a CLI and a project SDK on different releases (HN110, #194)", () => {
       }),
     ]);
     // Inside the project, so relative: a committed build report names no machine's path.
-    expect(hn110(report.diagnostics)[0]?.message).toContain(`at node_modules/@hooknostic/sdk is ${OTHER},`);
+    expect(hn110(report.diagnostics)[0]?.message).toContain(
+      `at node_modules/@hooknostic/sdk (relative to the config's directory) is ${OTHER},`,
+    );
     expect(hn110(report.diagnostics)[0]?.message).not.toContain(sdk);
   });
 
