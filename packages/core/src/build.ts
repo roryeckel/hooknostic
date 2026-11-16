@@ -72,7 +72,7 @@ import { isStrictDescendant, validateOutputLayout } from "./output-layout.js";
 import { dispatcherRuntimePolicy, effectiveCompatibility, effectiveRuntime } from "./policy.js";
 import type { ProjectIntegration } from "./project-files.js";
 import { projectPath } from "./project-files.js";
-import { sdkReleaseSkew } from "./sdk-resolution.js";
+import { anotherInstallsPnpRuntime, sdkReleaseSkew } from "./sdk-resolution.js";
 import { type AuthoredProjectSkill, planProjectSkillPolicies } from "./skill-policy.js";
 
 export const HOOKNOSTIC_VERSION = "0.12.0";
@@ -417,14 +417,18 @@ function resolveProjectSdk(configDir: string): string | undefined {
  * CLI against the SDK it would bundle (#194). An `evaluate` alias names that
  * SDK when it is an absolute path; a bare package name has no manifest to walk
  * up from, so the project's own SDK stands in.
+ *
+ * Under another install's Plug'n'Play runtime, as under `yarn dlx`, the
+ * project's own SDK is not looked up, and HN110 is silent, as it was before
+ * the check existed: resolving from the project would load its PnP API beside
+ * that runtime and break the build that follows (#216).
  */
 export function projectSdkReleaseSkew(configDir: string, evaluate?: EvaluateOptions): Diagnostic | undefined {
   const alias = evaluate?.alias?.["@hooknostic/sdk"];
-  return sdkReleaseSkew(
-    alias !== undefined && isAbsolute(alias) ? alias : resolveProjectSdk(configDir),
-    HOOKNOSTIC_VERSION,
-    configDir,
-  );
+  // An absolute alias is only read from disk, never resolved: no runtime to load.
+  if (alias !== undefined && isAbsolute(alias)) return sdkReleaseSkew(alias, HOOKNOSTIC_VERSION, configDir);
+  if (anotherInstallsPnpRuntime(configDir)) return undefined;
+  return sdkReleaseSkew(resolveProjectSdk(configDir), HOOKNOSTIC_VERSION, configDir);
 }
 
 /**

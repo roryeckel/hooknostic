@@ -1,6 +1,6 @@
 import { cp, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { basename, join, resolve } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
@@ -9,13 +9,23 @@ import { runProcess } from "./harness-playback.js";
 /** The Yarn release the projects pin through `packageManager`; corepack fetches it. */
 const YARN = "yarn@4.18.1";
 
-/** Each consumer's own `zod`, if any. */
+/** The release the skewed consumer's SDK is repacked as: not the CLI's, so HN110 applies. */
+const SKEWED_SDK = "0.11.9";
+
+/** A consumer: its own `zod`, if any, and whether its SDK is repacked as {@link SKEWED_SDK}. */
+interface Consumer {
+  zod?: string;
+  skewedSdk?: true;
+}
+
 const PROJECTS = {
-  "no-zod": undefined,
-  "zod-3.24.4": "3.24.4",
-  "zod-3.25.76": "3.25.76",
-  "zod-4.6.7": "4.6.7",
-} as const;
+  "no-zod": {},
+  "zod-3.24.4": { zod: "3.24.4" },
+  "zod-3.25.76": { zod: "3.25.76" },
+  "zod-4.6.7": { zod: "4.6.7" },
+  // HN110 wherever the project's SDK resolves, and a guard on #216 under yarn dlx.
+  "skew-4.6.7": { zod: "4.6.7", skewedSdk: true },
+} as const satisfies Record<string, Consumer>;
 type Project = keyof typeof PROJECTS;
 
 /** How a run turned out, compared as a whole so a failure shows every cell. */
@@ -24,6 +34,7 @@ interface Outcome {
   exit: number | null;
   hn504: number;
   hn109: number;
+  hn110: number;
   /**
    * Whose Zod the Claude runtime bundles, per zod archive: the project's
    * version, or another, the CLI's own. In one shared cache the project's
@@ -33,8 +44,8 @@ interface Outcome {
   zod: ("project" | "cli")[];
 }
 
-const ok = (hn109: number, zod: Outcome["zod"]): Outcome => ({ exit: 0, hn504: 0, hn109, zod });
-const hn504: Outcome = { exit: 2, hn504: 1, hn109: 0, zod: [] };
+const ok = (hn109: number, zod: Outcome["zod"], hn110 = 0): Outcome => ({ exit: 0, hn504: 0, hn109, hn110, zod });
+const hn504: Outcome = { exit: 2, hn504: 1, hn109: 0, hn110: 0, zod: [] };
 
 /**
  * The network tokens a registry fetch or download failure leaves in Yarn's,
@@ -90,21 +101,42 @@ describe("the opt-in Yarn check's network classifier", () => {
   });
 });
 
-/** Under Yarn's runtime, the SDK takes the project's in-range Zod and the CLI's otherwise. */
+/**
+ * Under the project's own Yarn runtime, the SDK takes the project's in-range
+ * Zod and the CLI's otherwise, and the project's SDK resolves, so a skewed
+ * one warns HN110.
+ */
 const underYarnRuntime: Record<Project, Outcome> = {
   "no-zod": ok(0, ["cli"]),
   "zod-3.24.4": ok(1, ["cli"]),
   "zod-3.25.76": ok(1, ["cli"]),
   "zod-4.6.7": ok(0, ["project"]),
+  "skew-4.6.7": ok(0, ["project"], 1),
 };
 
 const EXPECTED: Record<string, Record<Project, Outcome>> = {
   "yarn hooknostic": underYarnRuntime,
   "node -r .pnp.cjs": underYarnRuntime,
-  // npx, a global install, pnpm dlx: Hooknostic outside the project, without Yarn's runtime.
-  "plain node": { "no-zod": hn504, "zod-3.24.4": hn504, "zod-3.25.76": hn504, "zod-4.6.7": hn504 },
-  // Yarn's runtime, but the dlx install, which holds the CLI's own Zod, is not in the project's manifest.
-  "yarn dlx": { "no-zod": hn504, "zod-3.24.4": hn504, "zod-3.25.76": hn504, "zod-4.6.7": ok(0, ["project"]) },
+  // npx, a global install, pnpm dlx: Hooknostic outside the project, without
+  // Yarn's runtime. Node cannot resolve the project's SDK, so HN110 is silent.
+  "plain node": {
+    "no-zod": hn504,
+    "zod-3.24.4": hn504,
+    "zod-3.25.76": hn504,
+    "zod-4.6.7": hn504,
+    "skew-4.6.7": hn504,
+  },
+  // Yarn's runtime, but the dlx install, which holds the CLI's own Zod, is not
+  // in the project's manifest. HN110 stays silent there: looking up the
+  // project's SDK would load the project's runtime beside dlx's, and break the
+  // build in a shared global cache (#216).
+  "yarn dlx": {
+    "no-zod": hn504,
+    "zod-3.24.4": hn504,
+    "zod-3.25.76": hn504,
+    "zod-4.6.7": ok(0, ["project"]),
+    "skew-4.6.7": ok(0, ["project"]),
+  },
 };
 
 /** Every file under `directory`, recursively. */
@@ -163,6 +195,15 @@ it.skipIf(process.env["HOOKNOSTIC_YARN_PNP"] !== "1")(
         packs,
         tarballs.find((file) => /^hooknostic-\d/.test(file))!,
       );
+      // The same SDK under another release's version. Paths stay relative to
+      // the working directory: GNU tar takes a drive letter's colon for a host.
+      await mkdir(join(root, "repack"));
+      await must("tar", ["-xzf", `packs/${basename(sdk)}`, "-C", "repack"], root);
+      const repackedManifest = join(root, "repack", "package", "package.json");
+      const manifest = JSON.parse(await readFile(repackedManifest, "utf8")) as { version: string };
+      await writeFile(repackedManifest, JSON.stringify({ ...manifest, version: SKEWED_SDK }, null, 2));
+      const skewedSdk = join(root, `hooknostic-sdk-${SKEWED_SDK}.tgz`);
+      await must("tar", ["-czf", basename(skewedSdk), "-C", "repack", "package"], root);
 
       // The CLI installed outside every project, as npx or a global install has it.
       const outside = join(root, "npm-cli");
@@ -189,7 +230,9 @@ it.skipIf(process.env["HOOKNOSTIC_YARN_PNP"] !== "1")(
       };
 
       const observed: Record<string, Partial<Record<Project, Outcome>>> = {};
-      for (const [name, zod] of Object.entries(PROJECTS) as [Project, string | undefined][]) {
+      for (const [name, consumer] of Object.entries(PROJECTS) as [Project, Consumer][]) {
+        const { zod } = consumer;
+        const projectSdk = consumer.skewedSdk ? skewedSdk : sdk;
         const project = join(root, name);
         await mkdir(join(project, "src"), { recursive: true });
         await writeFile(
@@ -200,11 +243,11 @@ it.skipIf(process.env["HOOKNOSTIC_YARN_PNP"] !== "1")(
             type: "module",
             packageManager: YARN,
             dependencies: {
-              "@hooknostic/sdk": `file:${sdk}`,
+              "@hooknostic/sdk": `file:${projectSdk}`,
               hooknostic: `file:${cli}`,
               ...(zod === undefined ? {} : { zod }),
             },
-            resolutions: { "@hooknostic/sdk": `file:${sdk}` },
+            resolutions: { "@hooknostic/sdk": `file:${projectSdk}` },
           }),
         );
         await writeFile(
@@ -232,6 +275,7 @@ it.skipIf(process.env["HOOKNOSTIC_YARN_PNP"] !== "1")(
             exit: result.code,
             hn504: (result.output.match(/^HN504 /gm) ?? []).length,
             hn109: (result.output.match(/^HN109 /gm) ?? []).length,
+            hn110: (result.output.match(/^HN110 /gm) ?? []).length,
             zod: [...packages].map((path) => {
               // A Zod outside Yarn's cache, such as the npm-installed CLI's, is never the project's.
               const version = /\/zod-npm-(\d+\.\d+\.\d+)-/.exec(path)?.[1];
