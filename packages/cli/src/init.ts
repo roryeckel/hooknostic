@@ -1,17 +1,24 @@
-import { mkdir, open } from "node:fs/promises";
-import { dirname, join, resolve } from "node:path";
+import { type FileHandle, mkdir, open, stat, unlink } from "node:fs/promises";
+import { basename, dirname, join, resolve } from "node:path";
 
 import type { AdapterRegistry } from "@hooknostic/core";
 import { errorMessage } from "@hooknostic/runtime";
 
 import type { CommandIO } from "./check.js";
+
+const DEFAULT_CONFIG = "hooknostic.config.ts";
+
+const fileNoun = (count: number) => (count === 1 ? "file" : "files");
+const indent = (paths: string[]) => paths.map((path) => `  ${path}`);
+
+/** `config` is the --config value, or undefined when it was not given. */
 export async function runInit(
-  config: string,
+  config: string | undefined,
   registry: AdapterRegistry,
   io: CommandIO,
   json: boolean,
 ): Promise<number> {
-  const path = resolve(config);
+  const path = resolve(config ?? DEFAULT_CONFIG);
   const root = dirname(path);
   const targets = Object.fromEntries(
     Object.values(registry)
@@ -37,12 +44,92 @@ export async function runInit(
     ],
   ];
   const created: string[] = [];
+  // Targets known to exist as files. They are listed as unchanged in the
+  // order of files, on failure as well as success, even when the write loop
+  // stopped before reaching them.
+  const present = new Set<string>();
+  const unchanged = () => files.map(([file]) => file!).filter((file) => present.has(file));
+  const fail = (message: string): number => {
+    if (json)
+      io.stdout(
+        JSON.stringify({
+          schemaVersion: 1,
+          command: "init",
+          ok: false,
+          created,
+          unchanged: unchanged(),
+          errors: [message],
+        }),
+      );
+    else
+      io.stderr(
+        [
+          message,
+          ...(created.length > 0 ? ["Created before the failure, left in place:", ...indent(created)] : []),
+        ].join("\n"),
+      );
+    return 2;
+  };
+  // hooks.ts is written beside the config, so a config named hooks.ts would
+  // be both files. Windows and macOS file systems ignore case by default, so
+  // compare names case-insensitively there; on a case-sensitive macOS volume
+  // that refuses a name such as Hooks.ts, which only needs renaming.
+  const caseInsensitive = process.platform === "win32" || process.platform === "darwin";
+  const configName = basename(path);
+  const sameName = caseInsensitive ? configName.toLowerCase() === "hooks.ts" : configName === "hooks.ts";
+  if (sameName) {
+    return fail(
+      `init failed: --config ${path} is where init writes hooks.ts; name the configuration file something else`,
+    );
+  }
+  // Check every target before writing anything, so a directory in the way
+  // leaves the project untouched (#217). Any other stat error is left for
+  // the loop to report as it always has (#208). An existing file is left
+  // unchanged without reading it: a --config naming some other file is
+  // listed as unchanged, and so are a FIFO and a file that appears after
+  // this check, which open's "wx" refuses.
+  //
+  // Known limit: a dangling symlink differs by platform. On POSIX, O_EXCL
+  // refuses it with EEXIST, so it counts as unchanged. On Windows,
+  // open(link, "wx") follows a dangling file symlink and creates its
+  // target. So a --config that aliases hooks.ts without naming it, such as
+  // a dangling symlink to hooks.ts or hooks.ts::$DATA, writes the config
+  // into hooks.ts. hooks.ts did not exist, so nothing is lost, and matching
+  // inodes was judged not worth it.
+  //
+  // Every target is checked before a directory is refused, so the refusal
+  // still lists the others that exist as files.
+  let directory: string | undefined;
+  for (const [file] of files) {
+    let isDirectory: boolean;
+    try {
+      isDirectory = (await stat(file!)).isDirectory();
+    } catch {
+      continue;
+    }
+    if (!isDirectory) present.add(file!);
+    else directory ??= file!;
+  }
+  if (directory !== undefined) {
+    const message = `init failed: cannot create ${directory}: it is a directory`;
+    // The --config hint only helps when --config was given, and a file
+    // suggested inside a directory already named like a config would
+    // only nest the mistake.
+    if (directory !== path || config === undefined) return fail(message);
+    return fail(
+      basename(directory).endsWith(".config.ts")
+        ? `${message}; --config names the configuration file, not a directory`
+        : `${message}; --config names the configuration file, such as ${join(directory, DEFAULT_CONFIG)}`,
+    );
+  }
   for (const [file, contents] of files) {
+    if (present.has(file!)) continue;
     let opening = false;
+    let handle: FileHandle | undefined;
     try {
       await mkdir(dirname(file!), { recursive: true });
       opening = true;
-      const handle = await open(file!, "wx");
+      handle = await open(file!, "wx");
       try {
         await handle.writeFile(contents!);
       } finally {
@@ -52,19 +139,31 @@ export async function runInit(
     } catch (error) {
       // Only open's EEXIST means the file is already there; mkdir's means
       // its directory is a file.
-      if (opening && (error as NodeJS.ErrnoException).code === "EEXIST") continue;
+      if (opening && !handle && (error as NodeJS.ErrnoException).code === "EEXIST") {
+        present.add(file!);
+        continue;
+      }
+      // This run opened the file, so it may be truncated: remove it. Files
+      // fully created earlier stay, and are listed as created.
+      if (handle) await unlink(file!).catch(() => {});
       // A path it cannot create, such as one under a file, is the user's
       // mistake, not an unexpected error with a stack (#208).
-      const message = `init failed: cannot create ${file}: ${errorMessage(error)}`;
-      if (json) io.stdout(JSON.stringify({ schemaVersion: 1, command: "init", ok: false, created, errors: [message] }));
-      else io.stderr(message);
-      return 2;
+      return fail(`init failed: cannot create ${file}: ${errorMessage(error)}`);
     }
   }
-  if (json) io.stdout(JSON.stringify({ schemaVersion: 1, command: "init", created }));
+  const left = unchanged();
+  if (json) io.stdout(JSON.stringify({ schemaVersion: 1, command: "init", ok: true, created, unchanged: left }));
   else
     io.stdout(
-      `Created ${created.length} files. Install Hooknostic and its SDK with your package manager, then run hooknostic sync.`,
+      [
+        ...(created.length > 0
+          ? [`Created ${created.length} ${fileNoun(created.length)}:`, ...indent(created)]
+          : ["Created no files."]),
+        ...(left.length > 0
+          ? [`Left ${left.length} existing ${fileNoun(left.length)} unchanged:`, ...indent(left)]
+          : []),
+        "Install Hooknostic and its SDK with your package manager, then run hooknostic sync.",
+      ].join("\n"),
     );
   return 0;
 }
