@@ -1,3 +1,5 @@
+import { runInNewContext } from "node:vm";
+
 import { describe, expect, it } from "vitest";
 
 import {
@@ -455,7 +457,7 @@ describe("canonical schemas", () => {
       expect(pathsAndMessages(literal)).toEqual([
         { path: ["targets", "__proto__"], message: expect.stringContaining(PROTOTYPE_KEY_MESSAGE) },
       ]);
-      if (!literal.success) expect(literal.error.issues[0]!.message).toContain("object literal");
+      if (!literal.success) expect(literal.error.issues[0]!.message).toContain("prototype was replaced");
 
       // Records that never had a prototype to replace stay accepted.
       const nullPrototype = Object.assign(Object.create(null) as Record<string, unknown>, { claude: packageTarget });
@@ -466,6 +468,38 @@ describe("canonical schemas", () => {
       expect(
         pathsAndMessages(hooknosticConfigSchema.safeParse({ entry: "./src/hooks.ts", targets: [packageTarget] })),
       ).toEqual([{ path: ["targets"], message: expect.stringContaining("expected record") }]);
+    });
+
+    it("says the prototype was replaced without assuming an object literal did it", () => {
+      const inherited = Object.assign(Object.create({ inherited: packageTarget }) as Record<string, unknown>, {
+        claude: packageTarget,
+      });
+      const result = hooknosticConfigSchema.safeParse({ entry: "./src/hooks.ts", targets: inherited });
+
+      expect(pathsAndMessages(result)).toEqual([
+        {
+          path: ["targets", "__proto__"],
+          message: `${PROTOTYPE_KEY_MESSAGE}; this record's prototype was replaced (for example by an object literal entry written as __proto__: {...}), and a computed ["__proto__"] key is not accepted either, so use a plain object and choose another name`,
+        },
+      ]);
+    });
+
+    it("accepts records and configs from another realm", () => {
+      const target = JSON.stringify(packageTarget);
+      const foreignTargets = runInNewContext(`({ claude: ${target} })`) as unknown;
+      expect(Object.getPrototypeOf(foreignTargets)).not.toBe(Object.prototype);
+      expect(hooknosticConfigSchema.safeParse({ entry: "./src/hooks.ts", targets: foreignTargets }).success).toBe(true);
+
+      const foreignConfig = runInNewContext(`({ entry: "./src/hooks.ts", targets: { claude: ${target} } })`) as unknown;
+      const parsed = hooknosticConfigSchema.safeParse(foreignConfig);
+      expect(parsed.success).toBe(true);
+      if (parsed.success) expect(parsed.data.targets).toEqual({ claude: packageTarget });
+
+      // Another realm's object literal still replaces the record's prototype.
+      const foreignLiteral = runInNewContext(`({ entry: "./src/hooks.ts", targets: { __proto__: ${target} } })`);
+      expect(pathsAndMessages(hooknosticConfigSchema.safeParse(foreignLiteral))).toEqual([
+        { path: ["targets", "__proto__"], message: expect.stringContaining("prototype was replaced") },
+      ]);
     });
   });
 

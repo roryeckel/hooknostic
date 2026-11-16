@@ -6872,7 +6872,7 @@ var targetConfigSchema = object({
   compatibility: compatibilityPolicySchema.optional()
 }).strict();
 var PROTOTYPE_KEY_MESSAGE = `"__proto__" cannot be used as a name: JavaScript treats it as an object's prototype, not an ordinary key`;
-var REPLACED_PROTOTYPE_MESSAGE = `${PROTOTYPE_KEY_MESSAGE}; an object literal entry written as __proto__: {...} replaced this record's prototype instead of adding an entry, and a computed ["__proto__"] key is not accepted either, so choose another name`;
+var REPLACED_PROTOTYPE_MESSAGE = `${PROTOTYPE_KEY_MESSAGE}; this record's prototype was replaced (for example by an object literal entry written as __proto__: {...}), and a computed ["__proto__"] key is not accepted either, so use a plain object and choose another name`;
 function namedRecord(key, value, prototypeKey = "reject") {
   const record3 = record(key, value);
   if (prototypeKey === "preserve") {
@@ -6917,7 +6917,7 @@ function prototypeKeyProblem(input, rejectedAsRecord) {
     if (rejectedAsRecord)
       return void 0;
     const prototype = Object.getPrototypeOf(input);
-    if (prototype !== Object.prototype && prototype !== null)
+    if (prototype !== null && Object.getPrototypeOf(prototype) !== null)
       return REPLACED_PROTOTYPE_MESSAGE;
   } catch {
     return void 0;

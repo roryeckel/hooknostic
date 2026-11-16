@@ -186,9 +186,10 @@ export const targetConfigSchema = z
   .strict();
 
 const PROTOTYPE_KEY_MESSAGE = `"__proto__" cannot be used as a name: JavaScript treats it as an object's prototype, not an ordinary key`;
-// Judgement call: the literal spelling is told what happened, not to switch
-// to a computed key -- a computed `__proto__` key is rejected here too.
-const REPLACED_PROTOTYPE_MESSAGE = `${PROTOTYPE_KEY_MESSAGE}; an object literal entry written as __proto__: {...} replaced this record's prototype instead of adding an entry, and a computed ["__proto__"] key is not accepted either, so choose another name`;
+// Judgement call: say what happened without assuming how (Object.create({...})
+// replaces a prototype too), and do not suggest a computed `__proto__` key,
+// which is rejected here as well.
+const REPLACED_PROTOTYPE_MESSAGE = `${PROTOTYPE_KEY_MESSAGE}; this record's prototype was replaced (for example by an object literal entry written as __proto__: {...}), and a computed ["__proto__"] key is not accepted either, so use a plain object and choose another name`;
 
 /**
  * A record keyed by user-chosen names. Zod 4 skips an own `__proto__` key
@@ -279,8 +280,11 @@ function prototypeKeyProblem(input: unknown, rejectedAsRecord: boolean): string 
     // keep a null or Object.prototype prototype; arrays, Maps and class
     // instances already fail as "expected record" and keep only that issue.
     if (rejectedAsRecord) return undefined;
+    // Compare structurally rather than with this realm's Object.prototype: a
+    // record from another realm (vm, an iframe) has that realm's, and every
+    // realm's Object.prototype has a null prototype of its own.
     const prototype: unknown = Object.getPrototypeOf(input);
-    if (prototype !== Object.prototype && prototype !== null) return REPLACED_PROTOTYPE_MESSAGE;
+    if (prototype !== null && Object.getPrototypeOf(prototype) !== null) return REPLACED_PROTOTYPE_MESSAGE;
   } catch {
     return undefined;
   }
