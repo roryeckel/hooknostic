@@ -7752,7 +7752,8 @@ function guardCommandShim(describe2, options = {}) {
   };
   const line = (error2) => {
     try {
-      return `${midLine ? "\n" : ""}${describe2(error2)}
+      const text = describe2(error2);
+      return text === void 0 ? void 0 : `${midLine ? "\n" : ""}${text}
 `;
     } catch {
       return void 0;
