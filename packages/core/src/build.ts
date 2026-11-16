@@ -209,6 +209,13 @@ function cloneMcpServer(server: AgentPluginMcpServer): AgentPluginMcpServer {
   };
 }
 
+// Server names and target ids are user-chosen, so a name such as `toString`
+// or `constructor` must not read an inherited `Object.prototype` member
+// (#200).
+function ownEntry<T>(record: Readonly<Record<string, T>> | undefined, key: string): T | undefined {
+  return record !== undefined && Object.hasOwn(record, key) ? record[key] : undefined;
+}
+
 function applyProjectMcpOverrides(
   source: ProjectComponents,
   override: ProjectMcpTargetOverride | undefined,
@@ -247,14 +254,16 @@ function applyProjectMcpOverrides(
     };
   }
   const servers = cloned.mcp.config.mcpServers;
-  const startupTimeoutMs: Record<string, number> = {};
+  // Null prototype: on a plain object, assigning to a server named
+  // `__proto__` is silently ignored and its timeout lost (#200).
+  const startupTimeoutMs: Record<string, number> = Object.create(null);
   const projectCwdServers: string[] = [];
   if (override.startupTimeoutMs !== undefined) {
     for (const name of Object.keys(servers)) startupTimeoutMs[name] = override.startupTimeoutMs;
   }
   const errors: string[] = [];
   for (const [name, settings] of Object.entries(override.servers ?? {})) {
-    const server = servers[name];
+    const server = ownEntry(servers, name);
     if (server === undefined) {
       errors.push(`MCP override references unknown server ${JSON.stringify(name)}`);
       continue;
@@ -683,13 +692,17 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
     for (const [id] of exclusions) {
       const configured = config.targets[id]!;
       const details = { components: {}, omissions: [] };
-      const target = (report.targets[id] ??= {
-        status: "failed",
-        adapter: configured.adapter ?? id,
-        requestedVersion: configured.version,
-        output: configured.output,
-        capabilities: { exact: 0, emulated: 0, approximate: 0, unsupported: 0 },
-      });
+      // `??=` would find an inherited member for a target id such as
+      // `toString` and decorate it instead (#200).
+      const target = Object.hasOwn(report.targets, id)
+        ? report.targets[id]!
+        : (report.targets[id] = {
+            status: "failed",
+            adapter: configured.adapter ?? id,
+            requestedVersion: configured.version,
+            output: configured.output,
+            capabilities: { exact: 0, emulated: 0, approximate: 0, unsupported: 0 },
+          });
       if (configured.delivery === "package") target.projection ??= { ...details, status: target.status };
       else target.project ??= { ...details, guidance: [] };
     }
@@ -773,7 +786,7 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
   };
   for (const id of selectedTargetIds) {
     if (!componentTargetIds.has(id) || !config.targets[id]) continue;
-    const patterns = config.components?.excludeFor?.[id];
+    const patterns = ownEntry(config.components?.excludeFor, id);
     if (patterns !== undefined) exclusions.set(id, { patterns, matches: [] });
   }
   let components: AgentPluginPackage | undefined;
@@ -784,7 +797,7 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
         ...tree,
         files: tree.files.filter((file) => {
           const path = `${tree.into}/${file.path}`;
-          if (!excludedByTarget(path, config.components?.excludeFor?.[id])) return true;
+          if (!excludedByTarget(path, ownEntry(config.components?.excludeFor, id))) return true;
           recordExcluded(id, path);
           return false;
         }),
@@ -815,8 +828,9 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
           );
     for (const id of selectedTargetIds) {
       if (!componentTargetIds.has(id) || !config.targets[id]) continue;
+      const excludeFor = ownEntry(config.components.excludeFor, id);
       const loaded = await loadAgentPlugin({
-        ...(config.components.excludeFor?.[id] === undefined ? {} : { excludeFor: config.components.excludeFor[id] }),
+        ...(excludeFor === undefined ? {} : { excludeFor }),
         onExclude: (path) => recordExcluded(id, path),
         root: agentPluginRoot,
         ...(config.components.executableFiles === undefined
@@ -849,7 +863,7 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
       sources.set(id, packageComponents(components));
       inventories.set(id, components.files.map((file) => file.path).sort());
       for (const path of [config.components.runtimePackage?.manifest, config.components.runtimePackage?.lockfile]) {
-        if (path && excludedByTarget(path.replace(/^\.\//, ""), config.components.excludeFor?.[id]))
+        if (path && excludedByTarget(path.replace(/^\.\//, ""), excludeFor))
           diagnostics.push({
             code: "HN501",
             severity: "error",
@@ -907,8 +921,9 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
   else if (config.components && (selectedPackageProjection || selectedProjectProjection)) {
     for (const id of selectedTargetIds) {
       if (!componentTargetIds.has(id) || !config.targets[id]) continue;
+      const excludeFor = ownEntry(config.components.excludeFor, id);
       const loaded = await loadProjectComponents({
-        ...(config.components.excludeFor?.[id] === undefined ? {} : { excludeFor: config.components.excludeFor[id] }),
+        ...(excludeFor === undefined ? {} : { excludeFor }),
         onExclude: (path) => recordExcluded(id, path),
         ...(config.components.skills === undefined
           ? {}
@@ -1293,15 +1308,14 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
               const matrix = resolveAgentPluginProjection(spec, {
                 profiles: adapter.projectComponentProfiles ?? [],
               }).matrix;
+              const exclude = ownEntry(config.components?.excludeFor, id);
               return [
                 {
                   id,
                   adapter: adapter.id,
                   componentsSelected: (config.components?.targets ?? Object.keys(config.targets)).includes(id),
                   ...(sources.get(id) === undefined ? {} : { source: sources.get(id)! }),
-                  ...(config.components?.excludeFor?.[id] === undefined
-                    ? {}
-                    : { exclude: config.components.excludeFor[id] }),
+                  ...(exclude === undefined ? {} : { exclude }),
                   ...adapter.skillInvocationPolicy,
                   ...(matrix?.[SKILL_INVOCATION_POLICY] === undefined
                     ? {}
@@ -1507,7 +1521,7 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
               throw new Error("project component support is unavailable for the configured version range");
             const selected = applyProjectMcpOverrides(
               policyPlan?.source ?? projectSource,
-              componentsSelected ? config.components?.mcpOverrides?.[id] : undefined,
+              componentsSelected ? ownEntry(config.components?.mcpOverrides, id) : undefined,
             );
             for (const message of selected.errors) {
               diagnostics.push({ code: "HN501", severity: "error", target: id, message });
