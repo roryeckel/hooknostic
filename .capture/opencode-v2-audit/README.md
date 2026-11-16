@@ -209,7 +209,7 @@ Mutants, each run against the named build, killed, and restored byte for byte:
 | --- | --- | --- |
 | `subagent-background-boundary` | The boundary record's version moved to 2.0.17 | The subagent test on 2.0.17; the late and stop tests too |
 | `audit-subagent` (existing) | `subagent` classified `other` | The subagent test on 2.3.0 |
-| `subagent-late-turn-id` | The shim keeps a pending prompt id past the execution it starts | The late test on 2.3.0. It survives on 2.2.6, which starts no unprompted parent execution |
+| `subagent-late-turn-id` | The shim keeps a pending prompt id past the execution it starts | The late test on 2.3.0, and the stop test on every build, whose prevention continuation no prompt starts either. The late test alone let it survive on 2.2.6 |
 | (manual) | The decoder reads `result.output` instead of `result.content` | The `tool-subagent-background-after` decode case |
 | (manual) | The stop drive no longer waits for the child's success | The stop test on 2.3.0 with `HKN_CHILD_DELAY_MS=6000` |
 
