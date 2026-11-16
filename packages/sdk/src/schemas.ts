@@ -250,6 +250,9 @@ function namedRecord<K extends z.core.$ZodRecordKey, V extends z.ZodType>(
       // so its raw issues also keep their `continue` flags and per-call options
       // and are reported beside the other entries' issues. Only the value is
       // run: both preserving records take any non-empty string as a name.
+      // The read is deliberately unguarded: a throwing getter or Proxy `get`
+      // trap throws here as it would on any other key, out of the parse, which
+      // loadConfig reports as HN501.
       const entry = runSync(value, (input as Record<string, unknown>)["__proto__"]);
       for (const issue of entry.issues) context.issues.push({ ...issue, path: ["__proto__", ...(issue.path ?? [])] });
       // Object.fromEntries defines the name as an own data property, where an
@@ -282,8 +285,9 @@ function runSync(schema: z.ZodType, input: unknown) {
  * Whether the raw record input carries an own `__proto__` entry or a replaced
  * prototype, if either. Looking runs Proxy traps Zod's own record parse never
  * runs: getPrototypeOf, and getOwnPropertyDescriptor for `__proto__`. A trap
- * that throws counts as nothing detected, so the record's own result stands,
- * as it did before.
+ * that throws during this lookup counts as nothing detected, so the record's
+ * own result stands, as it did before. That covers only the lookup: reading a
+ * preserved entry's value, in namedRecord, is not guarded.
  */
 function prototypeKeyShape(input: unknown, rejectedAsRecord: boolean): "own" | "replaced" | undefined {
   if (typeof input !== "object" || input === null) return undefined;
