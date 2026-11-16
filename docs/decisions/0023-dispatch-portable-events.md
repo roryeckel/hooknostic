@@ -112,8 +112,8 @@ with the hook source's own exit code and usually printed no results. Now a hook
 source's `process.exit`, rejections, uncaught exceptions, `process.exitCode` and
 `exit` listeners no longer choose the run's exit code, and it usually cannot end
 the run early. The guard's documented limits remain (design §10.3): among them,
-an `exit` listener that throws skips the guard's own, so a run that ends early
-then exits with Node's code, 7 or 13.
+an `exit` listener that throws while the run leaves from inside the hook
+source's own `uncaughtException` listener ends it with Node's 7.
 
 - **Exit codes.** `0` and `2` keep their meanings. A new `1` means the hook
   source failed outside a handler: a rejection nothing handled, a throw from a

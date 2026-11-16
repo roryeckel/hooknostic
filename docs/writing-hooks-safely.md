@@ -119,9 +119,8 @@ These still end the hook on their own terms:
 - An `exit` listener added late: by a `beforeExit` listener, or after the shim
   finishes when its forced exit ends a hook that leaked a handle. It can change the
   exit code.
-- An `exit` listener that throws. The shim's own listeners after it never run, so
-  the hook can end with Node's exit code: 7 from an exit the shim could not unwind,
-  13 under a top-level `await` that never settles.
+- An `exit` listener that throws while the hook is leaving from inside your own
+  `uncaughtException` listener: Node exits 7.
 - A listener of your own on `uncaughtException` or `uncaughtExceptionMonitor` that
   throws, or that exits ahead of the shim's: Node exits 7.
 - `process.setUncaughtExceptionCaptureCallback(...)`: an uncaught exception is

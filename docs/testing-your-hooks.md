@@ -200,8 +200,8 @@ dispatched one at a time, in the same process.
 The guard has the shims' limits. `process.kill(process.pid)`, `process.abort()`
 and `process.reallyExit` still end the run, and a failure later than the exit's
 250 ms grace after the last result goes unreported. An `exit` listener of your own
-that throws skips the guard's listeners after it: a run that ends early then exits
-with Node's code, 7 or 13, rather than 1. One added late, from a `beforeExit`
+that throws while the run is leaving from inside your own `uncaughtException`
+listener ends it with Node's 7 rather than 1. One added late, from a `beforeExit`
 listener, can change the exit code too.
 
 Checks that require a live native object also remain in the shim. Dispatch can

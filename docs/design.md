@@ -880,12 +880,17 @@ thing each command shim installs, and it stays for the life of the process:
   The shim's own exits use the original function.
 - **Exit-code pin.** An `exit` listener sets the exit code to the decided code, or 0
   before one, over a `process.exitCode` the hook source set and over Node's 13 for an
-  unsettled top-level await. It moves to the end of the `exit` listeners, after any
-  the hook source added, on every path into an exit the guard sees coming: finishing,
-  the stub leaving, and `beforeExit`, which covers a loop that empties before the shim
-  finishes, as under a top-level await that never settles. If the forced exit after
-  finishing throws, because an `exit` listener of the hook source's threw, the shim
-  calls it again; Node is leaving by then and skips the listeners.
+  unsettled top-level await. It is registered twice. One copy stays where the guard
+  installed it, ahead of every `exit` listener the hook source adds, so a listener that
+  throws, which makes Node skip the listeners after it, cannot skip that one. The other
+  moves to the end of the `exit` listeners on every path into an exit the guard sees
+  coming: finishing, the stub leaving, and `beforeExit`, which covers a loop that empties
+  before the shim finishes, as under a top-level await that never settles. So a hook
+  source's listener that resets the code runs before it. The forced exit after finishing
+  uses the code decided by the time it fires, so a stray failure after finishing that
+  raised it still counts. If that exit throws, because an `exit` listener of the hook
+  source's threw, the shim calls it again; Node is leaving by then and skips the
+  listeners.
 - **Keep the decided exit code.** Each command shim records the decided code as soon as
   `apply` produces it, before it writes the reply. From then on a stray failure keeps
   the decided exit code, so it neither adds a block nor removes one: Claude Code's exit
@@ -907,10 +912,10 @@ not cover these:
   `process.kill(process.pid)`; `process.abort()`; or an `exit` listener added after the
   pin last moved to the end, such as one a `beforeExit` listener adds, or one added after
   the shim finishes when the forced exit ends it.
-- An `exit` listener that throws. Node skips the listeners after it, the pin among them.
-  Leaving from an exit the guard could not unwind, the process then exits 7; under a
-  top-level await that never settles, Node's 13 stands. After the shim finishes, the
-  decided code stands, and the throw goes unreported on a forced exit.
+- An `exit` listener that throws while the process leaves from an exit the guard could
+  not unwind inside an `uncaughtException` listener: Node exits 7. Elsewhere the pin
+  ahead of it still sets the code, and the decided code stands; on a forced exit after
+  finishing, the throw goes unreported.
 - A listener of the hook source's own on `uncaughtException` or
   `uncaughtExceptionMonitor` that throws, or that exits ahead of the guard. For
   example, `(e) => { throw e }`, or a monitor listener prepended to call
@@ -944,10 +949,11 @@ source in the CLI's own process and guards it (#189):
   0 ms tail or a microtask rejection is labelled `[event N]`; that label is best effort.
 - It decides 1 up front: until every result is written, a process the hook source ends
   is a failure, with some or all result lines missing, since they are written at the end.
-  The pin moving to the end on the stub's leave path, `finish` and `beforeExit` keeps an
-  `exit` listener the hook source added from resetting that 1, including under a
-  top-level await that never settles. An `exit` listener that throws, or one added after
-  the pin last moved, can still change it, as listed above. The run then exits 1 if
+  The two pins keep an `exit` listener the hook source added from resetting that 1 or
+  skipping it by throwing, including under a top-level await that never settles. One
+  added after the pin last moved can still change it, and a throwing one still ends an
+  exit from inside an `uncaughtException` listener with 7, as listed above. The run
+  then exits 1 if
   anything was reported outside a handler, and a report after the last result moves a 0
   to 1. Dispatch's own 2 takes precedence, and handler errors stay 0. If dispatch itself
   throws, the CLI still releases stdout and finishes with 2, so a leaked handle cannot
