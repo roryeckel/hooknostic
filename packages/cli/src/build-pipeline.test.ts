@@ -510,6 +510,37 @@ describe("an entry-less build that selects no component target (#207)", () => {
   });
 });
 
+describe("a configured target selected twice (#207)", () => {
+  it("writes its own diagnostics into the build report once", async () => {
+    const dir = await project();
+    await writeFile(
+      join(dir, "hooks.ts"),
+      `import { definePlugin, hook } from "@hooknostic/sdk";
+       export default definePlugin({ name: "p", hooks: [hook("session.start", { id: "s", fields: ["how"], async run() {} })] });`,
+      "utf8",
+    );
+    const adapter = fake({
+      profiles: [{ ...PROFILE, fields: { "session.start.how": { level: "emulated", rationale: "inferred" } } }],
+    });
+    const capture = captureIO();
+    expect(
+      await runBuild({
+        config: join(dir, "hooknostic.config.ts"),
+        targets: ["fake", "fake"],
+        json: true,
+        registry: { fake: adapter },
+        io: capture.io,
+        evaluate: EVALUATE,
+      }),
+      capture.out(),
+    ).toBe(0);
+    const written = JSON.parse(await readFile(join(dir, "hooknostic-build.json"), "utf8")) as {
+      diagnostics: { code: string; target?: string }[];
+    };
+    expect(written.diagnostics.filter((d) => d.code === "HN108").map((d) => d.target)).toEqual(["fake"]);
+  });
+});
+
 describe("CLI last-resort error handling", () => {
   it("reports unexpected adapter exceptions on stderr with exit 2 instead of crashing", async () => {
     const dir = await mkdtemp(join(tmpdir(), "hooknostic-cli-crash-"));

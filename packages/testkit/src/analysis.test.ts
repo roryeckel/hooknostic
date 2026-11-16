@@ -358,6 +358,24 @@ describe("analyzeCapabilities", () => {
     expect(analysis.targets.rich?.ok).toBe(true);
   });
 
+  it("analyses a configured target selected twice once (#207)", () => {
+    const analysis = analyzeCapabilities(
+      ir([
+        hook("tool.before", {
+          id: "enhance",
+          capabilities: { "tool.before.input.replace": "optional" },
+          async run() {},
+        }),
+      ]),
+      config(),
+      registry(),
+      ["poor", "rich", "poor"],
+    );
+    expect(analysis.ok).toBe(true);
+    expect(Object.keys(analysis.targets)).toEqual(["poor", "rich"]);
+    expect(analysis.diagnostics.filter((d) => d.code === "HN102").map((d) => d.target)).toEqual(["poor"]);
+  });
+
   it("reports HN501 when a configured target has no registered adapter", () => {
     const analysis = analyzeCapabilities(
       ir([hook("session.start", { id: "s", async run() {} })]),

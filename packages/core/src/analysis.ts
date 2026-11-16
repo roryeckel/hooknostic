@@ -167,7 +167,10 @@ export function analyzeCapabilities(
   const targets: Record<string, TargetAnalysis> = {};
 
   const configuredTargets = Object.keys(config.targets);
-  const selection = selectedTargets ?? configuredTargets;
+  // Once per name, in first-seen order: `--target nosuch,nosuch` is one
+  // mistake, and `--target claude,claude` analyses claude once rather than
+  // reporting its diagnostics twice.
+  const selection = [...new Set(selectedTargets ?? configuredTargets)];
 
   if (selectedTargets !== undefined && selectedTargets.length === 0) {
     diagnostics.push({
@@ -178,9 +181,8 @@ export function analyzeCapabilities(
     });
   }
 
-  // CLI narrowing may never introduce a target absent from config. Once per
-  // name: `--target nosuch,nosuch` is one mistake, not two.
-  for (const id of new Set(selection)) {
+  // CLI narrowing may never introduce a target absent from config.
+  for (const id of selection) {
     if (!configuredTargets.includes(id)) {
       diagnostics.push({
         code: "HN501",
