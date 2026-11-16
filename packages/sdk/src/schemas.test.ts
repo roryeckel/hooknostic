@@ -267,6 +267,131 @@ describe("canonical schemas", () => {
       ]);
   });
 
+  describe("__proto__ as a user-chosen name (#198)", () => {
+    const PROTOTYPE_KEY_MESSAGE =
+      '"__proto__" cannot be used as a name: JavaScript treats it as an object\'s prototype, not an ordinary key';
+    const packageTarget = { version: ">=2.1 <3", delivery: "package" as const, output: "./dist/claude" };
+    const projectTarget = { version: ">=1 <2", delivery: "project" as const, output: "./dist/client" };
+    const provider = { id: "fixture", plan: () => ({ command: "fixture", args: [] }) };
+    // An own `__proto__` key. Object.fromEntries defines it; an object literal
+    // entry spelled `__proto__: value` would set the prototype instead.
+    const ownProto = (value: unknown) => Object.fromEntries([["__proto__", value]]);
+    const pathsAndMessages = (result: ReturnType<typeof hooknosticConfigSchema.safeParse>) =>
+      result.success ? [] : result.error.issues.map(({ path, message }) => ({ path, message }));
+
+    it.each([
+      {
+        record: "targets",
+        config: { entry: "./src/hooks.ts", targets: ownProto(packageTarget) },
+        path: ["targets", "__proto__"],
+      },
+      {
+        record: "components.mcpOverrides",
+        config: {
+          project: { root: "." },
+          components: { mcp: "./mcp.json", mcpOverrides: ownProto({ startupTimeoutMs: 1_000 }) },
+          targets: { client: projectTarget },
+        },
+        path: ["components", "mcpOverrides", "__proto__"],
+      },
+      {
+        record: "components.mcpOverrides.<target>.servers",
+        config: {
+          project: { root: "." },
+          components: { mcp: "./mcp.json", mcpOverrides: { client: { servers: ownProto({ args: ["serve"] }) } } },
+          targets: { client: projectTarget },
+        },
+        path: ["components", "mcpOverrides", "client", "servers", "__proto__"],
+      },
+      {
+        record: "components.excludeFor",
+        config: { components: { root: ".", excludeFor: ownProto(["x/**"]) }, targets: { claude: packageTarget } },
+        path: ["components", "excludeFor", "__proto__"],
+      },
+      {
+        record: "components.materialize[].inputs",
+        config: {
+          components: { root: ".", materialize: [{ provider, inputs: ownProto("lock.json"), into: "generated" }] },
+          targets: { claude: packageTarget },
+        },
+        path: ["components", "materialize", 0, "inputs", "__proto__"],
+      },
+    ])("rejects a $record entry named __proto__", ({ config, path }) => {
+      expect(pathsAndMessages(hooknosticConfigSchema.safeParse(config))).toEqual([
+        { path, message: PROTOTYPE_KEY_MESSAGE },
+      ]);
+    });
+
+    it("rejects the issue's lone __proto__ target instead of parsing it as no targets", () => {
+      const result = hooknosticConfigSchema.safeParse({
+        entry: "./src/hooks.ts",
+        targets: { ["__proto__"]: { adapter: "claude", version: ">=2.1 <3", delivery: "project", output: "./out" } },
+      });
+
+      expect(pathsAndMessages(result)).toEqual([{ path: ["targets", "__proto__"], message: PROTOTYPE_KEY_MESSAGE }]);
+    });
+
+    it("still reports the other entries' problems in the same record", () => {
+      const targets = Object.fromEntries([
+        ["__proto__", packageTarget],
+        ["", packageTarget],
+        ["claude", { ...packageTarget, version: "" }],
+      ]);
+      const result = hooknosticConfigSchema.safeParse({ entry: "./src/hooks.ts", targets });
+
+      expect(result.success).toBe(false);
+      const paths = result.success ? [] : result.error.issues.map((issue) => issue.path);
+      expect(paths).toContainEqual(["targets", "__proto__"]);
+      expect(paths).toContainEqual(["targets", ""]);
+      expect(paths).toContainEqual(["targets", "claude", "version"]);
+    });
+
+    it("keeps constructor and prototype as ordinary target and MCP server names", () => {
+      const targets = Object.fromEntries([
+        ["constructor", { ...packageTarget, adapter: "claude" }],
+        ["prototype", { ...packageTarget, adapter: "claude", output: "./dist/other" }],
+      ]);
+      const parsedTargets = hooknosticConfigSchema.parse({ entry: "./src/hooks.ts", targets }).targets;
+      expect(Object.keys(parsedTargets)).toEqual(["constructor", "prototype"]);
+      expect(Object.getPrototypeOf(parsedTargets)).toBe(Object.prototype);
+
+      const servers = Object.fromEntries([
+        ["constructor", { args: ["one"] }],
+        ["prototype", { args: ["two"] }],
+      ]);
+      const parsedServers = hooknosticConfigSchema.parse({
+        project: { root: "." },
+        components: { mcp: "./mcp.json", mcpOverrides: { client: { servers } } },
+        targets: { client: projectTarget },
+      }).components!.mcpOverrides!.client!.servers!;
+      expect(Object.hasOwn(parsedServers, "constructor")).toBe(true);
+      expect(Object.hasOwn(parsedServers, "prototype")).toBe(true);
+      expect(parsedServers["constructor"]).toEqual({ args: ["one"] });
+      expect(parsedServers["prototype"]).toEqual({ args: ["two"] });
+    });
+
+    it("rejects the object literal spelling, which replaces the record's prototype", () => {
+      const literal = hooknosticConfigSchema.safeParse({
+        entry: "./src/hooks.ts",
+        targets: { __proto__: packageTarget, codex: { ...packageTarget, output: "./dist/codex" } },
+      });
+      expect(pathsAndMessages(literal)).toEqual([
+        { path: ["targets", "__proto__"], message: expect.stringContaining(PROTOTYPE_KEY_MESSAGE) },
+      ]);
+      if (!literal.success) expect(literal.error.issues[0]!.message).toContain("object literal");
+
+      // Records that never had a prototype to replace stay accepted.
+      const nullPrototype = Object.assign(Object.create(null) as Record<string, unknown>, { claude: packageTarget });
+      expect(hooknosticConfigSchema.safeParse({ entry: "./src/hooks.ts", targets: nullPrototype }).success).toBe(true);
+      const parsedJson = JSON.parse(`{"claude": ${JSON.stringify(packageTarget)}}`) as unknown;
+      expect(hooknosticConfigSchema.safeParse({ entry: "./src/hooks.ts", targets: parsedJson }).success).toBe(true);
+      // A value that is not a record keeps only Zod's own diagnostic.
+      expect(
+        pathsAndMessages(hooknosticConfigSchema.safeParse({ entry: "./src/hooks.ts", targets: [packageTarget] })),
+      ).toEqual([{ path: ["targets"], message: expect.stringContaining("expected record") }]);
+    });
+  });
+
   it("rejects timeouts above Node's maximum timer delay", () => {
     const config = {
       entry: "./src/hooks.ts",

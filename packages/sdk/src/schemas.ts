@@ -185,6 +185,73 @@ export const targetConfigSchema = z
   })
   .strict();
 
+const PROTOTYPE_KEY_MESSAGE = `"__proto__" cannot be used as a name: JavaScript treats it as an object's prototype, not an ordinary key`;
+// Judgement call: the literal spelling is told what happened, not to switch
+// to a computed key -- a computed `__proto__` key is rejected here too.
+const REPLACED_PROTOTYPE_MESSAGE = `${PROTOTYPE_KEY_MESSAGE}; an object literal entry written as __proto__: {...} replaced this record's prototype instead of adding an entry, and a computed ["__proto__"] key is not accepted either, so choose another name`;
+
+/**
+ * A record keyed by user-chosen names. Zod 4 skips an own `__proto__` key
+ * before its key schema runs, so neither a key refinement nor a refinement of
+ * the parsed record ever sees it, and the entry silently vanishes. Parse the
+ * record, keep every issue it reports, then inspect the raw input.
+ *
+ * `reject` (the default) refuses the name, because these names become keys of
+ * plain objects downstream. `preserve` validates the entry and keeps it as an
+ * own data property instead.
+ */
+function namedRecord<K extends z.core.$ZodRecordKey, V extends z.ZodType>(
+  key: K,
+  value: V,
+  prototypeKey: "reject" | "preserve" = "reject",
+) {
+  const record = z.record(key, value);
+  type Output = z.output<typeof record>;
+  return z.unknown().transform((input, context): Output => {
+    const parsed = record.safeParse(input);
+    if (!parsed.success) for (const issue of parsed.error.issues) context.addIssue({ ...issue });
+    const isObject = typeof input === "object" && input !== null;
+    const hasOwnPrototypeKey = isObject && Object.prototype.propertyIsEnumerable.call(input, "__proto__");
+
+    if (prototypeKey === "preserve") {
+      if (!parsed.success) return z.NEVER;
+      const entries: [PropertyKey, unknown][] = Object.entries(parsed.data);
+      // Parse the own `__proto__` entry explicitly, then rebuild with
+      // Object.fromEntries so the name survives without invoking
+      // Object.prototype's inherited setter.
+      if (hasOwnPrototypeKey) {
+        const prototypeEntry = value.safeParse((input as Record<string, unknown>)["__proto__"]);
+        if (!prototypeEntry.success) {
+          for (const issue of prototypeEntry.error.issues)
+            context.addIssue({ ...issue, path: ["__proto__", ...issue.path] });
+          return z.NEVER;
+        }
+        entries.push(["__proto__", prototypeEntry.data]);
+      }
+      return Object.fromEntries(entries) as Output;
+    }
+
+    if (hasOwnPrototypeKey) {
+      context.addIssue({ code: "custom", path: ["__proto__"], message: PROTOTYPE_KEY_MESSAGE });
+      return z.NEVER;
+    }
+    // An object literal's `__proto__: {...}` entry sets the prototype instead of
+    // adding a key, so the record parses as if the entry were absent. Records
+    // made by Object.create(null), Object.fromEntries or JSON.parse keep a null
+    // or Object.prototype prototype; arrays, Maps and class instances already
+    // fail as "expected record" at the record itself and keep only that issue.
+    const rejectedAsRecord = !parsed.success && parsed.error.issues.some((issue) => issue.path.length === 0);
+    if (isObject && !rejectedAsRecord) {
+      const prototype: unknown = Object.getPrototypeOf(input);
+      if (prototype !== Object.prototype && prototype !== null) {
+        context.addIssue({ code: "custom", path: ["__proto__"], message: REPLACED_PROTOTYPE_MESSAGE });
+        return z.NEVER;
+      }
+    }
+    return parsed.success ? parsed.data : z.NEVER;
+  });
+}
+
 const projectMcpServerOverrideSchema = z
   .object({
     args: z.array(z.string()).optional(),
@@ -196,35 +263,15 @@ const projectMcpServerOverrideSchema = z
 const projectMcpTargetOverrideSchema = z
   .object({
     startupTimeoutMs: z.number().int().positive().max(MAX_TIMER_DELAY_MS).optional(),
-    servers: z.record(z.string().min(1), projectMcpServerOverrideSchema).optional(),
+    // Rejected for now: a `__proto__` server would lose its startupTimeoutMs
+    // in the build's per-server map (#200). Relax this once that is fixed.
+    servers: namedRecord(z.string().min(1), projectMcpServerOverrideSchema).optional(),
   })
   .strict();
 
-const mcpEnvironmentValueSchema = z.array(z.string().min(1));
-const mcpEnvironmentRecordSchema = z.record(z.string().min(1), mcpEnvironmentValueSchema);
-
-const mcpEnvironmentSchema = z.unknown().transform((value, context): Record<string, string[]> => {
-  const parsed = mcpEnvironmentRecordSchema.safeParse(value);
-  if (!parsed.success) {
-    for (const issue of parsed.error.issues) context.addIssue({ ...issue });
-    return z.NEVER;
-  }
-
-  const entries = Object.entries(parsed.data);
-  // Zod 4 skips `__proto__` record entries, including their validation. Parse
-  // that own entry explicitly, then rebuild with Object.fromEntries so the
-  // server name survives without invoking Object.prototype's inherited setter.
-  if (typeof value === "object" && value !== null && Object.prototype.propertyIsEnumerable.call(value, "__proto__")) {
-    const prototypeEntry = mcpEnvironmentValueSchema.safeParse((value as Record<string, unknown>)["__proto__"]);
-    if (!prototypeEntry.success) {
-      for (const issue of prototypeEntry.error.issues)
-        context.addIssue({ ...issue, path: ["__proto__", ...issue.path] });
-      return z.NEVER;
-    }
-    entries.push(["__proto__", prototypeEntry.data]);
-  }
-  return Object.fromEntries(entries);
-});
+// MCP environment entries named `__proto__` were already validated and kept as
+// own data properties, and that support is documented, so they stay preserved.
+const mcpEnvironmentSchema = namedRecord(z.string().min(1), z.array(z.string().min(1)), "preserve");
 
 export const hooknosticConfigSchema = z
   .object({
@@ -235,16 +282,16 @@ export const hooknosticConfigSchema = z
     entry: z.string().min(1).optional(),
     compatibility: compatibilityPolicySchema.optional(),
     runtime: runtimePolicySchema.optional(),
-    targets: z.record(z.string().min(1), targetConfigSchema),
+    targets: namedRecord(z.string().min(1), targetConfigSchema),
     components: z
       .object({
         root: z.string().min(1).optional(),
         skills: z.array(z.string().min(1)).optional(),
         mcp: z.string().min(1).optional(),
-        mcpOverrides: z.record(z.string().min(1), projectMcpTargetOverrideSchema).optional(),
+        mcpOverrides: namedRecord(z.string().min(1), projectMcpTargetOverrideSchema).optional(),
         targets: z.array(z.string().min(1)).min(1).optional(),
         exclude: z.array(z.string().min(1)).optional(),
-        excludeFor: z.record(z.string().min(1), z.array(z.string().min(1))).optional(),
+        excludeFor: namedRecord(z.string().min(1), z.array(z.string().min(1))).optional(),
         executableFiles: z.array(z.string().min(1)).optional(),
         mcpEnvironment: mcpEnvironmentSchema.optional(),
         runtimePackage: z
@@ -260,7 +307,7 @@ export const hooknosticConfigSchema = z
             z
               .object({
                 provider: packageMaterializerSchema,
-                inputs: z.record(z.string(), z.string().min(1)),
+                inputs: namedRecord(z.string(), z.string().min(1)),
                 into: z.string().min(1),
               })
               .strict(),

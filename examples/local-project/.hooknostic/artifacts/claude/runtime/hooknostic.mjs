@@ -6975,6 +6975,47 @@ var targetConfigSchema = object({
   skillNames: _enum(["qualified", "authored"]).optional(),
   compatibility: compatibilityPolicySchema.optional()
 }).strict();
+var PROTOTYPE_KEY_MESSAGE = `"__proto__" cannot be used as a name: JavaScript treats it as an object's prototype, not an ordinary key`;
+var REPLACED_PROTOTYPE_MESSAGE = `${PROTOTYPE_KEY_MESSAGE}; an object literal entry written as __proto__: {...} replaced this record's prototype instead of adding an entry, and a computed ["__proto__"] key is not accepted either, so choose another name`;
+function namedRecord(key, value, prototypeKey = "reject") {
+  const record2 = record(key, value);
+  return unknown().transform((input, context) => {
+    const parsed = record2.safeParse(input);
+    if (!parsed.success)
+      for (const issue2 of parsed.error.issues)
+        context.addIssue({ ...issue2 });
+    const isObject2 = typeof input === "object" && input !== null;
+    const hasOwnPrototypeKey = isObject2 && Object.prototype.propertyIsEnumerable.call(input, "__proto__");
+    if (prototypeKey === "preserve") {
+      if (!parsed.success)
+        return NEVER;
+      const entries = Object.entries(parsed.data);
+      if (hasOwnPrototypeKey) {
+        const prototypeEntry = value.safeParse(input["__proto__"]);
+        if (!prototypeEntry.success) {
+          for (const issue2 of prototypeEntry.error.issues)
+            context.addIssue({ ...issue2, path: ["__proto__", ...issue2.path] });
+          return NEVER;
+        }
+        entries.push(["__proto__", prototypeEntry.data]);
+      }
+      return Object.fromEntries(entries);
+    }
+    if (hasOwnPrototypeKey) {
+      context.addIssue({ code: "custom", path: ["__proto__"], message: PROTOTYPE_KEY_MESSAGE });
+      return NEVER;
+    }
+    const rejectedAsRecord = !parsed.success && parsed.error.issues.some((issue2) => issue2.path.length === 0);
+    if (isObject2 && !rejectedAsRecord) {
+      const prototype = Object.getPrototypeOf(input);
+      if (prototype !== Object.prototype && prototype !== null) {
+        context.addIssue({ code: "custom", path: ["__proto__"], message: REPLACED_PROTOTYPE_MESSAGE });
+        return NEVER;
+      }
+    }
+    return parsed.success ? parsed.data : NEVER;
+  });
+}
 var projectMcpServerOverrideSchema = object({
   args: array(string2()).optional(),
   cwd: string2().min(1).optional(),
@@ -6982,43 +7023,25 @@ var projectMcpServerOverrideSchema = object({
 }).strict();
 var projectMcpTargetOverrideSchema = object({
   startupTimeoutMs: number2().int().positive().max(MAX_TIMER_DELAY_MS).optional(),
-  servers: record(string2().min(1), projectMcpServerOverrideSchema).optional()
+  // Rejected for now: a `__proto__` server would lose its startupTimeoutMs
+  // in the build's per-server map (#200). Relax this once that is fixed.
+  servers: namedRecord(string2().min(1), projectMcpServerOverrideSchema).optional()
 }).strict();
-var mcpEnvironmentValueSchema = array(string2().min(1));
-var mcpEnvironmentRecordSchema = record(string2().min(1), mcpEnvironmentValueSchema);
-var mcpEnvironmentSchema = unknown().transform((value, context) => {
-  const parsed = mcpEnvironmentRecordSchema.safeParse(value);
-  if (!parsed.success) {
-    for (const issue2 of parsed.error.issues)
-      context.addIssue({ ...issue2 });
-    return NEVER;
-  }
-  const entries = Object.entries(parsed.data);
-  if (typeof value === "object" && value !== null && Object.prototype.propertyIsEnumerable.call(value, "__proto__")) {
-    const prototypeEntry = mcpEnvironmentValueSchema.safeParse(value["__proto__"]);
-    if (!prototypeEntry.success) {
-      for (const issue2 of prototypeEntry.error.issues)
-        context.addIssue({ ...issue2, path: ["__proto__", ...issue2.path] });
-      return NEVER;
-    }
-    entries.push(["__proto__", prototypeEntry.data]);
-  }
-  return Object.fromEntries(entries);
-});
+var mcpEnvironmentSchema = namedRecord(string2().min(1), array(string2().min(1)), "preserve");
 var hooknosticConfigSchema = object({
   project: object({ root: string2().min(1) }).strict().optional(),
   entry: string2().min(1).optional(),
   compatibility: compatibilityPolicySchema.optional(),
   runtime: runtimePolicySchema.optional(),
-  targets: record(string2().min(1), targetConfigSchema),
+  targets: namedRecord(string2().min(1), targetConfigSchema),
   components: object({
     root: string2().min(1).optional(),
     skills: array(string2().min(1)).optional(),
     mcp: string2().min(1).optional(),
-    mcpOverrides: record(string2().min(1), projectMcpTargetOverrideSchema).optional(),
+    mcpOverrides: namedRecord(string2().min(1), projectMcpTargetOverrideSchema).optional(),
     targets: array(string2().min(1)).min(1).optional(),
     exclude: array(string2().min(1)).optional(),
-    excludeFor: record(string2().min(1), array(string2().min(1))).optional(),
+    excludeFor: namedRecord(string2().min(1), array(string2().min(1))).optional(),
     executableFiles: array(string2().min(1)).optional(),
     mcpEnvironment: mcpEnvironmentSchema.optional(),
     runtimePackage: object({
@@ -7028,7 +7051,7 @@ var hooknosticConfigSchema = object({
     }).strict().optional(),
     materialize: array(object({
       provider: packageMaterializerSchema,
-      inputs: record(string2(), string2().min(1)),
+      inputs: namedRecord(string2(), string2().min(1)),
       into: string2().min(1)
     }).strict()).min(1).optional(),
     onUnsupported: _enum(["error", "warn"]).optional(),
