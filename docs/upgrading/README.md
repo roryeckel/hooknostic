@@ -30,4 +30,4 @@ When upgrading:
 | Guide | Release | Who is affected |
 | --- | --- | --- |
 | [Zod 4 schemas](zod-4.md) | 0.12.0 | SDK consumers who compose exported schemas, annotate Zod types, or handle `ZodError` |
-| [Schemas subpath](sdk-schemas-subpath.md) | Unreleased | SDK consumers who import runtime schemas from `@hooknostic/sdk` |
+| [Schemas subpath](sdk-schemas-subpath.md) | 0.13.0 | SDK consumers who import runtime schemas from `@hooknostic/sdk` |
