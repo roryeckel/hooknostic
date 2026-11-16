@@ -7803,7 +7803,7 @@ function guardCommandShim(describe2, options = {}) {
       decided = exitCode;
       finished = true;
       repin();
-      finishCommandShim(exitCode, exit);
+      finishCommandShim(exitCode, (code) => exit(decided ?? code));
     },
     scope() {
       reported.clear();

@@ -360,7 +360,10 @@ export function guardCommandShim(
       finished = true;
       // Last again, after any 'exit' listener the hook source added while it loaded.
       repin();
-      finishCommandShim(exitCode, exit);
+      // Forced with the code decided by then, which a stray failure after
+      // finish may have raised: should the hook source's own `exit` listener
+      // throw, the pins never run and only the code passed here stands.
+      finishCommandShim(exitCode, (code) => exit(decided ?? code));
     },
     scope() {
       reported.clear();

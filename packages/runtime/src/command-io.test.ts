@@ -449,6 +449,22 @@ describe("guardCommandShim", () => {
     expect(process.exitCode).toBe(2);
   });
 
+  it("forces the exit with a code decided after finish, even when an exit listener throws out of it", () => {
+    vi.useFakeTimers();
+    exit.mockImplementationOnce(() => {
+      throw new Error("exit listener threw");
+    });
+    const guard = guardCommandShim(describeError);
+
+    guard.finish(0);
+    // As dispatch does for a stray failure after its last result.
+    guard.decide(1);
+    vi.advanceTimersByTime(250);
+
+    // The pins never ran on the first try, so the code passed to exit is what stands.
+    expect(exit.mock.calls).toEqual([[1], [1]]);
+  });
+
   it("forces a leaked handle's exit with the original process.exit, unreported", () => {
     vi.useFakeTimers();
     const guard = guardCommandShim(describeError);

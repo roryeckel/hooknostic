@@ -946,6 +946,24 @@ export default definePlugin({
       expect(results).toHaveLength(3);
     });
 
+    it("keeps a stray after the last result failing when an exit listener throws out of the forced exit", async () => {
+      const { status, results, raw } = await run(
+        onSecondEvent(`
+          process.on("exit", () => { throw new Error("exit listener threw"); });
+          let fired = false;
+          setInterval(() => {
+            if (fired || process.exitCode === undefined) return;
+            fired = true;
+            Promise.reject(new Error("late after finish"));
+          }, 1);
+        `),
+        "claude",
+      );
+      expect(raw).toContain("hooknostic internal: late after finish");
+      expect(status, raw).toBe(1);
+      expect(results).toHaveLength(3);
+    });
+
     it("leaves no staged module behind when the run ends early", async () => {
       // A temp directory of the run's own, so other tests' staging cannot show up in it.
       const temp = await mkdtemp(join(tmpdir(), "hooknostic-dispatch-temp-"));
