@@ -29,8 +29,8 @@ Under Yarn Plug'n'Play, run each `npx hooknostic` command below as
 `yarn hooknostic`: outside Yarn's runtime the build fails with HN504. Either
 form runs the project's own CLI. A global or `yarn dlx` `hooknostic` on
 another release than the project's `@hooknostic/sdk` does not warn HN110
-there: a global cannot resolve the project's SDK, and under `yarn dlx`
-looking it up would break the build (#216).
+there: a global run outside Yarn's runtime cannot resolve the project's SDK,
+and under `yarn dlx` looking it up would break the build (#216).
 
 > **Not on npm yet?** While the packages are unpublished, build the exact same
 > tarballs locally from a checkout of this repo and install those instead — the
