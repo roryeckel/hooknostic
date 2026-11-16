@@ -1460,9 +1460,6 @@ function constantCatch(value) {
 
 // ../../node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/core/core.js
 var _a;
-var NEVER = /* @__PURE__ */ Object.freeze({
-  status: "aborted"
-});
 var _zodDesc = { value: void 0, enumerable: false };
 var _E = "captureStackTrace" in Error ? Error : null;
 function newError(Definition) {
@@ -6997,52 +6994,58 @@ var targetConfigSchema = object({
 }).strict();
 var PROTOTYPE_KEY_MESSAGE = `"__proto__" cannot be used as a name: JavaScript treats it as an object's prototype, not an ordinary key`;
 var REPLACED_PROTOTYPE_MESSAGE = `${PROTOTYPE_KEY_MESSAGE}; this record's prototype was replaced (for example by an object literal entry written as __proto__: {...}), and a computed ["__proto__"] key is not accepted either, so use a plain object and choose another name`;
+var PRESERVED_REPLACED_PROTOTYPE_MESSAGE = `this record's prototype was replaced, for example by an object literal entry written as __proto__: {...}, which sets the prototype instead of adding an entry; to name a server "__proto__", write the key as a computed ["__proto__"] key`;
 function namedRecord(key, value, prototypeKey = "reject") {
   const record2 = record(key, value);
-  if (prototypeKey === "preserve") {
-    return unknown().transform((input, context) => {
-      const parsed = record2.safeParse(input);
-      if (!parsed.success) {
-        for (const issue2 of parsed.error.issues)
-          context.addIssue({ ...issue2 });
-        return NEVER;
-      }
-      const entries = Object.entries(parsed.data);
-      if (typeof input === "object" && input !== null && Object.prototype.propertyIsEnumerable.call(input, "__proto__")) {
-        const prototypeEntry = value.safeParse(input["__proto__"]);
-        if (!prototypeEntry.success) {
-          for (const issue2 of prototypeEntry.error.issues)
-            context.addIssue({ ...issue2, path: ["__proto__", ...issue2.path] });
-          return NEVER;
-        }
-        entries.push(["__proto__", prototypeEntry.data]);
-      }
-      return Object.fromEntries(entries);
-    });
-  }
   return unknown().transform((input, context) => {
-    const run = record2._zod.run({ value: input, issues: [] }, { async: false });
-    if (run instanceof Promise)
-      throw new Error("namedRecord does not support asynchronous value schemas");
+    const run = runSync(record2, input);
     const rejectedAsRecord = run.issues.some((issue2) => (issue2.path ?? []).length === 0);
     context.issues.push(...run.issues);
-    const problem = prototypeKeyProblem(input, rejectedAsRecord);
-    if (problem !== void 0)
-      context.addIssue({ code: "custom", path: ["__proto__"], message: problem, continue: true });
+    const shape = prototypeKeyShape(input, rejectedAsRecord);
+    if (prototypeKey === "preserve") {
+      if (rejectedAsRecord || shape === void 0)
+        return run.value;
+      if (shape === "replaced") {
+        context.addIssue({
+          code: "custom",
+          path: ["__proto__"],
+          message: PRESERVED_REPLACED_PROTOTYPE_MESSAGE,
+          continue: true
+        });
+        return run.value;
+      }
+      const entry = runSync(value, input["__proto__"]);
+      for (const issue2 of entry.issues)
+        context.issues.push({ ...issue2, path: ["__proto__", ...issue2.path ?? []] });
+      return Object.fromEntries([...Object.entries(run.value), ["__proto__", entry.value]]);
+    }
+    if (shape !== void 0)
+      context.addIssue({
+        code: "custom",
+        path: ["__proto__"],
+        message: shape === "own" ? PROTOTYPE_KEY_MESSAGE : REPLACED_PROTOTYPE_MESSAGE,
+        continue: true
+      });
     return run.value;
   });
 }
-function prototypeKeyProblem(input, rejectedAsRecord) {
+function runSync(schema, input) {
+  const run = schema._zod.run({ value: input, issues: [] }, { async: false });
+  if (run instanceof Promise)
+    throw new Error("namedRecord does not support asynchronous value schemas");
+  return run;
+}
+function prototypeKeyShape(input, rejectedAsRecord) {
   if (typeof input !== "object" || input === null)
     return void 0;
   try {
     if (Object.prototype.propertyIsEnumerable.call(input, "__proto__"))
-      return PROTOTYPE_KEY_MESSAGE;
+      return "own";
     if (rejectedAsRecord)
       return void 0;
     const prototype = Object.getPrototypeOf(input);
     if (prototype !== null && Object.getPrototypeOf(prototype) !== null)
-      return REPLACED_PROTOTYPE_MESSAGE;
+      return "replaced";
   } catch {
     return void 0;
   }
@@ -7055,9 +7058,7 @@ var projectMcpServerOverrideSchema = object({
 }).strict();
 var projectMcpTargetOverrideSchema = object({
   startupTimeoutMs: number2().int().positive().max(MAX_TIMER_DELAY_MS).optional(),
-  // Rejected for now: a `__proto__` server would lose its startupTimeoutMs
-  // in the build's per-server map (#200). Relax this once that is fixed.
-  servers: namedRecord(string2().min(1), projectMcpServerOverrideSchema).optional()
+  servers: namedRecord(string2().min(1), projectMcpServerOverrideSchema, "preserve").optional()
 }).strict();
 var mcpEnvironmentSchema = namedRecord(string2().min(1), array(string2().min(1)), "preserve");
 var hooknosticConfigSchema = object({

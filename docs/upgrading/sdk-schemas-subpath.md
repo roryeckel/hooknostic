@@ -46,13 +46,15 @@ subpath is an export-map entry, so TypeScript needs the export-aware module
 resolution (`node16`, `nodenext` or `bundler`) that the root entry already
 requires.
 
-One change ships in the same release. `hooknosticConfigSchema` now rejects
-`__proto__` as a target name and as a name in `components.excludeFor`,
-`components.mcpOverrides`, its `servers` and a materializer's `inputs`, where
-Zod 4 used to drop the entry without a diagnostic. To see that name, those five
-fields now validate through a transform that inspects the raw input, as
-`components.mcpEnvironment` already did. If your code does more with the schema
-than parse with it:
+One change ships in the same release. Zod 4 used to drop a `__proto__` name
+without a diagnostic. `hooknosticConfigSchema` now rejects it in four fields:
+as a target name and as a name in `components.excludeFor`,
+`components.mcpOverrides` and a materializer's `inputs`. In
+`components.mcpOverrides.<target>.servers` it now keeps a server named
+`__proto__`, as `components.mcpEnvironment` already did. To see that name, those
+five fields now validate through a transform that inspects the raw input, which
+makes them `ZodPipe`s like `components.mcpEnvironment`. If your code does more
+with the schema than parse with it:
 
 - Each of those fields is a `ZodPipe` of `z.unknown()` into a transform
   (inside `ZodOptional` where the field is optional), no longer a `ZodRecord`.
@@ -69,7 +71,9 @@ than parse with it:
   during encode"). Before, it worked when `components.mcpEnvironment` was
   absent.
 - Per-call parse options such as `error` and `reportInput` still reach issues
-  inside those fields, with one exception: the explanation Zod nests inside an
+  inside those fields, and now also reach issues inside
+  `components.mcpEnvironment`, which kept its own messages before. There is one
+  exception: the explanation Zod nests inside an
   `invalid_key` issue, for a name that fails its own schema such as an empty
   target name. That explanation keeps the message from the schema's or
   `z.config()`'s error map and omits `input`.
