@@ -59,6 +59,18 @@ export async function runInit(
       );
     return 2;
   };
+  // hooks.ts is written beside the config, so a config named hooks.ts would
+  // be both files. Windows and macOS file systems ignore case by default, so
+  // compare names case-insensitively there; on a case-sensitive macOS volume
+  // that refuses a name such as Hooks.ts, which only needs renaming.
+  const caseInsensitive = process.platform === "win32" || process.platform === "darwin";
+  const configName = basename(path);
+  const sameName = caseInsensitive ? configName.toLowerCase() === "hooks.ts" : configName === "hooks.ts";
+  if (sameName) {
+    return fail(
+      `init failed: --config ${path} is where init writes hooks.ts; name the configuration file something else`,
+    );
+  }
   // Check every target before writing anything, so a directory in the way
   // leaves the project untouched (#217). Any other stat error is left for
   // the loop to report as it always has (#208). An existing file is left

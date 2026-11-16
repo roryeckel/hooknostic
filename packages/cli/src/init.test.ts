@@ -267,6 +267,40 @@ async function expectRefused(root: string, cwd: string, args: string[], message:
   expect(await snapshot(root)).toEqual(before);
 }
 
+describe("--config naming hooks.ts (#217)", () => {
+  const message = (config: string) =>
+    `init failed: --config ${config} is where init writes hooks.ts; name the configuration file something else`;
+
+  it.each([
+    ["on a fresh path", undefined],
+    ["when the file already exists", "author hooks"],
+  ])("fails with 2 and writes nothing %s", async (_, existing) => {
+    const { root, proj } = await project();
+    try {
+      const hooks = join(proj, "hooks.ts");
+      if (existing !== undefined) await writeFile(hooks, existing);
+      await expectRefused(root, proj, ["--config", "hooks.ts"], message(hooks));
+      await expectRefused(root, proj, ["--config", hooks], message(hooks));
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  // These file systems ignore case by default, so HOOKS.TS is hooks.ts.
+  it.runIf(process.platform === "win32" || process.platform === "darwin")(
+    "fails with 2 and writes nothing when the name differs only in case",
+    async () => {
+      const { root, proj } = await project();
+      try {
+        const config = join(proj, "HOOKS.TS");
+        await expectRefused(root, proj, ["--config", config], message(config));
+      } finally {
+        await rm(root, { recursive: true, force: true });
+      }
+    },
+  );
+});
+
 describe("a target that is a directory (#217)", () => {
   const hint = (dir: string) =>
     `init failed: cannot create ${dir}: it is a directory; --config names the configuration file, such as ${join(dir, "hooknostic.config.ts")}`;
