@@ -17,8 +17,10 @@ const cases = [
   ["audit-subagent", "packages/adapter-opencode/src/v2/toolmap.ts", 'subagent: "agent"', 'subagent: "other"', playback, "subagent result"],
   // Killed on the reference build, which this moves past the boundary.
   ["subagent-background-boundary", "packages/adapter-opencode/src/v2/profile.ts", 'version: "2.3.0",\n          date: "2026-11-16",\n          method: "captured",', 'version: "2.0.17",\n          date: "2026-11-16",\n          method: "captured",', playback, "subagent result"],
-  // Killed on 2.3.0 and later only: earlier builds start no unprompted parent execution.
-  ["subagent-late-turn-id", "packages/adapter-opencode/src/v2/shim.ts", "const prompt = pendingPrompts.get(sessionID);\n                  pendingPrompts.delete(sessionID);", "const prompt = pendingPrompts.get(sessionID);", playback, "late background child"],
+  // The late-child test kills it from 2.3.0, where a child's result starts an
+  // unprompted parent execution; on every build the stop test's prevention
+  // continuation, which no prompt starts either, does.
+  ["subagent-late-turn-id", "packages/adapter-opencode/src/v2/shim.ts", "const prompt = pendingPrompts.get(sessionID);\n                  pendingPrompts.delete(sessionID);", "const prompt = pendingPrompts.get(sessionID);", playback, "late background child|prevents and notifies"],
   ["audit-notifications", ".capture/opencode-v2/notification-server.js", 'await registration.events.emit("message", { text: "hooknostic-server-notification" });', 'await Promise.resolve();', playback, "companion TUI notification"],
   ["audit-oauth-refresh", ".capture/opencode-v2/oauth-mcp.mjs", 'Date.now() < expires', 'true', playback, "OAuth"],
   ["audit-error-drift", "scripts/compare-capture-shapes.mjs", 'event.status === "error"', 'false', "scripts/compare-capture-shapes.test.mjs", "separates v2 typed"],
