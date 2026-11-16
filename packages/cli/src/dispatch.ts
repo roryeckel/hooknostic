@@ -25,7 +25,7 @@ import {
   statedMcpEvents,
   targetSpecFromConfig,
 } from "@hooknostic/core";
-import { dispatch } from "@hooknostic/runtime";
+import { dispatch, errorMessage } from "@hooknostic/runtime";
 import type { EventFieldId, HookEvent, HookEventName, HookResult, PluginSpec, ShellDialect } from "@hooknostic/sdk";
 import { fieldsForEvent, isToolScopedEvent, readEventField, SHELL_DIALECTS } from "@hooknostic/sdk";
 import { baseHookEventSchema } from "@hooknostic/sdk/schemas";
@@ -88,10 +88,6 @@ export interface DispatchEventHooks {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }
 
 function describeIssues(issues: readonly SchemaIssue[]): string {

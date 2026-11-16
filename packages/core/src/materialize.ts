@@ -3,6 +3,7 @@ import { isAbsolute, join, posix, relative, resolve, win32 } from "node:path";
 
 import spawn from "cross-spawn";
 
+import { errorMessage } from "@hooknostic/runtime";
 import type {
   AgentPluginRuntimePackageConfig,
   PackageMaterializationConfig,
@@ -348,9 +349,7 @@ export async function materializePackages(options: {
       }
       trees.push({ provider: declaration.provider.id, into: destination.path, files: [...processed.files] });
     } catch (error) {
-      problems.push(
-        `materializer ${JSON.stringify(declaration.provider.id)} failed: ${error instanceof Error ? error.message : String(error)}`,
-      );
+      problems.push(`materializer ${JSON.stringify(declaration.provider.id)} failed: ${errorMessage(error)}`);
     }
   }
   return { trees, problems };

@@ -1135,6 +1135,13 @@ export default definePlugin({
       expect(stderr).toEqual(["failed to dispatch through entry ./hooks.ts: the hook source called process.exit(3)"]);
     });
 
+    it("reports a load-time throw it cannot inspect as a load failure (#199)", async () => {
+      const { status, results, stderr, raw } = await run(atLoad(`throw Object.create(null);`), "claude");
+      expect(status, raw).toBe(2);
+      expect(results).toHaveLength(0);
+      expect(stderr).toEqual(["failed to dispatch through entry ./hooks.ts: uninspectable thrown value"]);
+    });
+
     it("leaves the crash raw under --unguarded, a flag only dispatch takes", async () => {
       const { status, results, raw } = await run(onSecondEvent(`process.exit(5);`), "claude", ["--unguarded"]);
       expect(status, raw).toBe(5);

@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 
 import { afterAll, describe, expect, it } from "vitest";
 
-import type { CapabilityProfile, HarnessAdapter } from "@hooknostic/core";
+import type { AdapterRegistry, CapabilityProfile, HarnessAdapter } from "@hooknostic/core";
 import { buildProject } from "@hooknostic/core";
 import type { FakeAdapterOptions } from "@hooknostic/testkit";
 import { makeFakeAdapter } from "@hooknostic/testkit";
@@ -573,5 +573,53 @@ describe("CLI last-resort error handling", () => {
     expect(code).toBe(2);
     expect(err()).toContain("hooknostic: unexpected error");
     expect(err()).toContain("capabilities exploded");
+  });
+
+  describe("renders a thrown value it cannot inspect instead of rejecting (#199)", () => {
+    const revoked = () => {
+      const revocable = Proxy.revocable({}, {});
+      revocable.revoke();
+      return revocable.proxy;
+    };
+    const stackThrows = () => {
+      const error = new Error("stack getter");
+      Object.defineProperty(error, "stack", {
+        get() {
+          throw new Error("unreadable stack");
+        },
+      });
+      return error;
+    };
+    /** A registry whose adapter throws `make()` when read, as an in-process caller's may. */
+    const throwingRegistry = (make: () => unknown): AdapterRegistry =>
+      Object.defineProperty({}, "fake", {
+        enumerable: true,
+        get() {
+          throw make();
+        },
+      }) as AdapterRegistry;
+
+    it.each([
+      ["a null-prototype object", () => Object.create(null), "uninspectable thrown value"],
+      ["a revoked Proxy", revoked, "uninspectable thrown value"],
+      ["an Error whose stack getter throws", stackThrows, "stack getter"],
+    ])("%s", async (_, make, rendered) => {
+      const { io, out, err } = captureIO();
+      expect(await runCli(["inspect", "fake"], { registry: throwingRegistry(make), io })).toBe(2);
+      expect(out()).toBe("");
+      expect(err()).toBe(`hooknostic: unexpected error: ${rendered}`);
+    });
+
+    it("with --json", async () => {
+      const { io, out, err } = captureIO();
+      expect(await runCli(["inspect", "fake", "--json"], { registry: throwingRegistry(revoked), io })).toBe(2);
+      expect(err()).toBe("");
+      expect(JSON.parse(out())).toEqual({
+        schemaVersion: 1,
+        command: "inspect",
+        ok: false,
+        errors: ["uninspectable thrown value"],
+      });
+    });
   });
 });

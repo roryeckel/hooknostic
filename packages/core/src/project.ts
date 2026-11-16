@@ -1,5 +1,7 @@
 import { dirname, join, relative, resolve } from "node:path";
 
+import { errorMessage, isInstance } from "@hooknostic/runtime";
+
 import { registeredAdapter, resolveTargetAdapter, targetSpecFromConfig } from "./adapter.js";
 import {
   type BuildOptions,
@@ -178,7 +180,8 @@ export async function runProject(
     if (options.command === "sync" && !options.dryRun) await applyProject(root, owner, plan);
     result.ok = options.command !== "verify" || !result.drift;
   } catch (error) {
-    if (error instanceof GeneratedFileConflictError) {
+    // The thrown value may be user code's, so neither check nor render may throw (#199).
+    if (isInstance(error, GeneratedFileConflictError)) {
       const recovery =
         options.command === "verify"
           ? "verify writes nothing. After resolving these files, run hooknostic sync with the same configuration, then rerun hooknostic verify."
@@ -190,7 +193,7 @@ export async function runProject(
           "If build created these files before the first sync, they have no ownership records. Preserve any needed edits, then move aside or deliberately remove the listed files.\n" +
           recovery,
       );
-    } else result.errors.push(error instanceof Error ? error.message : String(error));
+    } else result.errors.push(errorMessage(error));
   }
   return result;
 }
