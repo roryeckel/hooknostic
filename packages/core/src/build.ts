@@ -1010,7 +1010,8 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
       }
     }
   } else {
-    if (components === undefined && componentSource === undefined) return fail();
+    // No early return when nothing loaded (#207): a selection naming no
+    // component target loads nothing, and only analysis says why.
     ir = {
       name: components?.manifest.name ?? "project-components",
       ...(components?.manifest.version === undefined ? {} : { version: components.manifest.version }),
@@ -1021,6 +1022,11 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
 
   const analysis = analyzeCapabilities(ir, config, options.registry, options.targets);
   diagnostics.push(...analysis.diagnostics);
+  // Nothing to build. Analysis has reported why for any selection the schema
+  // allows; a config that bypassed the schema must still not build an empty
+  // success, so this stays even when analysis passes.
+  if (entryPath === undefined && components === undefined && componentSource === undefined)
+    return finish({ ok: false, report, analysis });
   if ((config.components?.accept ?? []).length > 0) {
     const declared = declaredShortfallIds(
       Object.entries(config.targets).flatMap(([id]) => {

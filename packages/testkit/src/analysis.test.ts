@@ -346,6 +346,18 @@ describe("analyzeCapabilities", () => {
     expect(analysis.diagnostics.find((d) => d.code === "HN501" && d.target === "surprise")).toBeDefined();
   });
 
+  it("reports each undeclared selected target once, in selection order (#207)", () => {
+    const analysis = analyzeCapabilities(
+      ir([hook("session.start", { id: "s", async run() {} })]),
+      config(),
+      registry(),
+      ["surprise", "rich", "surprise", "other", "surprise"],
+    );
+    expect(analysis.ok).toBe(false);
+    expect(analysis.diagnostics.filter((d) => d.code === "HN501").map((d) => d.target)).toEqual(["surprise", "other"]);
+    expect(analysis.targets.rich?.ok).toBe(true);
+  });
+
   it("reports HN501 when a configured target has no registered adapter", () => {
     const analysis = analyzeCapabilities(
       ir([hook("session.start", { id: "s", async run() {} })]),

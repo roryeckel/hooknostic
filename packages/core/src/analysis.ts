@@ -178,8 +178,9 @@ export function analyzeCapabilities(
     });
   }
 
-  // CLI narrowing may never introduce a target absent from config.
-  for (const id of selection) {
+  // CLI narrowing may never introduce a target absent from config. Once per
+  // name: `--target nosuch,nosuch` is one mistake, not two.
+  for (const id of new Set(selection)) {
     if (!configuredTargets.includes(id)) {
       diagnostics.push({
         code: "HN501",

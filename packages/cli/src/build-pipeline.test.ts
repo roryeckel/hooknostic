@@ -452,6 +452,64 @@ describe("build pipeline hardening", () => {
   });
 });
 
+describe("an entry-less build that selects no component target (#207)", () => {
+  async function packageOnly(): Promise<string> {
+    const dir = await mkdtemp(join(tmpdir(), "hooknostic-pipeline-207-"));
+    temp.push(dir);
+    await writeFile(join(dir, "plugin.json"), JSON.stringify({ name: "p" }), "utf8");
+    await writeFile(
+      join(dir, "hooknostic.config.ts"),
+      `export default {
+        components: { root: ".", targets: ["fake"] },
+        targets: { fake: { version: ">=1.0 <2", delivery: "package", output: "./dist/fake" } },
+      };`,
+      "utf8",
+    );
+    return dir;
+  }
+
+  it("reports an empty selection through analysis", async () => {
+    const dir = await packageOnly();
+    const result = await buildProject({
+      configPath: join(dir, "hooknostic.config.ts"),
+      registry: { fake: fake() },
+      targets: [],
+      dryRun: true,
+    });
+    expect(result.ok).toBe(false);
+    expect(result.analysis).toBeDefined();
+    expect(result.report.diagnostics).toContainEqual(
+      expect.objectContaining({ code: "HN501", severity: "error", message: "the selected target set is empty." }),
+    );
+  });
+
+  it("builds nothing for a configured target the schema would have required components for", async () => {
+    // The SDK schema rejects a hookless config whose target is outside
+    // components.targets. A caller-supplied configResult skips that schema;
+    // analysis then passes, and only the post-analysis guard stops an empty
+    // build from reporting success.
+    const dir = await packageOnly();
+    const result = await buildProject({
+      configPath: join(dir, "hooknostic.config.ts"),
+      registry: { fake: fake(), other: fake({ id: "other" }) },
+      targets: ["other"],
+      dryRun: true,
+      configResult: {
+        config: {
+          components: { root: ".", targets: ["fake"] },
+          targets: {
+            fake: { version: ">=1.0 <2", delivery: "package", output: "./dist/fake" },
+            other: { version: ">=1.0 <2", delivery: "package", output: "./dist/other" },
+          },
+        },
+        diagnostics: [],
+      },
+    });
+    expect(result.ok, JSON.stringify(result.report)).toBe(false);
+    expect(Object.values(result.report.targets).filter((target) => target.status === "success")).toEqual([]);
+  });
+});
+
 describe("CLI last-resort error handling", () => {
   it("reports unexpected adapter exceptions on stderr with exit 2 instead of crashing", async () => {
     const dir = await mkdtemp(join(tmpdir(), "hooknostic-cli-crash-"));
