@@ -1590,6 +1590,7 @@ describe("complete project integration", () => {
     await expect(readFile(join(root, ".codex/hooks.json"))).rejects.toMatchObject({ code: "ENOENT" });
   });
 });
+
 describe("project command failures (#199)", () => {
   const revoked = () => {
     const revocable = Proxy.revocable({}, {});
