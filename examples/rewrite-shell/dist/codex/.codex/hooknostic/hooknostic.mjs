@@ -7681,7 +7681,13 @@ var RELEASE_BOUND_MS = 500;
 var DRAIN_GRACE_MS = 250;
 function finishCommandShim(exitCode, exit = process.exit) {
   process.exitCode = exitCode;
-  setTimeout(() => exit(exitCode), DRAIN_GRACE_MS).unref();
+  setTimeout(() => {
+    try {
+      exit(exitCode);
+    } catch {
+      exit(exitCode);
+    }
+  }, DRAIN_GRACE_MS).unref();
 }
 var HookSourceExitError = class extends Error {
   code;
@@ -7701,7 +7707,7 @@ function exitCodeText(code) {
     return "?";
   }
 }
-function guardCommandShim(describe2) {
+function guardCommandShim(describe2, options = {}) {
   const exit = process.exit;
   const stderr = process.stderr;
   let decided;
@@ -7756,6 +7762,11 @@ function guardCommandShim(describe2) {
     } catch {
     }
   };
+  const pinLast = () => pin();
+  const repin = () => {
+    process.off("exit", pinLast);
+    process.on("exit", pinLast);
+  };
   const holdUnwind = () => {
     cannotUnwind = true;
     process.nextTick(() => {
@@ -7763,7 +7774,10 @@ function guardCommandShim(describe2) {
     });
   };
   process.on("uncaughtExceptionMonitor", holdUnwind);
-  process.prependListener("beforeExit", holdUnwind);
+  process.prependListener("beforeExit", () => {
+    holdUnwind();
+    repin();
+  });
   const onRejection = (reason) => {
     void report(reason);
   };
@@ -7776,8 +7790,13 @@ function guardCommandShim(describe2) {
   process.on("unhandledRejection", onRejection);
   process.exit = function exitFromHookSource(code) {
     const error2 = new HookSourceExitError(code);
+    try {
+      options.onExit?.(code);
+    } catch {
+    }
     if (!cannotUnwind && !finished && !escaped.has(exitKey(code))) throw error2;
     reportNow(error2, exitKey(code));
+    repin();
     return exit(decided ?? 0);
   };
   syncBuiltinESMExports();
@@ -7785,6 +7804,7 @@ function guardCommandShim(describe2) {
     cannotUnwind = true;
   });
   process.on("exit", pin);
+  process.on("exit", pinLast);
   return {
     write,
     report,
@@ -7794,9 +7814,12 @@ function guardCommandShim(describe2) {
     finish(exitCode = decided ?? 0) {
       decided = exitCode;
       finished = true;
-      process.off("exit", pin);
-      process.on("exit", pin);
-      finishCommandShim(exitCode, exit);
+      repin();
+      finishCommandShim(exitCode, (code) => exit(decided ?? code));
+    },
+    scope() {
+      reported.clear();
+      escaped.clear();
     }
   };
 }

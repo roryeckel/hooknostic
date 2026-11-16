@@ -113,6 +113,58 @@ Dispatch also runs the adapter's effect validator. For example, Pi rejects a
 replacement input that is not a plain object with HN401. Rejected effects obey
 `onHookError`: continue without the replacement, or block where supported.
 
+## When the hook source fails outside a handler
+
+`hooknostic dispatch` runs your source under the same guard as the command shims
+(see [Writing hooks safely](writing-hooks-safely.md#see-why-a-hook-did-nothing-hooknostic_debug)).
+A rejection nothing handles, an exception thrown from a timer or callback, or a
+`process.exit` call after the source loads, outside a handler, is reported on
+stderr against the event it interrupted, and dispatch exits 1. Usually the run
+carries on and every event still gets its result line:
+
+```text
+hooknostic internal [event 2]: stray rejection
+```
+
+Some failures still end the run early, though with exit 1 rather than the hook
+source's own code. That happens when your own `uncaughtException` listener calls
+`process.exit`, when the same `process.exit` call repeats within one event, as
+from `setInterval`, or when a top-level `await` in your source never settles. The
+last one prints nothing of dispatch's own, only Node's warning about the unsettled
+`await`. Result lines are written only at the end, so some or all of them are then
+missing.
+
+The event number is best effort. Dispatch waits one zero-delay timer after each
+event, so a rejected promise or a `setTimeout(..., 0)` your handler left behind
+is reported against that event. Anything later may be reported against a later
+event, or with no event at all (`hooknostic internal: ...`). As in the shims, a
+failure more than 250 ms after the last result is not reported.
+
+What `process.exit` does depends on where it is called and on the target:
+
+- **In a handler, on a command target** such as Claude Code or Codex: it is that
+  handler's error, `the hook source called process.exit(<code>)`, in `errors`.
+  The run exits 0, which is what the shim does.
+- **In a handler, on a module target** (OpenCode, Pi): the same error, plus one
+  line on stderr, and the run exits 1:
+
+  ```text
+  hooknostic dispatch [event 2]: intercepted process.exit(5); the opencode shim runs in the harness's process and does not intercept it
+  ```
+
+  An exit outside a handler on these targets gets the same note at the end of
+  its `hooknostic internal` line.
+- **At the top level of your source**: a load failure, exit 2, with
+  `failed to dispatch through entry ./hooks.ts: the hook source called process.exit(3)`.
+
+To see the raw crash instead, pass `--unguarded`. The source can then end the
+run with its own exit code and stack trace, and because result lines are
+written at the end, none appear. Other commands reject the flag.
+
+Only the CLI is guarded. `dispatchEvents()` (see [From code](#from-code)) runs in
+your test runner's process and installs nothing, so a stray failure there is the
+runner's to report.
+
 ## What carries between events
 
 A command target (Claude Code, Codex) starts a fresh process for every hook
@@ -127,7 +179,8 @@ somewhere that outlives a process, such as a file.
 | Code | Meaning |
 | --- | --- |
 | `0` | Every event was dispatched. The effects and errors are in the output. |
-| `2` | Nothing was dispatched: an unreadable or invalid event, an unknown target, a configuration without an `entry`, or hooks the target could not be built for. The reasons go to stderr, numbered by event. |
+| `1` | Your hook source failed outside a handler, or ended the process before every result was written; some or all result lines may be missing. The reports are on stderr, except for a top-level `await` that never settles, where the only line is Node's warning about it; see [When the hook source fails outside a handler](#when-the-hook-source-fails-outside-a-handler). |
+| `2` | Nothing was dispatched: an unreadable or invalid event, an unknown target, a configuration without an `entry`, or hooks the target could not be built for. The reasons go to stderr, numbered by event. It takes precedence over `1`. |
 
 ## What dispatch does not cover
 
@@ -143,6 +196,13 @@ Behaviour that depends on the host process is also out of reach. That includes
 which executable runs the hook (see [Writing hooks safely](writing-hooks-safely.md)),
 environment a harness sets, and concurrent calls. Events in one run are
 dispatched one at a time, in the same process.
+
+The guard has the shims' limits. `process.kill(process.pid)`, `process.abort()`
+and `process.reallyExit` still end the run, and a failure later than the exit's
+250 ms grace after the last result goes unreported. An `exit` listener of your own
+that throws while the run is leaving from inside your own `uncaughtException`
+listener ends it with Node's 7 rather than 1. One added late, from a `beforeExit`
+listener, can change the exit code too.
 
 Checks that require a live native object also remain in the shim. Dispatch can
 validate a Pi replacement's shape, but cannot establish whether the harness's

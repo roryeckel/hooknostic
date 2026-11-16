@@ -1,5 +1,6 @@
-import { spawnSync } from "node:child_process";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { spawn, spawnSync } from "node:child_process";
+import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { syncBuiltinESMExports } from "node:module";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -20,8 +21,9 @@ import { stageUserModule } from "@hooknostic/core";
 import type { PluginSpec } from "@hooknostic/sdk";
 
 import { runCli } from "./cli.js";
-import type { DispatchResult } from "./dispatch.js";
+import type { DispatchCommandOptions, DispatchEventsOptions, DispatchResult } from "./dispatch.js";
 import { DISPATCH_NATIVE_EVENT, dispatchEvents } from "./dispatch.js";
+import * as api from "./index.js";
 import { defaultAdapterRegistry } from "./registry.js";
 
 const HERE = fileURLToPath(new URL(".", import.meta.url));
@@ -758,6 +760,409 @@ export default definePlugin({
     expect(lines.map((line) => (JSON.parse(line) as DispatchResult).event)).toEqual(["prompt.before"]);
     expect(child.stderr).toContain("noise from console.log");
     expect(child.stderr).toContain("noise from process.stdout");
+  });
+
+  describe("under the command-shim guard (#189)", () => {
+    // Plain data, as above. Three events; only the second one's prompt is hostile.
+    const GUARD_TARGETS = `{
+      claude: { version: ${JSON.stringify(claudeHarness.recommendedRange)}, delivery: "package", output: "./dist/claude" },
+      opencode: {
+        version: ${JSON.stringify(opencodeHarness.recommendedRange)},
+        delivery: "project",
+        output: "./dist/opencode",
+        compatibility: { minimum: "approximate" },
+      },
+      pi: {
+        version: ${JSON.stringify(piHarness.recommendedRange)},
+        delivery: "project",
+        output: "./dist/pi",
+        compatibility: { minimum: "approximate" },
+      },
+    }`;
+    const onSecondEvent = (body: string) => `export default {
+      name: "hostile",
+      hooks: [{
+        event: "prompt.before",
+        id: "hostile",
+        capabilities: {},
+        run(event) {
+          if (event.prompt !== "second") return;
+          ${body}
+        },
+      }],
+    };`;
+    const atLoad = (prelude: string) => `${prelude}
+      export default { name: "hostile", hooks: [{ event: "prompt.before", id: "hostile", capabilities: {}, run() {} }] };`;
+    const EVENTS = ["first", "second", "third"].map(
+      (prompt) => `${JSON.stringify({ event: "prompt.before", prompt })}\n`,
+    );
+    const run = async (hooks: string, target: string, flags: string[] = [], targets = GUARD_TARGETS) => {
+      const dir = await project(hooks, targets);
+      const child = spawnSync(
+        process.execPath,
+        [CLI_BIN, "dispatch", "--config", join(dir, "hooknostic.config.ts"), "--target", target, ...flags],
+        // Debug stacks add stderr lines these tests count, so the caller's setting must not leak in.
+        { input: EVENTS.join(""), encoding: "utf8", timeout: 60_000, env: { ...process.env, HOOKNOSTIC_DEBUG: "" } },
+      );
+      const results = child.stdout
+        .split("\n")
+        .filter(Boolean)
+        .map((line) => JSON.parse(line) as DispatchResult);
+      const stderr = child.stderr.split(/\r?\n/).filter(Boolean);
+      return { status: child.status, results, stderr, raw: child.stderr };
+    };
+
+    it.each(["claude", "opencode"])(
+      "reports stray failures against their event and keeps every result (%s)",
+      async (target) => {
+        const { status, results, raw } = await run(
+          onSecondEvent(`
+            Promise.reject(new Error("stray rejection"));
+            setTimeout(() => { throw new Error("handler timer threw"); }, 0);
+          `),
+          target,
+        );
+        expect(status, raw).toBe(1);
+        expect(results).toHaveLength(3);
+        expect(raw).toContain("hooknostic internal [event 2]: stray rejection\n");
+        // A zero-delay tail lands before the next event starts.
+        expect(raw).toContain("hooknostic internal [event 2]: handler timer threw\n");
+      },
+    );
+
+    it("makes process.exit in a handler that handler's error on a command target", async () => {
+      const { status, results, raw } = await run(onSecondEvent(`process.exit(2);`), "claude");
+      // Not 2: that is dispatch's own failure code, and the shim's exit 2 is a block.
+      expect(status, raw).toBe(0);
+      expect(results).toHaveLength(3);
+      expect(results[1]!.errors.map((error) => error.message)).toEqual(["the hook source called process.exit(2)"]);
+      expect(results[1]!.native.exitCode).toBe(0);
+      expect(raw).toBe("");
+    });
+
+    it.each([
+      ["opencode", "handler", `process.exit(2);`],
+      ["pi", "handler", `process.exit(2);`],
+      ["opencode", "tail", `setTimeout(() => process.exit(2), 0);`],
+      ["pi", "tail", `setTimeout(() => process.exit(2), 0);`],
+    ])("flags process.exit on a module target, once (%s, %s)", async (target, shape, body) => {
+      const { status, results, stderr, raw } = await run(onSecondEvent(body), target);
+      expect(status, raw).toBe(1);
+      expect(results).toHaveLength(3);
+      expect(results[1]!.errors.map((error) => error.message)).toEqual(
+        shape === "handler" ? ["the hook source called process.exit(2)"] : [],
+      );
+      // One exit, one line: the guard's own report of a tail carries the note.
+      expect(stderr, raw).toHaveLength(1);
+      expect(stderr[0]).toContain("[event 2]");
+      expect(stderr[0]).toContain(`the ${target} shim runs in the harness's process and does not intercept it`);
+    });
+
+    it("names the target's adapter, not its configured key, in the module-target note", async () => {
+      const renamed = `{
+        myoc: {
+          adapter: "opencode",
+          version: ${JSON.stringify(opencodeHarness.recommendedRange)},
+          delivery: "project",
+          output: "./dist/opencode",
+          compatibility: { minimum: "approximate" },
+        },
+      }`;
+      const { status, stderr, raw } = await run(onSecondEvent(`process.exit(2);`), "myoc", [], renamed);
+      expect(status, raw).toBe(1);
+      expect(stderr).toEqual([
+        "hooknostic dispatch [event 2]: intercepted process.exit(2); the opencode shim runs in the harness's process and does not intercept it",
+      ]);
+    });
+
+    it("does not let an exit repeated by every module instance end the run", async () => {
+      // A command target loads one instance per event, so this exits three times.
+      const { status, results, stderr, raw } = await run(atLoad(`setTimeout(() => process.exit(8), 0);`), "claude");
+      expect(status, raw).toBe(1);
+      expect(results).toHaveLength(3);
+      expect(stderr).toEqual(
+        [1, 2, 3].map((n) => `hooknostic internal [event ${n}]: the hook source called process.exit(8)`),
+      );
+    });
+
+    it("leaves as a failure when the hook source ends the process where the guard cannot unwind", async () => {
+      const { status, results, raw } = await run(
+        atLoad(
+          `process.on("uncaughtException", () => process.exit(0)); setTimeout(() => { throw new Error("t"); }, 0);`,
+        ),
+        "claude",
+      );
+      // The results are not all out, whatever code the hook source asked for.
+      expect(status, raw).toBe(1);
+      expect(results).toHaveLength(0);
+    });
+
+    it("keeps that failure when the hook source's own exit listener resets the exit code", async () => {
+      const { status, results, raw } = await run(
+        atLoad(`
+          process.on("exit", () => { process.exitCode = 0; });
+          process.on("uncaughtException", () => process.exit(0));
+          setTimeout(() => { throw new Error("t"); }, 0);
+        `),
+        "claude",
+      );
+      expect(status, raw).toBe(1);
+      expect(results).toHaveLength(0);
+    });
+
+    it("keeps that failure when the loop empties under a never-settling top-level await", async () => {
+      const { status, results, raw } = await run(
+        atLoad(`
+          process.on("exit", () => { process.exitCode = 0; });
+          await new Promise(() => {});
+        `),
+        "claude",
+      );
+      // Not 0 from the hook source's listener, nor Node's 13: the run never finished.
+      expect(status, raw).toBe(1);
+      expect(results).toHaveLength(0);
+    });
+
+    it("keeps that failure when an exit listener throws under a never-settling top-level await", async () => {
+      const { status, results, raw } = await run(
+        atLoad(`
+          process.on("exit", () => { throw new Error("exit listener threw"); });
+          await new Promise(() => {});
+        `),
+        "claude",
+      );
+      // The throw skips the listeners after it: a pin only at the end would leave Node's 13.
+      expect(status, raw).toBe(1);
+      expect(results).toHaveLength(0);
+    });
+
+    it("still ends on the forced exit when the hook source's exit listener throws", async () => {
+      const { status, results, raw } = await run(
+        atLoad(`process.on("exit", () => { throw new Error("exit listener threw"); }); setInterval(() => {}, 60_000);`),
+        "claude",
+      );
+      // The throw skips the listeners after it, so nothing reports it; the run's own 0 stands.
+      expect(status, raw).toBe(0);
+      expect(results).toHaveLength(3);
+    });
+
+    it("keeps a stray after the last result failing when an exit listener throws out of the forced exit", async () => {
+      const { status, results, raw } = await run(
+        onSecondEvent(`
+          process.on("exit", () => { throw new Error("exit listener threw"); });
+          let fired = false;
+          setInterval(() => {
+            if (fired || process.exitCode === undefined) return;
+            fired = true;
+            Promise.reject(new Error("late after finish"));
+          }, 1);
+        `),
+        "claude",
+      );
+      expect(raw).toContain("hooknostic internal: late after finish");
+      expect(status, raw).toBe(1);
+      expect(results).toHaveLength(3);
+    });
+
+    it("finishes with 2, not held open by a leaked handle, when the reader closes stdout early", async () => {
+      const temp = await mkdtemp(join(tmpdir(), "hooknostic-dispatch-temp-"));
+      tempDirs.push(temp);
+      // A module target keeps one instance, so one interval leaks for the run.
+      const dir = await project(
+        `export default { name: "leaky", hooks: [{ event: "prompt.before", id: "leaky", capabilities: {},
+          run() { globalThis.leaked ??= setInterval(() => {}, 60_000); } }] };`,
+        GUARD_TARGETS,
+      );
+      const events = join(dir, "events.jsonl");
+      // Well past a pipe's buffer, so writes are still pending when the reader goes.
+      await writeFile(
+        events,
+        Array.from({ length: 1500 }, (_, i) => `${JSON.stringify({ event: "prompt.before", prompt: `p${i}` })}\n`).join(
+          "",
+        ),
+      );
+      const outcome = await new Promise<{ status: number | null; signal: NodeJS.Signals | null; stderr: string }>(
+        (resolvePromise) => {
+          const child = spawn(
+            process.execPath,
+            [
+              CLI_BIN,
+              "dispatch",
+              "--config",
+              join(dir, "hooknostic.config.ts"),
+              "--target",
+              "opencode",
+              "--events",
+              events,
+            ],
+            {
+              stdio: ["ignore", "pipe", "pipe"],
+              env: { ...process.env, HOOKNOSTIC_DEBUG: "", TEMP: temp, TMP: temp, TMPDIR: temp },
+            },
+          );
+          let stderr = "";
+          child.stderr.setEncoding("utf8").on("data", (chunk: string) => (stderr += chunk));
+          // As `| head` does: read a little, then close the pipe.
+          child.stdout.once("data", () => child.stdout.destroy());
+          const timer = setTimeout(() => child.kill(), 20_000);
+          child.on("close", (status, signal) => {
+            clearTimeout(timer);
+            resolvePromise({ status, signal, stderr });
+          });
+        },
+      );
+      // Killed by the timer, it would have no status.
+      expect(outcome.signal, outcome.stderr).toBeNull();
+      expect(outcome.status).toBe(2);
+      expect(outcome.stderr).toContain("EPIPE");
+      expect((await readdir(temp)).filter((name) => name.startsWith("hooknostic-eval-"))).toEqual([]);
+    }, 40_000);
+
+    it("leaves no staged module behind when the run ends early", async () => {
+      // A temp directory of the run's own, so other tests' staging cannot show up in it.
+      const temp = await mkdtemp(join(tmpdir(), "hooknostic-dispatch-temp-"));
+      tempDirs.push(temp);
+      const dir = await project(
+        atLoad(
+          `process.on("uncaughtException", () => process.exit(0)); setTimeout(() => { throw new Error("t"); }, 0);`,
+        ),
+        GUARD_TARGETS,
+      );
+      const child = spawnSync(
+        process.execPath,
+        [CLI_BIN, "dispatch", "--config", join(dir, "hooknostic.config.ts"), "--target", "claude"],
+        {
+          input: EVENTS.join(""),
+          encoding: "utf8",
+          timeout: 60_000,
+          env: { ...process.env, HOOKNOSTIC_DEBUG: "", TEMP: temp, TMP: temp, TMPDIR: temp },
+        },
+      );
+      // Ended where the guard cannot unwind, so dispatch's own cleanup never ran.
+      expect(child.status, child.stderr).toBe(1);
+      expect(child.stdout).toBe("");
+      expect((await readdir(temp)).filter((name) => name.startsWith("hooknostic-eval-"))).toEqual([]);
+    });
+
+    it("still fails the run for a stray after the last result", async () => {
+      // Deterministic rather than timed: the rejection fires once dispatch has
+      // set its exit code, and the leaked interval leaves the forced exit to end it.
+      const { status, results, stderr, raw } = await run(
+        onSecondEvent(`
+          let fired = false;
+          setInterval(() => {
+            if (fired || process.exitCode === undefined) return;
+            fired = true;
+            Promise.reject(new Error("late after finish"));
+          }, 1);
+        `),
+        "claude",
+      );
+      expect(status, raw).toBe(1);
+      expect(results).toHaveLength(3);
+      expect(stderr).toEqual(["hooknostic internal: late after finish"]);
+    });
+
+    it("refuses a load-time process.exit as a load failure", async () => {
+      const { status, results, stderr, raw } = await run(atLoad(`process.exit(3);`), "claude");
+      expect(status, raw).toBe(2);
+      expect(results).toHaveLength(0);
+      expect(stderr).toEqual(["failed to dispatch through entry ./hooks.ts: the hook source called process.exit(3)"]);
+    });
+
+    it("leaves the crash raw under --unguarded, a flag only dispatch takes", async () => {
+      const { status, results, raw } = await run(onSecondEvent(`process.exit(5);`), "claude", ["--unguarded"]);
+      expect(status, raw).toBe(5);
+      expect(results).toHaveLength(0);
+
+      // A project that checks clean, so only the flag can make check fail.
+      const dir = await project(onSecondEvent(""), GUARD_TARGETS);
+      const cli = captureIO();
+      expect(
+        await runCli(["check", "--unguarded", "--config", join(dir, "hooknostic.config.ts")], { io: cli.io }),
+      ).toBe(2);
+      expect(cli.err()).toContain("--unguarded is only supported by dispatch");
+    });
+
+    it.each([{ flags: [] as string[] }, { flags: ["--unguarded"] }])(
+      "leaves with 2 when dispatch throws unexpectedly, though a handle leaked ($flags)",
+      async ({ flags }) => {
+        const dir = await project(onSecondEvent(""), GUARD_TARGETS);
+        // The config leaks a handle. An adapter name that resolves through the
+        // registry's prototype makes dispatch throw outside its own error
+        // handling, which is the path under test. That lookup is a defect of
+        // its own (#195): once it is fixed, this test needs another route to
+        // an unexpected throw, or it passes without reaching that path.
+        await writeFile(
+          join(dir, "hooknostic.config.ts"),
+          `setInterval(() => {}, 60_000);
+          export default { entry: "./hooks.ts", targets: { claude: {
+            adapter: "toString", version: ${JSON.stringify(claudeHarness.recommendedRange)}, delivery: "package", output: "./dist/claude",
+          } } };`,
+        );
+        const child = spawnSync(
+          process.execPath,
+          [CLI_BIN, "dispatch", "--config", join(dir, "hooknostic.config.ts"), "--target", "claude", ...flags],
+          { input: EVENTS.join(""), encoding: "utf8", timeout: 20_000, env: { ...process.env, HOOKNOSTIC_DEBUG: "" } },
+        );
+        // Killed by the timeout, it would have no status.
+        expect(child.signal, child.stderr).toBeNull();
+        expect(child.status).toBe(2);
+        expect(child.stderr).toContain("hooknostic: unexpected error:");
+      },
+    );
+
+    it("keeps the guard's event hooks out of the package's API", async () => {
+      // Type-level, so `pnpm build`'s tsc enforces it: neither public options
+      // type, nor the public functions' parameters, may carry the hooks.
+      type Leaked = Extract<
+        keyof DispatchEventsOptions | keyof DispatchCommandOptions | keyof Parameters<typeof api.dispatchEvents>[0],
+        `onEvent${string}`
+      >;
+      const leaked: [Leaked] extends [never] ? "none" : Leaked = "none";
+      const arity: [Parameters<typeof api.dispatchEvents>["length"], Parameters<typeof api.runDispatch>["length"]] = [
+        1, 1,
+      ];
+      expect([leaked, arity]).toEqual(["none", [1, 1]]);
+      expect(Object.keys(api)).not.toContain("dispatchEventsWith");
+      expect(Object.keys(api)).not.toContain("runDispatchWith");
+    });
+
+    it("never guards an in-process runCli with an injected io", async () => {
+      const LISTENED = ["uncaughtExceptionMonitor", "uncaughtException", "unhandledRejection", "beforeExit", "exit"];
+      const exit = process.exit;
+      const exitCode = process.exitCode;
+      const listeners = LISTENED.map((event) => process.rawListeners(event));
+      const dir = await project(onSecondEvent(""), GUARD_TARGETS);
+      const events = join(dir, "events.jsonl");
+      await writeFile(events, EVENTS.join(""));
+      const cli = captureIO();
+      try {
+        const argv = [
+          "dispatch",
+          "--config",
+          join(dir, "hooknostic.config.ts"),
+          "--target",
+          "claude",
+          "--events",
+          events,
+        ];
+        expect(await runCli(argv, { io: cli.io })).toBe(0);
+        expect(cli.out).toHaveLength(3);
+        // vitest's own process: a guard here would own its exit and its listeners.
+        expect(process.exit).toBe(exit);
+        expect(LISTENED.map((event) => process.rawListeners(event))).toEqual(listeners);
+      } finally {
+        // Should the gate ever fail, leave the worker as it was.
+        process.exit = exit;
+        syncBuiltinESMExports();
+        LISTENED.forEach((event, index) => {
+          process.removeAllListeners(event);
+          for (const listener of listeners[index]!) process.on(event, listener as (...args: unknown[]) => void);
+        });
+        process.exitCode = exitCode;
+      }
+    });
   });
 
   it("answers the testing guide's first run exactly as documented", async () => {

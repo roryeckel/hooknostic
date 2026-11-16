@@ -338,6 +338,43 @@ describe("Claude command shim with a hook source that owns the process", () => {
     );
   });
 
+  it("does not block when the hook source's exit listener sets 2 under a never-settling top-level await", async () => {
+    const result = await runShim(
+      source({ top: `process.on("exit", () => { process.exitCode = 2; });\nawait new Promise(() => {});` }),
+      FIXTURE,
+      CAPS,
+    );
+    // Nothing was decided, so the pin's 0 stands: exit 2 would be a block with no reply.
+    expect(result.code, result.stderr).toBe(0);
+    expect(result.stdout).toBe("");
+  });
+
+  it("exits 0 when an exit listener throws under a never-settling top-level await", async () => {
+    const result = await runShim(
+      source({
+        top: `process.on("exit", () => { throw new Error("exit listener threw"); });\nawait new Promise(() => {});`,
+      }),
+      FIXTURE,
+      CAPS,
+    );
+    // The throw skips the listeners after it: a pin only at the end would leave Node's 13.
+    expect(result.code, result.stderr).toBe(0);
+    expect(result.stdout).toBe("");
+  });
+
+  it("still leaves on the forced exit when the hook source's exit listener throws", async () => {
+    const result = await runShim(
+      source({
+        top: `process.on("exit", () => { throw new Error("exit listener threw"); });\nsetInterval(() => {}, 60_000);`,
+      }),
+      FIXTURE,
+      CAPS,
+    );
+    // Held open by the leaked handle, the helper would give up after 3 s.
+    expect(result.code, result.stderr).toBe(0);
+    expect(JSON.parse(result.stdout).hookSpecificOutput.additionalContext).toBe("hook ran");
+  });
+
   it("writes a block reason past a stderr the handler left corked", async () => {
     const result = await runShim(
       `import { block, definePlugin, hook } from "@hooknostic/sdk";

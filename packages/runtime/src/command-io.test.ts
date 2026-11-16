@@ -40,6 +40,19 @@ describe("finishCommandShim", () => {
     expect(exit).toHaveBeenCalledWith(2);
   });
 
+  it("still leaves when an exit listener throws out of the forced exit", () => {
+    vi.useFakeTimers();
+    // Node's own exit emits `exit` once; called again while leaving, it skips the listeners.
+    const exit = vi.fn().mockImplementationOnce(() => {
+      throw new Error("exit listener threw");
+    });
+
+    finishCommandShim(2, exit);
+    vi.advanceTimersByTime(250);
+
+    expect(exit.mock.calls).toEqual([[2], [2]]);
+  });
+
   it("unrefs the fallback, so a shim that drained on its own is never delayed", () => {
     vi.spyOn(process, "exit").mockImplementation((() => undefined) as never);
     const schedule = globalThis.setTimeout.bind(globalThis);
@@ -111,6 +124,66 @@ describe("guardCommandShim", () => {
     expect(() => process.exit(2)).toThrow("the hook source called process.exit(2)");
     expect(() => process.exit()).toThrow("the hook source called process.exit()");
     expect(exit).not.toHaveBeenCalled();
+  });
+
+  it("reports the same error again in a new scope", async () => {
+    const guard = guardCommandShim(describeError);
+    // One error object, as a module-scope singleton rejected by every event would be.
+    const error = new Error("rejected in every event");
+
+    await guard.report(error);
+    await guard.report(error);
+    guard.scope();
+    await guard.report(error);
+    await guard.report(new HookSourceExitError(3));
+    guard.scope();
+    await guard.report(new HookSourceExitError(3));
+
+    expect(written).toEqual([
+      "hooknostic internal [Test]: rejected in every event\n",
+      "hooknostic internal [Test]: rejected in every event\n",
+      "hooknostic internal [Test]: the hook source called process.exit(3)\n",
+      "hooknostic internal [Test]: the hook source called process.exit(3)\n",
+    ]);
+  });
+
+  it("throws again, in a new scope, an exit code whose throw escaped before", async () => {
+    const guard = guardCommandShim(describeError);
+
+    emitUncaught(new HookSourceExitError(1), "uncaughtException");
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    guard.scope();
+
+    // A later event's exit(1) is that event's failure, not the earlier loop coming round.
+    expect(() => process.exit(1)).toThrow(HookSourceExitError);
+    expect(exit).not.toHaveBeenCalled();
+  });
+
+  it("tells onExit of every intercepted exit, whether the stub throws or leaves", () => {
+    vi.useFakeTimers();
+    const onExit = vi.fn();
+    const guard = guardCommandShim(describeError, { onExit });
+
+    expect(() => process.exit(5)).toThrow(HookSourceExitError);
+    guard.finish(0);
+    process.exit(6);
+
+    expect(onExit.mock.calls).toEqual([[5], [6]]);
+    expect(exit.mock.calls).toEqual([[0]]);
+  });
+
+  it("keeps the stub's behaviour when onExit throws", () => {
+    vi.useFakeTimers();
+    const guard = guardCommandShim(describeError, {
+      onExit() {
+        throw new Error("listener failed");
+      },
+    });
+
+    expect(() => process.exit(5)).toThrow(new HookSourceExitError(5));
+    guard.finish(2);
+    expect(() => process.exit(6)).not.toThrow();
+    expect(exit.mock.calls).toEqual([[2]]);
   });
 
   it("binds a named `exit` import from node:process to the stub itself", () => {
@@ -225,6 +298,51 @@ describe("guardCommandShim", () => {
     expect(exit.mock.calls).toEqual([[2]]);
   });
 
+  it("pins the decided code after the hook source's exit listener when the stub leaves before finish", () => {
+    const guard = guardCommandShim(describeError);
+    // Added after the guard, so it would run after the pin.
+    process.on("exit", () => {
+      process.exitCode = 0;
+    });
+    process.on("uncaughtException", () => process.exit(1));
+
+    guard.decide(2);
+    emitUncaught(new Error("timer threw after the decision"), "uncaughtException");
+    expect(exit.mock.calls).toEqual([[2]]);
+    // What the real exit does next: run the exit listeners, then leave with process.exitCode.
+    process.emit("exit", 2);
+
+    expect(process.exitCode).toBe(2);
+  });
+
+  it("pins the decided code after the hook source's exit listener when the loop empties before finish", () => {
+    const guard = guardCommandShim(describeError);
+    process.on("exit", () => {
+      process.exitCode = 0;
+    });
+
+    guard.decide(2);
+    // An unsettled top-level await: the loop empties, so Node emits beforeExit, then exit.
+    process.emit("beforeExit", 0);
+    process.emit("exit", 13);
+
+    expect(process.exitCode).toBe(2);
+  });
+
+  it("still pins the decided code when the hook source's exit listener throws as the loop empties", () => {
+    const guard = guardCommandShim(describeError);
+    process.on("exit", () => {
+      throw new Error("exit listener threw");
+    });
+
+    guard.decide(2);
+    process.emit("beforeExit", 0);
+    // Node skips the listeners after a throwing one, so only a pin ahead of it still runs.
+    expect(() => process.emit("exit", 13)).toThrow("exit listener threw");
+
+    expect(process.exitCode).toBe(2);
+  });
+
   it("still throws from the stub between the decision and finish, so the reply can flush", () => {
     const guard = guardCommandShim(describeError);
 
@@ -329,6 +447,22 @@ describe("guardCommandShim", () => {
     process.emit("exit", 2);
 
     expect(process.exitCode).toBe(2);
+  });
+
+  it("forces the exit with a code decided after finish, even when an exit listener throws out of it", () => {
+    vi.useFakeTimers();
+    exit.mockImplementationOnce(() => {
+      throw new Error("exit listener threw");
+    });
+    const guard = guardCommandShim(describeError);
+
+    guard.finish(0);
+    // As dispatch does for a stray failure after its last result.
+    guard.decide(1);
+    vi.advanceTimersByTime(250);
+
+    // The pins never ran on the first try, so the code passed to exit is what stands.
+    expect(exit.mock.calls).toEqual([[1], [1]]);
   });
 
   it("forces a leaked handle's exit with the original process.exit, unreported", () => {

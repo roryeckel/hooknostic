@@ -76,6 +76,10 @@ stack under `HOOKNOSTIC_DEBUG` points into it. Fix that, and the line goes away.
 it is a defect in Hooknostic itself, such as a rewrite the host would not accept: please
 report it.
 
+`hooknostic dispatch` runs your source under the same guard, so these reports appear in
+your tests, labelled with the event, before you ship (see
+[Testing your hooks](testing-your-hooks.md#when-the-hook-source-fails-outside-a-handler)).
+
 ## Keep imported modules free of side effects
 
 Your hook source and everything it imports are bundled into one artifact, and every
@@ -112,7 +116,11 @@ them, because your hook source runs as trusted code and Hooknostic is not a sand
 These still end the hook on their own terms:
 
 - `process.kill(process.pid)`, `process.abort()` and `process.reallyExit`.
-- An `exit` listener added after the shim finishes.
+- An `exit` listener added late: by a `beforeExit` listener, or after the shim
+  finishes when its forced exit ends a hook that leaked a handle. It can change the
+  exit code.
+- An `exit` listener that throws while the hook is leaving from inside your own
+  `uncaughtException` listener: Node exits 7.
 - A listener of your own on `uncaughtException` or `uncaughtExceptionMonitor` that
   throws, or that exits ahead of the shim's: Node exits 7.
 - `process.setUncaughtExceptionCaptureCallback(...)`: an uncaught exception is

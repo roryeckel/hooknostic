@@ -76,7 +76,8 @@ one instance for the whole run, as its harness does for its lifetime.
 **The process.** Hooks run inside the CLI. It claims stdout as a command shim
 does, so hook output goes to stderr and the result lines stay parseable, and it
 falls back to a forced exit once the results are written, so a handle a hook
-leaks cannot hold it open.
+leaks cannot hold it open. (The 2026-11-15 amendment adds the command-shim
+guard and exit code 1.)
 
 ## Consequences
 
@@ -102,3 +103,39 @@ leaks cannot hold it open.
 - **Replaying the artifact** with per-adapter encoders, rejected above.
 - **Publishing `@hooknostic/testkit`**: its helpers take runtime internals, and a
   CLI also serves consumers whose tests are not written in JavaScript.
+
+## Amendments — 2026-11-15
+
+**The process** now also runs the hook source under the command-shim guard
+(#186, #189). The command shims ship this guard; without it, dispatch exited
+with the hook source's own exit code and usually printed no results. Now a hook
+source's `process.exit`, rejections, uncaught exceptions, `process.exitCode` and
+`exit` listeners no longer choose the run's exit code, and it usually cannot end
+the run early. The guard's documented limits remain (design §10.3): among them,
+an `exit` listener that throws while the run leaves from inside the hook
+source's own `uncaughtException` listener ends it with Node's 7.
+
+- **Exit codes.** `0` and `2` keep their meanings. A new `1` means the hook
+  source failed outside a handler: a rejection nothing handled, a throw from a
+  timer, or a `process.exit` the guard intercepted where the shipped shim would
+  not. The reports are on stderr as `hooknostic internal [event N]: ...`.
+  Usually every event still has its result. Where the guard cannot unwind, as
+  with the hook source's own `uncaughtException` listener that exits or an exit
+  repeated within one event, the run ends early with `1` and some or all result
+  lines missing: until the run finishes, leaving counts as `1`. So does a
+  top-level `await` that never settles, whose only stderr is Node's own warning. `2` takes
+  precedence over `1`, and handler errors stay in `errors` with exit `0`.
+- **Per target.** On a command target, `process.exit` in a handler is that
+  handler's error, as in its shim. On a module target the error is the same,
+  and a stderr note says the target's shim runs in the harness's process and
+  does not intercept the exit, because what the harness then does has not been
+  captured. The run exits `1`.
+- **Attribution is best effort.** Each event waits one zero-delay timer before
+  the next. A later tail may be labelled with a later event or with none. A tail
+  later than the forced exit's grace after the last result is not reported, as
+  in the shims.
+- **Scope.** Only the CLI is guarded. `dispatchEvents()` and `runCli` with an
+  injected `io` run in the caller's process and install nothing. `--unguarded`
+  keeps the earlier behaviour for a developer who wants the raw crash; other
+  commands reject it. `build` and `check` load the source unguarded too, which
+  is tracked separately (#193).

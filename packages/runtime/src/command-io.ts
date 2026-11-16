@@ -101,7 +101,18 @@ const DRAIN_GRACE_MS = 250;
  */
 export function finishCommandShim(exitCode: number, exit: (code: number) => void = process.exit): void {
   process.exitCode = exitCode;
-  setTimeout(() => exit(exitCode), DRAIN_GRACE_MS).unref();
+  setTimeout(() => {
+    try {
+      exit(exitCode);
+    } catch {
+      // An `exit` listener the hook source added threw out of the exit
+      // itself. Left uncaught, the guard would report it and carry on, and
+      // the leaked handle that brought us here would hold the process open
+      // for good. Node is already leaving by now, so a second call skips the
+      // listeners and exits.
+      exit(exitCode);
+    }
+  }, DRAIN_GRACE_MS).unref();
 }
 
 /** What the hook source's `process.exit(n)` throws while a command shim owns the process. */
@@ -119,7 +130,8 @@ function exitKey(code: unknown): string {
   return `exit:${exitCodeText(code)}`;
 }
 
-function exitCodeText(code: unknown): string {
+/** How `process.exit(code)` writes `code`, as a `HookSourceExitError` message does; never throws. */
+export function exitCodeText(code: unknown): string {
   try {
     return code === undefined ? "" : String(code);
   } catch {
@@ -140,6 +152,20 @@ export interface CommandShimGuard {
   decide(exitCode: number): void;
   /** Leave with `exitCode`, by default the decided one. A stray failure after this keeps that code. */
   finish(exitCode?: number): void;
+  /**
+   * Start a new scope, such as the next of several events one process runs.
+   * An error or exit code reported before is reported again if it recurs, and
+   * an exit code whose throw escaped before throws again.
+   */
+  scope(): void;
+}
+
+export interface CommandShimGuardOptions {
+  /**
+   * Told of every `process.exit` the guard intercepts, whether the stub
+   * throws or leaves. A listener that throws does not change what the stub does.
+   */
+  onExit?(code: unknown): void;
 }
 
 /**
@@ -157,18 +183,33 @@ export interface CommandShimGuard {
  *   leaves with the decided code, or 0 before one.
  * - An `exit` listener pins the exit code to the decided code, or 0 before
  *   one, over `process.exitCode` set by the hook source and over code 13 for
- *   an unsettled top-level await.
+ *   an unsettled top-level await. One copy stays ahead of the hook source's
+ *   `exit` listeners, so one that throws cannot skip it; another moves to
+ *   the end on `finish`, when the stub leaves, and on `beforeExit`, so one
+ *   that resets the code runs before it.
  *
  * It targets accidental failures: a hook source that deliberately rearranges
  * Node's process listeners can defeat it, because it runs as trusted code.
  * Not covered: `process.reallyExit`, `process.kill(process.pid)`,
- * `process.abort()`, `exit` listeners added after `finish`, a hook source's
+ * `process.abort()`, an `exit` listener added after the pin last moved to
+ * the end (on `finish`, a stub leave, or `beforeExit`) -- say from a
+ * `beforeExit` listener or after `finish` on a forced exit -- an `exit`
+ * listener that throws while the process leaves from inside an
+ * uncaughtException listener (exit 7), a hook source's
  * own uncaughtException or uncaughtExceptionMonitor listener that throws or
  * exits ahead of the guard (exit 7), an uncaught-exception capture callback,
  * removing the guard's listeners, and a line the hook source left
  * unterminated, which a report is glued onto (docs/design.md §10.3).
+ *
+ * A process that runs several events, as `hooknostic dispatch` does, installs
+ * one guard and calls `scope()` as each event starts, so a failure that recurs
+ * in a later event is reported against it too. `options.onExit` hears every
+ * intercepted exit.
  */
-export function guardCommandShim(describe: (error: unknown) => string): CommandShimGuard {
+export function guardCommandShim(
+  describe: (error: unknown) => string,
+  options: CommandShimGuardOptions = {},
+): CommandShimGuard {
   const exit = process.exit;
   const stderr = process.stderr;
   let decided: number | undefined;
@@ -237,6 +278,17 @@ export function guardCommandShim(describe: (error: unknown) => string): CommandS
       // Listeners must never throw.
     }
   };
+  // Two copies of the pin. One stays where the guard installed it, ahead of
+  // every `exit` listener the hook source adds: a listener of its own that
+  // throws skips the listeners after it, so only a pin ahead of it still
+  // sets the code. The other must run last, or a listener the hook source
+  // added since can reset the code, so it moves to the end on every path into
+  // an exit the guard sees coming: finish, the stub leaving, and beforeExit.
+  const pinLast = (): void => pin();
+  const repin = (): void => {
+    process.off("exit", pinLast);
+    process.on("exit", pinLast);
+  };
 
   // Set for the length of an emit, and reset once its listeners have run. The
   // reset is a tick queued before any listener runs, so it comes ahead of a
@@ -254,7 +306,12 @@ export function guardCommandShim(describe: (error: unknown) => string): CommandS
   process.on("uncaughtExceptionMonitor", holdUnwind);
   // Before the decision, beforeExit means the shim's own await can never
   // settle: a throw here would only empty the loop again, so leave instead.
-  process.prependListener("beforeExit", holdUnwind);
+  // An emptied loop, such as an unsettled top-level await, then exits without
+  // the stub or finish, so the pin moves to the end here too.
+  process.prependListener("beforeExit", () => {
+    holdUnwind();
+    repin();
+  });
   const onRejection = (reason: unknown): void => {
     void report(reason);
   };
@@ -274,8 +331,14 @@ export function guardCommandShim(describe: (error: unknown) => string): CommandS
   process.on("unhandledRejection", onRejection);
   process.exit = function exitFromHookSource(code?: number | string | null): never {
     const error = new HookSourceExitError(code);
+    try {
+      options.onExit?.(code);
+    } catch {
+      // A listener must never change what the stub does.
+    }
     if (!cannotUnwind && !finished && !escaped.has(exitKey(code))) throw error;
     reportNow(error, exitKey(code));
+    repin();
     return exit(decided ?? 0);
   } as typeof process.exit;
   // `import { exit } from "node:process"` is a live binding set at startup.
@@ -285,6 +348,7 @@ export function guardCommandShim(describe: (error: unknown) => string): CommandS
     cannotUnwind = true;
   });
   process.on("exit", pin);
+  process.on("exit", pinLast);
 
   return {
     write,
@@ -296,9 +360,15 @@ export function guardCommandShim(describe: (error: unknown) => string): CommandS
       decided = exitCode;
       finished = true;
       // Last again, after any 'exit' listener the hook source added while it loaded.
-      process.off("exit", pin);
-      process.on("exit", pin);
-      finishCommandShim(exitCode, exit);
+      repin();
+      // Forced with the code decided by then, which a stray failure after
+      // finish may have raised: should the hook source's own `exit` listener
+      // throw, the pins never run and only the code passed here stands.
+      finishCommandShim(exitCode, (code) => exit(decided ?? code));
+    },
+    scope() {
+      reported.clear();
+      escaped.clear();
     },
   };
 }
