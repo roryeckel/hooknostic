@@ -255,6 +255,38 @@ interface PnpApi {
   findPackageLocator(location: string): unknown;
 }
 
+/** What Yarn's runtime says about the PnP API that serves Hooknostic itself. */
+type OwnPnpApi =
+  /**
+   * No API to ask: without Yarn's runtime there is none, and Yarn 2 sets
+   * `process.versions.pnp` but has no `module.findPnpApi`.
+   */
+  | { kind: "unknown" }
+  /** Yarn threw: several loaded APIs control Hooknostic's own directory. */
+  | { kind: "ambiguous" }
+  /** The API serving Hooknostic, or null when no Yarn install holds it. */
+  | { kind: "found"; api: PnpApi | null };
+
+/**
+ * Ask Yarn's runtime which PnP API serves `ownDirectory`, where Hooknostic
+ * runs from. `module.findPnpApi` asks the APIs already loaded first, so this
+ * holds in a global cache too, and the API that serves Hooknostic is always
+ * loaded. Never ask it about the project: for a path no loaded API lists, it
+ * loads the nearest PnP manifest's API (#216).
+ */
+function ownPnpApi(ownDirectory: string): OwnPnpApi {
+  const findPnpApi =
+    process.versions.pnp === undefined
+      ? undefined
+      : (Module as { findPnpApi?: (location: string) => PnpApi | null }).findPnpApi;
+  if (findPnpApi === undefined) return { kind: "unknown" };
+  try {
+    return { kind: "found", api: findPnpApi(ownDirectory) };
+  } catch {
+    return { kind: "ambiguous" };
+  }
+}
+
 /**
  * Whether Hooknostic's own Zod failed to resolve because Hooknostic itself
  * runs from a Yarn install that the project's PnP manifest does not list, as
@@ -264,9 +296,8 @@ interface PnpApi {
  * A Hooknostic in a zip is not enough to say so: under `yarn hooknostic`
  * the CLI is in the project's own install, and a failure there has another
  * cause, which esbuild's own error states. Under Yarn's runtime, which
- * `yarn dlx` also loads (its own, not the project's), `module.findPnpApi`
- * returns the API that serves Hooknostic -- it asks the loaded APIs first,
- * so this holds in a global cache too -- and only an API that does not list
+ * `yarn dlx` also loads (its own, not the project's), {@link ownPnpApi}
+ * returns the API that serves Hooknostic, and only an API that does not list
  * the project means another install.
  */
 export function ownZodNeedsProjectInstall(
@@ -275,23 +306,42 @@ export function ownZodNeedsProjectInstall(
   projectDirectory: string,
 ): boolean {
   if (!pnpProject || !PNP_PATH.test(ownDirectory)) return false;
-  const findPnpApi =
-    process.versions.pnp === undefined
-      ? undefined
-      : (Module as { findPnpApi?: (location: string) => PnpApi | null }).findPnpApi;
+  const own = ownPnpApi(ownDirectory);
   // No API to ask: without Yarn's runtime nothing installed in a zip could be
   // running this, and Yarn 2 sets process.versions.pnp but has no
   // findPnpApi. Either way the zip path is all there is to go on.
-  if (findPnpApi === undefined) return true;
-  let own: PnpApi | null;
-  try {
-    own = findPnpApi(ownDirectory);
-  } catch {
-    // Yarn throws when several loaded APIs control the CLI's zip, which
-    // implies the project's lists it: keep esbuild's error.
-    return false;
-  }
-  return own === null || own.findPackageLocator(projectDirectory) === null;
+  if (own.kind === "unknown") return true;
+  // Yarn throws when several loaded APIs control the CLI's zip, which
+  // implies the project's lists it: keep esbuild's error.
+  if (own.kind === "ambiguous") return false;
+  return own.api === null || own.api.findPackageLocator(projectDirectory) === null;
+}
+
+/**
+ * Whether this process runs under another install's Yarn Plug'n'Play runtime,
+ * as under `yarn dlx`, in a project that has a PnP manifest of its own. Then
+ * resolving anything through Node from the project directory makes Yarn load
+ * the project's PnP API beside the running one, and both control every archive
+ * the two installs share in Yarn's global cache: the next module resolved from
+ * one of them for the first time -- esbuild's own binary, as the config loads
+ * -- fails with "controlled by multiple pnpapi instances" (#216).
+ *
+ * It asks only the API that serves Hooknostic itself ({@link ownPnpApi}),
+ * which is already loaded. Under `yarn hooknostic` that API is the project's,
+ * and lists it. Under `node -r .pnp.cjs` with a CLI outside every Yarn
+ * install, no API serves the CLI, and the runtime is the project's. Without
+ * Yarn's runtime, or without a project manifest, Node's resolution loads no
+ * API.
+ */
+export function anotherInstallsPnpRuntime(projectDirectory: string, ownDirectory: string = OWN_DIRECTORY): boolean {
+  if (process.versions.pnp === undefined || pnpManifest(projectDirectory) === undefined) return false;
+  const own = ownPnpApi(ownDirectory);
+  // Yarn 2 has no findPnpApi, and loads no API beside its own.
+  if (own.kind === "unknown") return false;
+  // Several loaded APIs already control the CLI's directory, so the process
+  // already holds two runtimes, as #216 fails. Err towards not resolving.
+  if (own.kind === "ambiguous") return true;
+  return own.api !== null && own.api.findPackageLocator(projectDirectory) === null;
 }
 
 /**

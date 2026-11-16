@@ -1,9 +1,10 @@
 import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, realpath, rm, symlink, writeFile } from "node:fs/promises";
+import Module from "node:module";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
-import { afterAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, describe, expect, it } from "vitest";
 
 import { projectSdkReleaseSkew } from "./build.js";
 import { sdkReleaseSkew } from "./sdk-resolution.js";
@@ -163,5 +164,86 @@ describe("projectSdkReleaseSkew (HN110)", () => {
     expect(projectSdkReleaseSkew(root, { alias: { "@hooknostic/sdk": "hooknostic-sdk-fork" } })?.message).toContain(
       "is 0.11.9,",
     );
+  });
+
+  describe("under Yarn's runtime", () => {
+    const versions = process.versions as Record<string, string | undefined>;
+    const nodeModule = Module as unknown as {
+      findPnpApi?: (location: string) => unknown;
+      _resolveFilename: (request: string, parent: { filename?: string } | undefined, ...rest: unknown[]) => string;
+    };
+    const originalResolve = nodeModule._resolveFilename;
+    /** The paths `findPnpApi` was asked about, and the issuer of every resolution. */
+    let asked: string[] = [];
+    let issuers: string[] = [];
+
+    /**
+     * Yarn's runtime: `findPnpApi` returns the API serving a path, which lists
+     * only paths under `listed`; with `ownOutside`, it returns null for a path
+     * outside `listed`, as for a CLI outside every Yarn install.
+     */
+    function simulateRuntime(listed: string, options: { ownOutside?: boolean } = {}): void {
+      versions["pnp"] = "3";
+      nodeModule.findPnpApi = (location: string) => {
+        asked.push(location);
+        if (options.ownOutside && !location.startsWith(listed)) return null;
+        return {
+          findPackageLocator: (path: string) =>
+            path.startsWith(listed) ? { name: "app", reference: "workspace:." } : null,
+        };
+      };
+      nodeModule._resolveFilename = function (request, parent, ...rest) {
+        if (parent?.filename !== undefined) issuers.push(parent.filename);
+        return originalResolve.call(this, request, parent, ...rest);
+      };
+    }
+
+    afterEach(() => {
+      delete versions["pnp"];
+      delete nodeModule.findPnpApi;
+      nodeModule._resolveFilename = originalResolve;
+      asked = [];
+      issuers = [];
+    });
+
+    it("never resolves from a Plug'n'Play project under another install's runtime (yarn dlx, #216)", async () => {
+      const { root } = await project(sdkManifest("0.11.9"), { pnp: true });
+      // Without Yarn's runtime the project's skewed SDK resolves and warns.
+      expect(projectSdkReleaseSkew(root)).toMatchObject({ code: "HN110" });
+      simulateRuntime(join(tmpdir(), "elsewhere-dlx"));
+      // Under yarn dlx, a resolution from the project loads its PnP API beside
+      // dlx's own, and esbuild's next lookup in a shared global cache fails.
+      expect(projectSdkReleaseSkew(root)).toBeUndefined();
+      expect(issuers.filter((issuer) => issuer.startsWith(root))).toEqual([]);
+      // findPnpApi loads the API that serves the path it is asked about.
+      expect(asked.length).toBeGreaterThan(0);
+      expect(asked.filter((location) => location.startsWith(root))).toEqual([]);
+    });
+
+    it("still warns under the project's own runtime (yarn hooknostic)", async () => {
+      const { root } = await project(sdkManifest("0.11.9"), { pnp: true });
+      // The API serving the CLI is the project's, which lists the project.
+      simulateRuntime(root);
+      const diagnostic = projectSdkReleaseSkew(root);
+      expect(diagnostic).toMatchObject({ code: "HN110" });
+      expect(diagnostic?.message).toContain("is 0.11.9,");
+    });
+
+    it("still warns with a CLI outside every Yarn install under the project's runtime (node -r .pnp.cjs)", async () => {
+      const { root } = await project(sdkManifest("0.11.9"), { pnp: true });
+      simulateRuntime(root, { ownOutside: true });
+      const diagnostic = projectSdkReleaseSkew(root);
+      expect(diagnostic).toMatchObject({ code: "HN110" });
+      expect(diagnostic?.message).toContain("is 0.11.9,");
+    });
+
+    it("still warns in a node_modules project under yarn dlx", async () => {
+      // No project manifest: Node's resolution from the project loads no API.
+      const { root } = await project(sdkManifest("0.11.9"));
+      simulateRuntime(join(tmpdir(), "elsewhere-dlx"));
+      const diagnostic = projectSdkReleaseSkew(root);
+      expect(diagnostic).toMatchObject({ code: "HN110" });
+      expect(diagnostic?.message).toContain("is 0.11.9,");
+    });
   });
 });
