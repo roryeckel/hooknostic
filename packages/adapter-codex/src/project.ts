@@ -134,7 +134,12 @@ export async function projectComponents(
         : source.origin === "direct" && declaration && declaration.type !== "stdio"
           ? directRemote(name, declaration)
           : server;
-    const timeout = options.mcpStartupTimeoutMs?.[name];
+    // Own keys only: a server named `toString` must not read an inherited
+    // member (#200).
+    const timeout =
+      options.mcpStartupTimeoutMs && Object.hasOwn(options.mcpStartupTimeoutMs, name)
+        ? options.mcpStartupTimeoutMs[name]
+        : undefined;
     const value = { ...base, ...(timeout === undefined ? {} : { startup_timeout_sec: Math.ceil(timeout / 1000) }) };
     result.entries.push({
       path: ".codex/config.toml",

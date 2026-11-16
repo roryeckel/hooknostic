@@ -1038,6 +1038,13 @@ describe("complete project integration", () => {
   });
   it.each([
     ["unknown server", { codex: { servers: { missing: { args: [] } } } }, "unknown server"],
+    // An inherited member is not a declared server (#200).
+    [
+      "inherited toString",
+      { codex: { servers: { toString: { startupTimeoutMs: 1000 } } } },
+      'unknown server "toString"',
+    ],
+    ["inherited constructor", { codex: { servers: { constructor: { args: [] } } } }, 'unknown server "constructor"'],
     ["remote argv", { codex: { servers: { remote: { args: [] } } } }, "only on a stdio server"],
     [
       "cwd outside project",
@@ -1058,6 +1065,84 @@ describe("complete project integration", () => {
       }),
     );
     expect((await runProject({ ...options, command: "sync" })).errors.join()).toContain(message);
+  });
+  // Assigning to `__proto__` on a plain object is silently ignored, so a
+  // target-wide timeout used to be lost for a server of that name (#200).
+  it("applies a target-wide startup timeout to a server named __proto__", async () => {
+    const { root, options } = await fixture({
+      components: {
+        mcp: "./mcp.json",
+        targets: ["codex", "opencode"],
+        mcpOverrides: { codex: { startupTimeoutMs: 60_000 }, opencode: { startupTimeoutMs: 60_000 } },
+      },
+    });
+    await writeFile(
+      join(root, "mcp.json"),
+      `{"$schema":${JSON.stringify(AGENT_PLUGIN_MCP_SCHEMA)},"mcpServers":{` +
+        `"__proto__":{"type":"stdio","command":"node"},"other":{"type":"stdio","command":"node"}}}`,
+    );
+    const synced = await runProject({ ...options, command: "sync" });
+    expect(synced.errors).toEqual([]);
+    const codexServers = readProjectToml(await readFile(join(root, ".codex/config.toml"), "utf8"))
+      .mcp_servers as Record<string, { startup_timeout_sec?: number }>;
+    expect(Object.hasOwn(codexServers, "__proto__")).toBe(true);
+    expect(codexServers["__proto__"]?.startup_timeout_sec).toBe(60);
+    expect(codexServers["other"]?.startup_timeout_sec).toBe(60);
+    const plugin = await (
+      await import(pathToFileURL(join(root, ".opencode/plugins/hooknostic-components.js")).href)
+    ).default();
+    const opencodeConfig: { mcp?: Record<string, { timeout?: number }> } = {};
+    plugin.config(opencodeConfig);
+    expect(Object.hasOwn(opencodeConfig.mcp!, "__proto__")).toBe(true);
+    expect(Object.getOwnPropertyDescriptor(opencodeConfig.mcp, "__proto__")?.value.timeout).toBe(60_000);
+    expect(opencodeConfig.mcp?.["other"]?.timeout).toBe(60_000);
+  });
+  it("rejects a target-wide startup timeout when the only server is named __proto__", async () => {
+    const { root, options } = await fixture({
+      components: { mcp: "./mcp.json", mcpOverrides: { claude: { startupTimeoutMs: 1000 } } },
+      targets: {
+        claude: {
+          adapter: "claude",
+          version: registry.claude!.harness.recommendedRange,
+          delivery: "project",
+          output: ".hooknostic/artifacts/claude",
+        },
+      },
+    });
+    await writeFile(
+      join(root, "mcp.json"),
+      `{"$schema":${JSON.stringify(AGENT_PLUGIN_MCP_SCHEMA)},"mcpServers":{"__proto__":{"type":"stdio","command":"node"}}}`,
+    );
+    expect((await runProject({ ...options, command: "sync" })).errors.join()).toContain(
+      'adapter "claude" cannot represent project MCP startup timeouts',
+    );
+  });
+  it("does not read an inherited MCP override for a target named toString", async () => {
+    const { root, options } = await fixture({
+      components: { mcp: "./mcp.json", onInvalid: "warn", mcpOverrides: { codex: { startupTimeoutMs: 1000 } } },
+      targets: {
+        codex: {
+          adapter: "codex",
+          version: registry.codex!.harness.recommendedRange,
+          delivery: "project",
+          output: ".hooknostic/artifacts/codex",
+        },
+        toString: {
+          adapter: "claude",
+          version: registry.claude!.harness.recommendedRange,
+          delivery: "project",
+          output: ".hooknostic/artifacts/claude",
+        },
+      },
+    });
+    await writeFile(join(root, "mcp.json"), "not JSON");
+    const built = await buildProject({ ...options, dryRun: true });
+    expect(built.ok).toBe(false);
+    expect(
+      built.report.diagnostics
+        .filter((diagnostic) => diagnostic.message.includes("MCP overrides require"))
+        .map((diagnostic) => diagnostic.target),
+    ).toEqual(["codex"]);
   });
   // Claude Code and GitHub Copilot CLI both read the root .mcp.json, and Copilot
   // reads nothing else beside it, so one entry per server serves both (ADR-0033).

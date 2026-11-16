@@ -633,4 +633,95 @@ describe("per-target exclusions", () => {
       }),
     );
   });
+
+  // Target ids are user-chosen: `??=` used to find the inherited member and
+  // decorate it, so the target vanished from the report (#200).
+  it.each(["toString", "constructor"])("reports a target named %s that fails before projection", async (id) => {
+    const f = await fixture("package", ["claude"]);
+    f.config.targets = { [id]: f.config.targets["keep"]! };
+    f.config.components!.excludeFor = { [id]: ["review/helper.txt"] };
+    await writeFile(join(f.root, "mcp.json"), "not JSON");
+    try {
+      const result = await f.build();
+      expect(result.ok).toBe(false);
+      expect(Object.hasOwn(result.report.targets, id)).toBe(true);
+      expect(result.report.targets[id]!.projection?.status).toBe("failed");
+      expect(Object.hasOwn(Object.prototype.toString, "projection")).toBe(false);
+      expect(Object.hasOwn(Object, "projection")).toBe(false);
+    } finally {
+      for (const stray of [Object.prototype.toString, Object]) delete (stray as { projection?: unknown }).projection;
+    }
+  });
+
+  // Each row reaches a different per-target read of `excludeFor`: the package
+  // loader, the skill-policy plan, the direct loader, and the
+  // materialized-tree filter.
+  it.each([
+    ["package delivery", "package", () => undefined],
+    ["project delivery", "project", () => undefined],
+    [
+      "direct components",
+      "project",
+      (f: Awaited<ReturnType<typeof fixture>>) => {
+        f.config.components = { skills: ["skills"], mcp: "mcp.json" };
+      },
+    ],
+    [
+      "materialized tree",
+      "package",
+      (f: Awaited<ReturnType<typeof fixture>>) => {
+        f.config.components!.materialize = [
+          {
+            into: "generated",
+            inputs: {},
+            provider: {
+              id: "exclusion-fixture",
+              plan: ({ outputDir }) => ({
+                command: process.execPath,
+                args: [
+                  "-e",
+                  "require('node:fs').writeFileSync(require('node:path').join(process.argv[1],'data'),'')",
+                  outputDir,
+                ],
+              }),
+              postprocess: (files) => ({ files, problems: [] }),
+            },
+          },
+        ];
+      },
+    ],
+  ] as const)(
+    "reads no inherited exclusion patterns for a target named toString: %s",
+    async (_name, delivery, setup) => {
+      // Codex supports no plugin components at its reference version.
+      const f = await fixture(delivery, ["claude", delivery === "package" ? "copilot" : "codex"]);
+      const id: string = "toString";
+      f.config.targets = { keep: f.config.targets["keep"]!, [id]: f.config.targets["omit"]! };
+      setup(f);
+      f.config.components!.excludeFor = { keep: ["review/helper.txt"] };
+      const result = await f.build();
+      expect(result.report.diagnostics.filter((diagnostic) => diagnostic.severity === "error")).toEqual([]);
+      expect(result.ok).toBe(true);
+      const details = result.report.targets[id]!.projection ?? result.report.targets[id]!.project;
+      expect(details).toBeDefined();
+      expect(details!.authorExclusions).toBeUndefined();
+      const kept = result.report.targets["keep"]!.projection ?? result.report.targets["keep"]!.project;
+      expect(kept!.authorExclusions?.patterns).toEqual(["review/helper.txt"]);
+    },
+  );
+
+  it("checks runtime-package inputs against no inherited exclusion patterns for a target named toString", async () => {
+    const f = await fixture();
+    const id: string = "toString";
+    // First, because the loop stops at the first target with a fatal input.
+    f.config.targets = { [id]: f.config.targets["omit"]!, keep: f.config.targets["keep"]! };
+    f.config.components!.runtimePackage = { manifest: "runtime.json", lockfile: "runtime-lock.json" };
+    f.config.components!.excludeFor = { keep: ["runtime.json"] };
+    const result = await f.build();
+    expect(
+      result.report.diagnostics
+        .filter((diagnostic) => diagnostic.message.startsWith("runtimePackage requires excluded input"))
+        .map((diagnostic) => diagnostic.target),
+    ).toEqual(["keep"]);
+  });
 });

@@ -258,6 +258,32 @@ describe("OpenCode project components", () => {
     expect(config.mcp?.["remote"]?.timeout).toBe(60_000);
   });
 
+  // An inherited member is not a timeout: `__proto__` used to write `{}` (#200).
+  it("reads startup timeouts by own server name only", async () => {
+    const path = await moduleFor(
+      "direct",
+      { mcpStartupTimeoutMs: { other: 60_000 } },
+      JSON.parse(
+        JSON.stringify(
+          Object.fromEntries(
+            ["__proto__", "toString", "other"].map((name) => [
+              name,
+              { type: "streamable-http", url: `https://${name.replaceAll("_", "")}.invalid/mcp` },
+            ]),
+          ),
+        ),
+      ),
+    );
+    const plugin = await (await import(pathToFileURL(path).href + "?own-timeout")).default();
+    const config: { mcp?: Record<string, { timeout?: number }> } = {};
+    plugin.config(config);
+    const entry = (name: string) => Object.getOwnPropertyDescriptor(config.mcp, name)?.value;
+    expect(entry("__proto__")).toBeDefined();
+    expect(entry("__proto__")).not.toHaveProperty("timeout");
+    expect(entry("toString")).not.toHaveProperty("timeout");
+    expect(entry("other")?.timeout).toBe(60_000);
+  });
+
   it("keeps Agent Plugin package remote fields literal", async () => {
     const path = await moduleFor("package");
     const generated = await readFile(path, "utf8");

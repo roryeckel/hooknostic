@@ -146,6 +146,29 @@ describe("Codex project components", () => {
     expect(integration.entries[0]?.value).toMatchObject({ startup_timeout_sec: 61 });
   });
 
+  // An inherited member is not a timeout: it used to become NaN and fail TOML
+  // generation (#200).
+  it("reads startup timeouts by own server name only", async () => {
+    const names = ["slow", "toString", "constructor", "valueOf", "hasOwnProperty", "__proto__"];
+    const servers = JSON.parse(
+      JSON.stringify(Object.fromEntries(names.map((name) => [name, { type: "stdio", command: "node" }]))),
+    ) as Record<string, AgentPluginMcpServer>;
+    const timeouts = async (mcpStartupTimeoutMs: Record<string, number>) =>
+      Object.fromEntries(
+        (
+          await projectComponents(source(servers), ".", "out", "hooknostic.config.ts", { mcpStartupTimeoutMs })
+        ).entries.map((entry) => [
+          String(entry.key[1]),
+          (entry.value as Record<string, unknown>)["startup_timeout_sec"],
+        ]),
+      );
+    const perServer = await timeouts({ slow: 60_001 });
+    expect(Object.keys(perServer).sort()).toEqual([...names].sort());
+    expect(Object.entries(perServer).filter(([, timeout]) => timeout !== undefined)).toEqual([["slow", 61]]);
+    const own = await timeouts(Object.fromEntries([["__proto__", 5000]]));
+    expect(Object.entries(own).filter(([, timeout]) => timeout !== undefined)).toEqual([["__proto__", 5]]);
+  });
+
   it("forwards every environment variable the stdio launcher expands", async () => {
     const integration = await projectComponents(
       source({
