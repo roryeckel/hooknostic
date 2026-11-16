@@ -1,4 +1,4 @@
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { syncBuiltinESMExports } from "node:module";
 import { tmpdir } from "node:os";
@@ -963,6 +963,60 @@ export default definePlugin({
       expect(status, raw).toBe(1);
       expect(results).toHaveLength(3);
     });
+
+    it("finishes with 2, not held open by a leaked handle, when the reader closes stdout early", async () => {
+      const temp = await mkdtemp(join(tmpdir(), "hooknostic-dispatch-temp-"));
+      tempDirs.push(temp);
+      // A module target keeps one instance, so one interval leaks for the run.
+      const dir = await project(
+        `export default { name: "leaky", hooks: [{ event: "prompt.before", id: "leaky", capabilities: {},
+          run() { globalThis.leaked ??= setInterval(() => {}, 60_000); } }] };`,
+        GUARD_TARGETS,
+      );
+      const events = join(dir, "events.jsonl");
+      // Well past a pipe's buffer, so writes are still pending when the reader goes.
+      await writeFile(
+        events,
+        Array.from({ length: 1500 }, (_, i) => `${JSON.stringify({ event: "prompt.before", prompt: `p${i}` })}\n`).join(
+          "",
+        ),
+      );
+      const outcome = await new Promise<{ status: number | null; signal: NodeJS.Signals | null; stderr: string }>(
+        (resolvePromise) => {
+          const child = spawn(
+            process.execPath,
+            [
+              CLI_BIN,
+              "dispatch",
+              "--config",
+              join(dir, "hooknostic.config.ts"),
+              "--target",
+              "opencode",
+              "--events",
+              events,
+            ],
+            {
+              stdio: ["ignore", "pipe", "pipe"],
+              env: { ...process.env, HOOKNOSTIC_DEBUG: "", TEMP: temp, TMP: temp, TMPDIR: temp },
+            },
+          );
+          let stderr = "";
+          child.stderr.setEncoding("utf8").on("data", (chunk: string) => (stderr += chunk));
+          // As `| head` does: read a little, then close the pipe.
+          child.stdout.once("data", () => child.stdout.destroy());
+          const timer = setTimeout(() => child.kill(), 20_000);
+          child.on("close", (status, signal) => {
+            clearTimeout(timer);
+            resolvePromise({ status, signal, stderr });
+          });
+        },
+      );
+      // Killed by the timer, it would have no status.
+      expect(outcome.signal, outcome.stderr).toBeNull();
+      expect(outcome.status).toBe(2);
+      expect(outcome.stderr).toContain("EPIPE");
+      expect((await readdir(temp)).filter((name) => name.startsWith("hooknostic-eval-"))).toEqual([]);
+    }, 40_000);
 
     it("leaves no staged module behind when the run ends early", async () => {
       // A temp directory of the run's own, so other tests' staging cannot show up in it.

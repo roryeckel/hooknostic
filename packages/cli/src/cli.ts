@@ -373,6 +373,13 @@ export async function runCli(argv: string[], options?: RunCliOptions): Promise<n
               ...(protocol === undefined ? {} : { onStaged: removeAtExit }),
             },
           );
+          if (protocol !== undefined) {
+            // Written before the forced-exit fallback can fire: it would truncate a pipe.
+            // Inside the try: a consumer that closes stdout early (`| head`)
+            // rejects a write with EPIPE, and the run must still finish.
+            await Promise.all(writes);
+            await protocol.release();
+          }
         } catch (error) {
           // The catch below answers 2. Leave as a finished run does, so a
           // handle the config or hooks leaked cannot hold the CLI open, and
@@ -385,9 +392,6 @@ export async function runCli(argv: string[], options?: RunCliOptions): Promise<n
           throw error;
         }
         if (protocol !== undefined) {
-          // Written before the forced-exit fallback can fire: it would truncate a pipe.
-          await Promise.all(writes);
-          await protocol.release();
           if (guarded === undefined) finishCommandShim(code);
           else code = guarded.finish(code);
         }
