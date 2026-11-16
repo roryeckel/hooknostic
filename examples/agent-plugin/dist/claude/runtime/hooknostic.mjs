@@ -7002,15 +7002,13 @@ function namedRecord(key, value, prototypeKey = "reject") {
   if (prototypeKey === "preserve") {
     return unknown().transform((input, context) => {
       const parsed = record2.safeParse(input);
-      if (!parsed.success)
+      if (!parsed.success) {
         for (const issue2 of parsed.error.issues)
           context.addIssue({ ...issue2 });
-      const isObject2 = typeof input === "object" && input !== null;
-      const hasOwnPrototypeKey = isObject2 && Object.prototype.propertyIsEnumerable.call(input, "__proto__");
-      if (!parsed.success)
         return NEVER;
+      }
       const entries = Object.entries(parsed.data);
-      if (hasOwnPrototypeKey) {
+      if (typeof input === "object" && input !== null && Object.prototype.propertyIsEnumerable.call(input, "__proto__")) {
         const prototypeEntry = value.safeParse(input["__proto__"]);
         if (!prototypeEntry.success) {
           for (const issue2 of prototypeEntry.error.issues)
@@ -7028,20 +7026,27 @@ function namedRecord(key, value, prototypeKey = "reject") {
       throw new Error("namedRecord does not support asynchronous value schemas");
     const rejectedAsRecord = run.issues.some((issue2) => (issue2.path ?? []).length === 0);
     context.issues.push(...run.issues);
-    const isObject2 = typeof input === "object" && input !== null;
-    const hasOwnPrototypeKey = isObject2 && Object.prototype.propertyIsEnumerable.call(input, "__proto__");
-    if (hasOwnPrototypeKey) {
-      context.addIssue({ code: "custom", path: ["__proto__"], message: PROTOTYPE_KEY_MESSAGE, continue: true });
-      return run.value;
-    }
-    if (isObject2 && !rejectedAsRecord) {
-      const prototype = Object.getPrototypeOf(input);
-      if (prototype !== Object.prototype && prototype !== null) {
-        context.addIssue({ code: "custom", path: ["__proto__"], message: REPLACED_PROTOTYPE_MESSAGE, continue: true });
-      }
-    }
+    const problem = prototypeKeyProblem(input, rejectedAsRecord);
+    if (problem !== void 0)
+      context.addIssue({ code: "custom", path: ["__proto__"], message: problem, continue: true });
     return run.value;
   });
+}
+function prototypeKeyProblem(input, rejectedAsRecord) {
+  if (typeof input !== "object" || input === null)
+    return void 0;
+  try {
+    if (Object.prototype.propertyIsEnumerable.call(input, "__proto__"))
+      return PROTOTYPE_KEY_MESSAGE;
+    if (rejectedAsRecord)
+      return void 0;
+    const prototype = Object.getPrototypeOf(input);
+    if (prototype !== Object.prototype && prototype !== null)
+      return REPLACED_PROTOTYPE_MESSAGE;
+  } catch {
+    return void 0;
+  }
+  return void 0;
 }
 var projectMcpServerOverrideSchema = object({
   args: array(string2()).optional(),

@@ -376,6 +376,53 @@ describe("canonical schemas", () => {
       if (!result.success) expect(result.error.issues[0]).toHaveProperty("input", "");
     });
 
+    describe("a Proxy whose traps throw while __proto__ is looked for", () => {
+      const throwsOnPrototype = <T extends object>(target: T) =>
+        new Proxy(target, {
+          getPrototypeOf() {
+            throw new Error("getPrototypeOf trap");
+          },
+        });
+      const throwsOnProtoDescriptor = <T extends object>(target: T) =>
+        new Proxy(target, {
+          getOwnPropertyDescriptor(object, property) {
+            if (property === "__proto__") throw new Error("getOwnPropertyDescriptor trap");
+            return Reflect.getOwnPropertyDescriptor(object, property);
+          },
+        });
+
+      it.each([
+        { trap: "getPrototypeOf", wrap: throwsOnPrototype },
+        { trap: "getOwnPropertyDescriptor for __proto__", wrap: throwsOnProtoDescriptor },
+      ])("leaves the record's own result standing: $trap", ({ wrap }) => {
+        const accepted = hooknosticConfigSchema.safeParse({
+          entry: "./src/hooks.ts",
+          targets: wrap({ claude: packageTarget }),
+        });
+        expect(accepted.success).toBe(true);
+        if (accepted.success) expect(accepted.data.targets).toEqual({ claude: packageTarget });
+
+        const rejected = hooknosticConfigSchema.safeParse({
+          entry: "./src/hooks.ts",
+          targets: wrap({ claude: { ...packageTarget, version: "" } }),
+        });
+        expect(pathsAndMessages(rejected)).toEqual([
+          { path: ["targets", "claude", "version"], message: expect.stringContaining("Too small") },
+        ]);
+      });
+
+      it("never reads __proto__ from an MCP environment record that already failed", () => {
+        const result = hooknosticConfigSchema.safeParse({
+          components: { root: ".", mcpEnvironment: throwsOnProtoDescriptor({ server: [""] }) },
+          targets: { claude: packageTarget },
+        });
+
+        expect(pathsAndMessages(result)).toEqual([
+          { path: ["components", "mcpEnvironment", "server", 0], message: expect.stringContaining("Too small") },
+        ]);
+      });
+    });
+
     it("keeps constructor and prototype as ordinary target and MCP server names", () => {
       const targets = Object.fromEntries([
         ["constructor", { ...packageTarget, adapter: "claude" }],

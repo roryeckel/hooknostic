@@ -209,17 +209,23 @@ function namedRecord<K extends z.core.$ZodRecordKey, V extends z.ZodType>(
   type Output = z.output<typeof record>;
 
   if (prototypeKey === "preserve") {
+    // Unchanged from the mcpEnvironment schema this replaced, including when it
+    // reads `__proto__`: only after the record itself has parsed.
     return z.unknown().transform((input, context): Output => {
       const parsed = record.safeParse(input);
-      if (!parsed.success) for (const issue of parsed.error.issues) context.addIssue({ ...issue });
-      const isObject = typeof input === "object" && input !== null;
-      const hasOwnPrototypeKey = isObject && Object.prototype.propertyIsEnumerable.call(input, "__proto__");
-      if (!parsed.success) return z.NEVER;
+      if (!parsed.success) {
+        for (const issue of parsed.error.issues) context.addIssue({ ...issue });
+        return z.NEVER;
+      }
       const entries: [PropertyKey, unknown][] = Object.entries(parsed.data);
       // Parse the own `__proto__` entry explicitly, then rebuild with
       // Object.fromEntries so the name survives without invoking
       // Object.prototype's inherited setter.
-      if (hasOwnPrototypeKey) {
+      if (
+        typeof input === "object" &&
+        input !== null &&
+        Object.prototype.propertyIsEnumerable.call(input, "__proto__")
+      ) {
         const prototypeEntry = value.safeParse((input as Record<string, unknown>)["__proto__"]);
         if (!prototypeEntry.success) {
           for (const issue of prototypeEntry.error.issues)
@@ -248,27 +254,37 @@ function namedRecord<K extends z.core.$ZodRecordKey, V extends z.ZodType>(
     const rejectedAsRecord = run.issues.some((issue) => (issue.path ?? []).length === 0);
     context.issues.push(...run.issues);
 
-    const isObject = typeof input === "object" && input !== null;
-    const hasOwnPrototypeKey = isObject && Object.prototype.propertyIsEnumerable.call(input, "__proto__");
     // The name issue does not abort either, so config-level checks still run
     // on the remaining entries, as they did when the entry was dropped.
-    if (hasOwnPrototypeKey) {
-      context.addIssue({ code: "custom", path: ["__proto__"], message: PROTOTYPE_KEY_MESSAGE, continue: true });
-      return run.value as Output;
-    }
-    // An object literal's `__proto__: {...}` entry sets the prototype instead of
-    // adding a key, so the record parses as if the entry were absent. Records
-    // made by Object.create(null), Object.fromEntries or JSON.parse keep a null
-    // or Object.prototype prototype; arrays, Maps and class instances already
-    // fail as "expected record" at the record itself and keep only that issue.
-    if (isObject && !rejectedAsRecord) {
-      const prototype: unknown = Object.getPrototypeOf(input);
-      if (prototype !== Object.prototype && prototype !== null) {
-        context.addIssue({ code: "custom", path: ["__proto__"], message: REPLACED_PROTOTYPE_MESSAGE, continue: true });
-      }
-    }
+    const problem = prototypeKeyProblem(input, rejectedAsRecord);
+    if (problem !== undefined)
+      context.addIssue({ code: "custom", path: ["__proto__"], message: problem, continue: true });
     return run.value as Output;
   });
+}
+
+/**
+ * The message for a `__proto__` name the raw record input carries, if any.
+ * Looking runs Proxy traps Zod's own record parse never runs: getPrototypeOf,
+ * and getOwnPropertyDescriptor for `__proto__`. A trap that throws counts as
+ * nothing detected, so the record's own result stands, as it did before.
+ */
+function prototypeKeyProblem(input: unknown, rejectedAsRecord: boolean): string | undefined {
+  if (typeof input !== "object" || input === null) return undefined;
+  try {
+    if (Object.prototype.propertyIsEnumerable.call(input, "__proto__")) return PROTOTYPE_KEY_MESSAGE;
+    // An object literal's `__proto__: {...}` entry sets the prototype instead
+    // of adding a key, so the record parses as if the entry were absent.
+    // Records made by Object.create(null), Object.fromEntries or JSON.parse
+    // keep a null or Object.prototype prototype; arrays, Maps and class
+    // instances already fail as "expected record" and keep only that issue.
+    if (rejectedAsRecord) return undefined;
+    const prototype: unknown = Object.getPrototypeOf(input);
+    if (prototype !== Object.prototype && prototype !== null) return REPLACED_PROTOTYPE_MESSAGE;
+  } catch {
+    return undefined;
+  }
+  return undefined;
 }
 
 const projectMcpServerOverrideSchema = z
