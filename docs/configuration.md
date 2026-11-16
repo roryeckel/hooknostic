@@ -24,7 +24,7 @@ object's prototype; such a configuration fails with HN501. An MCP server may be 
 `__proto__`, so a server of that name can have both `components.mcpEnvironment` entries
 and `components.mcpOverrides.<target>.servers` overrides. Write its key as a computed
 `["__proto__"]` key: an object literal entry written as `__proto__: {...}` sets the
-object's prototype instead of adding an entry, and in `servers` it fails with HN501.
+object's prototype instead of adding an entry, and fails with HN501 in either record.
 
 - `delivery: "package"`: native distributable output. Components require package identity.
 - `delivery: "project"`: project artifacts. Direct components and synchronization use

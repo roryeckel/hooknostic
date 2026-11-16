@@ -1324,9 +1324,6 @@ function constantCatch(value) {
 
 // ../../node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/core/core.js
 var _a;
-var NEVER = /* @__PURE__ */ Object.freeze({
-  status: "aborted"
-});
 var _zodDesc = { value: void 0, enumerable: false };
 var _E = "captureStackTrace" in Error ? Error : null;
 function newError(Definition) {
@@ -6856,27 +6853,6 @@ var REPLACED_PROTOTYPE_MESSAGE = `${PROTOTYPE_KEY_MESSAGE}; this record's protot
 var PRESERVED_REPLACED_PROTOTYPE_MESSAGE = `this record's prototype was replaced, for example by an object literal entry written as __proto__: {...}, which sets the prototype instead of adding an entry; to name a server "__proto__", write the key as a computed ["__proto__"] key`;
 function namedRecord(key, value, prototypeKey = "reject") {
   const record3 = record(key, value);
-  if (prototypeKey === "preserve-if-parsed") {
-    return unknown().transform((input, context) => {
-      const parsed = record3.safeParse(input);
-      if (!parsed.success) {
-        for (const issue2 of parsed.error.issues)
-          context.addIssue({ ...issue2 });
-        return NEVER;
-      }
-      const entries = Object.entries(parsed.data);
-      if (typeof input === "object" && input !== null && Object.prototype.propertyIsEnumerable.call(input, "__proto__")) {
-        const prototypeEntry = value.safeParse(input["__proto__"]);
-        if (!prototypeEntry.success) {
-          for (const issue2 of prototypeEntry.error.issues)
-            context.addIssue({ ...issue2, path: ["__proto__", ...issue2.path] });
-          return NEVER;
-        }
-        entries.push(["__proto__", prototypeEntry.data]);
-      }
-      return Object.fromEntries(entries);
-    });
-  }
   return unknown().transform((input, context) => {
     const run = runSync(record3, input);
     const rejectedAsRecord = run.issues.some((issue2) => (issue2.path ?? []).length === 0);
@@ -6940,7 +6916,7 @@ var projectMcpTargetOverrideSchema = object({
   startupTimeoutMs: number2().int().positive().max(MAX_TIMER_DELAY_MS).optional(),
   servers: namedRecord(string2().min(1), projectMcpServerOverrideSchema, "preserve").optional()
 }).strict();
-var mcpEnvironmentSchema = namedRecord(string2().min(1), array(string2().min(1)), "preserve-if-parsed");
+var mcpEnvironmentSchema = namedRecord(string2().min(1), array(string2().min(1)), "preserve");
 var hooknosticConfigSchema = object({
   project: object({ root: string2().min(1) }).strict().optional(),
   entry: string2().min(1).optional(),

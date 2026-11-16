@@ -99,8 +99,8 @@ without a diagnostic. From 0.13.0, `components.mcpOverrides.<target>.servers`
 keeps an own `__proto__` server name, validated and preserved as
 `components.mcpEnvironment` keeps one, and the other records reject the name
 with HN501. An object literal entry written as `__proto__: {...}`, which sets
-the record's prototype instead of adding an entry, fails with HN501 in those
-records and in `servers`.
+the record's prototype instead of adding an entry, fails with HN501 in all of
+them, `components.mcpEnvironment` included.
 
 V4 changes some validation and inference behavior:
 

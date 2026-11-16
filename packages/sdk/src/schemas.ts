@@ -208,40 +208,10 @@ const PRESERVED_REPLACED_PROTOTYPE_MESSAGE = `this record's prototype was replac
 function namedRecord<K extends z.core.$ZodRecordKey, V extends z.ZodType>(
   key: K,
   value: V,
-  prototypeKey: "reject" | "preserve" | "preserve-if-parsed" = "reject",
+  prototypeKey: "reject" | "preserve" = "reject",
 ) {
   const record = z.record(key, value);
   type Output = z.output<typeof record>;
-
-  if (prototypeKey === "preserve-if-parsed") {
-    // The mcpEnvironment schema's original transform, unchanged: it re-adds
-    // finalized issues, and reads `__proto__` only after the record parsed.
-    return z.unknown().transform((input, context): Output => {
-      const parsed = record.safeParse(input);
-      if (!parsed.success) {
-        for (const issue of parsed.error.issues) context.addIssue({ ...issue });
-        return z.NEVER;
-      }
-      const entries: [PropertyKey, unknown][] = Object.entries(parsed.data);
-      // Parse the own `__proto__` entry explicitly, then rebuild with
-      // Object.fromEntries so the name survives without invoking
-      // Object.prototype's inherited setter.
-      if (
-        typeof input === "object" &&
-        input !== null &&
-        Object.prototype.propertyIsEnumerable.call(input, "__proto__")
-      ) {
-        const prototypeEntry = value.safeParse((input as Record<string, unknown>)["__proto__"]);
-        if (!prototypeEntry.success) {
-          for (const issue of prototypeEntry.error.issues)
-            context.addIssue({ ...issue, path: ["__proto__", ...issue.path] });
-          return z.NEVER;
-        }
-        entries.push(["__proto__", prototypeEntry.data]);
-      }
-      return Object.fromEntries(entries) as Output;
-    });
-  }
 
   return z.unknown().transform((input, context): Output => {
     // Run the record on raw issues rather than through safeParse. safeParse
@@ -353,7 +323,10 @@ const projectMcpTargetOverrideSchema = z
 
 // MCP environment entries named `__proto__` were already validated and kept as
 // own data properties, and that support is documented, so they stay preserved.
-const mcpEnvironmentSchema = namedRecord(z.string().min(1), z.array(z.string().min(1)), "preserve-if-parsed");
+// The checked mode adds what the original transform lacked: an object literal
+// `__proto__: {...}` entry fails instead of vanishing, and an issue inside the
+// record no longer hides its siblings' or the config-level ones.
+const mcpEnvironmentSchema = namedRecord(z.string().min(1), z.array(z.string().min(1)), "preserve");
 
 export const hooknosticConfigSchema = z
   .object({

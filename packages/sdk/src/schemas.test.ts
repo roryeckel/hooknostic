@@ -417,7 +417,7 @@ describe("canonical schemas", () => {
         ]);
       });
 
-      it("never reads __proto__ from an MCP environment record that already failed", () => {
+      it("keeps an MCP environment record's own issues when looking for __proto__ throws", () => {
         const result = hooknosticConfigSchema.safeParse({
           components: { root: ".", mcpEnvironment: throwsOnProtoDescriptor({ server: [""] }) },
           targets: { claude: packageTarget },
@@ -604,6 +604,79 @@ describe("canonical schemas", () => {
         expect(pathsAndMessages(result)).toEqual([
           { path: [...servers, "x", "startupTimeoutMs"], message: "per-call message" },
           { path: [...servers, "__proto__", "startupTimeoutMs"], message: "per-call message" },
+        ]);
+      });
+    });
+
+    // mcpEnvironment uses the same checked mode as servers (#206). Its
+    // successful own-key behaviour is pinned by the tests above this block.
+    describe("an MCP environment entry named __proto__", () => {
+      const environment = ["components", "mcpEnvironment"];
+      const withEnvironment = (mcpEnvironment: unknown) => ({
+        components: { root: ".", mcpEnvironment },
+        targets: { claude: packageTarget },
+      });
+
+      it("rejects a replaced prototype instead of dropping it", () => {
+        const result = hooknosticConfigSchema.safeParse(
+          withEnvironment({ __proto__: { inherited: ["TOKEN"] }, other: ["OTHER"] }),
+        );
+
+        expect(pathsAndMessages(result)).toEqual([
+          { path: [...environment, "__proto__"], message: expect.stringContaining('computed ["__proto__"] key') },
+        ]);
+
+        // An array value, the shape an entry takes here, makes the record an
+        // array-like Zod already refuses, so only Zod's own issue is reported.
+        expect(
+          pathsAndMessages(
+            hooknosticConfigSchema.safeParse(withEnvironment({ __proto__: ["TOKEN"], other: ["OTHER"] })),
+          ),
+        ).toEqual([{ path: environment, message: expect.stringContaining("expected record, received Array") }]);
+      });
+
+      it("reports a bad entry and a bad __proto__ entry together", () => {
+        const result = hooknosticConfigSchema.safeParse(
+          withEnvironment(
+            Object.fromEntries([
+              ["x", [""]],
+              ["__proto__", [""]],
+            ]),
+          ),
+        );
+
+        expect(pathsAndMessages(result)).toEqual([
+          { path: [...environment, "x", 0], message: expect.stringContaining("Too small") },
+          { path: [...environment, "__proto__", 0], message: expect.stringContaining("Too small") },
+        ]);
+      });
+
+      it("keeps config-level issues beside an issue inside the record", () => {
+        const result = hooknosticConfigSchema.safeParse({
+          components: { skills: ["./skills"], mcpEnvironment: { x: [""] } },
+          targets: { claude: packageTarget },
+        });
+
+        expect(pathsAndMessages(result)).toEqual([
+          { path: [...environment, "x", 0], message: expect.stringContaining("Too small") },
+          { path: environment, message: "components.mcpEnvironment requires components.root" },
+        ]);
+      });
+
+      it("applies per-call parse options to issues inside the record", () => {
+        const result = hooknosticConfigSchema.safeParse(
+          withEnvironment(
+            Object.fromEntries([
+              ["x", [""]],
+              ["__proto__", [""]],
+            ]),
+          ),
+          { error: () => "per-call message" },
+        );
+
+        expect(pathsAndMessages(result)).toEqual([
+          { path: [...environment, "x", 0], message: "per-call message" },
+          { path: [...environment, "__proto__", 0], message: "per-call message" },
         ]);
       });
     });
