@@ -297,15 +297,6 @@ describe("canonical schemas", () => {
         path: ["components", "mcpOverrides", "__proto__"],
       },
       {
-        record: "components.mcpOverrides.<target>.servers",
-        config: {
-          project: { root: "." },
-          components: { mcp: "./mcp.json", mcpOverrides: { client: { servers: ownProto({ args: ["serve"] }) } } },
-          targets: { client: projectTarget },
-        },
-        path: ["components", "mcpOverrides", "client", "servers", "__proto__"],
-      },
-      {
         record: "components.excludeFor",
         config: { components: { root: ".", excludeFor: ownProto(["x/**"]) }, targets: { claude: packageTarget } },
         path: ["components", "excludeFor", "__proto__"],
@@ -513,6 +504,108 @@ describe("canonical schemas", () => {
       expect(pathsAndMessages(hooknosticConfigSchema.safeParse(foreignLiteral))).toEqual([
         { path: ["targets", "__proto__"], message: expect.stringContaining("prototype was replaced") },
       ]);
+    });
+
+    // A project's mcp.json may name a server `__proto__`, so an override for it
+    // is kept as an own entry (#206), validated like any other.
+    describe("an MCP server override named __proto__", () => {
+      const servers = ["components", "mcpOverrides", "client", "servers"];
+      const withServers = (record: unknown) => ({
+        project: { root: "." },
+        components: { mcp: "./mcp.json", mcpOverrides: { client: { servers: record } } },
+        targets: { client: projectTarget },
+      });
+
+      it("keeps it as an own entry beside the other servers", () => {
+        const override = { args: ["serve"], cwd: ".", startupTimeoutMs: 1_000 };
+        const result = hooknosticConfigSchema.safeParse(
+          withServers(
+            Object.fromEntries([
+              ["other", { args: [] }],
+              ["__proto__", override],
+            ]),
+          ),
+        );
+
+        expect(pathsAndMessages(result)).toEqual([]);
+        const parsed = result.success ? result.data.components!.mcpOverrides!.client!.servers! : {};
+        expect(Object.getPrototypeOf(parsed)).toBe(Object.prototype);
+        expect(Object.keys(parsed)).toEqual(["other", "__proto__"]);
+        expect(Object.getOwnPropertyDescriptor(parsed, "__proto__")?.value).toEqual(override);
+        expect(parsed["other"]).toEqual({ args: [] });
+      });
+
+      it("validates its value", () => {
+        const result = hooknosticConfigSchema.safeParse(withServers(ownProto({ startupTimeoutMs: 0 })));
+
+        expect(pathsAndMessages(result)).toEqual([
+          { path: [...servers, "__proto__", "startupTimeoutMs"], message: expect.stringContaining("Too small") },
+        ]);
+      });
+
+      it("rejects the object literal spelling and names the computed key", () => {
+        const result = hooknosticConfigSchema.safeParse(withServers({ __proto__: { args: ["serve"] } }));
+
+        expect(pathsAndMessages(result)).toEqual([
+          {
+            path: [...servers, "__proto__"],
+            message:
+              'this record\'s prototype was replaced, for example by an object literal entry written as __proto__: {...}, which sets the prototype instead of adding an entry; to name a server "__proto__", write the key as a computed ["__proto__"] key',
+          },
+        ]);
+      });
+
+      it("reports a bad entry and a bad __proto__ entry together", () => {
+        const result = hooknosticConfigSchema.safeParse(
+          withServers(
+            Object.fromEntries([
+              ["x", { startupTimeoutMs: 0 }],
+              ["__proto__", { cwd: "" }],
+            ]),
+          ),
+        );
+
+        expect(pathsAndMessages(result)).toEqual([
+          { path: [...servers, "x", "startupTimeoutMs"], message: expect.stringContaining("Too small") },
+          { path: [...servers, "__proto__", "cwd"], message: expect.stringContaining("Too small") },
+        ]);
+      });
+
+      it("keeps config-level issues beside an issue inside servers", () => {
+        const result = hooknosticConfigSchema.safeParse({
+          project: { root: "." },
+          components: { mcp: "./mcp.json", mcpOverrides: { pkg: { servers: { x: { startupTimeoutMs: 0 } } } } },
+          targets: { pkg: packageTarget },
+        });
+
+        expect(pathsAndMessages(result)).toEqual([
+          {
+            path: ["components", "mcpOverrides", "pkg", "servers", "x", "startupTimeoutMs"],
+            message: expect.stringContaining("Too small"),
+          },
+          {
+            path: ["components", "mcpOverrides", "pkg"],
+            message: 'MCP override target "pkg" must use project delivery',
+          },
+        ]);
+      });
+
+      it("applies per-call parse options to issues inside servers", () => {
+        const result = hooknosticConfigSchema.safeParse(
+          withServers(
+            Object.fromEntries([
+              ["x", { startupTimeoutMs: 0 }],
+              ["__proto__", { startupTimeoutMs: 0 }],
+            ]),
+          ),
+          { error: () => "per-call message" },
+        );
+
+        expect(pathsAndMessages(result)).toEqual([
+          { path: [...servers, "x", "startupTimeoutMs"], message: "per-call message" },
+          { path: [...servers, "__proto__", "startupTimeoutMs"], message: "per-call message" },
+        ]);
+      });
     });
   });
 

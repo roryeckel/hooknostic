@@ -46,13 +46,15 @@ subpath is an export-map entry, so TypeScript needs the export-aware module
 resolution (`node16`, `nodenext` or `bundler`) that the root entry already
 requires.
 
-One change ships in the same release. `hooknosticConfigSchema` now rejects
-`__proto__` as a target name and as a name in `components.excludeFor`,
-`components.mcpOverrides`, its `servers` and a materializer's `inputs`, where
-Zod 4 used to drop the entry without a diagnostic. To see that name, those five
-fields now validate through a transform that inspects the raw input, as
-`components.mcpEnvironment` already did. If your code does more with the schema
-than parse with it:
+One change ships in the same release. Zod 4 used to drop a `__proto__` name
+without a diagnostic. `hooknosticConfigSchema` now rejects it in four fields:
+as a target name and as a name in `components.excludeFor`,
+`components.mcpOverrides` and a materializer's `inputs`. In
+`components.mcpOverrides.<target>.servers` it now keeps a server named
+`__proto__`, as `components.mcpEnvironment` already did. To see that name, those
+five fields now validate through a transform that inspects the raw input, as
+`components.mcpEnvironment` already did, so all six are `ZodPipe`s. If your code
+does more with the schema than parse with it:
 
 - Each of those fields is a `ZodPipe` of `z.unknown()` into a transform
   (inside `ZodOptional` where the field is optional), no longer a `ZodRecord`.

@@ -95,7 +95,12 @@ event-specific fields. MCP environment entries named `__proto__` remain
 validated and preserved as own data properties. In 0.12.0, Zod 4 drops a
 `__proto__` target name, or a `__proto__` name in `components.excludeFor`,
 `components.mcpOverrides`, its `servers` or a materializer's `inputs`,
-without a diagnostic. Later releases reject those names with HN501.
+without a diagnostic. From 0.13.0, `components.mcpOverrides.<target>.servers`
+keeps an own `__proto__` server name, validated and preserved as
+`components.mcpEnvironment` keeps one, and the other records reject the name
+with HN501. An object literal entry written as `__proto__: {...}`, which sets
+the record's prototype instead of adding an entry, fails with HN501 in those
+records and in `servers`.
 
 V4 changes some validation and inference behavior:
 
