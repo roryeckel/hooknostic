@@ -75,8 +75,16 @@ export async function runInit(
   // leaves the project untouched (#217). Any other stat error is left for
   // the loop to report as it always has (#208). An existing file is left
   // unchanged without reading it: a --config naming some other file is
-  // listed as unchanged, and a race, a dangling symlink or a FIFO counts as
-  // unchanged too.
+  // listed as unchanged, and so are a FIFO and a file that appears after
+  // this check, which open's "wx" refuses.
+  //
+  // Known limit: a dangling symlink differs by platform. On POSIX, O_EXCL
+  // refuses it with EEXIST, so it counts as unchanged. On Windows,
+  // open(link, "wx") follows a dangling file symlink and creates its
+  // target. So a --config that aliases hooks.ts without naming it, such as
+  // a dangling symlink to hooks.ts or hooks.ts::$DATA, writes the config
+  // into hooks.ts. hooks.ts did not exist, so nothing is lost, and matching
+  // inodes was judged not worth it.
   const present = new Set<string>();
   for (const [file] of files) {
     let isDirectory: boolean;
