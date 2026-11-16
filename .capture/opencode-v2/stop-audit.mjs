@@ -46,15 +46,32 @@ export async function auditStops({ api, wait, records, model, project }) {
     unsuccessful[mode] = { sessionID: id, ...(await outcome(id)) };
   }
 
+  // From 2.3.0 every subagent runs in the background: the parent's executions
+  // can end before the child does, and the child's result, if the parent is idle
+  // by then, starts one more (.capture/opencode-v2-audit). So wait for the child
+  // itself and then for an idle parent, rather than for a parent count that holds
+  // only when the child finishes first. On earlier builds the child finishes
+  // inside the parent's first execution, and both waits are already met.
   model.setMode("subagent");
   const parent = await session();
   await prompt(parent, "Delegate the child task once, then stop.");
   await wait(async () => (await count(parent, "succeeded")) >= 2);
+  const created = await wait(async () => (await records()).find((row) => row.hook === "event" &&
+    row.event.type === "session.created" && row.event.data?.parentID === parent));
+  const childID = created.event.data.sessionID;
+  await wait(async () => (await count(childID, "succeeded")) >= 1);
   await settle();
-  const created = (await records()).find((row) => row.hook === "event" && row.event.type === "session.created" &&
-    row.event.data?.parentID === parent);
-  const child = { parentID: parent, parent: await outcome(parent), created: created?.event ?? null,
-    ...(created ? { childID: created.event.data.sessionID, child: await outcome(created.event.data.sessionID) } : {}) };
+  await wait(async () => {
+    const { started, succeeded, failed, interrupted } = await outcome(parent);
+    return started === succeeded + failed + interrupted;
+  });
+  // What the parent was told at launch: "running" from 2.3.0, "completed" before.
+  const launch = (await records()).find((row) => row.hook === "execute.after" && row.event.tool === "subagent" &&
+    row.event.sessionID === parent)?.event.result?.output?.status ?? null;
+  const child = { parentID: parent, parent: await outcome(parent), created: created.event, childID,
+    child: await outcome(childID), launch,
+    subagentMessageRequests: model.requests.filter((request) => request.messages?.some((message) => message.role === "user" &&
+      typeof message.content === "string" && message.content.startsWith(`<subagent sessionID="${childID}"`))).length };
 
   return { prevent, ...unsuccessful, child };
 }

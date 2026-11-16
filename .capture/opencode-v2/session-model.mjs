@@ -17,6 +17,9 @@ export async function startSessionModel() {
       return;
     }
     const child = mode === "subagent" && request.messages?.some(message => message.role === "user" && JSON.stringify(message.content).includes("hooknostic-child-task"));
+    // Constructed timing, off unless set: delays the child's reply so a check of
+    // the stop drive can make a background child (2.3.0 and later) finish last.
+    if (child && process.env.HKN_CHILD_DELAY_MS) await new Promise(resolve => setTimeout(resolve, Number(process.env.HKN_CHILD_DELAY_MS)));
     const tool = agent && !child && !request.messages.some(message => message.role === "tool");
     const call = mode === "subagent"
       ? { name: "subagent", arguments: JSON.stringify({ agent: "general", description: "Offline child stop probe", prompt: "hooknostic-child-task: return the scripted child result." }) }

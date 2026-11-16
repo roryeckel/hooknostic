@@ -34,6 +34,16 @@ const adapter = resolveTargetAdapter(opencodeAdapter(), {
   delivery: "project",
   output: ".",
 }).adapter!;
+// The first build captured running every subagent in the background, read from
+// its validation record rather than written here (ADR-0008). The build before
+// it, 2.2.7, still ran the child in the foreground (.capture/opencode-v2-audit).
+const backgroundSubagentCapture = opencodeV2CapabilityProfiles
+  .flatMap((profile) => profile.source.validatedOn ?? [])
+  .find((record) => record.artifact === "fixtures/opencode/2.0/tool-subagent-background-after.input.json");
+const backgroundSubagents = () => {
+  expect(backgroundSubagentCapture).toBeDefined();
+  return semver.gte(version, backgroundSubagentCapture!.version);
+};
 
 async function toolModelDelta(baseUrl: string, messages: unknown[]) {
   const response = await fetch(baseUrl + "/chat/completions", {
@@ -214,7 +224,6 @@ describe.skipIf(!enabled)("OpenCode v2 offline playback", () => {
       .map((line) => JSON.parse(line));
     const resultEvent = captured.find((row) => row.hook === "execute.after" && row.event.tool === "subagent").event;
     expect(resultEvent.status).toBe("completed");
-    expect(resultEvent.result.output.output).toBe("hooknostic-child-result");
     const child = resultEvent.result.output.sessionID;
     expect(child).not.toBe(resultEvent.sessionID);
     const trace = (await readFile(join(root, "trace.jsonl"), "utf8"))
@@ -225,8 +234,100 @@ describe.skipIf(!enabled)("OpenCode v2 offline playback", () => {
       expect.objectContaining({ event: "tool.after", toolKind: "agent", toolNativeName: "subagent" }),
     );
     expect(captured.some((row) => row.hook === "context" && row.event.sessionID === child)).toBe(true);
-    expect(playback.requests.at(-1).messages).toContainEqual(
-      expect.objectContaining({ role: "tool", content: expect.stringContaining("hooknostic-child-result") }),
+    const messages = playback.requests.at(-1).messages as { role: string; content: unknown }[];
+    const carriesResult = (role: string) =>
+      messages.filter(
+        (message) => message.role === role && JSON.stringify(message.content).includes("hooknostic-child-result"),
+      );
+    if (backgroundSubagents()) {
+      // execute.after fires at launch, so tool.after sees the launch notice and
+      // never the child's result, which reaches the parent as a user message.
+      expect(resultEvent.result.output.status).toBe("running");
+      expect(JSON.stringify(resultEvent.result)).not.toContain("hooknostic-child-result");
+      expect(carriesResult("tool")).toEqual([]);
+      expect(carriesResult("user")).toEqual([
+        expect.objectContaining({
+          content: expect.stringMatching(
+            new RegExp(
+              `^<subagent sessionID="${child}" state="completed"[^>]*>\\s*hooknostic-child-result\\s*</subagent>$`,
+            ),
+          ),
+        }),
+      ]);
+      expect(captured).toContainEqual(
+        expect.objectContaining({
+          hook: "event",
+          event: expect.objectContaining({
+            type: "session.inbox.enqueued",
+            data: expect.objectContaining({
+              sessionID: resultEvent.sessionID,
+              item: expect.objectContaining({
+                type: "synthetic",
+                payload: expect.objectContaining({
+                  metadata: expect.objectContaining({ source: "subagent", childID: child, state: "completed" }),
+                }),
+              }),
+            }),
+          }),
+        }),
+      );
+    } else {
+      expect(resultEvent.result.output).toMatchObject({ status: "completed", output: "hooknostic-child-result" });
+      expect(carriesResult("tool")).toHaveLength(1);
+      expect(carriesResult("user")).toEqual([]);
+    }
+  }, 70000);
+  it("reports each parent execution a late background child starts as its own turn stop", async () => {
+    const result = await runProcess(
+      process.execPath,
+      ["--experimental-strip-types", ".capture/opencode-v2/drive.mjs", "subagent-late"],
+      {
+        cwd: fileURLToPath(new URL("../../..", import.meta.url)),
+        env: process.env,
+        timeoutMs: 60000,
+      },
+    );
+    expect(result.code, result.stdout + result.stderr).toBe(0);
+    const { root } = JSON.parse(result.stdout.split("\n").find((line) => line.startsWith('{"root"'))!);
+    const playback = JSON.parse(await readFile(join(root, "result.json"), "utf8"));
+    expect(playback.errors).toEqual([]);
+    const captured = (await readFile(join(root, "captured/events.jsonl"), "utf8"))
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line));
+    const parent = captured.find((row) => row.hook === "execute.after" && row.event.tool === "subagent").event
+      .sessionID as string;
+    const succeeded = captured.filter(
+      (row) =>
+        row.hook === "event" &&
+        row.event.type === "session.execution.succeeded" &&
+        row.event.data?.sessionID === parent,
+    );
+    const trace = (await readFile(join(root, "trace.jsonl"), "utf8"))
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line) as { event: string; turnId?: string; lastMessage?: string });
+    const prompts = trace.filter((entry) => entry.event === "prompt.before").map((entry) => entry.turnId);
+    const stops = trace.filter((entry) => entry.event === "turn.stop");
+    // The parent's prompt and the child's; the child's stop carries its own.
+    expect(prompts).toHaveLength(2);
+    expect(prompts.every((id) => typeof id === "string")).toBe(true);
+    if (backgroundSubagents()) {
+      // The parent finished before the child, whose <subagent> message started a
+      // second parent execution. No prompt hook started it, so it has no turn id.
+      expect(succeeded).toHaveLength(2);
+      expect(stops).toHaveLength(3);
+      expect(stops.filter((entry) => entry.turnId === undefined)).toEqual([
+        expect.objectContaining({ lastMessage: "tool capture complete" }),
+      ]);
+    } else {
+      // In the foreground the parent waits for the child within one execution.
+      expect(succeeded).toHaveLength(1);
+      expect(stops).toHaveLength(2);
+      expect(stops.every((entry) => typeof entry.turnId === "string")).toBe(true);
+    }
+    expect(stops.flatMap((entry) => (entry.turnId === undefined ? [] : [entry.turnId])).sort()).toEqual(
+      [...prompts].sort(),
     );
   }, 70000);
   it("observes typed tool failures and replaces rich output in recorded requests", async () => {
@@ -618,16 +719,27 @@ describe.skipIf(!enabled)("OpenCode v2 offline playback", () => {
     expect(capture.fail).toMatchObject({ started: 1, failed: 1 });
     expect(capture.child.created?.data.parentID).toBe(capture.child.parentID);
     expect(capture.child.child).toMatchObject({ started: 1, succeeded: 1 });
-    expect(capture.child.parent).toMatchObject({ started: 2, succeeded: 2 });
+    // From 2.3.0 the child runs in the background. Its result reaches the parent
+    // as a user message, and starts a third parent execution when it arrives
+    // after the prevention continuation has ended; when it arrives sooner it
+    // joins a running one. Earlier builds return it as the tool's result.
+    const background = backgroundSubagents();
+    expect(capture.child.launch).toBe(background ? "running" : "completed");
+    expect(capture.child.subagentMessageRequests > 0).toBe(background);
+    const extra = capture.child.parent.succeeded - 2;
+    expect(extra).toBeGreaterThanOrEqual(0);
+    expect(extra).toBeLessThanOrEqual(background ? 1 : 0);
+    expect(capture.child.parent).toMatchObject({ started: 2 + extra, failed: 0, interrupted: 0 });
     const events = await traceEvents(join(root, "trace.jsonl"));
     // Every completion is still observed: three for the prevented session, one
-    // each for the interrupt and the failure, and two parent plus one child.
-    expect(events.filter((event) => event === "turn.stop")).toHaveLength(8);
+    // each for the interrupt and the failure, and two (or three) parent plus one child.
+    expect(events.filter((event) => event === "turn.stop")).toHaveLength(8 + extra);
     // session.synthetic does not run the prompt hook: six real prompts, including the child's.
     expect(events.filter((event) => event === "prompt.before")).toHaveLength(6);
     // ADR-0027: each prompt's execution reports that prompt's id; the two
-    // synthetic continuations run no prompt hook and report none. The
-    // interrupt and the failure end before any text, so six stops carry text.
+    // synthetic continuations, and an execution a child's result starts, run
+    // no prompt hook and report none. The interrupt and the failure end before
+    // any text, so the six (or seven) other stops carry text.
     const trace = (await readFile(join(root, "trace.jsonl"), "utf8"))
       .trim()
       .split("\n")
@@ -638,11 +750,10 @@ describe.skipIf(!enabled)("OpenCode v2 offline playback", () => {
     expect(stops.flatMap((entry) => (entry.turnId === undefined ? [] : [entry.turnId])).sort()).toEqual(
       [...prompts].sort(),
     );
-    expect(stops.filter((entry) => entry.turnId === undefined)).toEqual([
-      expect.objectContaining({ lastMessage: expect.any(String) }),
-      expect.objectContaining({ lastMessage: expect.any(String) }),
-    ]);
-    expect(stops.filter((entry) => entry.lastMessage !== undefined)).toHaveLength(6);
+    expect(stops.filter((entry) => entry.turnId === undefined)).toEqual(
+      Array.from({ length: 2 + extra }, () => expect.objectContaining({ lastMessage: expect.any(String) })),
+    );
+    expect(stops.filter((entry) => entry.lastMessage !== undefined)).toHaveLength(6 + extra);
   }, 150000);
   it.each(["project-remote", "package-remote"])(
     "%s executes Streamable HTTP with the declared headers",

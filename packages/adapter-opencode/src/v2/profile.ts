@@ -204,6 +204,20 @@ export const opencodeV2CapabilityProfiles: CapabilityProfile[] = [
           artifact: ".capture/opencode-v2-plugin-throw",
           what: "The 2.0.17 plugin-throw probe repeated with the same results on every domain.",
         },
+        {
+          version: "2.3.0",
+          date: "2026-11-16",
+          method: "captured",
+          artifact: "fixtures/opencode/2.0/tool-subagent-background-after.input.json",
+          what: "Windows loopback subagent drive, isolated state: every subagent runs in the background. execute.after fires as the child starts, with result.output.status running and a launch notice as content, so tool.after reports the notice. The child's result reaches the parent later as a user-role `<subagent>` message, from a synthetic session.inbox.enqueued item with metadata.source subagent (subagent-background/inbox-subagent-completed.json). 2.2.7 still ran the child in the foreground.",
+        },
+        {
+          version: "2.3.0",
+          date: "2026-11-16",
+          method: "live-probe",
+          artifact: ".capture/opencode-v2-audit",
+          what: "Background children over the loopback model, Windows, isolated state. With the child's reply 3 s late (subagent-late drive), the parent's execution ended first, run --standalone waited for the child, and its `<subagent>` message started a second parent execution that no prompt hook started: three turn.stop dispatches, the last without turnId. On the serve stop drive with the child 6 s late, prevention did not wait for it, the child's result started a third parent execution, and the earlier notice reached the model in that execution's request. 2.2.7 ran both drives' children in the foreground.",
+        },
       ],
     },
     // Optional event fields (ADR-0027). The turn fields rest on the 2.0.18
@@ -226,7 +240,7 @@ export const opencodeV2CapabilityProfiles: CapabilityProfile[] = [
       "turn.stop.correlation.turnId": {
         level: "emulated",
         rationale:
-          "the messageID of the prompt that started the execution, remembered from the prompt hook: the id prompt.before reports. Absent for an execution no prompt hook started, such as a stop-prevention continuation (session.synthetic), and when the plugin did not see the prompt. A prompt admitted while an execution runs changes nothing and is handed to no later execution, which then reports none.",
+          "the messageID of the prompt that started the execution, remembered from the prompt hook: the id prompt.before reports. Absent for an execution no prompt hook started, such as a stop-prevention continuation (session.synthetic) or one a background subagent's result starts in its idle parent (observed from 2.3.0, where every subagent runs in the background; earlier builds run one in the foreground by default, and their opt-in background argument was not probed), and when the plugin did not see the prompt. A prompt admitted while an execution runs changes nothing and is handed to no later execution, which then reports none.",
       },
     },
     matrix: {
@@ -254,7 +268,11 @@ export const opencodeV2CapabilityProfiles: CapabilityProfile[] = [
         level: "exact",
         rationale: "Mutating event.input before execution changes the executed command.",
       },
-      "tool.after.observe": { level: "exact" },
+      "tool.after.observe": {
+        level: "exact",
+        rationale:
+          "Via execute.after, with the tool's own result. For a subagent call (kind agent) that is the child's final response up to 2.2.7, where a subagent runs in the foreground by default (the tool's opt-in background argument was not probed); from 2.3.0, where every subagent runs in the background, it is the launch notice, with raw result.output.status running. The child's result then reaches the parent as a user-role `<subagent>` message that no tool hook sees, and Hooknostic has no portable field for it.",
+      },
       "tool.error.observe": {
         level: "approximate",
         rationale:
@@ -278,17 +296,17 @@ export const opencodeV2CapabilityProfiles: CapabilityProfile[] = [
       "turn.stop.observe": {
         level: "approximate",
         rationale:
-          "Via execution succeeded, failed and interrupted events. These report execution completion, including manual compaction; they are asynchronous observations and cannot prevent completion. The subscription delivers every location's sessions, so only sessions created in or prompted through the plugin's location dispatch; a session first seen after a plugin reload is attributed at its next prompt. The completion carries only the session id; lastMessage and correlation.turnId are assembled from earlier events, see the field ratings. Hooks run in the server process: through the background service a hook still running when `opencode run` exits completes there, but `run --standalone` terminates its private server without calling plugin cleanup, so such a hook is cut off.",
+          "Via execution succeeded, failed and interrupted events. These report execution completion, including manual compaction; they are asynchronous observations and cannot prevent completion. The subscription delivers every location's sessions, so only sessions created in or prompted through the plugin's location dispatch; a session first seen after a plugin reload is attributed at its next prompt. The completion carries only the session id; lastMessage and correlation.turnId are assembled from earlier events, see the field ratings. Hooks run in the server process: through the background service a hook still running when `opencode run` exits completes there, but `run --standalone` terminates its private server without calling plugin cleanup, so such a hook is cut off. Up to 2.2.7 a subagent runs in the foreground by default (the tool's opt-in background argument was not probed); from 2.3.0 it always runs in the background, and there one prompt can end in several top-level completions: the parent's execution can end before its child, and the child's result then starts another, which dispatches its own turn.stop.",
       },
       "turn.stop.prevent": {
         level: "approximate",
         rationale:
-          "No native stop hook. After a succeeded execution, the reason is admitted with session.synthetic and resume, which starts a new execution carrying it as a user-role message; the first execution has already completed. Failed and interrupted executions and child sessions (session.created parentID) post nothing, so an interrupt is never overridden. There is no stop_hook_active flag or block cap: a hook that always prevents loops. Requires a session that outlives the event; a child created before plugin setup is not recognized. Best-effort: a silent no-op without a session id or if the post fails.",
+          "No native stop hook. After a succeeded execution, the reason is admitted with session.synthetic and resume, which starts a new execution carrying it as a user-role message; the first execution has already completed. Failed and interrupted executions and child sessions (session.created parentID) post nothing, so an interrupt is never overridden. There is no stop_hook_active flag or block cap: a hook that always prevents loops. Requires a session that outlives the event; a child created before plugin setup is not recognized. Best-effort: a silent no-op without a session id or if the post fails. Prevention does not wait for a background subagent: the continuation can run and stop again before the child's result arrives and starts another execution (observed from 2.3.0, where every subagent runs in the background; earlier builds run one in the foreground by default, and their opt-in background argument was not probed).",
       },
       "turn.stop.notify": {
         level: "approximate",
         rationale:
-          "No user-only channel for server plugins; toast and attention are TUI-only. The message is admitted to the session inbox with session.synthetic resume:false and starts no execution, but neither the TUI nor the message API shows it until the session next runs, when it arrives as a user-role message the model reads. Posted under the same succeeded, top-level-session conditions as turn.stop.prevent. Best-effort.",
+          "No user-only channel for server plugins; toast and attention are TUI-only. The message is admitted to the session inbox with session.synthetic resume:false and starts no execution, but neither the TUI nor the message API shows it until the session next runs, when it arrives as a user-role message the model reads. Posted under the same succeeded, top-level-session conditions as turn.stop.prevent. The next run can also be one a background subagent's result starts, so the notice can reach the model without another user prompt (observed from 2.3.0, where every subagent runs in the background; the opt-in background argument of earlier builds was not probed). Best-effort.",
       },
       "context.compact.before.observe": {
         level: "exact",

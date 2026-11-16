@@ -8,7 +8,7 @@ export async function startToolModel(project, mcpOnly = false, remote = false, a
   const actions = audit === "patch" ? [
     // Offered instead of edit/write when the model id looks like a GPT model.
     ["patch", { patchText: "*** Begin Patch\n*** Add File: added.txt\n+hooknostic probe\n*** Update File: probe.txt\n@@\n-hooknostic-before-edit\n+hooknostic-after-edit\n*** End Patch" }],
-  ] : audit === "subagent" ? [
+  ] : audit === "subagent" || audit === "subagent-late" ? [
     ["subagent", { agent: "general", description: "Offline child result capture", prompt: "hooknostic-child-task: return the scripted child result." }],
   ] : audit ? [
     ["read", { path: "definitely-missing-hooknostic.txt" }],
@@ -46,7 +46,7 @@ export async function startToolModel(project, mcpOnly = false, remote = false, a
     const request = JSON.parse(Buffer.concat(chunks).toString() || "{}");
     requests.push(request);
     const tools = request.tools ?? [];
-    const child = audit === "subagent" && request.messages?.some(message => message.role === "user" && JSON.stringify(message.content).includes("hooknostic-child-task"));
+    const child = (audit === "subagent" || audit === "subagent-late") && request.messages?.some(message => message.role === "user" && JSON.stringify(message.content).includes("hooknostic-child-task"));
     const lastTool = request.messages?.findLast(message => message.role === "tool");
     // Captured OAuth startup can list tools before the model's catalog catches
     // up. Retry the scripted call only after its unknown-tool result and the
@@ -63,6 +63,9 @@ export async function startToolModel(project, mcpOnly = false, remote = false, a
         action = actions[0];
       } else errors.push("MCP tool unavailable after two catalog-update retries");
     } else action = tools.length && !child ? actions[index++] : undefined;
+    // Constructed timing: the child answers 3 s late, so a background child
+    // (2.3.0 and later) outlives its parent's first execution.
+    if (child && audit === "subagent-late") await new Promise(resolve => setTimeout(resolve, 3000));
     let delta = { role: "assistant", content: child ? "hooknostic-child-result" : "tool capture complete" };
     if (action) {
       const [name, args] = action;

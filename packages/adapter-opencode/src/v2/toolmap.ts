@@ -27,7 +27,9 @@ export const OPENCODE_V2_FILE_SHAPES: FileShapes = {
 export const opencodeV2FileCodec = fileCodec(OPENCODE_V2_FILE_SHAPES);
 
 // Each name has its own tool-*-before fixture in fixtures/opencode/2.0.
-// Search is admission-only; tool-subagent-after also captures a completed child session.
+// Search is admission-only. The subagent after fixtures capture a foreground child
+// that has completed (tool-subagent-after, up to 2.2.7) and a background one just
+// launched (tool-subagent-background-after, 2.3.0).
 const kinds: Readonly<Record<string, ToolKind>> = {
   shell: "shell",
   read: "file.read",
