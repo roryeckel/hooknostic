@@ -1,0 +1,15 @@
+{
+  "child": {
+    "parentID": "ses_e19e96ea6ffeTebF8hY5M1gb4s",
+    "agent": "general"
+  },
+  "execution": {
+    "text": [
+      {
+        "assistantMessageID": "msg_1e61692d900123qjjBHGkbiShT",
+        "ordinal": 0,
+        "text": "hooknostic-child-result"
+      }
+    ]
+  }
+}

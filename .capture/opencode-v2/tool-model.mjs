@@ -8,8 +8,16 @@ export async function startToolModel(project, mcpOnly = false, remote = false, a
   const actions = audit === "patch" ? [
     // Offered instead of edit/write when the model id looks like a GPT model.
     ["patch", { patchText: "*** Begin Patch\n*** Add File: added.txt\n+hooknostic probe\n*** Update File: probe.txt\n@@\n-hooknostic-before-edit\n+hooknostic-after-edit\n*** End Patch" }],
-  ] : audit === "subagent" || audit === "subagent-late" ? [
+  ] : audit === "subagent" || audit === "subagent-late" || audit === "subagent-fail" ? [
     ["subagent", { agent: "general", description: "Offline child result capture", prompt: "hooknostic-child-task: return the scripted child result." }],
+  ] : audit === "subagent-followup" ? [
+    ["subagent", { agent: "general", description: "Offline child result capture", prompt: "hooknostic-child-task: return the scripted child result." }],
+    // The same child again, by the session id its first call reported.
+    ["subagent", (request) => ({ agent: "general", description: "Offline child follow-up", prompt: "hooknostic-child-task: hooknostic-follow-up.",
+      sessionID: JSON.stringify(request.messages.findLast(message => message.role === "tool")?.content ?? "").match(/ses_[A-Za-z0-9]+/)?.[0] })],
+  ] : audit === "subagent-opt-in" ? [
+    // The opt-in background argument the tool offers up to 2.2.7.
+    ["subagent", { agent: "general", description: "Offline child result capture", prompt: "hooknostic-child-task: return the scripted child result.", background: true }],
   ] : audit ? [
     ["read", { path: "definitely-missing-hooknostic.txt" }],
     ["probe_failure", {}],
@@ -46,7 +54,8 @@ export async function startToolModel(project, mcpOnly = false, remote = false, a
     const request = JSON.parse(Buffer.concat(chunks).toString() || "{}");
     requests.push(request);
     const tools = request.tools ?? [];
-    const child = (audit === "subagent" || audit === "subagent-late") && request.messages?.some(message => message.role === "user" && JSON.stringify(message.content).includes("hooknostic-child-task"));
+    const child = String(audit).startsWith("subagent") && request.messages?.some(message => message.role === "user" && JSON.stringify(message.content).includes("hooknostic-child-task"));
+    const followUp = child && JSON.stringify(request.messages.findLast(message => message.role === "user")?.content ?? "").includes("hooknostic-follow-up");
     const lastTool = request.messages?.findLast(message => message.role === "tool");
     // Captured OAuth startup can list tools before the model's catalog catches
     // up. Retry the scripted call only after its unknown-tool result and the
@@ -66,13 +75,26 @@ export async function startToolModel(project, mcpOnly = false, remote = false, a
     // Constructed timing: the child answers 3 s late, so a background child
     // (2.3.0 and later) outlives its parent's first execution.
     if (child && audit === "subagent-late") await new Promise(resolve => setTimeout(resolve, 3000));
-    let delta = { role: "assistant", content: child ? "hooknostic-child-result" : "tool capture complete" };
+    // Constructed failure: HTTP 400 fails the child's execution at once (a 500
+    // is retried for about 90 s before it fails).
+    if (child && audit === "subagent-fail") {
+      res.writeHead(400, { "content-type": "application/json" });
+      res.end(JSON.stringify({ error: { message: "hooknostic-child-failure", type: "invalid_request_error" } }));
+      return;
+    }
+    // Constructed timing, off unless set: an opt-in background child answers
+    // late, so it outlives its parent's execution.
+    if (child && audit === "subagent-opt-in" && process.env.HKN_CHILD_DELAY_MS)
+      await new Promise(resolve => setTimeout(resolve, Number(process.env.HKN_CHILD_DELAY_MS)));
+    let delta = { role: "assistant", content: followUp ? "hooknostic-child-follow-up-result" : child ? "hooknostic-child-result" : "tool capture complete" };
     if (action) {
       const [name, args] = action;
       callIndex += 1;
       if (!tools.some(tool => tool.function?.name === name)) errors.push(`Missing tool ${name}`);
+      const values = typeof args === "function" ? args(request) : args;
+      if (name === "subagent" && "sessionID" in values && typeof values.sessionID !== "string") errors.push("No child session id to follow up");
       delta = { role: "assistant", tool_calls: [{ index: 0, id: `call_probe_${callIndex}`, type: "function",
-        function: { name, arguments: JSON.stringify(typeof args === "function" ? args() : args) } }] };
+        function: { name, arguments: JSON.stringify(values) } }] };
     }
     res.writeHead(200, { "content-type": "text/event-stream" });
     const base = { id: `chatcmpl-probe-${index}`, object: "chat.completion.chunk", created: 0, model: "hooknostic-playback" };

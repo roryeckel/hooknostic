@@ -7,7 +7,7 @@ import { dialectOfStatedShell, statedShellV2 } from "../shell-statement.js";
 import type { OpenCodeShimOptions } from "../shim.js";
 import type { OpenCodeV2Application } from "./apply.js";
 import { planOpenCodeV2Application } from "./apply.js";
-import type { OpenCodeV2Execution } from "./decode.js";
+import type { OpenCodeV2Child, OpenCodeV2Execution } from "./decode.js";
 import { decodeOpenCodeV2, OpenCodeV2DecodeError, record } from "./decode.js";
 import { opencodeV2FileCodec, opencodeV2ShellCodec } from "./toolmap.js";
 
@@ -64,7 +64,8 @@ export async function setupOpenCodeV2(
   const registrations: Registration[] = [];
   const controller = new AbortController();
   let task: Promise<void> | undefined;
-  const children = new Set<string>();
+  // Each child session's parent and agent, from its session.created.
+  const children = new Map<string, OpenCodeV2Child>();
   const queues = new Map<string, Promise<void>>();
   // The event subscription delivers every location's sessions to each plugin
   // instance, but prompt hooks are location-scoped: a session is ours once it
@@ -79,12 +80,16 @@ export async function setupOpenCodeV2(
   // fields are assembled from what came before it, and only when a hook
   // declares one (ADR-0027). The prompt hook's ids wait here for the
   // execution they start; each running execution collects its text.
-  const declares = (field: string) =>
+  const declares = (event: "turn.stop" | "agent.stop", field: string) =>
     plugin.hooks.some(
-      (h) => h.event === "turn.stop" && hookAppliesToTarget(h, targetId) && (h.fields ?? []).includes(field as never),
+      (h) =>
+        h.event === event &&
+        hookAppliesToTarget(h, targetId) &&
+        (h.fields ?? []).includes(`${event}.${field}` as never),
     );
-  const readsText = declares("turn.stop.lastMessage");
-  const readsPrompt = declares("turn.stop.correlation.turnId");
+  // A child's agent.stop reports the same buffered text as its own turn.stop.
+  const readsText = declares("turn.stop", "lastMessage") || declares("agent.stop", "lastMessage");
+  const readsPrompt = declares("turn.stop", "correlation.turnId");
   const pendingPrompts = new Map<string, NonNullable<OpenCodeV2Execution["prompt"]>>();
   const executions = new Map<
     string,
@@ -95,7 +100,14 @@ export async function setupOpenCodeV2(
     "session.execution.failed",
     "session.execution.interrupted",
   ]);
-  const subscribes = events.has("session.start") || events.has("turn.stop") || events.has("context.compact.after");
+  // A child's stop is reported only for succeeded and failed completions; an
+  // interrupted child is not claimed.
+  const childStops = new Set(["session.execution.succeeded", "session.execution.failed"]);
+  const subscribes =
+    events.has("session.start") ||
+    events.has("turn.stop") ||
+    events.has("agent.stop") ||
+    events.has("context.compact.after");
   // The shell each session's `shell` tool was last said to run (ADR-0029). The
   // context hook precedes every model request and carries the tool's
   // description, which names the shell; no tool hook does. Kept per session and
@@ -132,12 +144,15 @@ export async function setupOpenCodeV2(
   // runs in the foreground by default and its result is the tool result (the
   // opt-in background argument was not probed); from 2.3.0 it always runs in the
   // background and its result is a later user message that may start another
-  // parent execution, whose stop does post.
+  // parent execution, whose stop does post. Only a turn.stop posts: a child's
+  // agent.stop carries its parent's session id, and a post there would steer
+  // the parent, which already has the child's result or has it queued.
   const post = async (
     native: Record<string, unknown>,
     event: HookEvent,
     messages: NonNullable<OpenCodeV2Application["synthetic"]>,
   ) => {
+    if (event.event !== "turn.stop") return;
     const sessionID = event.session.id;
     if (native.type !== "session.execution.succeeded" || sessionID === undefined || children.has(sessionID)) return;
     if (typeof ctx.session.synthetic !== "function") return;
@@ -170,6 +185,7 @@ export async function setupOpenCodeV2(
     native: Record<string, unknown>,
     modelRequest = false,
     execution?: OpenCodeV2Execution,
+    child?: OpenCodeV2Child,
   ) => {
     let event: HookEvent;
     const shell = typeof native.sessionID === "string" ? statedShells.get(native.sessionID) : undefined;
@@ -180,7 +196,11 @@ export async function setupOpenCodeV2(
       event = decodeOpenCodeV2(
         { hook, directory: ctx.location.directory, event: native },
         { targetId, ...(options.harnessVersion ? { harnessVersion: options.harnessVersion } : {}) },
-        { ...(execution ? { execution } : {}), ...(shell !== undefined ? { shell } : {}) },
+        {
+          ...(execution ? { execution } : {}),
+          ...(shell !== undefined ? { shell } : {}),
+          ...(child ? { child } : {}),
+        },
       );
     } catch (error) {
       if (isInstance(error, OpenCodeV2DecodeError)) return;
@@ -360,7 +380,8 @@ export async function setupOpenCodeV2(
                 if (typeof location?.directory !== "string" || comparable(location.directory) !== here) continue;
                 local.add(sessionID);
                 // Recorded before queueing, so the child's later stop already sees it.
-                if (typeof data.parentID === "string") children.add(sessionID);
+                if (typeof data.parentID === "string")
+                  children.set(sessionID, { parentID: data.parentID, agent: data.agent });
               } else if (!local.has(sessionID)) continue;
               // Buffered here, in subscription order, not in the per-session queue:
               // a completion is queued behind a slow hook, but the text it reports
@@ -391,6 +412,11 @@ export async function setupOpenCodeV2(
                 }
               }
               enqueue(sessionID, () => run("event", event, false, execution));
+              // The child's own turn.stop first, then its agent.stop, in the
+              // same queue. Both report the same execution.
+              const child = children.get(sessionID);
+              if (child !== undefined && events.has("agent.stop") && childStops.has(String(event.type)))
+                enqueue(sessionID, () => run("event", event, false, execution, child));
             } catch (error) {
               reportInternalError(error, "event");
             }

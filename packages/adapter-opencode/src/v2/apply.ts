@@ -6,10 +6,11 @@ export interface OpenCodeV2Application {
   content?: unknown;
   system?: { type: "text"; text: string }[];
   /**
-   * turn.stop messages the shim admits with `session.synthetic`, in order.
-   * `resume: false` is a notice that starts no execution; `resume: true` is
-   * stop prevention. At most one entry resumes and it is last, so every notice
-   * is admitted before the instruction that keeps the agent working.
+   * Stop messages for `session.synthetic`, in order. `resume: false` is a
+   * notice that starts no execution; `resume: true` is stop prevention. At most
+   * one entry resumes and it is last, so every notice is admitted before the
+   * instruction that keeps the agent working. Planned for both stop events;
+   * the shim decides whether to post, and posts only for a turn.stop.
    */
   synthetic?: { text: string; resume: boolean }[];
 }
@@ -23,7 +24,7 @@ export function planOpenCodeV2Application(result: HookResult): OpenCodeV2Applica
       application.content = typeof effect.output === "string" ? effect.output : JSON.stringify(effect.output);
     if (effect.kind === "addContext") (application.system ??= []).push({ type: "text", text: effect.context });
   }
-  if (result.event === "turn.stop") {
+  if (result.event === "turn.stop" || result.event === "agent.stop") {
     const synthetic = result.effects.flatMap(({ effect }) =>
       effect.kind === "notify" ? [{ text: effect.message, resume: false }] : [],
     );

@@ -1000,6 +1000,11 @@ Projection validation records:
 | `tool.error.correlation.toolCallId` | exact | — |
 | `tool.error.error.message` | exact | — |
 | `permission.request.correlation.toolCallId` | exact | — |
+| `agent.stop.agent.id` | exact | the child's session id, which its execution completion carries. |
+| `agent.stop.correlation.agentId` | exact | the child's session id, as agent.id. |
+| `agent.stop.agent.type` | emulated | the agent named by the child's session.created, remembered from the event subscription; the completion does not carry it. |
+| `agent.stop.correlation.parentAgentId` | emulated | the parent's session id, from the child's session.created parentID, remembered from the event subscription; also the event's session.id. |
+| `agent.stop.lastMessage` | emulated | assembled as turn.stop.lastMessage is, from the child's own session.text.ended events, and only when an agent.stop hook declares it. Absent when the child failed before it ended any text. |
 | `prompt.before.correlation.turnId` | exact | the prompt hook's messageID, the id of the user message it admits. |
 | `turn.stop.lastMessage` | emulated | execution completion carries only the session id. The shim buffers the session.text.ended events of each execution from the event subscription and joins, in ordinal order, the text of the last assistant message that produced any (one message per model step, as on Claude). Only sessions the plugin tracks, only while subscribed, and only when a turn.stop hook declares this field. A failed or interrupted execution reports whatever text had ended. |
 | `turn.stop.correlation.turnId` | emulated | the messageID of the prompt that started the execution, remembered from the prompt hook: the id prompt.before reports. Absent for an execution no prompt hook started, such as a stop-prevention continuation (session.synthetic) or one a background subagent's result starts in its idle parent (observed from 2.3.0, where every subagent runs in the background; earlier builds run one in the foreground by default, and their opt-in background argument was not probed), and when the plugin did not see the prompt. A prompt admitted while an execution runs changes nothing and is handed to no later execution, which then reports none. |

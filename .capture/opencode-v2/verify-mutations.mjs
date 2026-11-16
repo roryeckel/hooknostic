@@ -159,15 +159,62 @@ const cases = [
     "packages/sdk/src/schemas.test.ts",
     "separate family artifacts",
   ],
+  // A child's completion as agent.stop (#231). The unit tests replay both
+  // captured subagent sequences, foreground and background.
+  ["agent-stop-decode", "packages/adapter-opencode/src/v2/decode.ts", "enrichment.child !== undefined &&", "false && enrichment.child !== undefined &&", unit, "subagent-stop.input.json"],
+  ["agent-stop-session", "packages/adapter-opencode/src/v2/decode.ts", "session: { id: parentID, cwd", "session: { id: sessionID, cwd", unit, "subagent-stop.input.json"],
+  ["agent-stop-subscription", "packages/adapter-opencode/src/v2/shim.ts", '    events.has("agent.stop") ||\n', "", unit, "U2:"],
+  ["agent-stop-parent-link", "packages/adapter-opencode/src/v2/shim.ts", "{ parentID: data.parentID, agent: data.agent }", "{ agent: data.agent }", unit, "U2:"],
+  ["agent-stop-completion-filter", "packages/adapter-opencode/src/v2/shim.ts", ' && childStops.has(String(event.type))', "", unit, "U2:"],
+  ["agent-stop-text", "packages/adapter-opencode/src/v2/shim.ts", ' || declares("agent.stop", "lastMessage")', "", unit, "U3:"],
+  ["agent-stop-post-guard", "packages/adapter-opencode/src/v2/shim.ts", '    if (event.event !== "turn.stop") return;\n', "", unit, "U4:"],
+  ["agent-stop-child-turn-stop", "packages/adapter-opencode/src/v2/shim.ts", 'enqueue(sessionID, () => run("event", event, false, execution));', 'if (!children.has(sessionID)) enqueue(sessionID, () => run("event", event, false, execution));', unit, "U5:"],
+  ["agent-stop-succeeded-only", "packages/adapter-opencode/src/v2/shim.ts", 'new Set(["session.execution.succeeded", "session.execution.failed"])', 'new Set(["session.execution.succeeded"])', unit, "U6:"],
+  ["agent-stop-parent-link-playback", "packages/adapter-opencode/src/v2/shim.ts", "{ parentID: data.parentID, agent: data.agent }", "{ agent: data.agent }", playback, "one agent.stop under its parent"],
+  [
+    "agent-stop-order",
+    "packages/adapter-opencode/src/v2/shim.ts",
+    '              enqueue(sessionID, () => run("event", event, false, execution));\n              // The child\'s own turn.stop first, then its agent.stop, in the\n              // same queue. Both report the same execution.\n              const child = children.get(sessionID);\n              if (child !== undefined && events.has("agent.stop") && childStops.has(String(event.type)))\n                enqueue(sessionID, () => run("event", event, false, execution, child));',
+    '              const child = children.get(sessionID);\n              if (child !== undefined && events.has("agent.stop") && childStops.has(String(event.type)))\n                enqueue(sessionID, () => run("event", event, false, execution, child));\n              enqueue(sessionID, () => run("event", event, false, execution));',
+    playback,
+    "late background child",
+  ],
+  ["agent-stop-succeeded-only-playback", "packages/adapter-opencode/src/v2/shim.ts", 'new Set(["session.execution.succeeded", "session.execution.failed"])', 'new Set(["session.execution.succeeded"])', playback, "failed before any text"],
+  // Pins the follow-up claim: a child reported once would drop the second.
+  ["agent-stop-once-per-child", "packages/adapter-opencode/src/v2/shim.ts", "const child = children.get(sessionID);", "const child = children.get(sessionID); children.delete(sessionID);", playback, "followed-up subagent"],
+  // Keyed by session alone, the child's agent.stop takes the parent's one
+  // prevention, and the stop drive times out waiting for it.
+  [
+    "agent-stop-prevent-key",
+    "packages/cli/test/harness-playback.ts",
+    '!preventedSessions.has("${event}:" + (event.session.id ?? ""))) {\n          preventedSessions.add("${event}:" + (event.session.id ?? ""));',
+    '!preventedSessions.has(event.session.id ?? "")) {\n          preventedSessions.add(event.session.id ?? "");',
+    playback,
+    "prevents and notifies",
+  ],
+  // Rated prevention reaches the post; only the guard keeps it off the parent.
+  [
+    "agent-stop-post-guard-playback",
+    [
+      ["packages/adapter-opencode/src/v2/shim.ts", '    if (event.event !== "turn.stop") return;\n', ""],
+      ["packages/adapter-opencode/src/v2/profile.ts", '"agent.stop.prevent": {\n        level: "unsupported",', '"agent.stop.prevent": {\n        level: "approximate",'],
+    ],
+    undefined,
+    undefined,
+    playback,
+    "prevents and notifies",
+  ],
 ];
 for (const [name, path, before, after, file, pattern] of cases) {
   if (process.argv.length > 2 && !process.argv.slice(2).includes(name)) continue;
-  const original = readFileSync(path);
-  const source = original.toString("utf8");
-  if (!source.includes(before)) throw new Error(`mutant anchor missing: ${name}`);
+  // One edit, or several (each [path, before, after]) for a mutant spanning files.
+  const edits = Array.isArray(path) ? path : [[path, before, after]];
+  const originals = edits.map(([path]) => [path, readFileSync(path)]);
+  for (const [path, before] of edits)
+    if (!readFileSync(path, "utf8").includes(before)) throw new Error(`mutant anchor missing: ${name}`);
   const report = join(root, name + ".json");
   try {
-    writeFileSync(path, source.replaceAll(before, after));
+    for (const [path, before, after] of edits) writeFileSync(path, readFileSync(path, "utf8").replaceAll(before, after));
     const result = spawnSync(
       process.execPath,
       [vitest, "run", file, "-t", pattern, "--reporter=json", "--outputFile=" + report],
@@ -184,7 +231,7 @@ for (const [name, path, before, after, file, pattern] of cases) {
       throw new Error(`playback binary mismatch, mutant not exercised: ${name}`);
     if (result.status === 0 || !failed.length) throw new Error(`mutant survived: ${name}`);
   } finally {
-    writeFileSync(path, original);
+    for (const [path, original] of originals) writeFileSync(path, original);
   }
 }
 console.log(`Mutation reports: ${root}`);

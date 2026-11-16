@@ -277,6 +277,91 @@ describe.skipIf(!enabled)("OpenCode v2 offline playback", () => {
       expect(carriesResult("user")).toEqual([]);
     }
   }, 70000);
+  // One `subagent*` drive: its hook captures and the generated hooks' trace.
+  type TraceEntry = {
+    event: string;
+    turnId?: string;
+    lastMessage?: string;
+    sessionId?: string;
+    agentId?: string;
+    agentType?: string;
+    correlationAgentId?: string;
+    parentAgentId?: string;
+  };
+  async function driveSubagent(mode: string) {
+    const result = await runProcess(
+      process.execPath,
+      ["--experimental-strip-types", ".capture/opencode-v2/drive.mjs", mode],
+      {
+        cwd: fileURLToPath(new URL("../../..", import.meta.url)),
+        env: process.env,
+        timeoutMs: 60000,
+      },
+    );
+    expect(result.code, result.stdout + result.stderr).toBe(0);
+    const { root } = JSON.parse(result.stdout.split("\n").find((line) => line.startsWith('{"root"'))!);
+    const playback = JSON.parse(await readFile(join(root, "result.json"), "utf8"));
+    expect(playback.errors).toEqual([]);
+    const captured = (await readFile(join(root, "captured/events.jsonl"), "utf8"))
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line));
+    const trace = (await readFile(join(root, "trace.jsonl"), "utf8"))
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line) as TraceEntry);
+    const created = captured.filter(
+      (row) => row.hook === "event" && row.event.type === "session.created" && row.event.data?.parentID,
+    );
+    expect(created).toHaveLength(1);
+    const { sessionID: child, parentID: parent, agent } = created[0].event.data;
+    const executions = (type: string) =>
+      captured.filter(
+        (row) =>
+          row.hook === "event" && row.event.type === `session.execution.${type}` && row.event.data?.sessionID === child,
+      ).length;
+    return { captured, trace, child, parent, agent, executions };
+  }
+  it("reports a finished subagent as one agent.stop under its parent, after the child's own turn.stop", async () => {
+    const { trace, child, parent, agent, executions } = await driveSubagent("subagent");
+    expect(executions("succeeded")).toBe(1);
+    const stops = trace.filter((entry) => entry.event === "agent.stop");
+    expect(stops).toEqual([
+      expect.objectContaining({
+        nativeEvent: "event",
+        sessionId: parent,
+        agentId: child,
+        agentType: agent,
+        correlationAgentId: child,
+        parentAgentId: parent,
+        lastMessage: "hooknostic-child-result",
+      }),
+    ]);
+    expect(stops[0]).not.toHaveProperty("turnId");
+    const childStop = trace.findIndex((entry) => entry.event === "turn.stop" && entry.sessionId === child);
+    expect(childStop).toBeGreaterThanOrEqual(0);
+    expect(trace[childStop + 1]).toMatchObject({ event: "agent.stop", agentId: child });
+  }, 70000);
+  it("reports a subagent that failed before any text as agent.stop without a last message", async () => {
+    const { trace, child, parent, executions } = await driveSubagent("subagent-fail");
+    expect(executions("failed")).toBe(1);
+    expect(executions("succeeded")).toBe(0);
+    const stops = trace.filter((entry) => entry.event === "agent.stop");
+    expect(stops).toEqual([expect.objectContaining({ sessionId: parent, agentId: child, parentAgentId: parent })]);
+    expect(stops[0]).not.toHaveProperty("lastMessage");
+  }, 70000);
+  it("reports each completion of a followed-up subagent as its own agent.stop", async () => {
+    const { trace, child, parent, executions } = await driveSubagent("subagent-followup");
+    expect(executions("succeeded")).toBe(2);
+    expect(
+      trace
+        .filter((entry) => entry.event === "agent.stop")
+        .map(({ sessionId, agentId, lastMessage }) => ({ sessionId, agentId, lastMessage })),
+    ).toEqual([
+      { sessionId: parent, agentId: child, lastMessage: "hooknostic-child-result" },
+      { sessionId: parent, agentId: child, lastMessage: "hooknostic-child-follow-up-result" },
+    ]);
+  }, 70000);
   it("reports each parent execution a late background child starts as its own turn stop", async () => {
     const result = await runProcess(
       process.execPath,
@@ -329,6 +414,18 @@ describe.skipIf(!enabled)("OpenCode v2 offline playback", () => {
     expect(stops.flatMap((entry) => (entry.turnId === undefined ? [] : [entry.turnId])).sort()).toEqual(
       [...prompts].sort(),
     );
+    // The child's own turn.stop, then its agent.stop under the parent, however
+    // late the child finishes.
+    const child = captured.find(
+      (row) => row.hook === "event" && row.event.type === "session.created" && row.event.data?.parentID === parent,
+    ).event.data.sessionID as string;
+    const ordered = (trace as { event: string; sessionId?: string; agentId?: string }[]).filter(
+      (entry) => entry.event === "agent.stop" || (entry.event === "turn.stop" && entry.sessionId === child),
+    );
+    expect(ordered.map(({ event, sessionId, agentId }) => ({ event, sessionId, agentId }))).toEqual([
+      { event: "turn.stop", sessionId: child, agentId: undefined },
+      { event: "agent.stop", sessionId: parent, agentId: child },
+    ]);
   }, 70000);
   it("observes typed tool failures and replaces rich output in recorded requests", async () => {
     const result = await runProcess(
@@ -754,6 +851,15 @@ describe.skipIf(!enabled)("OpenCode v2 offline playback", () => {
       Array.from({ length: 2 + extra }, () => expect.objectContaining({ lastMessage: expect.any(String) })),
     );
     expect(stops.filter((entry) => entry.lastMessage !== undefined)).toHaveLength(6 + extra);
+    // The child's completion is also one agent.stop, under its parent. It
+    // neither takes the parent's prevention nor posts: the counts above hold,
+    // and the parent was told to keep working only by its own prevention.
+    expect(capture.child.reasonMessages).toBe(1);
+    expect(
+      (trace as { event: string; sessionId?: string; agentId?: string }[])
+        .filter((entry) => entry.event === "agent.stop")
+        .map(({ sessionId, agentId }) => ({ sessionId, agentId })),
+    ).toEqual([{ sessionId: capture.child.parentID, agentId: capture.child.childID }]);
   }, 150000);
   it.each(["project-remote", "package-remote"])(
     "%s executes Streamable HTTP with the declared headers",
