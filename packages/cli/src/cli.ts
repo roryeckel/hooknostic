@@ -1,3 +1,4 @@
+import { rmSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
@@ -62,6 +63,21 @@ async function readStdin(): Promise<string> {
   process.stdin.setEncoding("utf8");
   for await (const chunk of process.stdin) data += chunk;
   return data;
+}
+
+/**
+ * Remove `directory` when the process exits. Dispatch removes its staged
+ * hooks when it returns, but a hook source can end the process before then;
+ * an `exit` listener still runs, and must be synchronous and never throw.
+ */
+function removeAtExit(directory: string): void {
+  process.on("exit", () => {
+    try {
+      rmSync(directory, { recursive: true, force: true });
+    } catch {
+      // Best effort: a leftover temp directory is not worth failing the exit.
+    }
+  });
 }
 
 /**
@@ -352,7 +368,10 @@ export async function runCli(argv: string[], options?: RunCliOptions): Promise<n
                       stderr: io.stderr,
                     },
             },
-            guarded === undefined ? {} : { onEventStart: guarded.onEventStart, onEventEnd: guarded.onEventEnd },
+            {
+              ...(guarded === undefined ? {} : { onEventStart: guarded.onEventStart, onEventEnd: guarded.onEventEnd }),
+              ...(protocol === undefined ? {} : { onStaged: removeAtExit }),
+            },
           );
         } catch (error) {
           // The catch below answers 2. Leave as a finished run does, so a

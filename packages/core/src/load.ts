@@ -26,6 +26,8 @@ export interface EvaluateOptions {
 export interface StagedUserModule {
   /** File URL of the bundle; a distinct query string imports a fresh module instance. */
   href: string;
+  /** The temp directory holding the bundle, which `dispose` removes. */
+  directory: string;
   dispose(): Promise<void>;
 }
 
@@ -71,7 +73,7 @@ export async function stageUserModule(file: string, options?: EvaluateOptions): 
     await dispose();
     throw error;
   }
-  return { href: pathToFileURL(out).href, dispose };
+  return { href: pathToFileURL(out).href, directory: dir, dispose };
 }
 
 async function evaluateModule(file: string, options?: EvaluateOptions): Promise<unknown> {

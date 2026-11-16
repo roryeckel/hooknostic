@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { syncBuiltinESMExports } from "node:module";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -921,6 +921,32 @@ export default definePlugin({
       // Not 0 from the hook source's listener, nor Node's 13: the run never finished.
       expect(status, raw).toBe(1);
       expect(results).toHaveLength(0);
+    });
+
+    it("leaves no staged module behind when the run ends early", async () => {
+      // A temp directory of the run's own, so other tests' staging cannot show up in it.
+      const temp = await mkdtemp(join(tmpdir(), "hooknostic-dispatch-temp-"));
+      tempDirs.push(temp);
+      const dir = await project(
+        atLoad(
+          `process.on("uncaughtException", () => process.exit(0)); setTimeout(() => { throw new Error("t"); }, 0);`,
+        ),
+        GUARD_TARGETS,
+      );
+      const child = spawnSync(
+        process.execPath,
+        [CLI_BIN, "dispatch", "--config", join(dir, "hooknostic.config.ts"), "--target", "claude"],
+        {
+          input: EVENTS.join(""),
+          encoding: "utf8",
+          timeout: 60_000,
+          env: { ...process.env, HOOKNOSTIC_DEBUG: "", TEMP: temp, TMP: temp, TMPDIR: temp },
+        },
+      );
+      // Ended where the guard cannot unwind, so dispatch's own cleanup never ran.
+      expect(child.status, child.stderr).toBe(1);
+      expect(child.stdout).toBe("");
+      expect((await readdir(temp)).filter((name) => name.startsWith("hooknostic-eval-"))).toEqual([]);
     });
 
     it("still fails the run for a stray after the last result", async () => {

@@ -78,6 +78,11 @@ export interface DispatchEventHooks {
   onEventStart?(index: number, adapter: { id: string; execution: "command" | "module" | undefined }): void;
   /** Awaited once event `index` has its result, before the next event starts. */
   onEventEnd?(index: number): Promise<void>;
+  /**
+   * The hooks are staged in `directory`, which dispatch removes when it
+   * returns: a process that ends before then can remove it itself.
+   */
+  onStaged?(directory: string): void;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -373,6 +378,7 @@ export async function dispatchEventsWith(
   } catch (error) {
     return { ok: false, errors: [`failed to bundle entry ${config.entry}: ${errorMessage(error)}`] };
   }
+  hooks.onStaged?.(staged.directory);
   try {
     let instances = 0;
     const load = async () =>
