@@ -237,9 +237,9 @@ describe("files that already exist (#217)", () => {
   );
 });
 
-// Runs init in text and JSON mode from cwd, expecting exit 2 with message
-// and nothing written anywhere under root.
-async function expectRefused(root: string, cwd: string, args: string[], message: string) {
+// Runs init in text and JSON mode from cwd, expecting exit 2 with message,
+// the given files listed as unchanged, and nothing written under root.
+async function expectRefused(root: string, cwd: string, args: string[], message: string, unchanged: string[] = []) {
   const before = await snapshot(root);
   const previous = process.cwd();
   process.chdir(cwd);
@@ -258,7 +258,7 @@ async function expectRefused(root: string, cwd: string, args: string[], message:
       command: "init",
       ok: false,
       created: [],
-      unchanged: [],
+      unchanged,
       errors: [message],
     });
   } finally {
@@ -363,6 +363,30 @@ describe("a target that is a directory (#217)", () => {
         errors: [message],
       });
       expect(await snapshot(root)).toEqual(before);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  // A refusal still says which targets already exist as files, whichever
+  // target is the directory.
+  it.each([
+    ["the config path is a directory and hooks.ts exists", "hooknostic.config.ts", "hooks.ts"],
+    ["hooks.ts is a directory and the config exists", "hooks.ts", "hooknostic.config.ts"],
+  ])("lists the existing file as unchanged when %s", async (_, directory, existing) => {
+    const { root, proj } = await project();
+    try {
+      await mkdir(join(proj, directory));
+      await writeFile(join(proj, existing), "author file");
+      await expectRefused(
+        root,
+        proj,
+        ["--config", join(proj, "hooknostic.config.ts")],
+        directory === "hooks.ts"
+          ? `init failed: cannot create ${join(proj, directory)}: it is a directory`
+          : `init failed: cannot create ${join(proj, directory)}: it is a directory; --config names the configuration file, not a directory`,
+        [join(proj, existing)],
+      );
     } finally {
       await rm(root, { recursive: true, force: true });
     }

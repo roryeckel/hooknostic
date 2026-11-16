@@ -44,11 +44,22 @@ export async function runInit(
     ],
   ];
   const created: string[] = [];
-  const unchanged: string[] = [];
+  // Targets known to exist as files. They are listed as unchanged in the
+  // order of files, on failure as well as success, even when the write loop
+  // stopped before reaching them.
+  const present = new Set<string>();
+  const unchanged = () => files.map(([file]) => file!).filter((file) => present.has(file));
   const fail = (message: string): number => {
     if (json)
       io.stdout(
-        JSON.stringify({ schemaVersion: 1, command: "init", ok: false, created, unchanged, errors: [message] }),
+        JSON.stringify({
+          schemaVersion: 1,
+          command: "init",
+          ok: false,
+          created,
+          unchanged: unchanged(),
+          errors: [message],
+        }),
       );
     else
       io.stderr(
@@ -85,7 +96,10 @@ export async function runInit(
   // a dangling symlink to hooks.ts or hooks.ts::$DATA, writes the config
   // into hooks.ts. hooks.ts did not exist, so nothing is lost, and matching
   // inodes was judged not worth it.
-  const present = new Set<string>();
+  //
+  // Every target is checked before a directory is refused, so the refusal
+  // still lists the others that exist as files.
+  let directory: string | undefined;
   for (const [file] of files) {
     let isDirectory: boolean;
     try {
@@ -93,25 +107,23 @@ export async function runInit(
     } catch {
       continue;
     }
-    if (isDirectory) {
-      const message = `init failed: cannot create ${file}: it is a directory`;
-      // The --config hint only helps when --config was given, and a file
-      // suggested inside a directory already named like a config would
-      // only nest the mistake.
-      if (file !== path || config === undefined) return fail(message);
-      return fail(
-        basename(file).endsWith(".config.ts")
-          ? `${message}; --config names the configuration file, not a directory`
-          : `${message}; --config names the configuration file, such as ${join(file, DEFAULT_CONFIG)}`,
-      );
-    }
-    present.add(file!);
+    if (!isDirectory) present.add(file!);
+    else directory ??= file!;
+  }
+  if (directory !== undefined) {
+    const message = `init failed: cannot create ${directory}: it is a directory`;
+    // The --config hint only helps when --config was given, and a file
+    // suggested inside a directory already named like a config would
+    // only nest the mistake.
+    if (directory !== path || config === undefined) return fail(message);
+    return fail(
+      basename(directory).endsWith(".config.ts")
+        ? `${message}; --config names the configuration file, not a directory`
+        : `${message}; --config names the configuration file, such as ${join(directory, DEFAULT_CONFIG)}`,
+    );
   }
   for (const [file, contents] of files) {
-    if (present.has(file!)) {
-      unchanged.push(file!);
-      continue;
-    }
+    if (present.has(file!)) continue;
     let opening = false;
     let handle: FileHandle | undefined;
     try {
@@ -128,7 +140,7 @@ export async function runInit(
       // Only open's EEXIST means the file is already there; mkdir's means
       // its directory is a file.
       if (opening && !handle && (error as NodeJS.ErrnoException).code === "EEXIST") {
-        unchanged.push(file!);
+        present.add(file!);
         continue;
       }
       // This run opened the file, so it may be truncated: remove it. Files
@@ -139,15 +151,16 @@ export async function runInit(
       return fail(`init failed: cannot create ${file}: ${errorMessage(error)}`);
     }
   }
-  if (json) io.stdout(JSON.stringify({ schemaVersion: 1, command: "init", ok: true, created, unchanged }));
+  const left = unchanged();
+  if (json) io.stdout(JSON.stringify({ schemaVersion: 1, command: "init", ok: true, created, unchanged: left }));
   else
     io.stdout(
       [
         ...(created.length > 0
           ? [`Created ${created.length} ${fileNoun(created.length)}:`, ...indent(created)]
           : ["Created no files."]),
-        ...(unchanged.length > 0
-          ? [`Left ${unchanged.length} existing ${fileNoun(unchanged.length)} unchanged:`, ...indent(unchanged)]
+        ...(left.length > 0
+          ? [`Left ${left.length} existing ${fileNoun(left.length)} unchanged:`, ...indent(left)]
           : []),
         "Install Hooknostic and its SDK with your package manager, then run hooknostic sync.",
       ].join("\n"),

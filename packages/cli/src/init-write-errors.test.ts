@@ -132,9 +132,76 @@ describe("a write that fails part-way (#217)", () => {
       expect(await readdir(proj)).toEqual([]);
     }
   });
+
+  it("lists a target that already existed as unchanged, though the loop never reached it", async () => {
+    initFs.failWrite = "hooknostic.config.ts";
+
+    for (const json of [false, true]) {
+      const proj = await project();
+      const config = join(proj, "hooknostic.config.ts");
+      const hooks = join(proj, "hooks.ts");
+      await writeFile(hooks, "author hooks");
+      const message = `init failed: cannot create ${config}: synthetic write failure`;
+
+      const result = await init(["--config", config, ...(json ? ["--json"] : [])]);
+      expect(result.code).toBe(2);
+      if (json) {
+        expect(result.err).toEqual([]);
+        expect(JSON.parse(result.out[0]!)).toStrictEqual({
+          schemaVersion: 1,
+          command: "init",
+          ok: false,
+          created: [],
+          unchanged: [hooks],
+          errors: [message],
+        });
+      } else {
+        expect(result.out).toEqual([]);
+        expect(result.err).toEqual([message]);
+      }
+      expect(await readdir(proj)).toEqual(["hooks.ts"]);
+      expect(await readFile(hooks, "utf8")).toBe("author hooks");
+    }
+  });
 });
 
 describe("a file that appears after the check (#217)", () => {
+  it("keeps the config first in unchanged when the config is the one that appeared", async () => {
+    initFs.hideFromStat = "hooknostic.config.ts";
+
+    for (const json of [false, true]) {
+      const proj = await project();
+      const config = join(proj, "hooknostic.config.ts");
+      const hooks = join(proj, "hooks.ts");
+      await writeFile(config, "author config");
+      await writeFile(hooks, "author hooks");
+
+      const result = await init(["--config", config, ...(json ? ["--json"] : [])]);
+      expect(result.code).toBe(0);
+      expect(result.err).toEqual([]);
+      if (json) {
+        expect(JSON.parse(result.out[0]!)).toStrictEqual({
+          schemaVersion: 1,
+          command: "init",
+          ok: true,
+          created: [],
+          unchanged: [config, hooks],
+        });
+      } else {
+        expect(result.out).toEqual([
+          [
+            "Created no files.",
+            "Left 2 existing files unchanged:",
+            `  ${config}`,
+            `  ${hooks}`,
+            "Install Hooknostic and its SDK with your package manager, then run hooknostic sync.",
+          ].join("\n"),
+        ]);
+      }
+      expect(await readFile(config, "utf8")).toBe("author config");
+    }
+  });
+
   it("is left unchanged, not overwritten", async () => {
     initFs.hideFromStat = "hooks.ts";
 
