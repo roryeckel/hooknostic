@@ -343,6 +343,27 @@ export default definePlugin({ name: "pi-validation", hooks: [
     expect(broken.err()).toMatch(/^line 2: not JSON .*\nline 3: not JSON /);
   });
 
+  // An events file it cannot read is the user's mistake: a plain message and
+  // exit 2, not the catch-all's "unexpected error" with a stack (#208).
+  it.each([
+    ["is missing", "missing.jsonl", ["ENOENT"]],
+    // Reading a directory: EISDIR on POSIX; Windows has answered EISDIR, but
+    // its filesystem layer can answer EPERM instead.
+    ["is a directory", ".", process.platform === "win32" ? ["EISDIR", "EPERM"] : ["EISDIR"]],
+  ])("reports an --events path that %s", async (_, name, codes) => {
+    const dir = await project(HOOKS);
+    const cli = captureIO();
+    const argv = ["dispatch", "--config", join(dir, "hooknostic.config.ts"), "--target", "claude"];
+    expect(await runCli([...argv, "--events", join(dir, name)], { io: cli.io })).toBe(2);
+    expect(cli.out).toEqual([]);
+    const prefix = `cannot read --events ${join(dir, name)}: `;
+    expect(cli.err().startsWith(prefix)).toBe(true);
+    expect(codes).toContain(/^[A-Z]+/.exec(cli.err().slice(prefix.length))?.[0]);
+    expect(cli.err()).not.toContain("\n");
+    expect(cli.err()).not.toContain("unexpected error");
+    expect(cli.err()).not.toMatch(/^\s+at /m);
+  });
+
   const DIALECT_HOOKS = `
 import { block, definePlugin, hook, replaceInput } from "@hooknostic/sdk";
 

@@ -14,7 +14,7 @@ import { makeFakeAdapter } from "@hooknostic/testkit";
 
 import { runBuild } from "./build.js";
 import { runCheck } from "./check.js";
-import { runCli } from "./cli.js";
+import { CLI_USAGE, runCli } from "./cli.js";
 import { defaultAdapterRegistry } from "./registry.js";
 
 // Synthetic profiles need a syntactically valid source; provenance is
@@ -767,5 +767,100 @@ describe("runCli", () => {
       expect(await runCli([command, "--target", value], { io })).toBe(2);
       expect(err()).toContain("at least one non-empty target");
     }
+  });
+
+  // A mistake in the command line is a usage error, not the catch-all's
+  // "unexpected error" with a stack (#208).
+  it.each([
+    [["build", "--dry-run"], "--dry-run is only supported by sync"],
+    [["check", "--dry-run"], "--dry-run is only supported by sync"],
+    [["verify", "--dry-run"], "--dry-run is only supported by sync"],
+    [["recover", "--dry-run"], "--dry-run is only supported by sync"],
+    [["doctor", "--dry-run"], "--dry-run is only supported by sync"],
+    [["init", "--local", "--dry-run"], "--dry-run is only supported by sync"],
+    [["inspect", "claude", "--dry-run"], "--dry-run is only supported by sync"],
+    [["dispatch", "--target", "claude", "--dry-run"], "--dry-run is only supported by sync"],
+    [["check", "--unguarded"], "--unguarded is only supported by dispatch"],
+    [["sync", "--unguarded"], "--unguarded is only supported by dispatch"],
+    [["inspect", "claude", "--unguarded"], "--unguarded is only supported by dispatch"],
+    [["init"], "init requires --local"],
+    [["inspect", "claude", "--delivery", "foo"], "--delivery must be project or package"],
+  ])("reports %j as a usage error", async (argv, message) => {
+    const { io, out, err } = captureIO();
+    expect(await runCli(argv, { io })).toBe(2);
+    expect(err()).toBe(`${message}\n${CLI_USAGE}`);
+    expect(err()).not.toContain("unexpected error");
+    expect(err()).not.toMatch(/^\s+at /m);
+    expect(out()).toBe("");
+  });
+
+  it("keeps a usage error's JSON line under --json (#208)", async () => {
+    const { io, out, err } = captureIO();
+    expect(await runCli(["build", "--dry-run", "--json"], { io })).toBe(2);
+    expect(JSON.parse(out())).toStrictEqual({
+      schemaVersion: 1,
+      command: "build",
+      ok: false,
+      errors: ["--dry-run is only supported by sync"],
+    });
+    expect(out()).not.toContain("\n");
+    expect(err()).toBe("");
+  });
+});
+
+// `inspect --config` reports a config that fails to load as HN501, through
+// the diagnostics printer, as `check` does (#208).
+describe("inspect --config with a config that fails to load", () => {
+  const configs: [string, string | undefined, string][] = [
+    ["is missing", undefined, "failed to load config <path>: "],
+    [
+      "fails the schema",
+      `export default { entry: "./hooks.ts", targets: { claude: { adapter: "claude" } } };`,
+      "invalid configuration: targets.claude.version",
+    ],
+    ["throws at top level", `throw new Error("boom");`, "failed to load config <path>: boom"],
+    [
+      "declares no targets",
+      `export default { entry: "./hooks.ts", targets: {} };`,
+      "configuration declares no targets.",
+    ],
+  ];
+
+  async function configFile(source: string | undefined): Promise<string> {
+    const dir = await mkdtemp(join(tmpdir(), "hooknostic-inspect-config-"));
+    tempDirs.push(dir);
+    await writeFile(join(dir, "hooks.ts"), `export default { name: "inspect-config", hooks: [] };`);
+    const path = join(dir, "hooknostic.config.ts");
+    if (source !== undefined) await writeFile(path, source);
+    return path;
+  }
+
+  it.each(configs)("prints HN501 when the config %s", async (_, source, detail) => {
+    const path = await configFile(source);
+    const { io, out, err } = captureIO();
+    expect(await runCli(["inspect", "claude", "--config", path], { io })).toBe(2);
+    expect(err()).toMatch(/^HN501 invalid configuration \[error\]\n/);
+    expect(err()).toContain(detail.replace("<path>", path));
+    expect(err()).toContain("Remediation:");
+    expect(err()).not.toContain("unexpected error");
+    expect(err()).not.toMatch(/^\s+at /m);
+    expect(out()).toBe("");
+  });
+
+  it.each(configs)("reports HN501 under --json when the config %s", async (_, source, detail) => {
+    const path = await configFile(source);
+    const { io, out, err } = captureIO();
+    expect(await runCli(["inspect", "claude", "--config", path, "--json"], { io })).toBe(2);
+    const report = JSON.parse(out());
+    expect(report).toMatchObject({ schemaVersion: 1, command: "inspect", ok: false });
+    expect(report.diagnostics.length).toBeGreaterThan(0);
+    expect(report.diagnostics.every((d: { code: string }) => d.code === "HN501")).toBe(true);
+    expect(report.errors).toStrictEqual(
+      report.diagnostics.map((d: { code: string; message: string }) => `${d.code}: ${d.message}`),
+    );
+    expect(report.errors.join("\n")).toContain(detail.replace("<path>", path));
+    expect(report.errors[0]).toMatch(/^HN501: /);
+    expect(out()).not.toContain("unexpected error");
+    expect(err()).toBe("");
   });
 });

@@ -10,6 +10,7 @@ import type { CommandShimGuard } from "@hooknostic/runtime";
 import {
   claimProtocolStdout,
   debugEnabled,
+  errorMessage,
   exitCodeText,
   finishCommandShim,
   formatInternalError,
@@ -24,7 +25,7 @@ import { runCheck } from "./check.js";
 import { runDispatchWith } from "./dispatch.js";
 import { runDoctor } from "./doctor.js";
 import { runInit } from "./init.js";
-import { runInspect } from "./inspect.js";
+import { inspectFailure, runInspect } from "./inspect.js";
 import { defaultAdapterRegistry } from "./registry.js";
 
 export const CLI_USAGE = `hooknostic — portable hooks, skills, and MCP for coding agents
@@ -446,13 +447,24 @@ async function runCommand(argv: string[], options: RunCliOptions | undefined, ow
     return 2;
   }
 
+  // A mistake in the command line: its message and the usage, as parseArgs's
+  // own are reported, not the catch-all's "unexpected error" (#208). --json
+  // keeps the line the catch-all printed, so JSON consumers see no change.
+  const usage = (message: string): number => {
+    if (parsed.values["json"]) io.stdout(JSON.stringify({ schemaVersion: 1, command, ok: false, errors: [message] }));
+    else {
+      io.stderr(message);
+      io.stderr(CLI_USAGE);
+    }
+    return 2;
+  };
+
   try {
-    if (parsed.values["dry-run"] && command !== "sync") throw new Error("--dry-run is only supported by sync");
-    if (parsed.values["unguarded"] && command !== "dispatch")
-      throw new Error("--unguarded is only supported by dispatch");
+    if (parsed.values["dry-run"] && command !== "sync") return usage("--dry-run is only supported by sync");
+    if (parsed.values["unguarded"] && command !== "dispatch") return usage("--unguarded is only supported by dispatch");
     switch (command) {
       case "init":
-        if (!parsed.values["local"]) throw new Error("init requires --local");
+        if (!parsed.values["local"]) return usage("init requires --local");
         return await runInit(
           typeof parsed.values["config"] === "string" ? parsed.values["config"] : "hooknostic.config.ts",
           registry,
@@ -520,9 +532,20 @@ async function runCommand(argv: string[], options: RunCliOptions | undefined, ow
         }
         if (typeof parsed.values["config"] === "string") {
           const loaded = await loadConfig(resolve(parsed.values["config"]));
-          if (!loaded.config) throw new Error(loaded.diagnostics.map((d) => d.message).join("\n"));
+          const report = { io, ...(parsed.values["json"] ? { json: true } : {}) };
+          // A config that fails to load is HN501, printed as check prints it (#208).
+          if (!loaded.config)
+            return inspectFailure(
+              report,
+              loaded.diagnostics.map((d) => `${d.code}: ${d.message}`),
+              loaded.diagnostics,
+            );
           const configured = Object.hasOwn(loaded.config.targets, target) ? loaded.config.targets[target] : undefined;
-          if (!configured) throw new Error(`target ${target} is not configured`);
+          // dispatch's wording for the same mistake (dispatch.ts).
+          if (!configured)
+            return inspectFailure(report, [
+              `target ${JSON.stringify(target)} is not configured; configured targets: ${Object.keys(loaded.config.targets).join(", ") || "none"}.`,
+            ]);
           parsed.values["version"] ??= configured.version;
           parsed.values["delivery"] ??= configured.delivery;
           target = configured.adapter ?? target;
@@ -531,7 +554,7 @@ async function runCommand(argv: string[], options: RunCliOptions | undefined, ow
           parsed.values["delivery"] !== undefined &&
           !["project", "package"].includes(String(parsed.values["delivery"]))
         )
-          throw new Error("--delivery must be project or package");
+          return usage("--delivery must be project or package");
         return await runInspect({
           ...(parsed.values["delivery"] === undefined
             ? {}
@@ -552,10 +575,16 @@ async function runCommand(argv: string[], options: RunCliOptions | undefined, ow
           io.stderr("dispatch requires exactly one --target, e.g. `hooknostic dispatch --target claude`.");
           return 2;
         }
-        const input =
-          typeof parsed.values["events"] === "string"
-            ? await readFile(resolve(parsed.values["events"]), "utf8")
-            : await readStdin();
+        let input: string;
+        if (typeof parsed.values["events"] === "string") {
+          // An unreadable events file is the user's mistake, exit 2 (#208).
+          try {
+            input = await readFile(resolve(parsed.values["events"]), "utf8");
+          } catch (error) {
+            io.stderr(`cannot read --events ${parsed.values["events"]}: ${errorMessage(error)}`);
+            return 2;
+          }
+        } else input = await readStdin();
         // Hooks run in this process. The hooknostic command owns it, so it
         // treats them as a command shim does: their stdout stays out of the
         // result lines, a handle one leaks cannot hold the process open, and,

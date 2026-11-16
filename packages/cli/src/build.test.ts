@@ -3930,7 +3930,27 @@ describe("hooknostic inspect", () => {
     expect(
       await runCli(["inspect", "toString", "--config", join(dir, "hooknostic.config.ts")], { io: configured.io }),
     ).toBe(2);
-    expect(configured.err()).toContain("target toString is not configured");
+    // dispatch's wording, and an ordinary failure rather than the catch-all's
+    // "unexpected error" with a stack (#208).
+    expect(configured.err()).toBe('target "toString" is not configured; configured targets: claude.');
+    expect(configured.out()).toBe("");
+    for (const target of ["nope", "toString"]) {
+      const text = captureIO();
+      expect(await runCli(["inspect", target, "--config", join(dir, "hooknostic.config.ts")], { io: text.io })).toBe(2);
+      expect(text.err()).toBe(`target ${JSON.stringify(target)} is not configured; configured targets: claude.`);
+      expect(text.out()).toBe("");
+      const json = captureIO();
+      expect(
+        await runCli(["inspect", target, "--config", join(dir, "hooknostic.config.ts"), "--json"], { io: json.io }),
+      ).toBe(2);
+      expect(JSON.parse(json.out())).toStrictEqual({
+        schemaVersion: 1,
+        command: "inspect",
+        ok: false,
+        errors: [`target ${JSON.stringify(target)} is not configured; configured targets: claude.`],
+      });
+      expect(json.err()).toBe("");
+    }
 
     const invalidCapability = captureIO();
     expect(
