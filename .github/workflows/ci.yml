@@ -59,7 +59,7 @@ jobs:
     # The hosted app upgrades independently. This image validates the current
     # CLI; the compatibility job also checks the older dashboard schema.
     container:
-      image: ghcr.io/renovatebot/renovate:44.235.1
+      image: ghcr.io/renovatebot/renovate:44.247.1
       options: --user 0
     steps:
       - uses: actions/checkout@v7
