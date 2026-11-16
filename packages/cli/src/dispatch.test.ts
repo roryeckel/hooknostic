@@ -910,6 +910,19 @@ export default definePlugin({
       expect(results).toHaveLength(0);
     });
 
+    it("keeps that failure when the loop empties under a never-settling top-level await", async () => {
+      const { status, results, raw } = await run(
+        atLoad(`
+          process.on("exit", () => { process.exitCode = 0; });
+          await new Promise(() => {});
+        `),
+        "claude",
+      );
+      // Not 0 from the hook source's listener, nor Node's 13: the run never finished.
+      expect(status, raw).toBe(1);
+      expect(results).toHaveLength(0);
+    });
+
     it("still fails the run for a stray after the last result", async () => {
       // Deterministic rather than timed: the rejection fires once dispatch has
       // set its exit code, and the leaked interval leaves the forced exit to end it.

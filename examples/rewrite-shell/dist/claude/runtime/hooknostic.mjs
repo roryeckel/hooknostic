@@ -7756,6 +7756,10 @@ function guardCommandShim(describe2, options = {}) {
     } catch {
     }
   };
+  const repin = () => {
+    process.off("exit", pin);
+    process.on("exit", pin);
+  };
   const holdUnwind = () => {
     cannotUnwind = true;
     process.nextTick(() => {
@@ -7763,7 +7767,10 @@ function guardCommandShim(describe2, options = {}) {
     });
   };
   process.on("uncaughtExceptionMonitor", holdUnwind);
-  process.prependListener("beforeExit", holdUnwind);
+  process.prependListener("beforeExit", () => {
+    holdUnwind();
+    repin();
+  });
   const onRejection = (reason) => {
     void report(reason);
   };
@@ -7782,8 +7789,7 @@ function guardCommandShim(describe2, options = {}) {
     }
     if (!cannotUnwind && !finished && !escaped.has(exitKey(code))) throw error2;
     reportNow(error2, exitKey(code));
-    process.off("exit", pin);
-    process.on("exit", pin);
+    repin();
     return exit(decided ?? 0);
   };
   syncBuiltinESMExports();
@@ -7800,8 +7806,7 @@ function guardCommandShim(describe2, options = {}) {
     finish(exitCode = decided ?? 0) {
       decided = exitCode;
       finished = true;
-      process.off("exit", pin);
-      process.on("exit", pin);
+      repin();
       finishCommandShim(exitCode, exit);
     },
     scope() {

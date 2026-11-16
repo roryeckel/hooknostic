@@ -302,6 +302,20 @@ describe("guardCommandShim", () => {
     expect(process.exitCode).toBe(2);
   });
 
+  it("pins the decided code after the hook source's exit listener when the loop empties before finish", () => {
+    const guard = guardCommandShim(describeError);
+    process.on("exit", () => {
+      process.exitCode = 0;
+    });
+
+    guard.decide(2);
+    // An unsettled top-level await: the loop empties, so Node emits beforeExit, then exit.
+    process.emit("beforeExit", 0);
+    process.emit("exit", 13);
+
+    expect(process.exitCode).toBe(2);
+  });
+
   it("still throws from the stub between the decision and finish, so the reply can flush", () => {
     const guard = guardCommandShim(describeError);
 

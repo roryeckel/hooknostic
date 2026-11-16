@@ -338,6 +338,17 @@ describe("Claude command shim with a hook source that owns the process", () => {
     );
   });
 
+  it("does not block when the hook source's exit listener sets 2 under a never-settling top-level await", async () => {
+    const result = await runShim(
+      source({ top: `process.on("exit", () => { process.exitCode = 2; });\nawait new Promise(() => {});` }),
+      FIXTURE,
+      CAPS,
+    );
+    // Nothing was decided, so the pin's 0 stands: exit 2 would be a block with no reply.
+    expect(result.code, result.stderr).toBe(0);
+    expect(result.stdout).toBe("");
+  });
+
   it("writes a block reason past a stderr the handler left corked", async () => {
     const result = await runShim(
       `import { block, definePlugin, hook } from "@hooknostic/sdk";

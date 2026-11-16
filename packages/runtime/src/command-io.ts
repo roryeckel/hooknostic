@@ -177,7 +177,10 @@ export interface CommandShimGuardOptions {
  * It targets accidental failures: a hook source that deliberately rearranges
  * Node's process listeners can defeat it, because it runs as trusted code.
  * Not covered: `process.reallyExit`, `process.kill(process.pid)`,
- * `process.abort()`, `exit` listeners added after `finish`, a hook source's
+ * `process.abort()`, an `exit` listener added after the pin last moved to
+ * the end (on `finish`, a stub leave, or `beforeExit`) -- say from a
+ * `beforeExit` listener or after `finish` on a forced exit -- an `exit`
+ * listener that throws (Node skips the rest, the pin too, and exits 7), a hook source's
  * own uncaughtException or uncaughtExceptionMonitor listener that throws or
  * exits ahead of the guard (exit 7), an uncaught-exception capture callback,
  * removing the guard's listeners, and a line the hook source left
@@ -260,6 +263,14 @@ export function guardCommandShim(
       // Listeners must never throw.
     }
   };
+  // The pin must be the last `exit` listener, or one the hook source added
+  // since it was registered can reset the code. Moved to the end on every
+  // path into an exit the guard sees coming: finish, the stub leaving, and
+  // beforeExit.
+  const repin = (): void => {
+    process.off("exit", pin);
+    process.on("exit", pin);
+  };
 
   // Set for the length of an emit, and reset once its listeners have run. The
   // reset is a tick queued before any listener runs, so it comes ahead of a
@@ -277,7 +288,12 @@ export function guardCommandShim(
   process.on("uncaughtExceptionMonitor", holdUnwind);
   // Before the decision, beforeExit means the shim's own await can never
   // settle: a throw here would only empty the loop again, so leave instead.
-  process.prependListener("beforeExit", holdUnwind);
+  // An emptied loop, such as an unsettled top-level await, then exits without
+  // the stub or finish, so the pin moves to the end here too.
+  process.prependListener("beforeExit", () => {
+    holdUnwind();
+    repin();
+  });
   const onRejection = (reason: unknown): void => {
     void report(reason);
   };
@@ -304,10 +320,7 @@ export function guardCommandShim(
     }
     if (!cannotUnwind && !finished && !escaped.has(exitKey(code))) throw error;
     reportNow(error, exitKey(code));
-    // Last again, as finish does: an `exit` listener the hook source added
-    // since the guard installed must not override the decided code.
-    process.off("exit", pin);
-    process.on("exit", pin);
+    repin();
     return exit(decided ?? 0);
   } as typeof process.exit;
   // `import { exit } from "node:process"` is a live binding set at startup.
@@ -328,8 +341,7 @@ export function guardCommandShim(
       decided = exitCode;
       finished = true;
       // Last again, after any 'exit' listener the hook source added while it loaded.
-      process.off("exit", pin);
-      process.on("exit", pin);
+      repin();
       finishCommandShim(exitCode, exit);
     },
     scope() {
