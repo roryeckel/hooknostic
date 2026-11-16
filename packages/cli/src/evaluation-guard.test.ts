@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
 import { syncBuiltinESMExports } from "node:module";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 
@@ -18,6 +18,7 @@ import { defaultAdapterRegistry } from "./registry.js";
 
 const HERE = fileURLToPath(new URL(".", import.meta.url));
 const CLI_BIN = resolve(HERE, "../bin/hooknostic.mjs");
+const CLI_INDEX = pathToFileURL(resolve(HERE, "../dist/index.js")).href;
 // A failure that is not caught leaves the child to this timeout, which kills it.
 const SPAWN_TIMEOUT_MS = 20_000;
 // A test of several spawns outlasts its children's timeouts, run a few at a
@@ -50,6 +51,19 @@ interface Run {
   lines: string[];
   configPath: string;
   entryPath: string;
+  /** Staged-module directories the run left in its temp directory. */
+  evalDirs: string[];
+}
+
+interface RunOptions {
+  debug?: boolean;
+  closeStdoutEarly?: boolean;
+  /** Written to the child's stdin; by default it is closed empty. */
+  input?: string;
+  /** More files for the project directory, by name. */
+  files?: Record<string, string>;
+  /** What node runs instead of the CLI: its arguments, given the project's paths. */
+  node?: (paths: { dir: string; configPath: string }) => string[];
 }
 
 const tempDirs: string[] = [];
@@ -66,11 +80,7 @@ afterEach(() => {
   expect(left).toEqual([]);
 });
 
-async function run(
-  args: string[],
-  fixture: Fixture,
-  options: { debug?: boolean; closeStdoutEarly?: boolean } = {},
-): Promise<Run> {
+async function run(args: string[], fixture: Fixture, options: RunOptions = {}): Promise<Run> {
   const dir = await mkdtemp(join(tmpdir(), "hooknostic-evalguard-"));
   tempDirs.push(dir);
   const temp = join(dir, ".tmp");
@@ -79,7 +89,9 @@ async function run(
   const entryPath = join(dir, "hooks.ts");
   await writeFile(configPath, fixture.config ?? CONFIG_EXPORT);
   await writeFile(entryPath, fixture.entry ?? ENTRY_EXPORT);
-  const child = spawn(process.execPath, [CLI_BIN, ...args, "--config", configPath], {
+  for (const [name, contents] of Object.entries(options.files ?? {})) await writeFile(join(dir, name), contents);
+  const argv = options.node?.({ dir, configPath }) ?? [CLI_BIN, ...args, "--config", configPath];
+  const child = spawn(process.execPath, argv, {
     cwd: dir,
     timeout: SPAWN_TIMEOUT_MS,
     env: {
@@ -90,7 +102,7 @@ async function run(
       TMPDIR: temp,
     },
   });
-  child.stdin.end();
+  child.stdin.end(options.input ?? "");
   let stdout = "";
   let stderr = "";
   child.stdout.setEncoding("utf8").on("data", (chunk: string) => (stdout += chunk));
@@ -102,10 +114,10 @@ async function run(
   );
   stdout = stdout.replace(/\r\n/g, "\n");
   stderr = stderr.replace(/\r\n/g, "\n");
-  for (const name of await readdir(temp))
-    if (name.startsWith("hooknostic-eval-")) evalDirsLeft.push(`${args[0]}: ${name}`);
+  const evalDirs = (await readdir(temp)).filter((name) => name.startsWith("hooknostic-eval-"));
+  for (const name of evalDirs) evalDirsLeft.push(`${args[0]}: ${name}`);
   const lines = `${stdout}\n${stderr}`.split("\n").map((line) => line.trim());
-  return { status, signal, stdout, stderr, lines, configPath, entryPath };
+  return { status, signal, stdout, stderr, lines, configPath, entryPath, evalDirs };
 }
 
 /** Runs `cases` a few at a time: each is a CLI process bundling with esbuild. */
@@ -388,6 +400,40 @@ describe("with HOOKNOSTIC_DEBUG", () => {
       const at = late.lines.indexOf("hooknostic internal: late");
       expect(at).not.toBe(-1);
       expect(late.lines.slice(at + 1, at + 3)).toEqual(["Error: late", expect.stringMatching(/^at /)]);
+    },
+    SPAWNS_TIMEOUT_MS,
+  );
+});
+
+describe("without the guard", () => {
+  it(
+    "leaves no staged module behind a thenable default export that never settles",
+    async () => {
+      // buildProject in a process of its own, as a programmatic caller runs
+      // it: the build never settles, and the process ends once its loop empties.
+      const BUILD = `import { buildProject, defaultAdapterRegistry } from ${JSON.stringify(CLI_INDEX)};
+void buildProject({ configPath: process.argv[2], registry: defaultAdapterRegistry() });`;
+      const NEVER = `export default { then() {} };`;
+      const cases = [
+        ["buildProject, config", { config: NEVER }, "build"],
+        ["buildProject, entry", { entry: NEVER }, "build"],
+        // Dispatch keeps its own guard, which does not watch its loads (#201).
+        ["dispatch, config", { config: NEVER }, "dispatch"],
+      ] as const;
+      const results = await runAll([...cases], ([, fixture, how]) =>
+        how === "build"
+          ? run(["buildProject"], fixture, {
+              files: { "build-project.mjs": BUILD },
+              node: ({ dir, configPath }) => [join(dir, "build-project.mjs"), configPath],
+            })
+          : run(["dispatch", "--target", "claude"], fixture, {
+              input: `${JSON.stringify({ event: "prompt.before", prompt: "hi" })}\n`,
+            }),
+      );
+
+      expect(
+        results.map((result, index) => ({ id: cases[index]![0], signal: result.signal, left: result.evalDirs.length })),
+      ).toEqual(cases.map(([id]) => ({ id, signal: null, left: 0 })));
     },
     SPAWNS_TIMEOUT_MS,
   );

@@ -111,18 +111,29 @@ async function evaluateModule(file: string, subject: "config" | "entry", options
   const staged = await stageUserModule(file, options);
   // Read once: the CLI clears it when its command returns.
   const guard = evaluationGuard;
+  if (guard === undefined) {
+    // Unguarded, as before #193: `dispose` runs as this returns, before the
+    // caller adopts a thenable default export, so one that never settles
+    // cannot keep the staged directory.
+    try {
+      const mod = (await import(staged.href)) as { default?: unknown };
+      return mod.default;
+    } finally {
+      await staged.dispose();
+    }
+  }
   let imported = false;
   try {
     const evaluation = (async () => {
       const mod = (await import(staged.href)) as { default?: unknown };
       imported = true;
       // Returned from an async function, so a thenable default export is
-      // adopted, as an async config may rely on.
+      // adopted, as an async config may rely on. The guard watches the
+      // adoption too, so one that never settles is a stall it reports.
       return mod.default;
     })();
-    return await (guard === undefined ? evaluation : guard.watch(staged.directory, evaluation));
+    return await guard.watch(staged.directory, evaluation);
   } catch (error) {
-    if (guard === undefined) throw error;
     if (isInstance(error, EvaluationStalledError))
       throw new Error(
         imported ? "its default export is a thenable that never settles" : "its top-level await never settles",
