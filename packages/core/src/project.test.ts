@@ -1590,3 +1590,27 @@ describe("complete project integration", () => {
     await expect(readFile(join(root, ".codex/hooks.json"))).rejects.toMatchObject({ code: "ENOENT" });
   });
 });
+describe("project command failures (#199)", () => {
+  const revoked = () => {
+    const revocable = Proxy.revocable({}, {});
+    revocable.revoke();
+    return revocable.proxy;
+  };
+  it.each([
+    ["a null-prototype object", () => Object.create(null)],
+    ["a revoked Proxy", revoked],
+  ])("reports %s thrown inside the command as an error instead of rejecting", async (_, make) => {
+    const { options } = await fixture();
+    // An in-process caller's registry, whose claude adapter throws when read.
+    const throwing = Object.defineProperty({ ...registry }, "claude", {
+      get() {
+        throw make();
+      },
+    });
+    for (const command of ["sync", "verify"] as const) {
+      const result = await runProject({ ...options, registry: throwing, command });
+      expect(result.errors).toEqual(["uninspectable thrown value"]);
+      expect(result.ok).toBe(false);
+    }
+  });
+});

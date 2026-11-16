@@ -10,6 +10,7 @@ import type { CommandShimGuard } from "@hooknostic/runtime";
 import {
   claimProtocolStdout,
   debugEnabled,
+  errorMessage,
   exitCodeText,
   finishCommandShim,
   formatInternalError,
@@ -626,14 +627,29 @@ async function runCommand(argv: string[], options: RunCliOptions | undefined, ow
           schemaVersion: 1,
           command,
           ok: false,
-          errors: [error instanceof Error ? error.message : String(error)],
+          errors: [errorMessage(error)],
         }),
       );
       return 2;
     }
-    io.stderr(
-      `hooknostic: unexpected error: ${error instanceof Error ? (error.stack ?? error.message) : String(error)}`,
-    );
+    io.stderr(`hooknostic: unexpected error: ${unexpectedErrorText(error)}`);
     return 2;
   }
+}
+
+/**
+ * The catch-all's text: the stack of an Error that has one, else its message.
+ * The value may be user code's, and a render that threw would reject runCli's
+ * promise for an in-process caller (#199).
+ */
+function unexpectedErrorText(error: unknown): string {
+  try {
+    if (error instanceof Error) {
+      const stack = error.stack;
+      if (typeof stack === "string") return stack;
+    }
+  } catch {
+    // A revoked proxy or a throwing `stack` getter; errorMessage tolerates both.
+  }
+  return errorMessage(error);
 }
