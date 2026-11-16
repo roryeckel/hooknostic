@@ -923,6 +923,16 @@ export default definePlugin({
       expect(results).toHaveLength(0);
     });
 
+    it("still ends on the forced exit when the hook source's exit listener throws", async () => {
+      const { status, results, raw } = await run(
+        atLoad(`process.on("exit", () => { throw new Error("exit listener threw"); }); setInterval(() => {}, 60_000);`),
+        "claude",
+      );
+      // The throw skips the listeners after it, so nothing reports it; the run's own 0 stands.
+      expect(status, raw).toBe(0);
+      expect(results).toHaveLength(3);
+    });
+
     it("leaves no staged module behind when the run ends early", async () => {
       // A temp directory of the run's own, so other tests' staging cannot show up in it.
       const temp = await mkdtemp(join(tmpdir(), "hooknostic-dispatch-temp-"));

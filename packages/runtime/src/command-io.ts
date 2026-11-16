@@ -101,7 +101,18 @@ const DRAIN_GRACE_MS = 250;
  */
 export function finishCommandShim(exitCode: number, exit: (code: number) => void = process.exit): void {
   process.exitCode = exitCode;
-  setTimeout(() => exit(exitCode), DRAIN_GRACE_MS).unref();
+  setTimeout(() => {
+    try {
+      exit(exitCode);
+    } catch {
+      // An `exit` listener the hook source added threw out of the exit
+      // itself. Left uncaught, the guard would report it and carry on, and
+      // the leaked handle that brought us here would hold the process open
+      // for good. Node is already leaving by now, so a second call skips the
+      // listeners and exits.
+      exit(exitCode);
+    }
+  }, DRAIN_GRACE_MS).unref();
 }
 
 /** What the hook source's `process.exit(n)` throws while a command shim owns the process. */

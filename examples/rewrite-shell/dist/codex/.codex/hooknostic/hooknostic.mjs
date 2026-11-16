@@ -7681,7 +7681,13 @@ var RELEASE_BOUND_MS = 500;
 var DRAIN_GRACE_MS = 250;
 function finishCommandShim(exitCode, exit = process.exit) {
   process.exitCode = exitCode;
-  setTimeout(() => exit(exitCode), DRAIN_GRACE_MS).unref();
+  setTimeout(() => {
+    try {
+      exit(exitCode);
+    } catch {
+      exit(exitCode);
+    }
+  }, DRAIN_GRACE_MS).unref();
 }
 var HookSourceExitError = class extends Error {
   code;

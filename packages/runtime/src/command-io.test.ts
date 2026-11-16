@@ -40,6 +40,19 @@ describe("finishCommandShim", () => {
     expect(exit).toHaveBeenCalledWith(2);
   });
 
+  it("still leaves when an exit listener throws out of the forced exit", () => {
+    vi.useFakeTimers();
+    // Node's own exit emits `exit` once; called again while leaving, it skips the listeners.
+    const exit = vi.fn().mockImplementationOnce(() => {
+      throw new Error("exit listener threw");
+    });
+
+    finishCommandShim(2, exit);
+    vi.advanceTimersByTime(250);
+
+    expect(exit.mock.calls).toEqual([[2], [2]]);
+  });
+
   it("unrefs the fallback, so a shim that drained on its own is never delayed", () => {
     vi.spyOn(process, "exit").mockImplementation((() => undefined) as never);
     const schedule = globalThis.setTimeout.bind(globalThis);

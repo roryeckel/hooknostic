@@ -349,6 +349,19 @@ describe("Claude command shim with a hook source that owns the process", () => {
     expect(result.stdout).toBe("");
   });
 
+  it("still leaves on the forced exit when the hook source's exit listener throws", async () => {
+    const result = await runShim(
+      source({
+        top: `process.on("exit", () => { throw new Error("exit listener threw"); });\nsetInterval(() => {}, 60_000);`,
+      }),
+      FIXTURE,
+      CAPS,
+    );
+    // Held open by the leaked handle, the helper would give up after 3 s.
+    expect(result.code, result.stderr).toBe(0);
+    expect(JSON.parse(result.stdout).hookSpecificOutput.additionalContext).toBe("hook ran");
+  });
+
   it("writes a block reason past a stderr the handler left corked", async () => {
     const result = await runShim(
       `import { block, definePlugin, hook } from "@hooknostic/sdk";
