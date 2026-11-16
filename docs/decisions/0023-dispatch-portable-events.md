@@ -175,8 +175,10 @@ for a load failure at the top level:
 - **The config** loads in the same window as the other commands' (second
   amendment). A stall is its HN501, `failed to load config <path>: its
   top-level await never settles` or `its default export is a thenable that
-  never settles`, and its staged directory is removed even if the run ends
-  early. A `process.exit`, a rejection or a timer throw while it loads is
+  never settles`. Its staged directory is removed once its import resolves,
+  and from an `exit` listener if the run ends before then, so only a run
+  killed before the import resolves, as under a top-level `await` that never
+  settles, leaves it behind. A `process.exit`, a rejection or a timer throw while it loads is
   HN501 as well. Before this, a rejection or a timer throw there was a stray,
   exit `1` with every result; it now matches `check` and `build`.
 - **The hook source** gets a stall check on every load, including the fresh

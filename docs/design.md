@@ -954,9 +954,9 @@ source in the CLI's own process and guards it (#189):
   skipping it by throwing. One added after the pin last moved can still change it, and
   a throwing one still ends an exit from inside an `uncaughtException` listener with 7,
   as listed above. The run then exits 1 if anything was reported outside a handler, and
-  a report after the last result moves a 0 to 1. Dispatch's own 2 takes precedence, and handler errors stay 0. If dispatch itself
-  throws, the CLI still releases stdout and finishes with 2, so a leaked handle cannot
-  hold it open. A run that ends early skips dispatch's own cleanup, so the CLI also
+  a report after the last result moves a 0 to 1. Dispatch's own 2 takes precedence, and
+  handler errors stay 0. If dispatch itself throws, the CLI still releases stdout and
+  finishes with 2, so a leaked handle cannot hold it open. A run that ends early skips dispatch's own cleanup, so the CLI also
   removes the staged hooks' temp directory from an `exit` listener.
 - On a module target, whose shim does not intercept `process.exit`, the guard's `onExit`
   queues each exit code once per event. If the guard reports that exit, its line gets a
@@ -1028,7 +1028,10 @@ The limits:
   hook source called process.exit(<code>)`. Only a load failure names the config.
 - A load that never settles while a handle it leaked keeps the loop alive still
   hangs, under `dispatch` too: the loop never empties, so there is no stall to
-  detect.
+  detect. A load removes its staged module once its import resolves, so a run
+  killed while it waits on a thenable default export leaves nothing behind. One
+  killed before its import resolves, as under a top-level `await` that never
+  settles, keeps its staged directory: a kill runs no `exit` listener.
 - Only the `hooknostic` command installs the guard. `buildProject()`,
   `runProject()`, `loadConfig()`, the `run*` command functions, `dispatchEvents()`
   and the exported `runCli`, with or without an injected `io`, never do, and never
