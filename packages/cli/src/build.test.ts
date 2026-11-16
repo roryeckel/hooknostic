@@ -3115,7 +3115,9 @@ describe("a CLI and a project SDK on different releases (HN110, #194)", () => {
         message: expect.stringContaining(`this hooknostic is ${HOOKNOSTIC_VERSION}, but the project's @hooknostic/sdk`),
       }),
     ]);
-    expect(hn110(report.diagnostics)[0]?.message).toContain(`at ${sdk} is ${OTHER},`);
+    // Inside the project, so relative: a committed build report names no machine's path.
+    expect(hn110(report.diagnostics)[0]?.message).toContain(`at node_modules/@hooknostic/sdk is ${OTHER},`);
+    expect(hn110(report.diagnostics)[0]?.message).not.toContain(sdk);
   });
 
   it("reports HN110 beside a config that fails to load", { timeout: 120_000 }, async () => {

@@ -94,25 +94,40 @@ describe("sdkReleaseSkew (HN110)", () => {
     expect(sdkReleaseSkew(entry, "workspace", root)).toBeUndefined();
   });
 
-  it("names the CLI's version, the SDK's, and where the SDK is", async () => {
-    const { root, sdk, entry } = await project(sdkManifest("0.13.0-rc.1"));
+  it("names both versions, and an SDK inside the project by its relative path", async () => {
+    const { root, entry } = await project(sdkManifest("0.13.0-rc.1"));
     const diagnostic = sdkReleaseSkew(entry, CLI, root);
     expect(diagnostic).toMatchObject({ code: "HN110", severity: "warn" });
     expect(diagnostic?.message).toContain(`this hooknostic is ${CLI}`);
-    expect(diagnostic?.message).toContain(`@hooknostic/sdk at ${sdk} is 0.13.0-rc.1`);
+    // Forward slashes on every platform: the build report may be committed.
+    expect(diagnostic?.message).toContain("@hooknostic/sdk at node_modules/@hooknostic/sdk is 0.13.0-rc.1,");
+    expect(diagnostic?.message).toContain("mixes one release's SDK with another release's compiler and shims");
+  });
+
+  it("names an SDK outside the project by its absolute path", async () => {
+    // A config in a subdirectory that resolves an SDK installed above it.
+    const { root, sdk, entry } = await project(sdkManifest("0.11.9"));
+    const app = join(root, "app");
+    await mkdir(app);
+    expect(sdkReleaseSkew(entry, CLI, app)?.message).toContain(`@hooknostic/sdk at ${sdk} is 0.11.9,`);
   });
 
   it("points a node_modules project at npx, and a Plug'n'Play project at yarn", async () => {
     const plain = await project(sdkManifest("0.11.9"));
     const npm = sdkReleaseSkew(plain.entry, CLI, plain.root)?.remediation;
     expect(npm).toContain("`npx hooknostic`");
+    // npx runs the project's CLI only once the project installs one.
+    expect(npm).toContain("without a local install, npx fetches the registry's latest");
     expect(npm).not.toContain("yarn hooknostic");
 
     const pnp = await project(sdkManifest("0.11.9"), { pnp: true });
     const yarn = sdkReleaseSkew(pnp.entry, CLI, pnp.root)?.remediation;
     expect(yarn).toContain("`yarn hooknostic`");
     expect(yarn).not.toContain("`npx hooknostic`");
-    for (const remediation of [npm, yarn]) expect(remediation).toContain("at the same version");
+    for (const remediation of [npm, yarn])
+      expect(remediation).toContain(
+        "add hooknostic to the project's devDependencies at the same version as its @hooknostic/sdk",
+      );
   });
 });
 

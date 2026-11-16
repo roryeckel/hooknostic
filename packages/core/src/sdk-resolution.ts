@@ -1,6 +1,6 @@
 import { existsSync, readFileSync, realpathSync } from "node:fs";
 import Module from "node:module";
-import { basename, dirname, extname, isAbsolute, join } from "node:path";
+import { basename, dirname, extname, isAbsolute, join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import type { BuildOptions, ImportKind, Plugin, PluginBuild, ResolveResult } from "esbuild";
@@ -128,8 +128,8 @@ function pnpManifest(directory: string): string | undefined {
 
 /**
  * HN110 when the CLI running a build and the project's `@hooknostic/sdk` are
- * on different releases: the build would bundle one release's SDK with
- * another release's runtime and shims (#194).
+ * on different releases: the build would mix one release's SDK with another
+ * release's compiler and shims (#194).
  *
  * `sdkEntry` is the SDK entry the build resolves; its package's own manifest
  * gives the version. `cliVersion` is passed in rather than imported, because
@@ -151,26 +151,47 @@ export function sdkReleaseSkew(
   if (sdk?.name !== SDK || sdk.version === undefined) return undefined;
   if (semver.valid(sdk.version) === null || semver.valid(cliVersion) === null) return undefined;
   if (semver.eq(sdk.version, cliVersion)) return undefined;
-  const align = "install hooknostic and @hooknostic/sdk at the same version.";
-  // Under Plug'n'Play, npx does not see the project's install and fetches the
-  // registry's latest CLI instead (as HN504 explains), so it is no remedy there.
+  // npx runs the project's CLI only when the project installs one; without it,
+  // and always under Plug'n'Play, where npx does not see the project's install
+  // (as HN504 explains), it fetches the registry's latest instead.
   const remediation =
     pnpManifest(projectDirectory) !== undefined
-      ? "add hooknostic to the project's devDependencies and run `yarn hooknostic`, the project's own CLI " +
-        "(under Plug'n'Play, npx fetches the registry's latest); if that is the one reporting this, " +
-        align
-      : "run `npx hooknostic` from the project directory, which runs the project's installed CLI; " +
-        "if that is the one reporting this, " +
-        align;
+      ? `add hooknostic to the project's devDependencies at the same version as its ${SDK}, ` +
+        "and run `yarn hooknostic`, which runs that CLI (under Plug'n'Play, npx fetches the registry's latest)."
+      : `add hooknostic to the project's devDependencies at the same version as its ${SDK}, ` +
+        "and run `npx hooknostic` from the project directory, which then runs that CLI " +
+        "(without a local install, npx fetches the registry's latest).";
   return {
     code: "HN110",
     severity: "warn",
     message:
-      `this hooknostic is ${cliVersion}, but the project's ${SDK} at ${sdk.directory} is ${sdk.version}, ` +
-      "so the build bundles one release's SDK with another release's runtime; " +
+      `this hooknostic is ${cliVersion}, but the project's ${SDK} at ${shownPath(sdk.directory, projectDirectory)} ` +
+      `is ${sdk.version}, so the build mixes one release's SDK with another release's compiler and shims; ` +
       "run the project's own hooknostic, or install both at one version.",
     remediation,
   };
+}
+
+/**
+ * `directory` as HN110 names it: relative to the project, with forward
+ * slashes, when the project contains it, because the build report that carries
+ * the message may be committed, and an absolute path differs by machine and can
+ * name a home directory. Otherwise absolute. The SDK's path is real (Node
+ * resolves symlinks), so the project's real path is tried too.
+ */
+function shownPath(directory: string, projectDirectory: string): string {
+  let real = projectDirectory;
+  try {
+    real = realpathSync.native(projectDirectory);
+  } catch {
+    // A project directory that cannot be resolved is compared as given.
+  }
+  for (const base of [projectDirectory, real]) {
+    const path = relative(base, directory);
+    if (path !== "" && path !== ".." && !path.startsWith(`..${sep}`) && !isAbsolute(path))
+      return path.replaceAll("\\", "/");
+  }
+  return directory;
 }
 
 /** A path inside a Yarn zip archive or virtual folder (Yarn 2's `$$virtual`, Yarn 3+'s `__virtual__`). */
