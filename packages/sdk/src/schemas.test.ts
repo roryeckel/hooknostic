@@ -346,6 +346,36 @@ describe("canonical schemas", () => {
       expect(paths).toContainEqual(["targets", "claude", "version"]);
     });
 
+    it("keeps config-level issues beside an issue inside a named record", () => {
+      const result = hooknosticConfigSchema.safeParse({ targets: { claude: { ...packageTarget, version: "" } } });
+
+      expect(pathsAndMessages(result)).toEqual([
+        { path: ["targets", "claude", "version"], message: expect.stringContaining("Too small") },
+        { path: [], message: "at least one of entry or components is required" },
+      ]);
+    });
+
+    it("keeps config-level issues beside the __proto__ name issue", () => {
+      const result = hooknosticConfigSchema.safeParse({ targets: ownProto(packageTarget) });
+
+      expect(pathsAndMessages(result)).toEqual([
+        { path: ["targets", "__proto__"], message: PROTOTYPE_KEY_MESSAGE },
+        { path: [], message: "at least one of entry or components is required" },
+      ]);
+    });
+
+    it("applies per-call parse options to issues inside a named record", () => {
+      const result = hooknosticConfigSchema.safeParse(
+        { entry: "./src/hooks.ts", targets: { claude: { ...packageTarget, version: "" } } },
+        { error: () => "per-call message", reportInput: true },
+      );
+
+      expect(pathsAndMessages(result)).toEqual([
+        { path: ["targets", "claude", "version"], message: "per-call message" },
+      ]);
+      if (!result.success) expect(result.error.issues[0]).toHaveProperty("input", "");
+    });
+
     it("keeps constructor and prototype as ordinary target and MCP server names", () => {
       const targets = Object.fromEntries([
         ["constructor", { ...packageTarget, adapter: "claude" }],

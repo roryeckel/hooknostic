@@ -6867,14 +6867,14 @@ var PROTOTYPE_KEY_MESSAGE = `"__proto__" cannot be used as a name: JavaScript tr
 var REPLACED_PROTOTYPE_MESSAGE = `${PROTOTYPE_KEY_MESSAGE}; an object literal entry written as __proto__: {...} replaced this record's prototype instead of adding an entry, and a computed ["__proto__"] key is not accepted either, so choose another name`;
 function namedRecord(key, value, prototypeKey = "reject") {
   const record3 = record(key, value);
-  return unknown().transform((input, context) => {
-    const parsed = record3.safeParse(input);
-    if (!parsed.success)
-      for (const issue2 of parsed.error.issues)
-        context.addIssue({ ...issue2 });
-    const isObject2 = typeof input === "object" && input !== null;
-    const hasOwnPrototypeKey = isObject2 && Object.prototype.propertyIsEnumerable.call(input, "__proto__");
-    if (prototypeKey === "preserve") {
+  if (prototypeKey === "preserve") {
+    return unknown().transform((input, context) => {
+      const parsed = record3.safeParse(input);
+      if (!parsed.success)
+        for (const issue2 of parsed.error.issues)
+          context.addIssue({ ...issue2 });
+      const isObject2 = typeof input === "object" && input !== null;
+      const hasOwnPrototypeKey = isObject2 && Object.prototype.propertyIsEnumerable.call(input, "__proto__");
       if (!parsed.success)
         return NEVER;
       const entries = Object.entries(parsed.data);
@@ -6888,20 +6888,27 @@ function namedRecord(key, value, prototypeKey = "reject") {
         entries.push(["__proto__", prototypeEntry.data]);
       }
       return Object.fromEntries(entries);
-    }
+    });
+  }
+  return unknown().transform((input, context) => {
+    const run = record3._zod.run({ value: input, issues: [] }, { async: false });
+    if (run instanceof Promise)
+      throw new Error("namedRecord does not support asynchronous value schemas");
+    const rejectedAsRecord = run.issues.some((issue2) => (issue2.path ?? []).length === 0);
+    context.issues.push(...run.issues);
+    const isObject2 = typeof input === "object" && input !== null;
+    const hasOwnPrototypeKey = isObject2 && Object.prototype.propertyIsEnumerable.call(input, "__proto__");
     if (hasOwnPrototypeKey) {
-      context.addIssue({ code: "custom", path: ["__proto__"], message: PROTOTYPE_KEY_MESSAGE });
-      return NEVER;
+      context.addIssue({ code: "custom", path: ["__proto__"], message: PROTOTYPE_KEY_MESSAGE, continue: true });
+      return run.value;
     }
-    const rejectedAsRecord = !parsed.success && parsed.error.issues.some((issue2) => issue2.path.length === 0);
     if (isObject2 && !rejectedAsRecord) {
       const prototype = Object.getPrototypeOf(input);
       if (prototype !== Object.prototype && prototype !== null) {
-        context.addIssue({ code: "custom", path: ["__proto__"], message: REPLACED_PROTOTYPE_MESSAGE });
-        return NEVER;
+        context.addIssue({ code: "custom", path: ["__proto__"], message: REPLACED_PROTOTYPE_MESSAGE, continue: true });
       }
     }
-    return parsed.success ? parsed.data : NEVER;
+    return run.value;
   });
 }
 var projectMcpServerOverrideSchema = object({

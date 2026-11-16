@@ -194,7 +194,7 @@ const REPLACED_PROTOTYPE_MESSAGE = `${PROTOTYPE_KEY_MESSAGE}; an object literal 
  * A record keyed by user-chosen names. Zod 4 skips an own `__proto__` key
  * before its key schema runs, so neither a key refinement nor a refinement of
  * the parsed record ever sees it, and the entry silently vanishes. Parse the
- * record, keep every issue it reports, then inspect the raw input.
+ * record, keep its issues as Zod reported them, then inspect the raw input.
  *
  * `reject` (the default) refuses the name, because these names become keys of
  * plain objects downstream. `preserve` validates the entry and keeps it as an
@@ -207,13 +207,13 @@ function namedRecord<K extends z.core.$ZodRecordKey, V extends z.ZodType>(
 ) {
   const record = z.record(key, value);
   type Output = z.output<typeof record>;
-  return z.unknown().transform((input, context): Output => {
-    const parsed = record.safeParse(input);
-    if (!parsed.success) for (const issue of parsed.error.issues) context.addIssue({ ...issue });
-    const isObject = typeof input === "object" && input !== null;
-    const hasOwnPrototypeKey = isObject && Object.prototype.propertyIsEnumerable.call(input, "__proto__");
 
-    if (prototypeKey === "preserve") {
+  if (prototypeKey === "preserve") {
+    return z.unknown().transform((input, context): Output => {
+      const parsed = record.safeParse(input);
+      if (!parsed.success) for (const issue of parsed.error.issues) context.addIssue({ ...issue });
+      const isObject = typeof input === "object" && input !== null;
+      const hasOwnPrototypeKey = isObject && Object.prototype.propertyIsEnumerable.call(input, "__proto__");
       if (!parsed.success) return z.NEVER;
       const entries: [PropertyKey, unknown][] = Object.entries(parsed.data);
       // Parse the own `__proto__` entry explicitly, then rebuild with
@@ -229,26 +229,45 @@ function namedRecord<K extends z.core.$ZodRecordKey, V extends z.ZodType>(
         entries.push(["__proto__", prototypeEntry.data]);
       }
       return Object.fromEntries(entries) as Output;
-    }
+    });
+  }
 
+  return z.unknown().transform((input, context): Output => {
+    // Run the record on raw issues rather than through safeParse. safeParse
+    // finalizes its issues, which drops their `continue` flag, so re-adding
+    // them aborted the enclosing object's refinements (the config-level
+    // cross-field checks), and per-call parse options never reached them.
+    // The enclosing parse prefixes and finalizes these issues as it would a
+    // plain z.record's. `_zod.run` is the parse entry Zod 4 types in
+    // zod/v4/core; this context lacks the caller's per-call options, which
+    // only Zod's own nested key-issue explanations would have used.
+    const run = record._zod.run({ value: input, issues: [] }, { async: false });
+    // No record value schema here is asynchronous. A plain Error, because a
+    // value reference into z.core would bundle Zod's whole core namespace.
+    if (run instanceof Promise) throw new Error("namedRecord does not support asynchronous value schemas");
+    const rejectedAsRecord = run.issues.some((issue) => (issue.path ?? []).length === 0);
+    context.issues.push(...run.issues);
+
+    const isObject = typeof input === "object" && input !== null;
+    const hasOwnPrototypeKey = isObject && Object.prototype.propertyIsEnumerable.call(input, "__proto__");
+    // The name issue does not abort either, so config-level checks still run
+    // on the remaining entries, as they did when the entry was dropped.
     if (hasOwnPrototypeKey) {
-      context.addIssue({ code: "custom", path: ["__proto__"], message: PROTOTYPE_KEY_MESSAGE });
-      return z.NEVER;
+      context.addIssue({ code: "custom", path: ["__proto__"], message: PROTOTYPE_KEY_MESSAGE, continue: true });
+      return run.value as Output;
     }
     // An object literal's `__proto__: {...}` entry sets the prototype instead of
     // adding a key, so the record parses as if the entry were absent. Records
     // made by Object.create(null), Object.fromEntries or JSON.parse keep a null
     // or Object.prototype prototype; arrays, Maps and class instances already
     // fail as "expected record" at the record itself and keep only that issue.
-    const rejectedAsRecord = !parsed.success && parsed.error.issues.some((issue) => issue.path.length === 0);
     if (isObject && !rejectedAsRecord) {
       const prototype: unknown = Object.getPrototypeOf(input);
       if (prototype !== Object.prototype && prototype !== null) {
-        context.addIssue({ code: "custom", path: ["__proto__"], message: REPLACED_PROTOTYPE_MESSAGE });
-        return z.NEVER;
+        context.addIssue({ code: "custom", path: ["__proto__"], message: REPLACED_PROTOTYPE_MESSAGE, continue: true });
       }
     }
-    return parsed.success ? parsed.data : z.NEVER;
+    return run.value as Output;
   });
 }
 
