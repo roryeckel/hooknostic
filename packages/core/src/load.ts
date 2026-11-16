@@ -79,8 +79,9 @@ export async function stageUserModule(file: string, options?: EvaluateOptions): 
 
 /**
  * Internal (#193): how the CLI's process guard watches one evaluation of user
- * code. The CLI sets one for the command it runs; the programmatic API never
- * does, and then nothing here installs a process listener.
+ * code. Only the `hooknostic` command sets one, for the command it runs; the
+ * programmatic API, the exported `runCli` included, never does, and then
+ * nothing here installs a process listener.
  */
 export interface EvaluationGuard {
   /**

@@ -336,15 +336,42 @@ function guardEvaluation() {
   };
 }
 
+/**
+ * Run a `hooknostic` command line in the caller's process, and resolve with
+ * its exit code. The caller keeps the process: this never replaces
+ * `process.exit`, adds process listeners, takes over stdout, or forces an exit,
+ * whether or not `options.io` is given. So a config or hook source that exits,
+ * rejects, throws from a timer or leaks a handle affects the caller's process
+ * as it would any code the caller imports; only the `hooknostic` command
+ * guards against that (docs/design.md §10.3).
+ */
 export async function runCli(argv: string[], options?: RunCliOptions): Promise<number> {
-  // Only the real CLI: an injected io means a caller that owns the process.
+  return runCommandLine(argv, options, { ownsProcess: false });
+}
+
+/**
+ * The `hooknostic` command's entry (bin.ts). It owns its process, so it alone
+ * installs what is process-global: the guard around what a command evaluates
+ * (#193), dispatch's guard (#189), dispatch's claim on stdout, the exit-time
+ * removal of staged modules, and the forced exit that ends a leaked handle.
+ * Not exported from the package entry; tests may pass a registry.
+ */
+export async function main(argv: string[], options?: Pick<RunCliOptions, "registry">): Promise<number> {
+  return runCommandLine(argv, options, { ownsProcess: true });
+}
+
+async function runCommandLine(
+  argv: string[],
+  options: RunCliOptions | undefined,
+  { ownsProcess }: { ownsProcess: boolean },
+): Promise<number> {
   // Dispatch keeps its own guard (#189).
-  if (options?.io !== undefined || argv[0] === "dispatch") return runCommand(argv, options);
+  if (!ownsProcess || argv[0] === "dispatch") return runCommand(argv, options, ownsProcess);
   const guarded = guardEvaluation();
   setEvaluationGuard(guarded.evaluation);
   let code: number;
   try {
-    code = await runCommand(argv, options);
+    code = await runCommand(argv, options, ownsProcess);
   } catch (error) {
     if (!guarded.installed()) throw error;
     await guarded.report(error);
@@ -355,7 +382,7 @@ export async function runCli(argv: string[], options?: RunCliOptions): Promise<n
   return guarded.finish(code);
 }
 
-async function runCommand(argv: string[], options?: RunCliOptions): Promise<number> {
+async function runCommand(argv: string[], options: RunCliOptions | undefined, ownsProcess: boolean): Promise<number> {
   const io: CommandIO = options?.io ?? {
     stdout: (t) => console.log(t),
     stderr: (t) => console.error(t),
@@ -529,13 +556,13 @@ async function runCommand(argv: string[], options?: RunCliOptions): Promise<numb
           typeof parsed.values["events"] === "string"
             ? await readFile(resolve(parsed.values["events"]), "utf8")
             : await readStdin();
-        // Hooks run in this process. Without an injected io this is the real
-        // CLI, so it treats them as a command shim does: their stdout stays out
-        // of the result lines, a handle one leaks cannot hold the process open,
-        // and, unless --unguarded, the hook source cannot end the run (#189).
+        // Hooks run in this process. The hooknostic command owns it, so it
+        // treats them as a command shim does: their stdout stays out of the
+        // result lines, a handle one leaks cannot hold the process open, and,
+        // unless --unguarded, the hook source cannot end the run (#189).
         // The guard goes first: it owns process.exit before anything loads.
-        const guarded = options?.io === undefined && parsed.values["unguarded"] !== true ? guardDispatch() : undefined;
-        const protocol = options?.io === undefined ? claimProtocolStdout() : undefined;
+        const guarded = ownsProcess && parsed.values["unguarded"] !== true ? guardDispatch() : undefined;
+        const protocol = ownsProcess ? claimProtocolStdout() : undefined;
         const writes: Promise<void>[] = [];
         let code: number;
         try {

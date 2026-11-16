@@ -134,10 +134,11 @@ source's own `uncaughtException` listener ends it with Node's 7.
   the next. A later tail may be labelled with a later event or with none. A tail
   later than the forced exit's grace after the last result is not reported, as
   in the shims.
-- **Scope.** Only the CLI is guarded. `dispatchEvents()` and `runCli` with an
-  injected `io` run in the caller's process and install nothing. `--unguarded`
-  keeps the earlier behaviour for a developer who wants the raw crash; other
-  commands reject it.
+- **Scope.** Only the `hooknostic` command is guarded. `dispatchEvents()` and
+  the exported `runCli`, with or without an injected `io`, run in the caller's
+  process and install nothing (see the second amendment). `--unguarded` keeps
+  the earlier behaviour for a developer who wants the raw crash; other commands
+  reject it.
 
 ## Amendments — 2026-11-15 (second)
 
@@ -148,5 +149,13 @@ failure while a module loads is that load's HN501, and the command exits `2`.
 One after every load is reported as `hooknostic internal: ...` and makes the
 exit code at least `2`, but it does not undo what `build` or `sync` already
 wrote. A leaked handle no longer holds the command open. They have no
-`--unguarded`, and `runCli` with an injected `io` still installs nothing. The
-limits are in design §10.3.
+`--unguarded`. The limits are in design §10.3.
+
+**Only the `hooknostic` command owns its process** (#193). It alone installs
+either guard, claims stdout for `dispatch`, removes staged modules from an
+`exit` listener, and forces an exit after its results. The exported `runCli`
+never does, with or without an injected `io`: before this, a call without one
+did all of that for `dispatch` (claiming stdout and forcing the exit since this
+ADR's first version), which could end or take over a host program. A
+programmatic `runCli` call now leaves the process to its caller, as
+`dispatchEvents()` always has.

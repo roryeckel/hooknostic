@@ -6,7 +6,10 @@
  *
  *   dist/index.js         programmatic API with core + adapters inlined
  *                         (esbuild stays external: it runs at build time)
- *   dist/hooknostic.mjs   the binary, importing ./index.js (no duplicate bundle)
+ *   dist/main.js          the command's own entry, which alone takes over
+ *                         its process; it shares index.js's code through
+ *                         dist/chunk-*.js rather than duplicating it
+ *   dist/hooknostic.mjs   the binary, importing ./main.js
  *   dist/shims/<id>.mjs   each adapter's runtime shim with @hooknostic/runtime
  *                         inlined and @hooknostic/sdk (root and /schemas)
  *                         external, so a built artifact carries exactly one
@@ -70,11 +73,17 @@ await mkdir(dist, { recursive: true });
 //    dependencies (npm-package-arg and its tree) `require` Node builtins; in
 //    ESM output esbuild routes those through a `__require` shim that throws
 //    unless a top-level `require` exists, so the banner provides one.
+//    The command's own entry, main.js, is built beside it and shares its code
+//    through chunks in dist/ itself, where `./shims/` still resolves: only
+//    the command takes over its process, so `main` is not the package's to
+//    export (#193).
 await build({
   ...node,
   bundle: true,
-  entryPoints: [join(packageDir, "src/index.ts")],
-  outfile: join(dist, "index.js"),
+  entryPoints: { index: join(packageDir, "src/index.ts"), main: join(packageDir, "src/main.ts") },
+  outdir: dist,
+  splitting: true,
+  chunkNames: "chunk-[hash]",
   external: ["esbuild"],
   alias: { yaml: yamlBrowser },
   plugins: [licenseNoticesPlugin({ noticeFile: join(dist, "THIRD_PARTY_NOTICES.txt") })],
@@ -83,7 +92,7 @@ await build({
   },
 });
 
-// 2. Binary: transpile only; it imports ./index.js.
+// 2. Binary: transpile only; it imports ./main.js.
 await build({
   ...node,
   bundle: false,
@@ -152,5 +161,5 @@ if (!declarations.includes(cliEntry)) fail(`expected ${cliEntry} to be emitted`)
 await writeFile(join(dist, "index.d.ts"), 'export * from "./types/packages/cli/src/index.js";\n', "utf8");
 
 console.log(
-  `hooknostic bundle: dist/index.js, dist/hooknostic.mjs, dist/shims/{${Object.keys(SHIMS).join(",")}}.mjs, ${declarations.length} declaration files`,
+  `hooknostic bundle: dist/index.js, dist/main.js, dist/hooknostic.mjs, dist/shims/{${Object.keys(SHIMS).join(",")}}.mjs, ${declarations.length} declaration files`,
 );

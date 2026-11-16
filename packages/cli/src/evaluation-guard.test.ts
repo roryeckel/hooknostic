@@ -8,9 +8,13 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 
 import { claudeHarness } from "@hooknostic/adapter-claude";
-import { buildProject } from "@hooknostic/core";
+import { buildProject, runProject } from "@hooknostic/core";
 
+import { runBuild } from "./build.js";
+import { runCheck } from "./check.js";
 import { runCli } from "./cli.js";
+import { dispatchEvents } from "./dispatch.js";
+import { runDoctor } from "./doctor.js";
 import { defaultAdapterRegistry } from "./registry.js";
 
 // #193: every command but dispatch evaluates the config and the hook source
@@ -455,36 +459,136 @@ void buildProject({ configPath: process.argv[2], registry: defaultAdapterRegistr
   );
 });
 
-describe("in-process callers", () => {
-  it("own the process: runCli with an io, and buildProject, install nothing", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "hooknostic-evalguard-"));
-    tempDirs.push(dir);
-    const configPath = join(dir, "hooknostic.config.ts");
-    await writeFile(configPath, CONFIG_EXPORT);
-    await writeFile(join(dir, "hooks.ts"), ENTRY_EXPORT);
-    const EVENTS = ["uncaughtExceptionMonitor", "uncaughtException", "unhandledRejection", "beforeExit", "exit"];
-    const listeners = () => EVENTS.map((event) => [event, process.rawListeners(event)] as const);
-    const before = listeners();
-    const realExit = process.exit;
-    // What a guard would capture, so one installed by mistake cannot end the worker.
-    const exit = vi.fn() as unknown as typeof process.exit;
-    process.exit = exit;
-    try {
-      const io = { stdout: () => {}, stderr: () => {} };
-      const checked = await runCli(["check", "--config", configPath], { io });
-      const built = await buildProject({ configPath, registry: defaultAdapterRegistry(), dryRun: true });
+describe("programmatic callers", () => {
+  it(
+    "own the process: every programmatic entry, runCli with or without an io, installs nothing",
+    async () => {
+      const dir = await mkdtemp(join(tmpdir(), "hooknostic-evalguard-"));
+      tempDirs.push(dir);
+      const configPath = join(dir, "hooknostic.config.ts");
+      await writeFile(configPath, CONFIG_EXPORT);
+      await writeFile(join(dir, "hooks.ts"), ENTRY_EXPORT);
+      const eventsPath = join(dir, "events.jsonl");
+      const event = { event: "prompt.before", prompt: "hi" };
+      await writeFile(eventsPath, `${JSON.stringify(event)}\n`);
+      const EVENTS = ["uncaughtExceptionMonitor", "uncaughtException", "unhandledRejection", "beforeExit", "exit"];
+      const listeners = () => EVENTS.map((name) => [name, process.rawListeners(name)] as const);
+      const streamListeners = () => [process.stdout.listenerCount("error"), process.stderr.listenerCount("error")];
+      const before = listeners();
+      const streamsBefore = streamListeners();
+      const realExit = process.exit;
+      const exitCode = process.exitCode;
+      const stdout = process.stdout;
+      const stdoutDescriptor = Object.getOwnPropertyDescriptor(process, "stdout");
+      const realConsole = globalThis.console;
+      // What a guard would capture, so one installed by mistake cannot end the worker.
+      const exit = vi.fn() as unknown as typeof process.exit;
+      process.exit = exit;
+      try {
+        const registry = defaultAdapterRegistry();
+        const io = { stdout: () => {}, stderr: () => {} };
+        // Before build writes the artifacts sync would then find unowned.
+        const synced = await runProject({ command: "sync", configPath, registry });
+        await runProject({ command: "verify", configPath, registry });
+        const codes = {
+          runCliWithIo: await runCli(["check", "--config", configPath], { io }),
+          runCliWithoutIo: await runCli(["check", "--config", configPath]),
+          runCliDispatchWithoutIo: await runCli([
+            "dispatch",
+            "--target",
+            "claude",
+            "--config",
+            configPath,
+            "--events",
+            eventsPath,
+          ]),
+          runCheck: await runCheck({ config: configPath, registry, io }),
+          runBuild: await runBuild({ config: configPath, registry, io }),
+        };
+        await runDoctor({ config: configPath, registry, io });
+        const dispatched = await dispatchEvents({ config: configPath, target: "claude", events: [event], registry });
+        const built = await buildProject({ configPath, registry, dryRun: true });
 
-      expect({ checked, built: built.ok }).toEqual({ checked: 0, built: true });
-      expect(process.exit).toBe(exit);
-      expect(listeners().map(([event, now]) => [event, now.length])).toEqual(
-        before.map(([event, then]) => [event, then.length]),
-      );
-    } finally {
-      for (const [event, then] of before)
-        for (const listener of process.rawListeners(event))
-          if (!then.includes(listener)) process.off(event, listener as (...args: unknown[]) => void);
-      process.exit = realExit;
-      syncBuiltinESMExports();
-    }
+        // The process stays the caller's: its exit, its listeners, its stdout.
+        expect({
+          ownExit: process.exit === exit,
+          listeners: listeners().map(([name, now]) => [name, now.length]),
+          streamListeners: streamListeners(),
+          ownStdout: process.stdout === stdout,
+          ownConsole: globalThis.console === realConsole,
+        }).toEqual({
+          ownExit: true,
+          listeners: before.map(([name, then]) => [name, then.length]),
+          streamListeners: streamsBefore,
+          ownStdout: true,
+          ownConsole: true,
+        });
+        expect({
+          codes,
+          synced: synced.ok,
+          dispatched: dispatched.ok ? dispatched.results.length : dispatched.errors,
+          built: built.ok,
+        }).toEqual({
+          codes: { runCliWithIo: 0, runCliWithoutIo: 0, runCliDispatchWithoutIo: 0, runCheck: 0, runBuild: 0 },
+          synced: true,
+          dispatched: 1,
+          built: true,
+        });
+      } finally {
+        // Should one install anyway, leave the worker as it was.
+        for (const [name, then] of before)
+          for (const listener of process.rawListeners(name))
+            if (!then.includes(listener)) process.off(name, listener as (...args: unknown[]) => void);
+        if (stdoutDescriptor) Object.defineProperty(process, "stdout", stdoutDescriptor);
+        globalThis.console = realConsole;
+        process.exit = realExit;
+        syncBuiltinESMExports();
+        process.exitCode = exitCode;
+      }
+    },
+    SPAWNS_TIMEOUT_MS,
+  );
+
+  it("leave a host process alone: runCli without an io never ends it or keeps its listeners", async () => {
+    // A host that stays alive on its own timer and calls the exported runCli,
+    // as a program embedding Hooknostic would, on a config that leaks a handle
+    // and on one that throws. It reports once it has outlived the guard's
+    // forced-exit grace and flush bound, then leaves with the exit it started with.
+    const HOST = `import { runCli } from ${JSON.stringify(CLI_INDEX)};
+const exit = process.exit;
+const EVENTS = ["uncaughtExceptionMonitor", "uncaughtException", "unhandledRejection", "beforeExit", "exit"];
+const count = () => EVENTS.map((name) => process.listenerCount(name));
+const before = count();
+const alive = setInterval(() => {}, 1_000);
+const codes = [];
+codes.push(await runCli(["check", "--config", process.argv[2]]));
+codes.push(await runCli(["check", "--config", process.argv[3]]));
+await new Promise((resolve) => setTimeout(resolve, 1_500));
+console.log("HOST " + JSON.stringify({ codes, ownExit: process.exit === exit, before, after: count() }));
+clearInterval(alive);
+exit.call(process, 0);`;
+    const result = await run(
+      ["host"],
+      {},
+      {
+        files: {
+          "host.mjs": HOST,
+          "leak.config.ts": `setInterval(() => {}, 60_000);\n${CONFIG_EXPORT}`,
+          "throw.config.ts": `throw new Error("config threw");\n${CONFIG_EXPORT}`,
+        },
+        node: ({ dir }) => [join(dir, "host.mjs"), join(dir, "leak.config.ts"), join(dir, "throw.config.ts")],
+      },
+    );
+    const report = result.lines.find((line) => line.startsWith("HOST "));
+
+    expect({ signal: result.signal, status: result.status }).toEqual({ signal: null, status: 0 });
+    expect(report, result.stdout + result.stderr).toBeDefined();
+    const { codes, ownExit, before, after } = JSON.parse(report!.slice("HOST ".length)) as {
+      codes: number[];
+      ownExit: boolean;
+      before: number[];
+      after: number[];
+    };
+    expect({ codes, ownExit, after }).toEqual({ codes: [0, 2], ownExit: true, after: before });
   });
 });

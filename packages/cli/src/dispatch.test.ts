@@ -31,6 +31,8 @@ const SDK_PATH = resolve(HERE, "../../sdk/src/index.ts");
 const EVALUATE = { alias: { "@hooknostic/sdk": SDK_PATH } };
 const CLI_BIN = resolve(HERE, "../bin/hooknostic.mjs");
 const CLI_INDEX = pathToFileURL(resolve(HERE, "../dist/index.js")).href;
+// The command's own entry: not exported from the package, so a test imports it by file.
+const CLI_MAIN = pathToFileURL(resolve(HERE, "../dist/main.js")).href;
 
 const tempDirs: string[] = [];
 afterAll(async () => {
@@ -1136,13 +1138,15 @@ export default definePlugin({
         );
         // A copy of the bin whose adapter throws as dispatch resolves the
         // target: outside dispatch's own error handling, which is the path
-        // under test. runCli still guards the run, as no io is injected.
+        // under test. It runs the command's own main, which guards the run;
+        // the exported runCli never does.
         await writeFile(
           join(dir, "throwing-cli.mjs"),
-          `import { defaultAdapterRegistry, runCli } from ${JSON.stringify(CLI_INDEX)};
+          `import { defaultAdapterRegistry } from ${JSON.stringify(CLI_INDEX)};
+import { main } from ${JSON.stringify(CLI_MAIN)};
 const registry = defaultAdapterRegistry();
 registry.claude = { ...registry.claude, resolveTarget() { throw new Error("adapter exploded"); } };
-process.exitCode = await runCli(process.argv.slice(2), { registry });`,
+process.exitCode = await main(process.argv.slice(2), { registry });`,
         );
         const child = spawnSync(
           process.execPath,

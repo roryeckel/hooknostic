@@ -965,9 +965,10 @@ source in the CLI's own process and guards it (#189):
   note that the adapter's shim does not intercept it; otherwise the note gets its own
   line at the end of the event. Either way the run exits 1, and one exit is never two
   lines.
-- `--unguarded` skips the guard and keeps the earlier behaviour. `dispatchEvents()` and
-  an in-process `runCli` with an injected `io` never install it: they share the
-  caller's process.
+- `--unguarded` skips the guard and keeps the earlier behaviour. Only the
+  `hooknostic` command installs it, claims stdout, removes staged hooks from an
+  `exit` listener, or forces an exit. `dispatchEvents()` and the exported `runCli`,
+  with or without an injected `io`, never do: they share the caller's process.
 
 Every other command that evaluates the config or the hook source in the CLI's own
 process (`check`, `build`, `sync`, `verify`, `recover`, `doctor`, and `inspect
@@ -1011,8 +1012,13 @@ The limits:
   even if a module loaded earlier scheduled it.
 - A load that never settles while a handle it leaked keeps the loop alive still
   hangs: the loop never empties, so there is no stall to detect.
-- `buildProject()`, `runProject()`, `loadConfig()`, the `run*` command functions
-  and an in-process `runCli` with an injected `io` never install the guard.
+- Only the `hooknostic` command installs the guard. `buildProject()`,
+  `runProject()`, `loadConfig()`, the `run*` command functions, `dispatchEvents()`
+  and the exported `runCli`, with or without an injected `io`, never do, and never
+  replace `process.exit`, add process listeners, take over stdout, or force an
+  exit. User code they evaluate runs in the caller's process as any module it
+  imports would: a `process.exit` there ends the caller's process, and a handle it
+  leaks keeps it alive.
 
 Each native deadline is `ceil((sum of the event's handler budgets + processAllowanceMs) / 1000)`
 seconds: the handler budgets bound what the dispatcher runs, and the allowance covers what
