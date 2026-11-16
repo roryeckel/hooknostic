@@ -59,10 +59,11 @@ it("warns HN110 from sync and verify without failing either (#194)", { timeout: 
   }
 });
 
-it("warns HN110 from sync and verify when the config fails to load (#194)", { timeout: 120_000 }, async () => {
+it("warns HN110 from sync, verify and recover when the config fails to load (#194)", { timeout: 120_000 }, async () => {
   const config = await skewedLocalProject();
   await writeFile(config, 'import { notInThisSdk } from "@hooknostic/sdk";\nexport default notInThisSdk({});\n');
-  for (const command of ["sync", "verify"]) {
+  // recover shares runProject's load-failure branch, where the skew may explain the failure.
+  for (const command of ["sync", "verify", "recover"]) {
     const human = await cli([command, "--config", config]);
     expect(human.code, human.out + human.err).toBe(2);
     expect(human.err).toContain("notInThisSdk");

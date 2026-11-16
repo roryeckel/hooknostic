@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
@@ -110,6 +110,22 @@ describe("sdkReleaseSkew (HN110)", () => {
     const app = join(root, "app");
     await mkdir(app);
     expect(sdkReleaseSkew(entry, CLI, app)?.message).toContain(`@hooknostic/sdk at ${sdk} is 0.11.9,`);
+  });
+
+  it("names an SDK relatively when the config's directory is reached through a link", async () => {
+    // Node resolves the SDK to its real path, so a project reached through a
+    // junction or symlink (macOS's tmpdir is one) is compared by its real path too.
+    const { root, entry } = await project(sdkManifest("0.11.9"));
+    const parent = await mkdtemp(join(await realpath(tmpdir()), "hooknostic-skew-link-"));
+    const link = join(parent, "project");
+    await symlink(root, link, "junction");
+    try {
+      expect(sdkReleaseSkew(entry, CLI, link)?.message).toContain("@hooknostic/sdk at node_modules/@hooknostic/sdk ");
+    } finally {
+      // Unlink the junction itself: a recursive remove would descend into the project.
+      await rm(link, { force: true });
+      await rm(parent, { recursive: true, force: true });
+    }
   });
 
   it("points a node_modules project at npx, and a Plug'n'Play project at yarn", async () => {
