@@ -2,6 +2,7 @@ import { mkdir, open } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 
 import type { AdapterRegistry } from "@hooknostic/core";
+import { errorMessage } from "@hooknostic/runtime";
 
 import type { CommandIO } from "./check.js";
 export async function runInit(
@@ -37,8 +38,10 @@ export async function runInit(
   ];
   const created: string[] = [];
   for (const [file, contents] of files) {
-    await mkdir(dirname(file!), { recursive: true });
+    let opening = false;
     try {
+      await mkdir(dirname(file!), { recursive: true });
+      opening = true;
       const handle = await open(file!, "wx");
       try {
         await handle.writeFile(contents!);
@@ -47,7 +50,15 @@ export async function runInit(
       }
       created.push(file!);
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+      // Only open's EEXIST means the file is already there; mkdir's means
+      // its directory is a file.
+      if (opening && (error as NodeJS.ErrnoException).code === "EEXIST") continue;
+      // A path it cannot create, such as one under a file, is the user's
+      // mistake, not an unexpected error with a stack (#208).
+      const message = `init failed: cannot create ${file}: ${errorMessage(error)}`;
+      if (json) io.stdout(JSON.stringify({ schemaVersion: 1, command: "init", ok: false, created, errors: [message] }));
+      else io.stderr(message);
+      return 2;
     }
   }
   if (json) io.stdout(JSON.stringify({ schemaVersion: 1, command: "init", created }));

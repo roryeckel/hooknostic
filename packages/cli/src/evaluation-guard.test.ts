@@ -263,6 +263,27 @@ describe("a failure while the config or hook source loads", () => {
     expect(result.status).toBe(2);
     expect(result.lines).toContain(loadFailure(result, "entry", "the hook source called process.exit(3)"));
   });
+
+  it(
+    "prints inspect --config's load failure as HN501, with or without HOOKNOSTIC_DEBUG (#208)",
+    async () => {
+      const results = await runAll([false, true], (debug) =>
+        run(["inspect", "claude"], atLoad("config", `process.exit(3);`), { debug }),
+      );
+
+      expect(
+        results.map((result) => ({
+          status: result.status,
+          reported: result.lines.includes(loadFailure(result, "config", "the config called process.exit(3)")),
+          hn501: result.stderr.startsWith("HN501 invalid configuration [error]\n"),
+          unexpected: /unexpected error/.test(result.stdout + result.stderr),
+          trace: NODE_TRACE.test(result.stderr),
+          stdout: result.stdout,
+        })),
+      ).toEqual(Array(2).fill({ status: 2, reported: true, hn501: true, unexpected: false, trace: false, stdout: "" }));
+    },
+    SPAWNS_TIMEOUT_MS,
+  );
 });
 
 describe("a handle user code leaks", () => {

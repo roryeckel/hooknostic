@@ -85,8 +85,7 @@ own process too, under the same guard; `recover` and `inspect --config` load onl
 config. A failure while either one loads, whether a top-level throw, a `process.exit`, a
 rejection or a timer that throws, or a top-level `await` that never settles, is reported
 as **HN501** (`failed to load config <path>: ...` or `failed to load entry <path>: ...`),
-and the command exits 2. `inspect --config` still prints a config's load failure as
-`hooknostic: unexpected error:` with a stack (#208). One that comes after it loaded is a
+and the command exits 2. One that comes after it loaded is a
 `hooknostic internal` line, and the command still exits 2, though `build` or `sync` may
 already have written its output. A timer or socket your source leaves open no longer
 keeps the command running once it is done. This is the `hooknostic` command only: the

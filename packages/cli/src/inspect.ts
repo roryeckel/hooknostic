@@ -1,6 +1,11 @@
 import { AGENT_PLUGIN_COMPONENT_IDS, type AgentPluginComponentId } from "@hooknostic/agent-plugin";
-import type { AdapterRegistry } from "@hooknostic/core";
-import { mcpIdentityApplies, resolveAgentPluginProjection, resolveTargetAdapter } from "@hooknostic/core";
+import type { AdapterRegistry, Diagnostic } from "@hooknostic/core";
+import {
+  formatDiagnostics,
+  mcpIdentityApplies,
+  resolveAgentPluginProjection,
+  resolveTargetAdapter,
+} from "@hooknostic/core";
 import type { CapabilityId, EventFieldId } from "@hooknostic/sdk";
 import { ALL_CAPABILITY_IDS, ALL_EVENT_FIELD_IDS, isCapabilityId, isEventFieldId } from "@hooknostic/sdk";
 
@@ -21,28 +26,44 @@ export interface InspectCommandOptions {
 }
 
 /**
+ * Report an `inspect` failure and answer 2. Diagnostics, when given, print
+ * through the diagnostics printer as `check` prints them (#208).
+ */
+export function inspectFailure(
+  options: { json?: boolean; io: CommandIO },
+  errors: string[],
+  diagnostics?: Diagnostic[],
+): number {
+  if (options.json)
+    options.io.stdout(
+      JSON.stringify(
+        { schemaVersion: 1, command: "inspect", ok: false, errors, ...(diagnostics ? { diagnostics } : {}) },
+        null,
+        2,
+      ),
+    );
+  else if (diagnostics) options.io.stderr(formatDiagnostics(diagnostics));
+  else for (const message of errors) options.io.stderr(message);
+  return 2;
+}
+
+/**
  * `hooknostic inspect <target>` — why does this adapter map a capability or
  * event the way it does? Renders the adapter-owned capability matrix with
  * rationale and provenance-bearing version ranges.
  */
 export async function runInspect(options: InspectCommandOptions): Promise<number> {
   const errors: string[] = [];
-  const failure = (): number => {
-    if (options.json)
-      options.io.stdout(JSON.stringify({ schemaVersion: 1, command: "inspect", ok: false, errors }, null, 2));
-    else for (const message of errors) options.io.stderr(message);
-    return 2;
-  };
   let adapter = Object.hasOwn(options.registry, options.target) ? options.registry[options.target] : undefined;
   if (!adapter) {
     errors.push(`unknown target "${options.target}"; available: ${Object.keys(options.registry).join(", ")}`);
-    return failure();
+    return inspectFailure(options, errors);
   }
   if (options.capability !== undefined && !isCapabilityId(options.capability)) {
     errors.push(
       `unknown capability "${options.capability}"; run \`hooknostic inspect ${options.target}\` without --capability to list valid capability IDs.`,
     );
-    return failure();
+    return inspectFailure(options, errors);
   }
   if (
     options.component !== undefined &&
@@ -51,17 +72,17 @@ export async function runInspect(options: InspectCommandOptions): Promise<number
     errors.push(
       `unknown component "${options.component}"; valid Agent Plugin component IDs: ${AGENT_PLUGIN_COMPONENT_IDS.join(", ")}.`,
     );
-    return failure();
+    return inspectFailure(options, errors);
   }
   if (options.field !== undefined && !isEventFieldId(options.field)) {
     errors.push(
       `unknown field "${options.field}"; fields are named <event>.<path>, such as turn.stop.lastMessage or tool.before.correlation.toolCallId.`,
     );
-    return failure();
+    return inspectFailure(options, errors);
   }
   if ([options.capability, options.component, options.field].filter((value) => value !== undefined).length > 1) {
     errors.push("--capability, --component and --field are mutually exclusive.");
-    return failure();
+    return inspectFailure(options, errors);
   }
 
   // Default to the RECOMMENDED range, not the widest validated one: without
@@ -76,7 +97,7 @@ export async function runInspect(options: InspectCommandOptions): Promise<number
   });
   if (!selected.adapter) {
     errors.push(...selected.diagnostics.map((d) => `${d.code}: ${d.message}`));
-    return failure();
+    return inspectFailure(options, errors);
   }
   adapter = selected.adapter;
   // A declared statement applies only within the range its evidence covers
@@ -92,7 +113,7 @@ export async function runInspect(options: InspectCommandOptions): Promise<number
     for (const diagnostic of resolved.diagnostics) {
       errors.push(`${diagnostic.code}: ${diagnostic.message}`);
     }
-    return failure();
+    return inspectFailure(options, errors);
   }
 
   const single = options.capability ?? options.component ?? options.field;
@@ -143,7 +164,7 @@ export async function runInspect(options: InspectCommandOptions): Promise<number
     for (const diagnostic of projection.diagnostics) {
       errors.push(`${diagnostic.code}: ${diagnostic.message}`);
     }
-    return failure();
+    return inspectFailure(options, errors);
   }
   const componentIds: AgentPluginComponentId[] =
     options.component === undefined
