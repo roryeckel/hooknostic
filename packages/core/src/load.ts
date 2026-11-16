@@ -5,6 +5,7 @@ import { pathToFileURL } from "node:url";
 
 import { build } from "esbuild";
 
+import { errorMessage, exitCodeText, HookSourceExitError, isInstance } from "@hooknostic/runtime";
 import type { HooknosticConfig, PluginSpec } from "@hooknostic/sdk";
 import { hooknosticConfigSchema } from "@hooknostic/sdk/schemas";
 
@@ -76,11 +77,61 @@ export async function stageUserModule(file: string, options?: EvaluateOptions): 
   return { href: pathToFileURL(out).href, directory: dir, dispose };
 }
 
-async function evaluateModule(file: string, options?: EvaluateOptions): Promise<unknown> {
+/**
+ * Internal (#193): how the CLI's process guard watches one evaluation of user
+ * code. The CLI sets one for the command it runs; the programmatic API never
+ * does, and then nothing here installs a process listener.
+ */
+export interface EvaluationGuard {
+  /**
+   * Settle as `evaluation` does, or reject first: with a failure of user code
+   * the guard attributes to this load, or with an {@link EvaluationStalledError}
+   * when the event loop empties while it is pending. `directory` holds the
+   * staged bundle, and must be removed even if the process ends first.
+   */
+  watch<T>(directory: string, evaluation: Promise<T>): Promise<T>;
+}
+
+let evaluationGuard: EvaluationGuard | undefined;
+
+/** Internal (#193): the CLI sets this for the command it runs, and clears it after. */
+export function setEvaluationGuard(guard: EvaluationGuard | undefined): void {
+  evaluationGuard = guard;
+}
+
+/** Internal (#193): the event loop emptied while a module was still loading. */
+export class EvaluationStalledError extends Error {
+  constructor() {
+    super("the event loop emptied while the module loaded");
+    this.name = "EvaluationStalledError";
+  }
+}
+
+async function evaluateModule(file: string, subject: "config" | "entry", options?: EvaluateOptions): Promise<unknown> {
   const staged = await stageUserModule(file, options);
+  // Read once: the CLI clears it when its command returns.
+  const guard = evaluationGuard;
+  let imported = false;
   try {
-    const mod = (await import(staged.href)) as { default?: unknown };
-    return mod.default;
+    const evaluation = (async () => {
+      const mod = (await import(staged.href)) as { default?: unknown };
+      imported = true;
+      // Returned from an async function, so a thenable default export is
+      // adopted, as an async config may rely on.
+      return mod.default;
+    })();
+    return await (guard === undefined ? evaluation : guard.watch(staged.directory, evaluation));
+  } catch (error) {
+    if (guard === undefined) throw error;
+    if (isInstance(error, EvaluationStalledError))
+      throw new Error(
+        imported ? "its default export is a thenable that never settles" : "its top-level await never settles",
+      );
+    // The runtime's message names the hook source, which a config is not.
+    // Dispatch runs without this guard, and keeps it.
+    if (subject === "config" && isInstance(error, HookSourceExitError))
+      throw new Error(`the config called process.exit(${exitCodeText(error.code)})`);
+    throw error;
   } finally {
     await staged.dispose();
   }
@@ -104,12 +155,12 @@ export async function loadConfig(
   const diagnostics: Diagnostic[] = [];
   let evaluated: unknown;
   try {
-    evaluated = await evaluateModule(configPath, options);
+    evaluated = await evaluateModule(configPath, "config", options);
   } catch (error) {
     diagnostics.push({
       code: "HN501",
       severity: "error",
-      message: `failed to load config ${configPath}: ${error instanceof Error ? error.message : String(error)}`,
+      message: `failed to load config ${configPath}: ${errorMessage(error)}`,
       location: { file: configPath },
       remediation: "the config must be a TypeScript module whose default export is defineConfig({...}).",
     });
@@ -159,7 +210,7 @@ export interface LoadPluginResult {
 export async function loadPluginSource(entryPath: string, options?: EvaluateOptions): Promise<LoadPluginResult> {
   const diagnostics: Diagnostic[] = [];
   try {
-    const evaluated = await evaluateModule(entryPath, options);
+    const evaluated = await evaluateModule(entryPath, "entry", options);
     if (evaluated === undefined || evaluated === null) {
       diagnostics.push({
         code: "HN501",
@@ -175,7 +226,7 @@ export async function loadPluginSource(entryPath: string, options?: EvaluateOpti
     diagnostics.push({
       code: "HN501",
       severity: "error",
-      message: `failed to load entry ${entryPath}: ${error instanceof Error ? error.message : String(error)}`,
+      message: `failed to load entry ${entryPath}: ${errorMessage(error)}`,
       location: { file: entryPath },
     });
     return { diagnostics };

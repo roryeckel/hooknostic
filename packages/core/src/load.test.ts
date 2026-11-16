@@ -4,11 +4,13 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { afterAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, describe, expect, it } from "vitest";
+
+import { HookSourceExitError } from "@hooknostic/runtime";
 
 import { claudeHarness } from "../../adapter-claude/src/harness.js";
 import { buildPluginIR } from "./ir.js";
-import { loadConfig, loadPluginSource } from "./load.js";
+import { EvaluationStalledError, loadConfig, loadPluginSource, setEvaluationGuard } from "./load.js";
 import { effectiveCompatibility, effectiveRuntime } from "./policy.js";
 
 const SDK_PATH = resolve(fileURLToPath(new URL(".", import.meta.url)), "../../sdk/src/index.ts");
@@ -272,5 +274,71 @@ describe("loadPluginSource → buildPluginIR", () => {
     const result = await loadPluginSource(file, OPTIONS);
     expect(result.plugin).toBeUndefined();
     expect(result.diagnostics[0]).toMatchObject({ code: "HN501" });
+  });
+});
+
+describe("evaluating user modules", () => {
+  const CONFIG = `{ entry: "./hooks.ts", targets: { claude: { version: ">=2.1 <3", delivery: "package", output: "./x" } } }`;
+
+  afterEach(() => setEvaluationGuard(undefined));
+
+  it("renders a load failure whose thrown value cannot be inspected", async () => {
+    const dir = await fixtureDir();
+    await writeFile(join(dir, "config.ts"), `throw Object.create(null);\nexport default ${CONFIG};`);
+    await writeFile(join(dir, "hooks.ts"), `throw Object.create(null);\nexport default { name: "p", hooks: [] };`);
+
+    const config = await loadConfig(join(dir, "config.ts"), OPTIONS);
+    const entry = await loadPluginSource(join(dir, "hooks.ts"), OPTIONS);
+
+    expect([...config.diagnostics, ...entry.diagnostics].map(({ code, message }) => ({ code, message }))).toEqual([
+      { code: "HN501", message: `failed to load config ${join(dir, "config.ts")}: uninspectable thrown value` },
+      { code: "HN501", message: `failed to load entry ${join(dir, "hooks.ts")}: uninspectable thrown value` },
+    ]);
+  });
+
+  it("adopts a thenable default export, as an async config may rely on", async () => {
+    const dir = await fixtureDir();
+    const file = join(dir, "config.ts");
+    await writeFile(file, `export default { then(resolve: (value: unknown) => void) { resolve(${CONFIG}); } };`);
+
+    const result = await loadConfig(file, OPTIONS);
+
+    expect(result.diagnostics).toEqual([]);
+    expect(result.config?.entry).toBe("./hooks.ts");
+  });
+
+  it("hands each evaluation to the CLI's guard, and names what stalled or exited", async () => {
+    const dir = await fixtureDir();
+    await writeFile(join(dir, "tla.ts"), `await new Promise(() => {});\nexport default ${CONFIG};`);
+    await writeFile(join(dir, "thenable.ts"), `export default { then() {} };`);
+    await writeFile(join(dir, "plain.ts"), `export default ${CONFIG};`);
+    const watched: string[] = [];
+    // As the CLI's guard fails a load: the stall once the loop would empty,
+    // here once the module had time to import.
+    let failure: () => unknown = () => new EvaluationStalledError();
+    setEvaluationGuard({
+      async watch(directory, evaluation) {
+        watched.push(directory);
+        evaluation.catch(() => {});
+        await new Promise((resolve) => setTimeout(resolve, 300));
+        throw failure();
+      },
+    });
+
+    const tla = await loadConfig(join(dir, "tla.ts"), OPTIONS);
+    const thenable = await loadPluginSource(join(dir, "thenable.ts"), OPTIONS);
+    failure = () => new HookSourceExitError(3);
+    const configExit = await loadConfig(join(dir, "plain.ts"), OPTIONS);
+    const entryExit = await loadPluginSource(join(dir, "plain.ts"), OPTIONS);
+
+    expect([tla, thenable, configExit, entryExit].map((result) => result.diagnostics[0]?.message)).toEqual([
+      `failed to load config ${join(dir, "tla.ts")}: its top-level await never settles`,
+      `failed to load entry ${join(dir, "thenable.ts")}: its default export is a thenable that never settles`,
+      // A config is not the hook source.
+      `failed to load config ${join(dir, "plain.ts")}: the config called process.exit(3)`,
+      `failed to load entry ${join(dir, "plain.ts")}: the hook source called process.exit(3)`,
+    ]);
+    expect(watched).toHaveLength(4);
+    expect(watched.every((directory) => /hooknostic-eval-/.test(directory))).toBe(true);
   });
 });

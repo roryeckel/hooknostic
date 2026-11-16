@@ -15,6 +15,7 @@
   },
   "dependencies": {
     "@hooknostic/agent-plugin": "workspace:*",
+    "@hooknostic/runtime": "workspace:*",
     "@hooknostic/sdk": "workspace:*",
     "cross-spawn": "catalog:",
     "esbuild": "catalog:",
