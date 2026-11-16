@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "harness": {
+    "id": "opencode",
+    "nativeEvent": "execute.after",
+    "version": "2.0.17"
+  },
+  "session": {
+    "id": "ses_e1a3ff346ffef2hBD2Hq5XVr1I",
+    "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-v2-WO3t0S\\project"
+  },
+  "correlation": {
+    "toolCallId": "call_probe_1"
+  },
+  "event": "tool.after",
+  "tool": {
+    "nativeName": "subagent",
+    "input": {
+      "agent": "general",
+      "description": "Offline child result capture",
+      "prompt": "hooknostic-child-task: return the scripted child result."
+    },
+    "kind": "agent"
+  },
+  "output": [
+    {
+      "type": "text",
+      "text": "The subagent is working in the background (sessionID: ses_e1a3ff163ffeyu85yRTsqO577o). You will receive a <subagent> message when it goes idle, and again after each later round of work.\nDO NOT sleep, poll, proactively check on its progress, or duplicate this subagent's work.\nWork on non-overlapping tasks, or briefly tell the user what you launched and end your response.\nTo send it follow-ups or change its instructions while it runs, call subagent again with this sessionID."
+    }
+  ]
+}

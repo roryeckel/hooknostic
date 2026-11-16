@@ -1,0 +1,32 @@
+{
+  "hook": "event",
+  "directory": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-v2-WO3t0S\\project",
+  "event": {
+    "id": "evt_1e5c00ecd001JLBFAJD03KgslF",
+    "created": 1794855931597,
+    "type": "session.inbox.enqueued",
+    "durable": {
+      "aggregateID": "ses_e1a3ff346ffef2hBD2Hq5XVr1I",
+      "seq": 19,
+      "version": 1
+    },
+    "data": {
+      "sessionID": "ses_e1a3ff346ffef2hBD2Hq5XVr1I",
+      "inboxID": "msg_1e5c00ea30017TMBveIOIOkGgC",
+      "item": {
+        "type": "synthetic",
+        "payload": {
+          "text": "<subagent sessionID=\"ses_e1a3ff163ffeyu85yRTsqO577o\" state=\"completed\" description=\"Offline child result capture\">\nhooknostic-child-result\n</subagent>",
+          "description": "Offline child result capture",
+          "metadata": {
+            "source": "subagent",
+            "childID": "ses_e1a3ff163ffeyu85yRTsqO577o",
+            "agent": "General",
+            "state": "completed"
+          }
+        },
+        "delivery": "steer"
+      }
+    }
+  }
+}

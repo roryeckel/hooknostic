@@ -66,7 +66,7 @@ Same version/date and Windows platform; procedure: `.capture/opencode-v2-audit`.
 | --- | --- | --- |
 | tool-read-error | captured | Typed missing-file error, input and call ID |
 | tool-rich-after | captured | Custom tool result with content, structured output and metadata |
-| tool-subagent-after | captured | Completed foreground child; result returned to parent model request |
+| tool-subagent-after | captured | Completed foreground child; result returned to parent model request. Holds for 2.0.17 through 2.2.7; see the background capture below for 2.3.0 |
 | audits/providers.json | constructed summary of captured callbacks/requests | Anthropic Messages and Responses HTTP context across four routes, including successful compaction |
 | audits/oauth-project.json, audits/oauth-package.json | captured HTTP rows + constructed labels and output check | Discovery, dynamic registration, PKCE, refresh after rejected expiry and authenticated execution |
 | audits/notifications.json | captured plugin records | Server RPC received by companion TUI, attention disabled under defaults, cleanup on exit; terminal rendering separately asserted in playback |
@@ -147,3 +147,25 @@ redacted to user, as in the earlier fixtures.
 The canonical harness version still comes from the reference metadata, as in
 other replay fixtures. Earlier exception omissions and query-bearing requests
 remain historical observations. Procedure and limits: .capture/opencode-v2-audit.
+
+## Background subagents (Windows, 2.3.0, 2026-11-16)
+
+From 2.3.0 every subagent runs in the background. Captured with
+`drive.mjs subagent` against the installed native executable, with isolated
+state and the loopback model; no paid model or real credential was used. The
+model replies and the subagent arguments were scripted; the envelopes are the
+harness's own. Promoted with
+`promote-audits.mjs subagent-background <subagent-root>`, which redacts the
+capturing account's home-directory segment to `user`, as above.
+
+| Case | Provenance | Observation |
+| --- | --- | --- |
+| tool-subagent-background-after | captured | `execute.after` for `subagent` fires as the child starts: `status: completed`, `result.output.status: running`, and a launch notice as `result.content`, which is what `tool.after` reports. No child result |
+| subagent-background/inbox-subagent-completed.json | captured | The parent's `session.inbox.enqueued` event carrying the child's result: a `synthetic` item whose `payload.text` is the `<subagent ... state="completed">` message the parent receives as a user-role message, with `metadata.source: subagent` and the child's `childID` |
+
+The inbox event is an unmapped bus event, so it is kept in a subdirectory and
+not named `*.input.json`, as with `turn-fields`. As elsewhere in this directory,
+the canonical `harness.version` is the adapter's reference build. 2.2.7 still
+returned a foreground child's result as the tool result, so `tool-subagent-after`
+stays the evidence for the earlier builds. Procedure and limits:
+`.capture/opencode-v2-audit`.
