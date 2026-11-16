@@ -297,15 +297,6 @@ describe("canonical schemas", () => {
         path: ["components", "mcpOverrides", "__proto__"],
       },
       {
-        record: "components.mcpOverrides.<target>.servers",
-        config: {
-          project: { root: "." },
-          components: { mcp: "./mcp.json", mcpOverrides: { client: { servers: ownProto({ args: ["serve"] }) } } },
-          targets: { client: projectTarget },
-        },
-        path: ["components", "mcpOverrides", "client", "servers", "__proto__"],
-      },
-      {
         record: "components.excludeFor",
         config: { components: { root: ".", excludeFor: ownProto(["x/**"]) }, targets: { claude: packageTarget } },
         path: ["components", "excludeFor", "__proto__"],
@@ -426,7 +417,7 @@ describe("canonical schemas", () => {
         ]);
       });
 
-      it("never reads __proto__ from an MCP environment record that already failed", () => {
+      it("keeps an MCP environment record's own issues when looking for __proto__ throws", () => {
         const result = hooknosticConfigSchema.safeParse({
           components: { root: ".", mcpEnvironment: throwsOnProtoDescriptor({ server: [""] }) },
           targets: { claude: packageTarget },
@@ -513,6 +504,232 @@ describe("canonical schemas", () => {
       expect(pathsAndMessages(hooknosticConfigSchema.safeParse(foreignLiteral))).toEqual([
         { path: ["targets", "__proto__"], message: expect.stringContaining("prototype was replaced") },
       ]);
+    });
+
+    // A project's mcp.json may name a server `__proto__`, so an override for it
+    // is kept as an own entry (#206), validated like any other.
+    describe("an MCP server override named __proto__", () => {
+      const servers = ["components", "mcpOverrides", "client", "servers"];
+      const withServers = (record: unknown) => ({
+        project: { root: "." },
+        components: { mcp: "./mcp.json", mcpOverrides: { client: { servers: record } } },
+        targets: { client: projectTarget },
+      });
+
+      it("keeps it as an own entry beside the other servers", () => {
+        const override = { args: ["serve"], cwd: ".", startupTimeoutMs: 1_000 };
+        const result = hooknosticConfigSchema.safeParse(
+          withServers(
+            Object.fromEntries([
+              ["other", { args: [] }],
+              ["__proto__", override],
+            ]),
+          ),
+        );
+
+        expect(pathsAndMessages(result)).toEqual([]);
+        const parsed = result.success ? result.data.components!.mcpOverrides!.client!.servers! : {};
+        expect(Object.getPrototypeOf(parsed)).toBe(Object.prototype);
+        expect(Object.keys(parsed)).toEqual(["other", "__proto__"]);
+        expect(Object.getOwnPropertyDescriptor(parsed, "__proto__")?.value).toEqual(override);
+        expect(parsed["other"]).toEqual({ args: [] });
+      });
+
+      it("validates its value", () => {
+        const result = hooknosticConfigSchema.safeParse(withServers(ownProto({ startupTimeoutMs: 0 })));
+
+        expect(pathsAndMessages(result)).toEqual([
+          { path: [...servers, "__proto__", "startupTimeoutMs"], message: expect.stringContaining("Too small") },
+        ]);
+      });
+
+      it("rejects the object literal spelling and names the computed key", () => {
+        const result = hooknosticConfigSchema.safeParse(withServers({ __proto__: { args: ["serve"] } }));
+
+        expect(pathsAndMessages(result)).toEqual([
+          {
+            path: [...servers, "__proto__"],
+            message:
+              'this record\'s prototype was replaced, for example by an object literal entry written as __proto__: {...}, which sets the prototype instead of adding an entry; to name a server "__proto__", write the key as a computed ["__proto__"] key',
+          },
+        ]);
+      });
+
+      it("reports a bad entry and a bad __proto__ entry together", () => {
+        const result = hooknosticConfigSchema.safeParse(
+          withServers(
+            Object.fromEntries([
+              ["x", { startupTimeoutMs: 0 }],
+              ["__proto__", { cwd: "" }],
+            ]),
+          ),
+        );
+
+        expect(pathsAndMessages(result)).toEqual([
+          { path: [...servers, "x", "startupTimeoutMs"], message: expect.stringContaining("Too small") },
+          { path: [...servers, "__proto__", "cwd"], message: expect.stringContaining("Too small") },
+        ]);
+      });
+
+      it("keeps config-level issues beside an issue inside servers", () => {
+        const result = hooknosticConfigSchema.safeParse({
+          project: { root: "." },
+          components: { mcp: "./mcp.json", mcpOverrides: { pkg: { servers: { x: { startupTimeoutMs: 0 } } } } },
+          targets: { pkg: packageTarget },
+        });
+
+        expect(pathsAndMessages(result)).toEqual([
+          {
+            path: ["components", "mcpOverrides", "pkg", "servers", "x", "startupTimeoutMs"],
+            message: expect.stringContaining("Too small"),
+          },
+          {
+            path: ["components", "mcpOverrides", "pkg"],
+            message: 'MCP override target "pkg" must use project delivery',
+          },
+        ]);
+      });
+
+      it("applies per-call parse options to issues inside servers", () => {
+        const result = hooknosticConfigSchema.safeParse(
+          withServers(
+            Object.fromEntries([
+              ["x", { startupTimeoutMs: 0 }],
+              ["__proto__", { startupTimeoutMs: 0 }],
+            ]),
+          ),
+          { error: () => "per-call message" },
+        );
+
+        expect(pathsAndMessages(result)).toEqual([
+          { path: [...servers, "x", "startupTimeoutMs"], message: "per-call message" },
+          { path: [...servers, "__proto__", "startupTimeoutMs"], message: "per-call message" },
+        ]);
+      });
+    });
+
+    it("keeps an own __proto__ server name from another realm and rejects a replaced one", () => {
+      const project = (servers: unknown) => ({
+        project: { root: "." },
+        components: { mcp: "./mcp.json", mcpOverrides: { client: { servers } } },
+        targets: { client: projectTarget },
+      });
+      const keptProto = (record: unknown) => Object.getOwnPropertyDescriptor(record, "__proto__")?.value as unknown;
+
+      // Each record has an own `__proto__` key under the other realm's Object.prototype.
+      const servers = runInNewContext(
+        `Object.fromEntries([["__proto__", { args: ["serve"] }], ["other", { args: [] }]])`,
+      );
+      expect(Object.getPrototypeOf(servers)).not.toBe(Object.prototype);
+      const parsedServers = hooknosticConfigSchema.safeParse(project(servers));
+      expect(pathsAndMessages(parsedServers)).toEqual([]);
+      if (parsedServers.success)
+        expect(keptProto(parsedServers.data.components!.mcpOverrides!.client!.servers)).toEqual({ args: ["serve"] });
+
+      const mcpEnvironment = runInNewContext(`Object.fromEntries([["__proto__", ["TOKEN"]], ["other", ["OTHER"]]])`);
+      const parsedEnvironment = hooknosticConfigSchema.safeParse({
+        components: { root: ".", mcpEnvironment },
+        targets: { claude: packageTarget },
+      });
+      expect(pathsAndMessages(parsedEnvironment)).toEqual([]);
+      if (parsedEnvironment.success)
+        expect(keptProto(parsedEnvironment.data.components!.mcpEnvironment)).toEqual(["TOKEN"]);
+
+      // A whole config from the other realm: every record in it is foreign.
+      const foreignConfig = runInNewContext(
+        `(${JSON.stringify(project(null))})`.replace(
+          '"servers":null',
+          `"servers":Object.fromEntries([["__proto__", { args: ["serve"] }]])`,
+        ),
+      );
+      const parsedConfig = hooknosticConfigSchema.safeParse(foreignConfig);
+      expect(pathsAndMessages(parsedConfig)).toEqual([]);
+      if (parsedConfig.success)
+        expect(keptProto(parsedConfig.data.components!.mcpOverrides!.client!.servers)).toEqual({ args: ["serve"] });
+
+      // Another realm's object literal still replaces the record's prototype.
+      const foreignLiteral = runInNewContext(`({ __proto__: { args: ["serve"] }, other: { args: [] } })`);
+      expect(pathsAndMessages(hooknosticConfigSchema.safeParse(project(foreignLiteral)))).toEqual([
+        {
+          path: ["components", "mcpOverrides", "client", "servers", "__proto__"],
+          message: expect.stringContaining(
+            'to name a server "__proto__", write the key as a computed ["__proto__"] key',
+          ),
+        },
+      ]);
+    });
+
+    // mcpEnvironment uses the same checked mode as servers (#206). Its
+    // successful own-key behaviour is pinned by the tests above this block.
+    describe("an MCP environment entry named __proto__", () => {
+      const environment = ["components", "mcpEnvironment"];
+      const withEnvironment = (mcpEnvironment: unknown) => ({
+        components: { root: ".", mcpEnvironment },
+        targets: { claude: packageTarget },
+      });
+
+      it("rejects a replaced prototype instead of dropping it", () => {
+        const result = hooknosticConfigSchema.safeParse(
+          withEnvironment({ __proto__: { inherited: ["TOKEN"] }, other: ["OTHER"] }),
+        );
+
+        expect(pathsAndMessages(result)).toEqual([
+          { path: [...environment, "__proto__"], message: expect.stringContaining('computed ["__proto__"] key') },
+        ]);
+
+        // An array value, the shape an entry takes here, makes the record an
+        // array-like Zod already refuses, so only Zod's own issue is reported.
+        expect(
+          pathsAndMessages(
+            hooknosticConfigSchema.safeParse(withEnvironment({ __proto__: ["TOKEN"], other: ["OTHER"] })),
+          ),
+        ).toEqual([{ path: environment, message: expect.stringContaining("expected record, received Array") }]);
+      });
+
+      it("reports a bad entry and a bad __proto__ entry together", () => {
+        const result = hooknosticConfigSchema.safeParse(
+          withEnvironment(
+            Object.fromEntries([
+              ["x", [""]],
+              ["__proto__", [""]],
+            ]),
+          ),
+        );
+
+        expect(pathsAndMessages(result)).toEqual([
+          { path: [...environment, "x", 0], message: expect.stringContaining("Too small") },
+          { path: [...environment, "__proto__", 0], message: expect.stringContaining("Too small") },
+        ]);
+      });
+
+      it("keeps config-level issues beside an issue inside the record", () => {
+        const result = hooknosticConfigSchema.safeParse({
+          components: { skills: ["./skills"], mcpEnvironment: { x: [""] } },
+          targets: { claude: packageTarget },
+        });
+
+        expect(pathsAndMessages(result)).toEqual([
+          { path: [...environment, "x", 0], message: expect.stringContaining("Too small") },
+          { path: environment, message: "components.mcpEnvironment requires components.root" },
+        ]);
+      });
+
+      it("applies per-call parse options to issues inside the record", () => {
+        const result = hooknosticConfigSchema.safeParse(
+          withEnvironment(
+            Object.fromEntries([
+              ["x", [""]],
+              ["__proto__", [""]],
+            ]),
+          ),
+          { error: () => "per-call message" },
+        );
+
+        expect(pathsAndMessages(result)).toEqual([
+          { path: [...environment, "x", 0], message: "per-call message" },
+          { path: [...environment, "__proto__", 0], message: "per-call message" },
+        ]);
+      });
     });
   });
 

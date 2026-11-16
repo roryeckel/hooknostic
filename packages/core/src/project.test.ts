@@ -9,6 +9,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { AGENT_PLUGIN_MANIFEST_SCHEMA, AGENT_PLUGIN_MCP_SCHEMA, RELATIVE_SKILL_TEXT } from "@hooknostic/agent-plugin";
 
 import { opencodeV1Adapter } from "../../adapter-opencode/src/index.js";
+import { opencodeV2Harness } from "../../adapter-opencode/src/v2/harness.js";
 import { defaultAdapterRegistry } from "../../cli/src/registry.js";
 import { buildProject } from "./build.js";
 import { runProject } from "./project.js";
@@ -1045,6 +1046,12 @@ describe("complete project integration", () => {
       'unknown server "toString"',
     ],
     ["inherited constructor", { codex: { servers: { constructor: { args: [] } } } }, 'unknown server "constructor"'],
+    // Kept as an own entry by the schema (#206), then looked up by own key only.
+    [
+      "undeclared __proto__",
+      { codex: { servers: Object.fromEntries([["__proto__", { args: [] }]]) } },
+      'unknown server "__proto__"',
+    ],
     ["remote argv", { codex: { servers: { remote: { args: [] } } } }, "only on a stdio server"],
     [
       "cwd outside project",
@@ -1053,7 +1060,9 @@ describe("complete project integration", () => {
     ],
     ["unsupported timeout", { claude: { startupTimeoutMs: 1000 } }, "cannot represent project MCP startup timeouts"],
   ])("rejects invalid target MCP overrides: %s", async (_name, mcpOverrides, message) => {
-    const { root, options } = await fixture({ components: { mcp: "./mcp.json", mcpOverrides } });
+    const { root, config, options } = await fixture({ components: { mcp: "./mcp.json", mcpOverrides } });
+    // Through JSON.parse, so a `__proto__` name stays an own key.
+    await writeFile(options.configPath, `export default JSON.parse(${JSON.stringify(JSON.stringify(config))});`);
     await writeFile(
       join(root, "mcp.json"),
       JSON.stringify({
@@ -1097,6 +1106,122 @@ describe("complete project integration", () => {
     expect(Object.getOwnPropertyDescriptor(opencodeConfig.mcp, "__proto__")?.value.timeout).toBe(60_000);
     expect(opencodeConfig.mcp?.["other"]?.timeout).toBe(60_000);
   });
+  // A server named `__proto__` takes per-server overrides like any other
+  // (#206). The config is written through JSON.parse, which keeps the name as
+  // an own key, as a computed ["__proto__"] key in an authored config does.
+  it.each([
+    ["OpenCode v1", undefined],
+    ["OpenCode v2", opencodeV2Harness.recommendedRange],
+  ] as const)(
+    "applies args, cwd and timeout overrides to a server named __proto__ on every adapter (%s)",
+    async (_family, opencodeRange) => {
+      // Claude and Copilot share .mcp.json, so they take the same override.
+      const shared = { args: ["override.mjs", "--shared"], cwd: "./srv" };
+      const timed = { args: ["override.mjs", "--timed"], cwd: "./srv", startupTimeoutMs: 45_000 };
+      const settings: Record<string, typeof shared> = {
+        claude: shared,
+        codex: timed,
+        copilot: shared,
+        opencode: timed,
+        pi: shared,
+      };
+      const targetRegistry = opencodeRange === undefined ? registry : defaultAdapterRegistry();
+      const { root, config, options } = await fixture({
+        // Components only: bundling the fixture's hook for every target adds
+        // nothing here.
+        entry: undefined,
+        components: {
+          mcp: "./mcp.json",
+          mcpOverrides: Object.fromEntries(
+            Object.entries(settings).map(([id, server]) => [
+              id,
+              { servers: Object.fromEntries([["__proto__", server]]) },
+            ]),
+          ),
+        },
+        targets: Object.fromEntries(
+          Object.entries(targetRegistry).map(([name, adapter]) => [
+            name,
+            {
+              adapter: name,
+              version:
+                name === "opencode"
+                  ? (opencodeRange ?? adapter.harness.recommendedRange)
+                  : adapter.harness.recommendedRange,
+              delivery: "project",
+              output: `.hooknostic/artifacts/${name}`,
+            },
+          ]),
+        ),
+      });
+      options.registry = targetRegistry;
+      await writeFile(options.configPath, `export default JSON.parse(${JSON.stringify(JSON.stringify(config))});`);
+      await mkdir(join(root, "srv"));
+      await writeFile(
+        join(root, "mcp.json"),
+        `{"$schema":${JSON.stringify(AGENT_PLUGIN_MCP_SCHEMA)},"mcpServers":{` +
+          `"__proto__":{"type":"stdio","command":"node","args":["original.mjs"]},` +
+          `"other":{"type":"stdio","command":"node","args":["other.mjs"]}}}`,
+      );
+
+      const synced = await runProject({ ...options, command: "sync" });
+      expect(synced.errors).toEqual([]);
+      for (const [id, server] of Object.entries(settings)) {
+        const document = JSON.parse(await readFile(join(root, `.hooknostic/artifacts/${id}/mcp-servers.json`), "utf8"));
+        const servers = document.servers as { name: string; args?: string[]; cwd?: string }[];
+        expect(
+          servers.find((entry) => entry.name === "__proto__"),
+          id,
+        ).toMatchObject({
+          args: server.args,
+          cwd: server.cwd,
+        });
+        expect(
+          servers.find((entry) => entry.name === "other"),
+          id,
+        ).toMatchObject({ args: ["other.mjs"] });
+      }
+      const codexServers = readProjectToml(await readFile(join(root, ".codex/config.toml"), "utf8"))
+        .mcp_servers as Record<string, { startup_timeout_sec?: number }>;
+      expect(Object.hasOwn(codexServers, "__proto__")).toBe(true);
+      expect(codexServers["__proto__"]?.startup_timeout_sec).toBe(45);
+      expect(codexServers["other"]).not.toHaveProperty("startup_timeout_sec");
+
+      const plugin = (await import(pathToFileURL(join(root, ".opencode/plugins/hooknostic-components.js")).href))
+        .default;
+      if (opencodeRange === undefined) {
+        const opencodeConfig: { mcp?: Record<string, { timeout?: number }> } = {};
+        (await plugin()).config(opencodeConfig);
+        expect(Object.hasOwn(opencodeConfig.mcp!, "__proto__")).toBe(true);
+        expect(Object.getOwnPropertyDescriptor(opencodeConfig.mcp, "__proto__")?.value.timeout).toBe(45_000);
+        expect(opencodeConfig.mcp?.["other"]).not.toHaveProperty("timeout");
+      } else {
+        const sets: [string, unknown][] = [];
+        await plugin.setup({
+          location: { directory: root },
+          mcp: {
+            transform: async (edit: (editor: { get(): undefined; set(name: string, server: unknown): void }) => void) =>
+              edit({ get: () => undefined, set: (name, server) => sets.push([name, server]) }),
+          },
+        });
+        expect(sets.map(([name]) => name)).toEqual(["__proto__", "other"]);
+        expect(sets[0]![1]).toMatchObject({ timeout: { startup: 45_000 } });
+        expect(sets[1]![1]).not.toHaveProperty("timeout");
+      }
+
+      const integration = JSON.parse(await readFile(join(root, ".hooknostic/integration.json"), "utf8")) as {
+        owned: { path: string; key?: string[] }[];
+      };
+      expect(integration.owned.filter((entry) => entry.key?.includes("__proto__"))).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ path: ".mcp.json", key: ["mcpServers", "__proto__"] }),
+          expect.objectContaining({ path: ".codex/config.toml", key: ["mcp_servers", "__proto__"] }),
+        ]),
+      );
+      expect((await runProject({ ...options, command: "verify" })).ok).toBe(true);
+    },
+    60_000,
+  );
   it("rejects a target-wide startup timeout when the only server is named __proto__", async () => {
     const { root, options } = await fixture({
       components: { mcp: "./mcp.json", mcpOverrides: { claude: { startupTimeoutMs: 1000 } } },
