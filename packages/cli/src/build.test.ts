@@ -26,6 +26,7 @@ import { makeFakeAdapter, syntheticSource, writeSyntheticPnpProject } from "@hoo
 
 import { describeMcpCommands, runBuild } from "./build.js";
 import { runCheck } from "./check.js";
+import { runCli } from "./cli.js";
 import { runDoctor } from "./doctor.js";
 import { runInspect } from "./inspect.js";
 import { defaultAdapterRegistry } from "./registry.js";
@@ -3782,6 +3783,21 @@ describe("hooknostic inspect", () => {
       }),
     ).toBe(2);
     expect(inherited.err()).toContain('unknown target "toString"');
+
+    // With --config, the target is looked up in the configuration first: an
+    // inherited name is not configured there either (#195).
+    const dir = await mkdtemp(join(tmpdir(), "hooknostic-inspect-inherited-"));
+    cleanupDirs.push(dir);
+    await writeFile(join(dir, "hooks.ts"), `export default { name: "inherited-target", hooks: [] };`);
+    await writeFile(
+      join(dir, "hooknostic.config.ts"),
+      `export default { entry: "./hooks.ts", targets: { claude: { version: ${JSON.stringify(claudeHarness.recommendedRange)}, delivery: "package", output: "dist" } } };`,
+    );
+    const configured = captureIO();
+    expect(
+      await runCli(["inspect", "toString", "--config", join(dir, "hooknostic.config.ts")], { io: configured.io }),
+    ).toBe(2);
+    expect(configured.err()).toContain("target toString is not configured");
 
     const invalidCapability = captureIO();
     expect(
