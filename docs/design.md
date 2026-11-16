@@ -986,7 +986,9 @@ process (`check`, `build`, `sync`, `verify`, `recover`, `doctor`, and `inspect
   `the config called process.exit(<code>)`; the entry's keeps the runtime's
   `the hook source called process.exit(<code>)`. A load that can never settle
   reads `its top-level await never settles` or `its default export is a thenable
-  that never settles`. The command exits 2.
+  that never settles`. The command exits 2. `inspect --config` is the exception: it
+  still prints a config's load failure as `hooknostic: unexpected error:` with a
+  stack, as it did before, though it exits 2 too (#208).
 - A throw while reading the entry's default export, from a getter or a proxy, is
   HN501 as well: `invalid plugin source: reading the default export threw:
   <message>`.
@@ -1009,7 +1011,14 @@ The limits:
   already have written its output by the time a stray fails the command.
 - Attribution is best effort. A failure after the window's zero-delay timer is a
   stray, even if the load scheduled it, and one inside a window is that load's,
-  even if a module loaded earlier scheduled it.
+  even if a module loaded earlier scheduled it. Two failures inside a window are
+  strays instead: a second one in a window whose load already failed, and a
+  rejection that comes before a synchronous throw from the same module
+  (`Promise.reject(a); throw b`), since a load whose `import()` itself rejects
+  gets no zero-delay drain. Either way the command exits 2.
+- A stray is not attributed to a module, so one that the config's own
+  `process.exit` causes keeps the runtime's wording, `hooknostic internal: the
+  hook source called process.exit(<code>)`. Only a load failure names the config.
 - A load that never settles while a handle it leaked keeps the loop alive still
   hangs: the loop never empties, so there is no stall to detect.
 - Only the `hooknostic` command installs the guard. `buildProject()`,
