@@ -669,8 +669,8 @@ export function runProcess(
     child.stdin.on("error", (error) => {
       // A harness may exit before consuming stdin; that is not a playback
       // failure, but Node otherwise reports the failed write as unhandled.
-      // It is EPIPE on a pipe; macOS gives child stdio as a Unix socket,
-      // where the same write can fail with ENOTCONN or ECONNRESET.
+      // Which code reports it is the platform's choice: EPIPE on Windows and
+      // Linux, while macOS can report ENOTCONN or ECONNRESET.
       const code = (error as NodeJS.ErrnoException).code;
       if (code === "EPIPE" || code === "ENOTCONN" || code === "ECONNRESET") return;
       if (settled) return;

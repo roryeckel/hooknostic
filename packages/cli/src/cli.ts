@@ -376,7 +376,8 @@ export async function runCli(argv: string[], options?: RunCliOptions): Promise<n
           if (protocol !== undefined) {
             // Written before the forced-exit fallback can fire: it would truncate a pipe.
             // Inside the try: a consumer that closes stdout early (`| head`)
-            // rejects a write with EPIPE, and the run must still finish.
+            // rejects a write (EPIPE, or ENOTCONN or ECONNRESET on macOS), and
+            // the run must still finish.
             await Promise.all(writes);
             await protocol.release();
           }
