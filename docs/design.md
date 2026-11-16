@@ -986,9 +986,7 @@ process (`check`, `build`, `sync`, `verify`, `recover`, `doctor`, and `inspect
   `the config called process.exit(<code>)`; the entry's keeps the runtime's
   `the hook source called process.exit(<code>)`. A load that can never settle
   reads `its top-level await never settles` or `its default export is a thenable
-  that never settles`. The command exits 2. `inspect --config` is the exception: it
-  still prints a config's load failure as `hooknostic: unexpected error:` with a
-  stack, as it did before, though it exits 2 too (#208).
+  that never settles`. The command exits 2.
 - A throw while reading the entry's default export, from a getter or a proxy, is
   HN501 as well: `invalid plugin source: reading the default export threw:
   <message>`.
