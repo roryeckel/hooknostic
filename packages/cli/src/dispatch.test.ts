@@ -1046,7 +1046,11 @@ export default definePlugin({
       // Killed by the timer, it would have no status.
       expect(outcome.signal, outcome.stderr).toBeNull();
       expect(outcome.status).toBe(2);
-      expect(outcome.stderr).toContain("EPIPE");
+      // The write failed because the reader went away. Which code says so
+      // is the platform's choice: EPIPE on a pipe, while macOS gives child
+      // stdio as a Unix socket, where the same write can fail with ENOTCONN
+      // or ECONNRESET depending on timing.
+      expect(outcome.stderr).toMatch(/\b(?:EPIPE|ENOTCONN|ECONNRESET)\b/);
       expect((await readdir(temp)).filter((name) => name.startsWith("hooknostic-eval-"))).toEqual([]);
     }, 40_000);
 
