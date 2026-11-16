@@ -92,5 +92,6 @@ those invocations is tracked in
 [#190](https://github.com/roryeckel/hooknostic/issues/190).
 
 Keep the SDK and CLI on the same Hooknostic release: an older CLI cannot bundle
-against this SDK. Rebuild or re-sync with the new CLI to regenerate owned
-output. Artifact bytes change even when your sources do not.
+against this SDK. From this release on, a CLI that builds against an SDK from
+another release warns HN110. Rebuild or re-sync with the new CLI to regenerate
+owned output. Artifact bytes change even when your sources do not.
