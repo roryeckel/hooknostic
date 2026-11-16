@@ -345,19 +345,24 @@ export default definePlugin({ name: "pi-validation", hooks: [
 
   // An events file it cannot read is the user's mistake: a plain message and
   // exit 2, not the catch-all's "unexpected error" with a stack (#208).
+  // Reading a directory: EISDIR on POSIX; Windows has answered EISDIR, but
+  // its filesystem layer can answer EPERM instead.
+  const DIRECTORY_CODES = process.platform === "win32" ? ["EISDIR", "EPERM"] : ["EISDIR"];
   it.each([
-    ["is missing", "missing.jsonl", ["ENOENT"]],
-    // Reading a directory: EISDIR on POSIX; Windows has answered EISDIR, but
-    // its filesystem layer can answer EPERM instead.
-    ["is a directory", ".", process.platform === "win32" ? ["EISDIR", "EPERM"] : ["EISDIR"]],
-  ])("reports an --events path that %s", async (_, name, codes) => {
+    ["is missing", (dir: string) => join(dir, "missing.jsonl"), ["ENOENT"]],
+    ["is a directory", (dir: string) => join(dir, "."), DIRECTORY_CODES],
+    // "" resolves to the working directory; quoted, the message still shows it.
+    ["is empty", () => "", DIRECTORY_CODES],
+  ])("reports an --events path that %s", async (_, path, codes) => {
     const dir = await project(HOOKS);
+    const events = path(dir);
     const cli = captureIO();
     const argv = ["dispatch", "--config", join(dir, "hooknostic.config.ts"), "--target", "claude"];
-    expect(await runCli([...argv, "--events", join(dir, name)], { io: cli.io })).toBe(2);
+    expect(await runCli([...argv, "--events", events], { io: cli.io })).toBe(2);
     expect(cli.out).toEqual([]);
-    const prefix = `cannot read --events ${join(dir, name)}: `;
-    expect(cli.err().startsWith(prefix)).toBe(true);
+    // Quoted, as dispatch's other messages quote what the user wrote.
+    const prefix = `cannot read --events ${JSON.stringify(events)}: `;
+    expect(cli.err().slice(0, prefix.length)).toBe(prefix);
     expect(codes).toContain(/^[A-Z]+/.exec(cli.err().slice(prefix.length))?.[0]);
     expect(cli.err()).not.toContain("\n");
     expect(cli.err()).not.toContain("unexpected error");

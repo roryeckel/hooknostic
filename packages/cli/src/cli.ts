@@ -581,7 +581,7 @@ async function runCommand(argv: string[], options: RunCliOptions | undefined, ow
           try {
             input = await readFile(resolve(parsed.values["events"]), "utf8");
           } catch (error) {
-            io.stderr(`cannot read --events ${parsed.values["events"]}: ${errorMessage(error)}`);
+            io.stderr(`cannot read --events ${JSON.stringify(parsed.values["events"])}: ${errorMessage(error)}`);
             return 2;
           }
         } else input = await readStdin();
