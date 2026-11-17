@@ -30,7 +30,7 @@ reason, moves it in the same step; an older Zod there conflicts with the SDK's
 peer:
 
 ```sh
-pnpm add -D @hooknostic/sdk hooknostic zod@^4.6.7
+pnpm add -D --allow-build=esbuild @hooknostic/sdk hooknostic zod@^4.6.7
 ```
 
 Use regular dependencies instead if your application imports the SDK at runtime.
