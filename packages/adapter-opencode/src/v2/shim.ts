@@ -51,6 +51,75 @@ async function failingOpen(hook: string, work: () => Promise<void>): Promise<voi
   }
 }
 
+/**
+ * The live instances of one plugin in one location, shared through
+ * `globalThis`: a reload re-evaluates the plugin's modules, so module state
+ * does not outlive it, but the process does. After a reload during a running
+ * execution, OpenCode keeps the old instance until that execution ends (2.2.6,
+ * 2.3.0) or for good (2.0.17), and both hear every event (#236).
+ *
+ * This symbol is a protocol between Hooknostic releases loaded into one
+ * process, first released in 0.13.0. Any change to the shapes below, or to
+ * what `claimed` and `inherited` mean, must bump the `/1` suffix: releases with
+ * different suffixes never meet, and each dispatches, as before #236.
+ */
+const INSTANCES = Symbol.for("hooknostic.opencode.v2.instances/1");
+/** Claimed event ids per group. A duplicate arrives within milliseconds of the first. */
+const CLAIMED_EVENTS = 1024;
+/** Sessions a disposed instance hands to the instances after it. */
+const INHERITED_SESSIONS = 256;
+interface Peer {
+  generation: number;
+  /**
+   * Whether this instance would report the event: any session.created, since
+   * it may be a new session of this location, or a session it has made its
+   * own. Only an instance with a subscribing hook is in `live` at all; its own
+   * hook set is not consulted, so the newest such instance decides, with the
+   * hooks as last loaded.
+   */
+  knows(type: string, sessionID: string): boolean;
+  child(sessionID: string): OpenCodeV2Child | undefined;
+}
+interface Inherited {
+  child?: OpenCodeV2Child;
+  execution?: { prompt?: NonNullable<OpenCodeV2Execution["prompt"]>; text: Record<string, unknown>[] };
+}
+interface InstanceGroup {
+  generations: number;
+  live: Set<Peer>;
+  claimed: Set<string>;
+  inherited: Map<string, Inherited>;
+}
+function instanceGroup(key: string): InstanceGroup {
+  const shared = globalThis as unknown as Record<symbol, Map<string, InstanceGroup> | undefined>;
+  const groups = (shared[INSTANCES] ??= new Map());
+  let group = groups.get(key);
+  if (group === undefined) {
+    group = { generations: 0, live: new Set(), claimed: new Set(), inherited: new Map() };
+    groups.set(key, group);
+  }
+  return group;
+}
+/** Forgets the oldest entries past `limit`; Set and Map iterate in insertion order. */
+function bound<T>(collection: { size: number; keys(): Iterator<T>; delete(key: T): boolean }, limit: number) {
+  while (collection.size > limit) {
+    const oldest = collection.keys().next();
+    if (oldest.done === true) return;
+    collection.delete(oldest.value);
+  }
+}
+/**
+ * The handed-over sessions past `limit` go oldest first, but those without a
+ * running execution before any with one, across every handover: only a
+ * running execution can still end unheard.
+ */
+function boundInherited(inherited: Map<string, Inherited>, limit: number) {
+  while (inherited.size > limit) {
+    const idle = [...inherited].find(([, entry]) => entry.execution === undefined)?.[0];
+    inherited.delete(idle ?? inherited.keys().next().value!);
+  }
+}
+
 /** A host callback guarded as a whole, so its own bookkeeping fails open too. */
 const guarded =
   (hook: string, callback: (event: Record<string, unknown>) => Promise<void>) => (event: Record<string, unknown>) =>
@@ -78,6 +147,50 @@ export async function setupOpenCodeV2(
     return process.platform === "win32" ? trimmed.toLowerCase() : trimmed;
   };
   const here = comparable(ctx.location.directory);
+  // Instances of this plugin in this location (#236). The newest that knows a
+  // session reports it: it took the latest prompt, so it has the turn's ids,
+  // and it runs the hooks as last loaded. An older one yields to it. A claim on
+  // the event id is the backstop when both would still report.
+  const group = instanceGroup([plugin.name, targetId, here, options.pluginRoot ?? ""].join("\0"));
+  const generation = ++group.generations;
+  const peer: Peer = {
+    generation,
+    knows: (type, sessionID) => type === "session.created" || local.has(sessionID),
+    child: (sessionID) => children.get(sessionID),
+  };
+  const superseded = (type: string, sessionID: string) =>
+    [...group.live].some((other) => other.generation > generation && other.knows(type, sessionID));
+  /** No live instance of this bundle is newer: only the newest takes a handover. */
+  const newest = () => ![...group.live].some((other) => other.generation > generation);
+  // In `live` from the subscription's start: set then, cleared by the handover.
+  let joined = false;
+  // Adopted from a handover without a child link: its next prompt still looks it up (#232).
+  const unlinked = new Set<string>();
+  /**
+   * Written only while two or more instances live. Read always: a claim an
+   * instance wrote while it had company still holds when the instance after it
+   * is alone, which is how a completion the old instance reported stays
+   * reported once the new one adopts its session. An instance that joins later
+   * never hears an event published before its subscription (no replay was
+   * observed). An event without an id is never claimed: the newest instance
+   * that knows its session still decides alone.
+   */
+  const claim = (id: unknown): boolean => {
+    if (typeof id !== "string") return true;
+    if (group.claimed.has(id)) return false;
+    if (group.live.size < 2) return true;
+    group.claimed.add(id);
+    bound(group.claimed, CLAIMED_EVENTS);
+    return true;
+  };
+  /** A child this instance never saw created: another instance saw it, or left it behind. */
+  const childElsewhere = (sessionID: string): OpenCodeV2Child | undefined => {
+    for (const other of group.live) {
+      const found = other === peer ? undefined : other.child(sessionID);
+      if (found !== undefined) return found;
+    }
+    return group.inherited.get(sessionID)?.child;
+  };
   // An execution's completion carries only the session id, so the turn's
   // fields are assembled from what came before it, and only when a hook
   // declares one (ADR-0027). The prompt hook's ids wait here for the
@@ -316,7 +429,54 @@ export async function setupOpenCodeV2(
       });
     lookups.set(sessionID, pending);
   };
+  /**
+   * Takes over a session a disposed instance of this bundle handed on (#236):
+   * its child link and its running execution, which may end only now. Only the
+   * newest instance takes it, from its subscription. A merge, never an overwrite: a session this instance already knows
+   * (its prompt came first) keeps its own link and execution, and gains only
+   * what it lacked. A running execution taken over that way is the one the
+   * prompt was steered into, so that prompt's id waits for no execution.
+   */
+  const adopt = (sessionID: string): boolean => {
+    const inherited = group.inherited.get(sessionID);
+    if (inherited === undefined) return false;
+    group.inherited.delete(sessionID);
+    local.add(sessionID);
+    if (inherited.child !== undefined && !children.has(sessionID)) children.set(sessionID, inherited.child);
+    if (!children.has(sessionID)) unlinked.add(sessionID);
+    if (inherited.execution !== undefined && !executions.has(sessionID)) {
+      executions.set(sessionID, inherited.execution);
+      pendingPrompts.delete(sessionID);
+    }
+    return true;
+  };
+  /**
+   * The sessions it knew go to the instances after it, each with its running
+   * execution: on 2.2.6 and 2.3.0 that execution can end after this, and only
+   * they would hear it (#236). Running executions first, then the sessions seen
+   * most recently, up to the bound.
+   */
+  const handOver = () => {
+    const running = [...local].filter((sessionID) => executions.has(sessionID));
+    const idle = [...local].filter((sessionID) => !executions.has(sessionID));
+    const handed = [...idle.slice(Math.max(0, idle.length - (INHERITED_SESSIONS - running.length))), ...running];
+    for (const sessionID of handed.slice(-INHERITED_SESSIONS)) {
+      const child = children.get(sessionID);
+      const execution = executions.get(sessionID);
+      group.inherited.delete(sessionID);
+      group.inherited.set(sessionID, { ...(child ? { child } : {}), ...(execution ? { execution } : {}) });
+    }
+    boundInherited(group.inherited, INHERITED_SESSIONS);
+  };
   const cleanup = async () => {
+    // Synchronous, before the abort, so no event falls between the two: a
+    // successor reading a completion while this cleanup still waits on a busy
+    // queue already finds the session handed over.
+    group.live.delete(peer);
+    if (joined) {
+      joined = false;
+      handOver();
+    }
     controller.abort();
     await Promise.allSettled(registrations.map((r) => r.dispose()));
     await task;
@@ -331,9 +491,21 @@ export async function setupOpenCodeV2(
           "prompt",
           guarded("prompt", async (e) => {
             const sessionID = typeof e.sessionID === "string" ? e.sessionID : undefined;
-            // Not awaited: the prompt does not wait for the lookup.
-            if (readsLink && sessionID !== undefined && !local.has(sessionID) && !children.has(sessionID))
-              lookUp(sessionID);
+            // A session never seen here, or adopted from a handover that had no
+            // child link: a handover waiting for it, or another instance of this
+            // bundle, may know its parent; otherwise it is looked up (#232),
+            // not awaited, so the prompt does not wait for it. The handover
+            // itself, with any running execution, is taken by the subscription
+            // at the session's next event, which a prompt's execution brings.
+            if (
+              sessionID !== undefined &&
+              !children.has(sessionID) &&
+              (!local.has(sessionID) || unlinked.delete(sessionID))
+            ) {
+              const known = childElsewhere(sessionID);
+              if (known !== undefined) children.set(sessionID, known);
+              else if (readsLink) lookUp(sessionID);
+            }
             if (sessionID !== undefined) local.add(sessionID);
             // Recorded before dispatch: the execution it starts cannot begin until
             // this hook returns. A blocked prompt starts none, so it is dropped.
@@ -413,15 +585,29 @@ export async function setupOpenCodeV2(
       );
     }
     if (subscribes) {
+      // Before the task starts, though its first step runs synchronously
+      // anyway: an older instance must already yield to this one for the
+      // first event this subscription can hear.
+      group.live.add(peer);
+      joined = true;
       task = (async () => {
         try {
           for await (const event of ctx.event.subscribe({ signal: controller.signal })) {
+            // A claim after the abort would be work nobody runs.
+            if (controller.signal.aborted) break;
             // Per event: one the shim cannot read must not end the subscription,
             // and with it every later session.start and turn.stop.
             try {
               const data =
                 event.data !== null && typeof event.data === "object" ? (event.data as Record<string, unknown>) : {};
               const sessionID = typeof data.sessionID === "string" ? data.sessionID : "";
+              const type = String(event.type);
+              // A session a disposed instance handed on, taken over by the newest
+              // instance only: an older one that still hears the event must not
+              // consume what it would then yield. Even into a session this
+              // instance already knows, as a merge, so the handed-over text and
+              // child link are not lost.
+              if (group.inherited.has(sessionID) && newest()) adopt(sessionID);
               if (event.type === "session.created") {
                 const location = (data.location ?? event.location) as { directory?: unknown } | undefined;
                 if (typeof location?.directory !== "string" || comparable(location.directory) !== here) continue;
@@ -429,7 +615,11 @@ export async function setupOpenCodeV2(
                 // Recorded before queueing, so the child's later stop already sees it.
                 if (typeof data.parentID === "string")
                   children.set(sessionID, { parentID: data.parentID, agent: data.agent });
-              } else if (!local.has(sessionID)) continue;
+              }
+              // Not ours: neither created in this location, prompted here, nor
+              // handed over. A child known only to another instance was linked
+              // at its prompt here (the prompt hook asks the others).
+              else if (!local.has(sessionID)) continue;
               // Buffered here, in subscription order, not in the per-session queue:
               // a completion is queued behind a slow hook, but the text it reports
               // must be the text that ended before it (captured on 2.0.18:
@@ -458,6 +648,14 @@ export async function setupOpenCodeV2(
                   if (finished !== undefined) execution = finished;
                 }
               }
+              // Only these dispatch from the subscription; hooks reach one instance
+              // already. Before agent.start and the pending lookup, so an instance
+              // that yields reports neither (#236).
+              if (
+                (type === "session.created" || completions.has(type) || type === "session.compaction.ended") &&
+                (superseded(type, sessionID) || !claim(event.id))
+              )
+                continue;
               const child = children.get(sessionID);
               // The subagent's start, then the child's own session.start: the
               // agent's lifecycle encloses the child session's.
@@ -499,6 +697,12 @@ export async function setupOpenCodeV2(
           // rejection. Only our own abort is expected; anything else that ends
           // the subscription ends every later stop and start hook, so it is said.
           if (!controller.signal.aborted) reportInternalError(error, "event");
+        } finally {
+          // Ended without cleanup, by an error or by the host: this instance
+          // hears no more events, so an older one must not keep yielding to it.
+          // No handover yet: it is still set up and still takes prompts; its
+          // cleanup hands over what it knows.
+          if (!controller.signal.aborted) group.live.delete(peer);
         }
       })();
     }

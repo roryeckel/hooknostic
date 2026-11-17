@@ -13,17 +13,24 @@ export async function readEventRecords(path) {
 }
 
 export async function driveLifecycle({ executable, root, project, env, model, remote }) {
-  const server = spawn(executable, ["serve", "--stdio", "--hostname", "127.0.0.1", "--port", "0"], {
-    cwd: project,
-    env: { ...env, OPENCODE_SERVER_PASSWORD: "hooknostic-local", HOOKNOSTIC_PLAYBACK_EFFECTS: env.HKN_PROBE_EFFECT === "sessions-deny" ? "permission-deny" : env.HKN_PROBE_EFFECT === "stop" || env.HKN_PROBE_EFFECT === "subagent-reload-stop" ? "prevent-stop-once,notify" : "context-add" },
-    windowsHide: true,
-    stdio: ["pipe", "pipe", "pipe"],
-  });
+  let server, done;
   let stdout = "",
     stderr = "";
-  server.stdout.on("data", (chunk) => (stdout += chunk));
-  server.stderr.on("data", (chunk) => (stderr += chunk));
-  const done = new Promise((resolve) => server.on("exit", resolve));
+  // Started again, with the same state, by a drive that restarts the server (#236).
+  const start = () => {
+    server = spawn(executable, ["serve", "--stdio", "--hostname", "127.0.0.1", "--port", "0"], {
+      cwd: project,
+      env: { ...env, OPENCODE_SERVER_PASSWORD: "hooknostic-local", HOOKNOSTIC_PLAYBACK_EFFECTS: env.HKN_PROBE_EFFECT === "sessions-deny" ? "permission-deny" : env.HKN_PROBE_EFFECT === "stop" || env.HKN_PROBE_EFFECT === "subagent-reload-stop" || env.HKN_PROBE_EFFECT === "subagent-reload-running-stop" || env.HKN_PROBE_EFFECT === "subagent-reload-restart-stop" ? "prevent-stop-once,notify" : "context-add" },
+      windowsHide: true,
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+    stdout = "";
+    stderr = "";
+    server.stdout.on("data", (chunk) => (stdout += chunk));
+    server.stderr.on("data", (chunk) => (stderr += chunk));
+    done = new Promise((resolve) => server.on("exit", resolve));
+  };
+  start();
   const records = () => readEventRecords(join(root, "captured/events.jsonl"));
   const wait = async (predicate) => {
     for (let i = 0; i < 200; i++) {
@@ -34,7 +41,13 @@ export async function driveLifecycle({ executable, root, project, env, model, re
     throw new Error("lifecycle probe timed out\n" + stdout + stderr);
   };
   try {
-    const url = await wait(() => /http:\/\/127\.0\.0\.1:\d+/.exec(stdout + stderr)?.[0]);
+    let url = await wait(() => /http:\/\/127\.0\.0\.1:\d+/.exec(stdout + stderr)?.[0]);
+    const restart = async () => {
+      server.kill();
+      await done;
+      start();
+      url = await wait(() => /http:\/\/127\.0\.0\.1:\d+/.exec(stdout + stderr)?.[0]);
+    };
     const api = async (path, body) => {
       const result = await fetch(url + "/api" + path, {
         method: body === undefined ? "GET" : "POST",
@@ -61,7 +74,7 @@ export async function driveLifecycle({ executable, root, project, env, model, re
       return;
     }
     if (env.HKN_PROBE_EFFECT.startsWith("subagent-reload") || env.HKN_PROBE_EFFECT === "subagent-api-child") {
-      const audit = await (await import("./reload-audit.mjs")).auditReload({ api, wait, records, model, project, mode: env.HKN_PROBE_EFFECT });
+      const audit = await (await import("./reload-audit.mjs")).auditReload({ api, wait, records, model, project, restart, mode: env.HKN_PROBE_EFFECT });
       await writeFile(join(root, "reload.json"), JSON.stringify({ ...audit, records: await records(), requests: model.requests, errors: model.errors }, null, 2));
       return;
     }

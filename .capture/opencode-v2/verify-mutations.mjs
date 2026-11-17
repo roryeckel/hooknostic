@@ -8,6 +8,18 @@ const vitest = join(dirname(createRequire(import.meta.url).resolve("vitest/packa
 const root = mkdtempSync(join(tmpdir(), "hooknostic-v2-mutants-"));
 const unit = "packages/adapter-opencode/src/v2/adapter.test.ts";
 const playback = "packages/cli/test/opencode-v2-playback.test.ts";
+// #236's anchors that span lines, moved whole by two-edit mutants.
+const shim = "packages/adapter-opencode/src/v2/shim.ts";
+const reloadGate =
+  "              if (\n" +
+  '                (type === "session.created" || completions.has(type) || type === "session.compaction.ended") &&\n' +
+  "                (superseded(type, sessionID) || !claim(event.id))\n" +
+  "              )\n" +
+  "                continue;\n";
+const agentStartEnqueue =
+  '              if (event.type === "session.created" && child !== undefined && events.has("agent.start"))\n' +
+  '                enqueue(sessionID, () => run("event", event, false, undefined, child));\n';
+const reloadHandover = "    if (joined) {\n      joined = false;\n      handOver();\n    }\n";
 const cases = [
   ["audit-error-decode", "packages/adapter-opencode/src/v2/decode.ts", 'event.status === "error"', 'event.status === "not-an-error"', unit, "tool-read-error|error-only"],
   ["audit-error-registration", "packages/adapter-opencode/src/v2/shim.ts", ' || events.has("tool.error")', '', unit, "error-only"],
@@ -59,8 +71,8 @@ const cases = [
   ["nested-id", "packages/adapter-opencode/src/v2/project.ts", "id: plugin.id + suffix", "id: plugin.id", "packages/adapter-opencode/src/v2/project.test.ts", "distinct id"],
   ["nested-id-playback", "packages/adapter-opencode/src/v2/project.ts", "id: plugin.id + suffix", "id: plugin.id", playback, "nested checkout from its own copy"],
   ["nested-components", "packages/adapter-opencode/src/v2/project.ts", "  if (!serves(ctx.location.directory)) return;\n", "", "packages/adapter-opencode/src/v2/project.test.ts", "nested checkouts"],
-  ["location-filter", "packages/adapter-opencode/src/v2/shim.ts", "            } else if (!local.has(sessionID)) continue;", "            }", unit, "another location"],
-  ["location-filter-playback", "packages/adapter-opencode/src/v2/shim.ts", "            } else if (!local.has(sessionID)) continue;", "            }", playback, "nested checkout from its own copy"],
+  ["location-filter", "packages/adapter-opencode/src/v2/shim.ts", "              else if (!local.has(sessionID)) continue;", "              else if (false) continue;", unit, "another location"],
+  ["location-filter-playback", "packages/adapter-opencode/src/v2/shim.ts", "              else if (!local.has(sessionID)) continue;", "              else if (false) continue;", playback, "nested checkout from its own copy"],
   ["location-created", "packages/adapter-opencode/src/v2/shim.ts", "comparable(location.directory) !== here) continue;", "false) continue;", unit, "another location"],
   ["location-prompt", "packages/adapter-opencode/src/v2/shim.ts", "if (sessionID !== undefined) local.add(sessionID);", "", unit, "prompted through this instance"],
   [
@@ -229,8 +241,8 @@ const cases = [
   ["agent-start-every-event", "packages/adapter-opencode/src/v2/shim.ts", 'if (event.type === "session.created" && child !== undefined && events.has("agent.start"))', 'if (child !== undefined && events.has("agent.start"))', unit, "U7:"],
   ["turn-stop-agent-ids", "packages/adapter-opencode/src/v2/shim.ts", 'enqueue(sessionID, () => run("event", event, false, execution, undefined, child));', 'enqueue(sessionID, () => run("event", event, false, execution));', unit, "U2:"],
   ["turn-stop-agent-ids-everyone", "packages/adapter-opencode/src/v2/shim.ts", 'enqueue(sessionID, () => run("event", event, false, execution, undefined, child));', 'enqueue(sessionID, () => run("event", event, false, execution, undefined, child ?? { parentID: "" }));', unit, "U2:"],
-  ["recovery-disabled", "packages/adapter-opencode/src/v2/shim.ts", "              lookUp(sessionID);\n", "              void sessionID;\n", unit, "U8:|U11:"],
-  ["recovery-every-prompt", "packages/adapter-opencode/src/v2/shim.ts", "sessionID !== undefined && !local.has(sessionID) && !children.has(sessionID)", "sessionID !== undefined && !children.has(sessionID)", unit, "U8:"],
+  ["recovery-disabled", "packages/adapter-opencode/src/v2/shim.ts", "else if (readsLink) lookUp(sessionID);", "else if (readsLink) void sessionID;", unit, "U8:|U11:"],
+  ["recovery-every-prompt", "packages/adapter-opencode/src/v2/shim.ts", "(!local.has(sessionID) || unlinked.delete(sessionID))", "true", unit, "U8:"],
   // Effectively unbounded: the never-settling lookup then holds the child's
   // queue past the test's own timeout.
   ["recovery-no-timeout", "packages/adapter-opencode/src/v2/shim.ts", "const LOOKUP_TIMEOUT_MS = 2_000;", "const LOOKUP_TIMEOUT_MS = 2_000_000;", unit, "U9: waits at most"],
@@ -246,15 +258,91 @@ const cases = [
   // Cleanup beginning while a recovered child's turn.stop hook runs: the
   // agent.stop that follows inline must not start.
   ["recovery-cleanup-recheck", "packages/adapter-opencode/src/v2/shim.ts", "                  // before it starts; this one follows inline, in the same order.\n                  if (controller.signal.aborted) return;\n", "                  // before it starts; this one follows inline, in the same order.\n", unit, "U15:"],
-  ["recovery-event-path", "packages/adapter-opencode/src/v2/shim.ts", "            } else if (!local.has(sessionID)) continue;", "            } else if (!local.has(sessionID)) {\n              lookUp(sessionID);\n              continue;\n            }", unit, "U12:"],
+  ["recovery-event-path", "packages/adapter-opencode/src/v2/shim.ts", "              else if (!local.has(sessionID)) continue;", "              else if (!local.has(sessionID)) {\n                lookUp(sessionID);\n                continue;\n              }", unit, "U12:"],
+  // One dispatch per event across reloaded plugin instances, and the handover
+  // of a disposed instance's sessions (#236). Unit tests R1-R16, Q3, Q4, and
+  // L1/L2, which pin the accepted limit tracked in #238.
+  ["reload-no-deposit", shim, "group.inherited.set(sessionID, {", "void sessionID, void ({", unit, "R1:|R10:|R15:"],
+  ["reload-no-superseded", shim, "(superseded(type, sessionID) || !claim(event.id))", "!claim(event.id)", unit, "R2:|R5:"],
+  ["reload-no-dedupe", shim, "(superseded(type, sessionID) || !claim(event.id))", "false", unit, "R2:|L1|L2"],
+  ["reload-claim-when-alone", shim, "    if (group.live.size < 2) return true;\n", "", unit, "R3:"],
+  ["reload-key-without-plugin", shim, "[plugin.name, targetId, here,", "[targetId, here,", unit, "R4:"],
+  ["reload-key-without-location", shim, "[plugin.name, targetId, here,", "[plugin.name, targetId,", unit, "R4:"],
+  ["reload-no-child-elsewhere", shim, "    for (const other of group.live) {\n      const found", "    for (const other of [] as Peer[]) {\n      const found", unit, "R2:"],
+  ["reload-no-inherited-execution", shim, "      executions.set(sessionID, inherited.execution);", "      void 0;", unit, "R1:|R7:|Q3:"],
+  ["reload-newest-loses", shim, "other.generation > generation && other.knows", "other.generation < generation && other.knows", unit, "R2:|R5:|L1"],
+  [
+    "reload-gate-after-agent-start",
+    [
+      [shim, reloadGate, ""],
+      [shim, agentStartEnqueue, agentStartEnqueue + reloadGate],
+    ],
+    undefined,
+    undefined,
+    unit,
+    "R5:",
+  ],
+  ["reload-gate-without-compaction", shim, ' || type === "session.compaction.ended") &&', ") &&", unit, "R6:"],
+  ["reload-prompt-lookup-ignores-handover", shim, "              const known = childElsewhere(sessionID);", "              const known = undefined as OpenCodeV2Child | undefined;", unit, "R7:"],
+  ["reload-prompt-known-not-stored", shim, "              if (known !== undefined) children.set(sessionID, known);", "              if (known !== undefined) void known;", unit, "R2:"],
+  ["reload-alone-skips-claims", shim, "    if (group.claimed.has(id)) return false;\n    if (group.live.size < 2) return true;", "    if (group.live.size < 2) return true;\n    if (group.claimed.has(id)) return false;", unit, "R8:"],
+  ["reload-claims-unbounded", shim, "    bound(group.claimed, CLAIMED_EVENTS);\n", "", unit, "R9:"],
+  ["reload-running-not-preferred", shim, "handed.slice(-INHERITED_SESSIONS)", "[...local].slice(-INHERITED_SESSIONS)", unit, "R9:"],
+  ["reload-bound-oldest-first", shim, "boundInherited(group.inherited, INHERITED_SESSIONS)", "bound(group.inherited, INHERITED_SESSIONS)", unit, "R9b:"],
+  ["reload-forget-when-none-live", shim, "      handOver();\n    }\n", "      handOver();\n    }\n    if (group.live.size === 0) group.inherited.clear();\n", unit, "R10:"],
+  ["reload-no-id-dropped", shim, 'if (typeof id !== "string") return true;', 'if (typeof id !== "string") return false;', unit, "R11:"],
+  ["reload-inherited-child-not-stored", shim, "if (inherited.child !== undefined && !children.has(sessionID)) children.set(sessionID, inherited.child);", "", unit, "R1:|Q4:"],
+  // The review fixes: a handover without the child link keeps #232's lookup;
+  // a subscription that ended stops counting; only the newest instance adopts,
+  // removes what it adopts, and merges into a session it already knows; the
+  // handover precedes the abort; nothing is read after the abort.
+  ["reload-no-unlinked", shim, "(!local.has(sessionID) || unlinked.delete(sessionID))", "!local.has(sessionID)", unit, "R13:"],
+  ["reload-subscription-end-keeps-live", shim, "          if (!controller.signal.aborted) group.live.delete(peer);\n", "", unit, "R12:"],
+  ["reload-adopt-not-newest", shim, "if (group.inherited.has(sessionID) && newest()) adopt(sessionID);", "if (group.inherited.has(sessionID)) adopt(sessionID);", unit, "Q4:"],
+  ["reload-adopt-keeps-entry", shim, "    group.inherited.delete(sessionID);\n    local.add(sessionID);", "    local.add(sessionID);", unit, "Q4:"],
+  ["reload-adopt-only-unknown", shim, "if (group.inherited.has(sessionID) && newest()) adopt(sessionID);", "if (group.inherited.has(sessionID) && newest() && !local.has(sessionID)) adopt(sessionID);", unit, "Q3:"],
+  ["reload-merge-keeps-pending", shim, "      executions.set(sessionID, inherited.execution);\n      pendingPrompts.delete(sessionID);\n", "      executions.set(sessionID, inherited.execution);\n", unit, "Q3:"],
+  [
+    "reload-handover-after-abort",
+    [
+      [shim, reloadHandover, ""],
+      [shim, "    await Promise.allSettled(queues.values());\n  };", "    await Promise.allSettled(queues.values());\n" + reloadHandover + "  };"],
+    ],
+    undefined,
+    undefined,
+    unit,
+    "R15:",
+  ],
+  ["reload-no-abort-break", shim, "            if (controller.signal.aborted) break;\n", "", unit, "R16:"],
   // Playback on the real binary.
   ["agent-start-playback", "packages/adapter-opencode/src/v2/shim.ts", '              if (event.type === "session.created" && child !== undefined && events.has("agent.start"))\n                enqueue(sessionID, () => run("event", event, false, undefined, child));\n', "", playback, "one agent.stop under its parent"],
   ["agent-start-every-event-playback", "packages/adapter-opencode/src/v2/shim.ts", 'if (event.type === "session.created" && child !== undefined && events.has("agent.start"))', 'if (child !== undefined && events.has("agent.start"))', playback, "followed-up subagent"],
   ["turn-stop-agent-ids-playback", "packages/adapter-opencode/src/v2/shim.ts", 'enqueue(sessionID, () => run("event", event, false, execution, undefined, child));', 'enqueue(sessionID, () => run("event", event, false, execution));', playback, "one agent.stop under its parent|late background child"],
   // P9 kills it only on builds whose API keeps a new session's parentID
-  // (2.2.6 and later); on the reference build P8 does.
-  ["recovery-disabled-playback", "packages/adapter-opencode/src/v2/shim.ts", "              lookUp(sessionID);\n", "              void sessionID;\n", playback, "after a plugin reload|created through the API"],
-  ["recovery-not-stored-playback", "packages/adapter-opencode/src/v2/shim.ts", "        children.set(sessionID, found);\n", "", playback, "takes no stop prevention"],
+  // (2.2.6 and later). P8 no longer can: since #236 the old instance hands the
+  // child over on an idle reload. The server-restart drive kills it on every
+  // build, the reference included.
+  ["recovery-disabled-playback", "packages/adapter-opencode/src/v2/shim.ts", "else if (readsLink) lookUp(sessionID);", "else if (readsLink) void sessionID;", playback, "after a server restart|created through the API"],
+  // Since #236 the reload drive's child is handed over, not looked up; the
+  // restart drive's is looked up on every build.
+  ["recovery-not-stored-playback", "packages/adapter-opencode/src/v2/shim.ts", "        children.set(sessionID, found);\n", "", playback, "after a server restart takes no stop prevention"],
+  // #236 on the reference build, where the old instance is never disposed.
+  // no-deposit, no-inherited-execution and inherited-child-not-stored are
+  // killed only on 2.2.6 and 2.3.0, whose old instance is disposed; they are
+  // recorded in .capture/opencode-v2-audit/README.md, not run here.
+  ["reload-no-dedupe-playback", shim, "(superseded(type, sessionID) || !claim(event.id))", "false", playback, "#236"],
+  ["reload-newest-loses-playback", shim, "other.generation > generation && other.knows", "other.generation < generation && other.knows", playback, "#236"],
+  [
+    "reload-gate-after-agent-start-playback",
+    [
+      [shim, reloadGate, ""],
+      [shim, agentStartEnqueue, agentStartEnqueue + reloadGate],
+    ],
+    undefined,
+    undefined,
+    playback,
+    "every completion once across a reload",
+  ],
 ];
 for (const [name, path, before, after, file, pattern] of cases) {
   if (process.argv.length > 2 && !process.argv.slice(2).includes(name)) continue;

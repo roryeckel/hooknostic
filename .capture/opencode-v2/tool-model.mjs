@@ -15,7 +15,7 @@ export async function startToolModel(project, mcpOnly = false, remote = false, a
     // The same child again, by the session id its first call reported.
     ["subagent", (request) => ({ agent: "general", description: "Offline child follow-up", prompt: "hooknostic-child-task: hooknostic-follow-up.",
       sessionID: JSON.stringify(request.messages.findLast(message => message.role === "tool")?.content ?? "").match(/ses_[A-Za-z0-9]+/)?.[0] })],
-  ] : audit === "subagent-reload" || audit === "subagent-reload-stop" || audit === "subagent-api-child" ? [
+  ] : String(audit).startsWith("subagent-reload") || audit === "subagent-api-child" ? [
     // Chosen by the prompt's marker below, not in order: a reload drive's
     // parent also runs executions no prompt started (a stop prevention, or a
     // background child's result), and those must not use up a scripted call.
@@ -75,7 +75,7 @@ export async function startToolModel(project, mcpOnly = false, remote = false, a
         registrationRetries += 1;
         action = actions[0];
       } else errors.push("MCP tool unavailable after two catalog-update retries");
-    } else if (audit === "subagent-reload" || audit === "subagent-reload-stop") {
+    } else if (String(audit).startsWith("subagent-reload")) {
       // A new child for the first parent prompt, the same child again (by the
       // session id its call reported) for the follow-up; text otherwise.
       const last = request.messages?.at(-1);
@@ -85,11 +85,18 @@ export async function startToolModel(project, mcpOnly = false, remote = false, a
         : said.includes("hooknostic-first-parent") ? ["subagent", { agent: "general", description: "Offline child result capture", prompt: "hooknostic-child-task: return the scripted child result." }]
         : said.includes("hooknostic-follow-up-parent") ? ["subagent", { agent: "general", description: "Offline child follow-up", prompt: "hooknostic-child-task: hooknostic-follow-up.",
           sessionID: JSON.stringify(first?.content ?? "").match(/ses_[A-Za-z0-9]+/)?.[0] }]
+        // #236: a new child, not a follow-up, after the reload.
+        : said.includes("hooknostic-new-child-parent") ? ["subagent", { agent: "general", description: "Offline second child", prompt: "hooknostic-child-task: hooknostic-second-child." }]
         : undefined;
     } else action = tools.length && !child ? actions[index++] : undefined;
     // Constructed timing: the child answers 3 s late, so a background child
     // (2.3.0 and later) outlives its parent's first execution.
     if (child && audit === "subagent-late") await new Promise(resolve => setTimeout(resolve, 3000));
+    // #236, constructed timing: the first child answers 4 s late, so the plugin
+    // reload lands while it runs and the old instance outlives the reload.
+    if (child && String(audit).startsWith("subagent-reload-running") && !followUp &&
+        !JSON.stringify(request.messages).includes("hooknostic-second-child"))
+      await new Promise(resolve => setTimeout(resolve, 4000));
     // Constructed failure: HTTP 400 fails the child's execution at once (a 500
     // is retried for about 90 s before it fails).
     if (child && audit === "subagent-fail") {

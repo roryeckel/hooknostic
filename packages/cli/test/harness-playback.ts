@@ -338,7 +338,9 @@ function playbackPluginSource(
           agentId: event.agent?.id,
           agentType: event.agent?.type,
           correlationAgentId: event.correlation.agentId,
-          parentAgentId: event.correlation.parentAgentId,${label === undefined ? "" : `\n          label: ${JSON.stringify(label)},`}
+          parentAgentId: event.correlation.parentAgentId,
+          instance: playbackInstance,
+          nativeId: event.raw?.event?.id,${label === undefined ? "" : `\n          label: ${JSON.stringify(label)},`}
         }) + "\\n");${extraEffects}
       },
     })`;
@@ -366,6 +368,10 @@ if (!tracePath) throw new Error("HOOKNOSTIC_PLAYBACK_TRACE is required");
 // by event and session: OpenCode v2 reports a child's agent.stop under its
 // parent's session, which must not use up the parent's own turn.stop prevention.
 const preventedSessions = new Set();
+// One tag per module evaluation, so a reloaded plugin instance is told apart;
+// with nativeId (OpenCode v2's event id, the same in every instance), #236's
+// playback counts each native event's dispatches.
+const playbackInstance = Math.random().toString(36).slice(2, 7);
 
 export default definePlugin({
   name: "harness-playback",
