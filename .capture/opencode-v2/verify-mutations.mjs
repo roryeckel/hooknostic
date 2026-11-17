@@ -53,7 +53,7 @@ const cases = [
   ["stop-notify-resume", "packages/adapter-opencode/src/v2/apply.ts", '[{ text: effect.message, resume: false }]', '[{ text: effect.message, resume: true }]', playback, "prevents and notifies"],
   ["stop-notice-order", "packages/adapter-opencode/src/v2/apply.ts", 'synthetic.push({ text: terminal.reason', 'synthetic.unshift({ text: terminal.reason', unit, "turn.stop posting"],
   ["stop-post-catch", "packages/adapter-opencode/src/v2/shim.ts", "      try {\n        await withTimeout(Promise.resolve(ctx.session.synthetic({ sessionID, text, resume })));\n      } catch {\n        // Fail open: a stop event is the worst place to break the session.\n      }", "      await withTimeout(Promise.resolve(ctx.session.synthetic({ sessionID, text, resume })));", unit, "notice before it fails"],
-  ["stop-event-queue", "packages/adapter-opencode/src/v2/shim.ts", 'enqueue(sessionID, () => run("event", event, false, execution));', 'await run("event", event, false, execution);', unit, "running turn.stop hook"],
+  ["stop-event-queue", "packages/adapter-opencode/src/v2/shim.ts", 'enqueue(sessionID, () => run("event", event, false, execution, undefined, child));', 'await run("event", event, false, execution, undefined, child);', unit, "running turn.stop hook"],
   ["nested-serves", "packages/adapter-opencode/src/v2/project.ts", "(serves(ctx.location.directory) ? plugin.setup(ctx) : undefined)", "plugin.setup(ctx)", "packages/adapter-opencode/src/v2/project.test.ts", "nested checkouts"],
   ["nested-serves-playback", "packages/adapter-opencode/src/v2/project.ts", "(serves(ctx.location.directory) ? plugin.setup(ctx) : undefined)", "plugin.setup(ctx)", playback, "nested checkout from its own copy"],
   ["nested-id", "packages/adapter-opencode/src/v2/project.ts", "id: plugin.id + suffix", "id: plugin.id", "packages/adapter-opencode/src/v2/project.test.ts", "distinct id"],
@@ -169,14 +169,14 @@ const cases = [
   ["agent-stop-completion-filter", "packages/adapter-opencode/src/v2/shim.ts", ' && childStops.has(String(event.type))', "", unit, "U2:"],
   ["agent-stop-text", "packages/adapter-opencode/src/v2/shim.ts", ' || declares("agent.stop", "lastMessage")', "", unit, "U3:"],
   ["agent-stop-post-guard", "packages/adapter-opencode/src/v2/shim.ts", '    if (event.event !== "turn.stop") return;\n', "", unit, "U4:"],
-  ["agent-stop-child-turn-stop", "packages/adapter-opencode/src/v2/shim.ts", 'enqueue(sessionID, () => run("event", event, false, execution));', 'if (!children.has(sessionID)) enqueue(sessionID, () => run("event", event, false, execution));', unit, "U5:"],
+  ["agent-stop-child-turn-stop", "packages/adapter-opencode/src/v2/shim.ts", 'enqueue(sessionID, () => run("event", event, false, execution, undefined, child));', 'if (!children.has(sessionID)) enqueue(sessionID, () => run("event", event, false, execution, undefined, child));', unit, "U5:"],
   ["agent-stop-succeeded-only", "packages/adapter-opencode/src/v2/shim.ts", 'new Set(["session.execution.succeeded", "session.execution.failed"])', 'new Set(["session.execution.succeeded"])', unit, "U6:"],
   ["agent-stop-parent-link-playback", "packages/adapter-opencode/src/v2/shim.ts", "{ parentID: data.parentID, agent: data.agent }", "{ agent: data.agent }", playback, "one agent.stop under its parent"],
   [
     "agent-stop-order",
     "packages/adapter-opencode/src/v2/shim.ts",
-    '              enqueue(sessionID, () => run("event", event, false, execution));\n              // The child\'s own turn.stop first, then its agent.stop, in the\n              // same queue. Both report the same execution.\n              const child = children.get(sessionID);\n              if (child !== undefined && events.has("agent.stop") && childStops.has(String(event.type)))\n                enqueue(sessionID, () => run("event", event, false, execution, child));',
-    '              const child = children.get(sessionID);\n              if (child !== undefined && events.has("agent.stop") && childStops.has(String(event.type)))\n                enqueue(sessionID, () => run("event", event, false, execution, child));\n              enqueue(sessionID, () => run("event", event, false, execution));',
+    '              enqueue(sessionID, () => run("event", event, false, execution, undefined, child));\n              // The child\'s own turn.stop first, then its agent.stop, in the\n              // same queue. Both report the same execution.\n              if (child !== undefined && events.has("agent.stop") && childStops.has(String(event.type)))\n                enqueue(sessionID, () => run("event", event, false, execution, child));',
+    '              if (child !== undefined && events.has("agent.stop") && childStops.has(String(event.type)))\n                enqueue(sessionID, () => run("event", event, false, execution, child));\n              enqueue(sessionID, () => run("event", event, false, execution, undefined, child));',
     playback,
     "late background child",
   ],
@@ -206,6 +206,55 @@ const cases = [
     playback,
     "prevents and notifies",
   ],
+  // A child's start as agent.start, agent ids on its own turn.stop, and the
+  // session.get recovery of a child this instance never saw created (#232).
+  // The unit tests replay both captured subagent sequences.
+  ["agent-start-decode", "packages/adapter-opencode/src/v2/decode.ts", 'typeof sessionID === "string" && enrichment.child !== undefined)', "false)", unit, "subagent-start.input.json|U7:"],
+  ["agent-start-session", "packages/adapter-opencode/src/v2/decode.ts", "session: { ...base.session, id: parentID },", "session: base.session,", unit, "subagent-start.input.json"],
+  ["turn-stop-agent-ids-decode", "packages/adapter-opencode/src/v2/decode.ts", "...(turnId !== undefined ? { turnId } : {}), ...subagent }", "...(turnId !== undefined ? { turnId } : {}) }", unit, "turn-stop-subagent.input.json"],
+  ["agent-start-subscription", "packages/adapter-opencode/src/v2/shim.ts", '    events.has("agent.start") ||\n', "", unit, "U7:"],
+  [
+    "agent-start-order",
+    [
+      ["packages/adapter-opencode/src/v2/shim.ts", '              if (event.type === "session.created" && child !== undefined && events.has("agent.start"))\n                enqueue(sessionID, () => run("event", event, false, undefined, child));\n', ""],
+      ["packages/adapter-opencode/src/v2/shim.ts", '              enqueue(sessionID, () => run("event", event, false, execution, undefined, child));\n', '              enqueue(sessionID, () => run("event", event, false, execution, undefined, child));\n              if (event.type === "session.created" && child !== undefined && events.has("agent.start"))\n                enqueue(sessionID, () => run("event", event, false, undefined, child));\n'],
+    ],
+    undefined,
+    undefined,
+    unit,
+    "U7:",
+  ],
+  // Every event of a known child, not just its creation, runs the child's
+  // decode: each completion then reports a second agent.stop.
+  ["agent-start-every-event", "packages/adapter-opencode/src/v2/shim.ts", 'if (event.type === "session.created" && child !== undefined && events.has("agent.start"))', 'if (child !== undefined && events.has("agent.start"))', unit, "U7:"],
+  ["turn-stop-agent-ids", "packages/adapter-opencode/src/v2/shim.ts", 'enqueue(sessionID, () => run("event", event, false, execution, undefined, child));', 'enqueue(sessionID, () => run("event", event, false, execution));', unit, "U2:"],
+  ["turn-stop-agent-ids-everyone", "packages/adapter-opencode/src/v2/shim.ts", 'enqueue(sessionID, () => run("event", event, false, execution, undefined, child));', 'enqueue(sessionID, () => run("event", event, false, execution, undefined, child ?? { parentID: "" }));', unit, "U2:"],
+  ["recovery-disabled", "packages/adapter-opencode/src/v2/shim.ts", "              lookUp(sessionID);\n", "              void sessionID;\n", unit, "U8:|U11:"],
+  ["recovery-every-prompt", "packages/adapter-opencode/src/v2/shim.ts", "sessionID !== undefined && !local.has(sessionID) && !children.has(sessionID)", "sessionID !== undefined && !children.has(sessionID)", unit, "U8:"],
+  // Effectively unbounded: the never-settling lookup then holds the child's
+  // queue past the test's own timeout.
+  ["recovery-no-timeout", "packages/adapter-opencode/src/v2/shim.ts", "const LOOKUP_TIMEOUT_MS = 2_000;", "const LOOKUP_TIMEOUT_MS = 2_000_000;", unit, "U9: waits at most"],
+  ["recovery-global-await", "packages/adapter-opencode/src/v2/shim.ts", "              if (pending !== undefined) {\n", "              if (pending !== undefined) {\n                await pending;\n", unit, "U9: waits at most"],
+  ["recovery-throws", "packages/adapter-opencode/src/v2/shim.ts", "      .catch(() => undefined)\n      .finally(() => {\n        if (lookups", "      .finally(() => {\n        if (lookups", unit, "U9: leaves the child"],
+  ["recovery-sync-throw", "packages/adapter-opencode/src/v2/shim.ts", "Promise.resolve().then(() => get.call(ctx.session, { sessionID }))", "Promise.resolve(get.call(ctx.session, { sessionID }))", unit, "U9: leaves the child"],
+  ["recovery-no-location-check", "packages/adapter-opencode/src/v2/shim.ts", ' || typeof directory !== "string" || comparable(directory) !== here)', ")", unit, "U10:"],
+  ["recovery-not-stored", "packages/adapter-opencode/src/v2/shim.ts", "        children.set(sessionID, found);\n", "", unit, "U11:"],
+  // Cleanup while a completion waits on its lookup: the wait must neither hold
+  // disposal (the abort settles it) nor dispatch once it ends.
+  ["recovery-cleanup-guard", "packages/adapter-opencode/src/v2/shim.ts", "so nothing is dispatched then.\n                  if (controller.signal.aborted) return;\n", "so nothing is dispatched then.\n", unit, "U13:"],
+  ["recovery-cleanup-unraced", "packages/adapter-opencode/src/v2/shim.ts", "      LOOKUP_TIMEOUT_MS,\n      controller.signal,\n", "      LOOKUP_TIMEOUT_MS,\n", unit, "U14:"],
+  // Cleanup beginning while a recovered child's turn.stop hook runs: the
+  // agent.stop that follows inline must not start.
+  ["recovery-cleanup-recheck", "packages/adapter-opencode/src/v2/shim.ts", "                  // before it starts; this one follows inline, in the same order.\n                  if (controller.signal.aborted) return;\n", "                  // before it starts; this one follows inline, in the same order.\n", unit, "U15:"],
+  ["recovery-event-path", "packages/adapter-opencode/src/v2/shim.ts", "            } else if (!local.has(sessionID)) continue;", "            } else if (!local.has(sessionID)) {\n              lookUp(sessionID);\n              continue;\n            }", unit, "U12:"],
+  // Playback on the real binary.
+  ["agent-start-playback", "packages/adapter-opencode/src/v2/shim.ts", '              if (event.type === "session.created" && child !== undefined && events.has("agent.start"))\n                enqueue(sessionID, () => run("event", event, false, undefined, child));\n', "", playback, "one agent.stop under its parent"],
+  ["agent-start-every-event-playback", "packages/adapter-opencode/src/v2/shim.ts", 'if (event.type === "session.created" && child !== undefined && events.has("agent.start"))', 'if (child !== undefined && events.has("agent.start"))', playback, "followed-up subagent"],
+  ["turn-stop-agent-ids-playback", "packages/adapter-opencode/src/v2/shim.ts", 'enqueue(sessionID, () => run("event", event, false, execution, undefined, child));', 'enqueue(sessionID, () => run("event", event, false, execution));', playback, "one agent.stop under its parent|late background child"],
+  // P9 kills it only on builds whose API keeps a new session's parentID
+  // (2.2.6 and later); on the reference build P8 does.
+  ["recovery-disabled-playback", "packages/adapter-opencode/src/v2/shim.ts", "              lookUp(sessionID);\n", "              void sessionID;\n", playback, "after a plugin reload|created through the API"],
+  ["recovery-not-stored-playback", "packages/adapter-opencode/src/v2/shim.ts", "        children.set(sessionID, found);\n", "", playback, "takes no stop prevention"],
 ];
 for (const [name, path, before, after, file, pattern] of cases) {
   if (process.argv.length > 2 && !process.argv.slice(2).includes(name)) continue;

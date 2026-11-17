@@ -7563,14 +7563,20 @@ function pluginRootFrom(moduleUrl, offset) {
   return pathResolve(pathDirname(urlToPath(moduleUrl)), offset);
 }
 var POST_TIMEOUT_MS = 1e4;
-function withTimeout(promise) {
+function withTimeout(promise, ms = POST_TIMEOUT_MS, signal) {
   promise.catch(() => void 0);
   let timer;
+  let onAbort;
   const expiry = new Promise((resolvePromise) => {
-    timer = setTimeout(() => resolvePromise(void 0), POST_TIMEOUT_MS);
+    timer = setTimeout(() => resolvePromise(void 0), ms);
+    if (signal === void 0) return;
+    onAbort = () => resolvePromise(void 0);
+    if (signal.aborted) onAbort();
+    else signal.addEventListener("abort", onAbort, { once: true });
   });
   return Promise.race([promise, expiry]).finally(() => {
     if (timer !== void 0) clearTimeout(timer);
+    if (onAbort !== void 0) signal?.removeEventListener("abort", onAbort);
   });
 }
 var V2_STATEMENT = /Commands run on \S+ using (\S+)\.(?=\s|$)/g;
@@ -7731,7 +7737,19 @@ function decodeOpenCodeV2(raw, invocation, enrichment = {}) {
       tool: { kind: "other", nativeName: "unknown", input: void 0 }
     };
   if (native.hook === "event") {
-    if (event.type === "session.created") return { ...base, event: "session.start" };
+    if (event.type === "session.created") {
+      if (typeof sessionID === "string" && enrichment.child !== void 0) {
+        const { parentID, agent } = enrichment.child;
+        return {
+          ...base,
+          session: { ...base.session, id: parentID },
+          correlation: { agentId: sessionID, parentAgentId: parentID },
+          event: "agent.start",
+          agent: { id: sessionID, ...typeof agent === "string" ? { type: agent } : {} }
+        };
+      }
+      return { ...base, event: "session.start" };
+    }
     if (["session.execution.succeeded", "session.execution.failed", "session.execution.interrupted"].includes(
       String(event.type)
     )) {
@@ -7747,9 +7765,10 @@ function decodeOpenCodeV2(raw, invocation, enrichment = {}) {
           ...lastMessage !== void 0 ? { lastMessage } : {}
         };
       }
+      const subagent = enrichment.subagent !== void 0 && typeof sessionID === "string" ? { agentId: sessionID, parentAgentId: enrichment.subagent.parentID } : {};
       return {
         ...base,
-        ...turnId !== void 0 ? { correlation: { ...base.correlation, turnId } } : {},
+        correlation: { ...base.correlation, ...turnId !== void 0 ? { turnId } : {}, ...subagent },
         event: "turn.stop",
         ...lastMessage !== void 0 ? { lastMessage } : {}
       };
@@ -7797,7 +7816,7 @@ async function setupOpenCodeV2(plugin, options2, ctx) {
     "session.execution.interrupted"
   ]);
   const childStops = /* @__PURE__ */ new Set(["session.execution.succeeded", "session.execution.failed"]);
-  const subscribes = events.has("session.start") || events.has("turn.stop") || events.has("agent.stop") || events.has("context.compact.after");
+  const subscribes = events.has("session.start") || events.has("turn.stop") || events.has("agent.start") || events.has("agent.stop") || events.has("context.compact.after");
   const readsShell = events.has("tool.before") || events.has("tool.after") || events.has("tool.error");
   const statedShells = /* @__PURE__ */ new Map();
   const STATED_SHELL_SESSIONS = 256;
@@ -7835,7 +7854,7 @@ async function setupOpenCodeV2(plugin, options2, ctx) {
       if (queues.get(key) === next) queues.delete(key);
     });
   };
-  const run = async (hook2, native, modelRequest = false, execution, child) => {
+  const run = async (hook2, native, modelRequest = false, execution, child, subagent) => {
     let event;
     const shell = typeof native.sessionID === "string" ? statedShells.get(native.sessionID) : void 0;
     const shellDialect = dialectOfStatedShell(shell);
@@ -7846,7 +7865,8 @@ async function setupOpenCodeV2(plugin, options2, ctx) {
         {
           ...execution ? { execution } : {},
           ...shell !== void 0 ? { shell } : {},
-          ...child ? { child } : {}
+          ...child ? { child } : {},
+          ...subagent ? { subagent } : {}
         }
       );
     } catch (error2) {
@@ -7904,6 +7924,30 @@ async function setupOpenCodeV2(plugin, options2, ctx) {
     if (application.synthetic) await post(native, event, application.synthetic);
   };
   const runFailingOpen = (...args) => failingOpen(args[0], () => run(...args));
+  const LOOKUP_TIMEOUT_MS = 2e3;
+  const lookups = /* @__PURE__ */ new Map();
+  const readsLink = events.has("turn.stop") || events.has("agent.stop");
+  const lookUp = (sessionID) => {
+    const get = ctx.session.get;
+    if (typeof get !== "function") return;
+    const pending = withTimeout(
+      Promise.resolve().then(() => get.call(ctx.session, { sessionID })),
+      LOOKUP_TIMEOUT_MS,
+      controller.signal
+    ).then((info) => {
+      const session = record2(info);
+      const parentID = session.parentID;
+      const directory = record2(session.location).directory;
+      if (typeof parentID !== "string" || typeof directory !== "string" || comparable(directory) !== here)
+        return void 0;
+      const found = children.get(sessionID) ?? { parentID, agent: session.agent };
+      children.set(sessionID, found);
+      return found;
+    }).catch(() => void 0).finally(() => {
+      if (lookups.get(sessionID) === pending) lookups.delete(sessionID);
+    });
+    lookups.set(sessionID, pending);
+  };
   const cleanup = async () => {
     controller.abort();
     await Promise.allSettled(registrations.map((r) => r.dispose()));
@@ -7919,6 +7963,8 @@ async function setupOpenCodeV2(plugin, options2, ctx) {
           "prompt",
           guarded("prompt", async (e) => {
             const sessionID = typeof e.sessionID === "string" ? e.sessionID : void 0;
+            if (readsLink && sessionID !== void 0 && !local.has(sessionID) && !children.has(sessionID))
+              lookUp(sessionID);
             if (sessionID !== void 0) local.add(sessionID);
             if (readsPrompt && sessionID !== void 0) {
               if (executions.has(sessionID)) pendingPrompts.delete(sessionID);
@@ -8023,8 +8069,22 @@ async function setupOpenCodeV2(plugin, options2, ctx) {
                   if (finished !== void 0) execution = finished;
                 }
               }
-              enqueue(sessionID, () => run("event", event, false, execution));
               const child = children.get(sessionID);
+              if (event.type === "session.created" && child !== void 0 && events.has("agent.start"))
+                enqueue(sessionID, () => run("event", event, false, void 0, child));
+              const pending = child === void 0 && completions.has(String(event.type)) ? lookups.get(sessionID) : void 0;
+              if (pending !== void 0) {
+                enqueue(sessionID, async () => {
+                  const found = await pending;
+                  if (controller.signal.aborted) return;
+                  await runFailingOpen("event", event, false, execution, void 0, found);
+                  if (controller.signal.aborted) return;
+                  if (found !== void 0 && events.has("agent.stop") && childStops.has(String(event.type)))
+                    await run("event", event, false, execution, found);
+                });
+                continue;
+              }
+              enqueue(sessionID, () => run("event", event, false, execution, void 0, child));
               if (child !== void 0 && events.has("agent.stop") && childStops.has(String(event.type)))
                 enqueue(sessionID, () => run("event", event, false, execution, child));
             } catch (error2) {
@@ -8044,7 +8104,7 @@ async function setupOpenCodeV2(plugin, options2, ctx) {
 }
 
 // hooknostic-shim-entry.ts
-var options = { "targetId": "opencode", "capabilities": { "session.start.observe": "approximate", "session.start.notify": "unsupported", "prompt.before.observe": "exact", "prompt.before.block": "exact", "tool.before.observe": "exact", "tool.before.block": "exact", "tool.before.input.replace": "exact", "tool.after.observe": "exact", "tool.error.observe": "approximate", "tool.after.output.replace": "approximate", "model.request.before.observe": "approximate", "model.request.before.context.add": "approximate", "turn.stop.observe": "approximate", "turn.stop.prevent": "approximate", "turn.stop.notify": "approximate", "agent.stop.observe": "approximate", "agent.stop.prevent": "unsupported", "agent.stop.notify": "unsupported", "context.compact.before.observe": "exact", "context.compact.before.context.add": "exact", "context.compact.after.observe": "emulated", "permission.request.observe": "approximate", "permission.request.block": "approximate" }, "policy": { "onHookError": "continue", "timeoutMs": 5e3, "contextCharLimit": 16e3, "notifyCharLimit": 2e3 }, "minimumCapabilityLevel": "emulated" };
+var options = { "targetId": "opencode", "capabilities": { "session.start.observe": "approximate", "session.start.notify": "unsupported", "prompt.before.observe": "exact", "prompt.before.block": "exact", "tool.before.observe": "exact", "tool.before.block": "exact", "tool.before.input.replace": "exact", "tool.after.observe": "exact", "tool.error.observe": "approximate", "tool.after.output.replace": "approximate", "model.request.before.observe": "approximate", "model.request.before.context.add": "approximate", "turn.stop.observe": "approximate", "turn.stop.prevent": "approximate", "turn.stop.notify": "approximate", "agent.start.observe": "approximate", "agent.stop.observe": "approximate", "agent.stop.prevent": "unsupported", "agent.stop.notify": "unsupported", "context.compact.before.observe": "exact", "context.compact.before.context.add": "exact", "context.compact.after.observe": "emulated", "permission.request.observe": "approximate", "permission.request.block": "approximate" }, "policy": { "onHookError": "continue", "timeoutMs": 5e3, "contextCharLimit": 16e3, "notifyCharLimit": 2e3 }, "minimumCapabilityLevel": "emulated" };
 options.pluginRoot = pluginRootFrom(import.meta.url, "package");
 var HooknosticPlugin = { id: "hooknostic." + hooks_default.name + ".opencode", setup: (ctx) => setupOpenCodeV2(hooks_default, options, ctx) };
 var hooknostic_shim_entry_default = HooknosticPlugin;

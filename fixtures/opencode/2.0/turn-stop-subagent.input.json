@@ -1,0 +1,17 @@
+{
+  "hook": "event",
+  "directory": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-v2-b2UXYt\\project",
+  "event": {
+    "id": "evt_1e61693bd002aHqQ1efdIvxH0D",
+    "created": 1794861601725,
+    "type": "session.execution.succeeded",
+    "durable": {
+      "aggregateID": "ses_e19e96d3fffeiu5x5MfSgj0Lby",
+      "seq": 10,
+      "version": 1
+    },
+    "data": {
+      "sessionID": "ses_e19e96d3fffeiu5x5MfSgj0Lby"
+    }
+  }
+}

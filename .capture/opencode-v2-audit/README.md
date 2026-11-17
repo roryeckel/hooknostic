@@ -304,3 +304,88 @@ both captured sequences, so each unit mutant fails in both:
 
 `apply.ts` plans stop messages for both stop events, so the guard in `post` is
 the one gate that keeps them off the parent.
+
+## Subagent start, agent ids and `session.get` recovery (Windows, 2.0.17, 2.2.6 and 2.3.0, 2026-11-16)
+
+Question: can a v2 plugin report a subagent's start as `agent.start`, name a
+child's agent ids on its own `turn.stop`, and recognize a child whose
+`session.created` it never saw (#232)? The design, the scenario table, the
+`session.get` latency and the gaps are in `../opencode-v2/README.md`
+(Subagent start, agent ids and recovery).
+
+Method, each against the native executables of 2.0.17, 2.2.6 and 2.3.0 in
+private prefixes, with isolated state and the loopback model. No paid model
+or real credential was used, and the host's `OPENCODE*` and `OPENCHAMBER*`
+variables were cleared.
+
+- `session-get/probe.mjs <opencode-executable> <scenario> <root>`, for
+  `baseline`, `reload-followup`, `api-child-presetup`, `reload-mid-child`,
+  `reload-mid-child-then-followup` and `otherloc-both`; the `reload-mid-child`
+  scenarios with `HKN_CHILD_DELAY_MS=4000` and `HKN_TAIL_MS=8000`
+  (constructed timing). It runs `serve` with only `session-get/probe-plugin.js`
+  and records each plugin instance's setup, prompts, tool hooks, watched
+  events, `cleanup`, and every `session.get` from the prompt hook and from the
+  subscription. `session-get/summarize.mjs <outcome.json>...` prints one
+  timeline per run and the lookup latency.
+- `drive.mjs subagent` (promoted, below), and the `subagent-reload`,
+  `subagent-api-child` and `subagent-reload-stop` drives through the generated
+  playback hooks. The model's replies are chosen by a marker in the prompt,
+  not in order, so executions no prompt started cannot use up a scripted call.
+
+The 2.0.17 `subagent` root promoted for #231 was promoted again with
+`promote-audits.mjs subagent-stop <2.0.17-root> <2.3.0-root>`, which now also
+writes `subagent-start` and `turn-stop-subagent` from the same 2.0.17 drive.
+The existing `subagent-stop` files came out byte for byte unchanged.
+
+Observations:
+
+- Every `subagent` drive dispatched one `agent.start` under the parent, after
+  the parent's `tool.before` for the subagent call and before the child's own
+  `session.start` and stops, with every field. The child's own `turn.stop`
+  carried `correlation.agentId` and `correlation.parentAgentId`; the parent's
+  carried neither. A follow-up dispatched no second `agent.start`.
+- The probe results (`../opencode-v2/README.md`): the child's prompt hook ran
+  before its `session.created` reached the subscription on every build; the
+  lookup returned the parent wherever the child kept its `parentID`; 2.0.17's
+  API dropped a new session's `parentID`; on 2.3.0 a reload during a running
+  background child disposed the old instance first, so the child was missed;
+  on 2.0.17 the old instance was never disposed, and both instances received
+  every later event with the same event `id`.
+- Through the shim, the 2.0.17 leak doubled the follow-up's child `turn.stop`,
+  its `agent.stop` and the parent's `turn.stop` (a scratch run of
+  `reload-mid-child-then-followup` with the playback hooks beside the probe
+  plugin).
+
+Mutants, each killed on 2.0.17 and restored byte for byte. Unit tests replay
+both captured sequences, so each unit mutant fails in both:
+
+| Mutant | Change | Killed by |
+| --- | --- | --- |
+| `agent-start-decode` | The decoder ignores the child's `session.created` | The `subagent-start` decode case (U1), U7 |
+| `agent-start-session` | The child's id as `session.id` | The `subagent-start` decode case (U1) |
+| `turn-stop-agent-ids-decode` | The decoder drops the child's ids from its `turn.stop` | The `turn-stop-subagent` decode case (U1) |
+| `agent-start-subscription` | An `agent.start` hook alone does not subscribe | U7 |
+| `agent-start-order` | `agent.start` queued after the child's `session.start` | U7 |
+| `agent-start-every-event` | Every event of a known child runs the child's decode | U7 (a second `agent.stop`) |
+| `turn-stop-agent-ids` | The child's `turn.stop` gets no ids | U2 |
+| `turn-stop-agent-ids-everyone` | Every `turn.stop` gets ids | U2 (the parent's) |
+| `recovery-disabled` | The prompt hook starts no lookup | U8, U11 |
+| `recovery-every-prompt` | A lookup on every prompt, not only a session's first | U8 (the parent looked up twice) |
+| `recovery-no-timeout` | The lookup's bound raised to 2,000 s | U9: the child's stop never comes |
+| `recovery-global-await` | The subscription itself awaits a pending lookup | U9: the parent's stop waits 2 s |
+| `recovery-throws` | A rejected lookup is not caught | U9: a lookup rejecting while the completion waits |
+| `recovery-sync-throw` | A `get` that throws synchronously escapes the prompt hook | U9 |
+| `recovery-no-location-check` | A record in another location is accepted | U10 |
+| `recovery-not-stored` | A found child is returned but not stored | U11: the recovered child takes posts |
+| `recovery-event-path` | Unknown sessions are looked up from the subscription | U12 |
+| `recovery-cleanup-guard` | A completion waiting on its lookup still dispatches once cleanup has begun | U13 |
+| `recovery-cleanup-recheck` | A recovered child's `agent.stop` starts even though cleanup began while its `turn.stop` hook ran | U15 |
+| `recovery-cleanup-unraced` | The pending lookup is not settled by cleanup's abort, so disposal waits for its 2 s bound | U14: cleanup took about 1.9 s |
+| `agent-start-playback` | No `agent.start` is queued | P6, the subagent drive |
+| `agent-start-every-event-playback` | As `agent-start-every-event` | P6, `subagent-followup`; P8 |
+| `turn-stop-agent-ids-playback` | As `turn-stop-agent-ids` | P6; P7, the late-child test |
+| `recovery-disabled-playback` | As `recovery-disabled` | P8, `subagent-reload`; P10 (P9 too where the API keeps `parentID`) |
+| `recovery-not-stored-playback` | As `recovery-not-stored` | P10, `subagent-reload-stop`: the recovered child's stop was prevented, so it ran an extra execution |
+
+Three #231 mutants were re-anchored because the line they edit now passes the
+child: `stop-event-queue`, `agent-stop-child-turn-stop` and `agent-stop-order`.

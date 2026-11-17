@@ -280,6 +280,8 @@ describe.skipIf(!enabled)("OpenCode v2 offline playback", () => {
   // One `subagent*` drive: its hook captures and the generated hooks' trace.
   type TraceEntry = {
     event: string;
+    nativeEvent?: string;
+    toolKind?: string;
     turnId?: string;
     lastMessage?: string;
     sessionId?: string;
@@ -341,6 +343,35 @@ describe.skipIf(!enabled)("OpenCode v2 offline playback", () => {
     const childStop = trace.findIndex((entry) => entry.event === "turn.stop" && entry.sessionId === child);
     expect(childStop).toBeGreaterThanOrEqual(0);
     expect(trace[childStop + 1]).toMatchObject({ event: "agent.stop", agentId: child });
+    // The child's creation is one agent.start under the parent (#232): after
+    // the parent's subagent call, before the child's own session.start and stops.
+    const starts = trace.filter((entry) => entry.event === "agent.start");
+    expect(starts).toEqual([
+      expect.objectContaining({
+        nativeEvent: "event",
+        sessionId: parent,
+        agentId: child,
+        agentType: agent,
+        correlationAgentId: child,
+        parentAgentId: parent,
+      }),
+    ]);
+    const started = trace.indexOf(starts[0]!);
+    expect(trace.findIndex((entry) => entry.event === "tool.before" && entry.toolKind === "agent")).toBeLessThan(
+      started,
+    );
+    expect(trace.findIndex((entry) => entry.event === "session.start" && entry.sessionId === child)).toBeGreaterThan(
+      started,
+    );
+    expect(childStop).toBeGreaterThan(started);
+    // The child's own turn.stop names its agent ids; the parent's names none.
+    expect(trace[childStop]).toMatchObject({ correlationAgentId: child, parentAgentId: parent });
+    const parentStops = trace.filter((entry) => entry.event === "turn.stop" && entry.sessionId === parent);
+    expect(parentStops.length).toBeGreaterThan(0);
+    for (const entry of parentStops) {
+      expect(entry.correlationAgentId).toBeUndefined();
+      expect(entry.parentAgentId).toBeUndefined();
+    }
   }, 70000);
   it("reports a subagent that failed before any text as agent.stop without a last message", async () => {
     const { trace, child, parent, executions } = await driveSubagent("subagent-fail");
@@ -361,6 +392,8 @@ describe.skipIf(!enabled)("OpenCode v2 offline playback", () => {
       { sessionId: parent, agentId: child, lastMessage: "hooknostic-child-result" },
       { sessionId: parent, agentId: child, lastMessage: "hooknostic-child-follow-up-result" },
     ]);
+    // A follow-up creates no session, so the child started once.
+    expect(trace.filter((entry) => entry.event === "agent.start").map(({ agentId }) => agentId)).toEqual([child]);
   }, 70000);
   it("reports each parent execution a late background child starts as its own turn stop", async () => {
     const result = await runProcess(
@@ -419,14 +452,129 @@ describe.skipIf(!enabled)("OpenCode v2 offline playback", () => {
     const child = captured.find(
       (row) => row.hook === "event" && row.event.type === "session.created" && row.event.data?.parentID === parent,
     ).event.data.sessionID as string;
-    const ordered = (trace as { event: string; sessionId?: string; agentId?: string }[]).filter(
+    type Ids = {
+      event: string;
+      sessionId?: string;
+      agentId?: string;
+      correlationAgentId?: string;
+      parentAgentId?: string;
+    };
+    const ordered = (trace as Ids[]).filter(
       (entry) => entry.event === "agent.stop" || (entry.event === "turn.stop" && entry.sessionId === child),
     );
-    expect(ordered.map(({ event, sessionId, agentId }) => ({ event, sessionId, agentId }))).toEqual([
-      { event: "turn.stop", sessionId: child, agentId: undefined },
-      { event: "agent.stop", sessionId: parent, agentId: child },
+    // The child's own turn.stop names its agent ids too (#232).
+    expect(
+      ordered.map(({ event, sessionId, agentId, correlationAgentId, parentAgentId }) => ({
+        event,
+        sessionId,
+        agentId,
+        correlationAgentId,
+        parentAgentId,
+      })),
+    ).toEqual([
+      { event: "turn.stop", sessionId: child, agentId: undefined, correlationAgentId: child, parentAgentId: parent },
+      { event: "agent.stop", sessionId: parent, agentId: child, correlationAgentId: child, parentAgentId: parent },
     ]);
+    // However many top-level executions the parent ran, none of its stops does.
+    for (const entry of (trace as Ids[]).filter((row) => row.event === "turn.stop" && row.sessionId !== child))
+      expect([entry.correlationAgentId, entry.parentAgentId]).toEqual([undefined, undefined]);
   }, 70000);
+  // Children this plugin instance never saw created (#232), over `serve`.
+  async function driveReload(mode: string) {
+    const result = await runProcess(
+      process.execPath,
+      ["--experimental-strip-types", ".capture/opencode-v2/drive.mjs", mode],
+      {
+        cwd: fileURLToPath(new URL("../../..", import.meta.url)),
+        env: process.env,
+        timeoutMs: 90000,
+      },
+    );
+    expect(result.code, result.stdout + result.stderr).toBe(0);
+    const { root } = JSON.parse(result.stdout.split("\n").find((line) => line.startsWith('{"root"'))!);
+    const audit = JSON.parse(await readFile(join(root, "reload.json"), "utf8"));
+    expect(audit.errors).toEqual([]);
+    const trace = (await readFile(join(root, "trace.jsonl"), "utf8"))
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line) as TraceEntry);
+    return { audit, trace };
+  }
+  it("recognizes a followed-up subagent after a plugin reload, by looking up its parent", async () => {
+    const { audit, trace } = await driveReload("subagent-reload");
+    const { parentID: parent, childID: child } = audit;
+    // The old instance was disposed (the capture plugin's cleanup ran) before
+    // the follow-up, and the child then completed once more.
+    const records = audit.records as { hook: string; event: { type?: string; data?: { sessionID?: string } } }[];
+    const cleanup = records.findIndex((row) => row.hook === "cleanup");
+    expect(cleanup).toBeGreaterThanOrEqual(0);
+    expect(cleanup).toBeLessThan(audit.reloadedAt);
+    const completions = records.flatMap((row, index) =>
+      row.hook === "event" && row.event.type === "session.execution.succeeded" && row.event.data?.sessionID === child
+        ? [index]
+        : [],
+    );
+    expect(completions).toHaveLength(2);
+    expect(completions[1]).toBeGreaterThan(audit.reloadedAt);
+    // The new instance never saw the child created: no second agent.start,
+    // but the follow-up's stops still name the child and its parent.
+    expect(trace.filter((entry) => entry.event === "agent.start").map(({ agentId }) => agentId)).toEqual([child]);
+    expect(
+      trace
+        .filter((entry) => entry.event === "turn.stop" && entry.sessionId === child)
+        .map(({ correlationAgentId, parentAgentId, lastMessage }) => ({
+          correlationAgentId,
+          parentAgentId,
+          lastMessage,
+        })),
+    ).toEqual([
+      { correlationAgentId: child, parentAgentId: parent, lastMessage: "hooknostic-child-result" },
+      { correlationAgentId: child, parentAgentId: parent, lastMessage: "hooknostic-child-follow-up-result" },
+    ]);
+    expect(
+      trace
+        .filter((entry) => entry.event === "agent.stop")
+        .map(({ sessionId, agentId, agentType, lastMessage }) => ({ sessionId, agentId, agentType, lastMessage })),
+    ).toEqual([
+      { sessionId: parent, agentId: child, agentType: "general", lastMessage: "hooknostic-child-result" },
+      { sessionId: parent, agentId: child, agentType: "general", lastMessage: "hooknostic-child-follow-up-result" },
+    ]);
+  }, 100000);
+  it("recognizes a subagent child created through the API before plugin setup, where the API keeps its parent", async () => {
+    const { audit, trace } = await driveReload("subagent-api-child");
+    const { parentID: parent, childID: child } = audit;
+    expect(audit.child).toMatchObject({ started: 1, succeeded: 1 });
+    const childStops = trace.filter((entry) => entry.event === "turn.stop" && entry.sessionId === child);
+    expect(childStops).toHaveLength(1);
+    // Created before setup, so never seen created: no agent.start either way.
+    expect(trace.filter((entry) => entry.event === "agent.start")).toEqual([]);
+    // Branch on what this build's API did, not on its version: 2.0.17 dropped
+    // the parentID, so the session is no child there.
+    if (audit.keptParentID) {
+      expect(childStops[0]).toMatchObject({ correlationAgentId: child, parentAgentId: parent });
+      expect(trace.filter((entry) => entry.event === "agent.stop")).toEqual([
+        expect.objectContaining({ sessionId: parent, agentId: child, agentType: "general", parentAgentId: parent }),
+      ]);
+    } else {
+      expect([childStops[0]!.correlationAgentId, childStops[0]!.parentAgentId]).toEqual([undefined, undefined]);
+      expect(trace.filter((entry) => entry.event === "agent.stop")).toEqual([]);
+    }
+  }, 100000);
+  it("a subagent recovered after a plugin reload takes no stop prevention or notice", async () => {
+    // With prevention and notices on every stop: the child's own stops must
+    // post nothing, so prompting it once more starts exactly one execution
+    // whose request carries neither the reason nor the notice.
+    const { audit, trace } = await driveReload("subagent-reload-stop");
+    expect(audit.childAfter).toMatchObject({ started: 2, succeeded: 2 });
+    expect(audit.childFinal).toMatchObject({ started: 3, succeeded: 3 });
+    expect(audit.childRequests).toBe(3);
+    expect(audit.childPosts).toBe(0);
+    expect(
+      trace
+        .filter((entry) => entry.event === "turn.stop" && entry.sessionId === audit.childID)
+        .map(({ correlationAgentId }) => correlationAgentId),
+    ).toEqual([audit.childID, audit.childID, audit.childID]);
+  }, 100000);
   it("observes typed tool failures and replaces rich output in recorded requests", async () => {
     const result = await runProcess(
       process.execPath,

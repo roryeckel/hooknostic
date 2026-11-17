@@ -30,12 +30,20 @@ export interface OpenCodeV2Enrichment {
    */
   shell?: unknown;
   /**
-   * Set when the completing session was created as a child: its
-   * `session.created` carried a `parentID`, and the `agent` it runs. A
-   * succeeded or failed completion then decodes as `agent.stop` under the
-   * parent's session. The completion itself names only the child.
+   * Set when the session was created as a child: its `session.created`
+   * carried a `parentID`, and the `agent` it runs. That `session.created`
+   * then decodes as `agent.start`, and a succeeded or failed completion as
+   * `agent.stop`, both under the parent's session. The completion itself
+   * names only the child.
    */
   child?: OpenCodeV2Child;
+  /**
+   * Set when the completing session is a known subagent child, for its own
+   * `turn.stop`: the agent ids Copilot attaches to a subagent's stop. Known
+   * from its `session.created`, or found by `session.get` when its prompt
+   * reached this plugin instance.
+   */
+  subagent?: OpenCodeV2Child;
 }
 
 export interface OpenCodeV2Child {
@@ -135,7 +143,21 @@ export function decodeOpenCodeV2(
       tool: { kind: "other", nativeName: "unknown", input: undefined },
     };
   if (native.hook === "event") {
-    if (event.type === "session.created") return { ...base, event: "session.start" };
+    if (event.type === "session.created") {
+      // A child's creation is also its subagent's start, reported under the
+      // parent as agent.stop is. Every field is read from this one event.
+      if (typeof sessionID === "string" && enrichment.child !== undefined) {
+        const { parentID, agent } = enrichment.child;
+        return {
+          ...base,
+          session: { ...base.session, id: parentID },
+          correlation: { agentId: sessionID, parentAgentId: parentID },
+          event: "agent.start",
+          agent: { id: sessionID, ...(typeof agent === "string" ? { type: agent } : {}) },
+        };
+      }
+      return { ...base, event: "session.start" };
+    }
     if (
       ["session.execution.succeeded", "session.execution.failed", "session.execution.interrupted"].includes(
         String(event.type),
@@ -160,9 +182,14 @@ export function decodeOpenCodeV2(
           ...(lastMessage !== undefined ? { lastMessage } : {}),
         };
       }
+      // A subagent child's own stop also says which agent it is, as on Copilot.
+      const subagent =
+        enrichment.subagent !== undefined && typeof sessionID === "string"
+          ? { agentId: sessionID, parentAgentId: enrichment.subagent.parentID }
+          : {};
       return {
         ...base,
-        ...(turnId !== undefined ? { correlation: { ...base.correlation, turnId } } : {}),
+        correlation: { ...base.correlation, ...(turnId !== undefined ? { turnId } : {}), ...subagent },
         event: "turn.stop",
         ...(lastMessage !== undefined ? { lastMessage } : {}),
       };

@@ -15,6 +15,10 @@ export async function startToolModel(project, mcpOnly = false, remote = false, a
     // The same child again, by the session id its first call reported.
     ["subagent", (request) => ({ agent: "general", description: "Offline child follow-up", prompt: "hooknostic-child-task: hooknostic-follow-up.",
       sessionID: JSON.stringify(request.messages.findLast(message => message.role === "tool")?.content ?? "").match(/ses_[A-Za-z0-9]+/)?.[0] })],
+  ] : audit === "subagent-reload" || audit === "subagent-reload-stop" || audit === "subagent-api-child" ? [
+    // Chosen by the prompt's marker below, not in order: a reload drive's
+    // parent also runs executions no prompt started (a stop prevention, or a
+    // background child's result), and those must not use up a scripted call.
   ] : audit === "subagent-opt-in" ? [
     // The opt-in background argument the tool offers up to 2.2.7.
     ["subagent", { agent: "general", description: "Offline child result capture", prompt: "hooknostic-child-task: return the scripted child result.", background: true }],
@@ -71,6 +75,17 @@ export async function startToolModel(project, mcpOnly = false, remote = false, a
         registrationRetries += 1;
         action = actions[0];
       } else errors.push("MCP tool unavailable after two catalog-update retries");
+    } else if (audit === "subagent-reload" || audit === "subagent-reload-stop") {
+      // A new child for the first parent prompt, the same child again (by the
+      // session id its call reported) for the follow-up; text otherwise.
+      const last = request.messages?.at(-1);
+      const said = last?.role === "user" ? JSON.stringify(last.content ?? "") : "";
+      const first = request.messages?.find(message => message.role === "tool" && /ses_[A-Za-z0-9]+/.test(JSON.stringify(message.content ?? "")));
+      action = !tools.length || child ? undefined
+        : said.includes("hooknostic-first-parent") ? ["subagent", { agent: "general", description: "Offline child result capture", prompt: "hooknostic-child-task: return the scripted child result." }]
+        : said.includes("hooknostic-follow-up-parent") ? ["subagent", { agent: "general", description: "Offline child follow-up", prompt: "hooknostic-child-task: hooknostic-follow-up.",
+          sessionID: JSON.stringify(first?.content ?? "").match(/ses_[A-Za-z0-9]+/)?.[0] }]
+        : undefined;
     } else action = tools.length && !child ? actions[index++] : undefined;
     // Constructed timing: the child answers 3 s late, so a background child
     // (2.3.0 and later) outlives its parent's first execution.
