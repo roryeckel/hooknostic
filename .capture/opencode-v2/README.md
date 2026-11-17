@@ -459,9 +459,18 @@ delegates a new one. The drive counts completions by distinct event id: on
 | A session started during the overlap reports once | before: `session.start` twice | before: twice | before: twice |
 | Every completion once (parent, the child across the reload, the new child), `agent.start` once per child | before: duplicate stops and `agent.stop`s; the new child's `agent.start` twice | before: the parent's stop after the reload missed | before: the child's `turn.stop` and `agent.stop`, and the parent's follow-on stop, missed |
 | Prevention once, never into a child | before: the fresh session's model saw the stop reason twice | before: twice | before: twice |
+| A prompt steered into an execution the old instance still runs (`subagent-reload-running-steer`) | before: the child's `turn.stop` without its text or turn id | before: the same | before: a later parent stop carried the steered prompt's id (3 of 3) |
 
-With the shim all three pass on each build: 10 runs of the three tests per
-build, 30 of 30 green, no re-drive needed. The test drives once more if the
+The steer drive (review round) prompts the parent and the running child after
+the reload, with prevention on; on 2.3.0 the parent's prevention continuation
+answers 1.5 s late, so the steered parent execution ends while the old
+instance lives (constructed timing). Whether a prompt was steered or started
+its own execution is read from the captured events: the session's next
+execution event after the prompt is a start or a completion.
+
+With the shim all four pass on each build: 10 runs of the four tests per
+build, no re-drive needed (and 10 runs of the first three per build before
+the review round). The test drives once more if the
 old instance was gone before the fresh session completed (once among the
 captured 2.3.0 runs), or if the drive timed out on its transport before the
 reload; never for a failed assertion.
@@ -475,12 +484,14 @@ Not claimed, or claimed with a limit (see `docs/opencode-families.md`):
   calling its cleanup, and then the new one skips it because it does not
   know the session yet.
 - **A second reload** while the newer instance still has work running,
-  queued or pending can drop a stop the older one would have reported
+  queued or pending can drop an event the older one would have reported (a
+  stop, or a `session.start`, `agent.start` or `context.compact.after`)
   (accepted and documented; #238 records the reasoning; pinned by unit
   tests L1 and L2).
-- **Compaction during an overlap,** and a session the new instance was
-  prompted for before the handover (unit test Q3), are covered by unit tests
-  only: no drive reproduces them.
+- **Compaction during an overlap,** a prompt the new instance took after
+  the handover but before reading the session's events (unit test Q3), and
+  a segment both instances buffered around a steered prompt (Q5), are
+  covered by unit tests only: no drive reproduces them.
 - A server restart, or a reload across two Hooknostic releases: each
   instance reports as before.
 

@@ -495,3 +495,40 @@ Re-anchored, because the lines they edit changed: `location-filter`,
 `recovery-not-stored-playback` now run the server-restart tests: since #236
 the reload drives' child is handed over, not looked up, so they no longer
 need the lookup.
+### Review round (2026-11-17)
+
+The two implementation reviews found one regression and three gaps.
+
+- **A prompt steered into an execution the old instance still ran** reached
+  the new instance, which then reported the session's stop (the old one
+  yielded) without the execution's text or turn id, and kept the steered
+  prompt's id for a later execution, which is wrong, not missing. The new
+  instance now takes a copy of that execution (text, and the id of the prompt
+  that started it) at the steered prompt, and a text segment both instances
+  buffer is kept once. The dispatch rule is unchanged, so this cannot
+  dispatch twice. The `subagent-reload-running-steer` drive prompts the parent
+  and the running child after the reload, with prevention on. Before the fix
+  it failed on 2.0.17 and 2.2.6 (the child's stop without text or turn id)
+  and, once the parent's prevention continuation answered 1.5 s late, on
+  2.3.0 in 3 of 3 runs (a later parent stop carried the steered prompt's id);
+  with the fix it passes on all three.
+- **A disposed newer instance leaving the group,** and **the plugin root in
+  the group's key,** had no test; **a handover merging, never overwriting,**
+  had none either.
+
+| Mutant | Defect | Killed by |
+| --- | --- | --- |
+| `reload-steer-no-takeover` | The steered prompt takes nothing over | Q5 |
+| `reload-text-not-deduplicated` | A segment both instances buffered is kept twice | Q5 |
+| `reload-cleanup-keeps-live` | A disposed instance stays in the group | R17 |
+| `reload-key-without-root` | Two package copies with different roots share a group | R4 |
+| `reload-adopt-overwrites-execution`, `-child` | The handover replaces what the new instance had | Q6 |
+| `reload-steer-no-takeover-playback` | As `reload-steer-no-takeover` | the steer test, on all three builds |
+
+Q3 now pins the handover merge for a prompt taken after the old instance's
+cleanup but before the new one read any of the session's events (a prompt
+while the old instance still runs is Q5's shape). `adopt-execution-unread`
+(the handover's execution taken by an instance that reads neither text nor
+turn id) survives every test: such an entry changes only what a later
+handover counts as running. It is guarded in the code. `unlinked` is cleared
+at cleanup.
