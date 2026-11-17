@@ -185,8 +185,9 @@ the foreground is the default (also in the 2.0.17 capture). No drive passes it.
 with the child's result, the result in the tool message, no inbox item, and
 two parent executions on the stop drive. So up to 2.2.7 a subagent runs in the
 foreground by default, and from 2.3.0 it always runs in the background. A
-subagent called with `background: true` before 2.3.0 was not probed; nothing
-here says how it behaves.
+subagent called with `background: true` before 2.3.0 was not probed here;
+nothing here says how it behaves. It was probed later on 2.0.17 and 2.2.6, for
+#231 (below).
 
 Consequences, with no adapter behaviour change:
 
@@ -264,12 +265,19 @@ Observations:
 - A follow-up to the same child ran a second child execution: a second
   `agent.stop`, same `agent.id`, with the follow-up's text. On 2.3.0 the
   parent's last execution started from the child's result, without a turn id.
-- With `background: true` on 2.0.17, a prompt child dispatched `agent.stop`
-  while `run` was still going, and its result started a second parent
-  execution. With the child 3 s late, `run --standalone` exited after the
+- With `background: true` on 2.0.17 and 2.2.6, `execute.after` reported the
+  launch (`result.output.status: running`), and the child's result reached the
+  parent as a `steer` inbox item and a user-role `<subagent>` message. On
+  2.0.17 a prompt child dispatched `agent.stop` while `run` was still going,
+  and its result started a second parent execution, whose `turn.stop` had no
+  turn id. With the child 3 s late, `run --standalone` exited after the
   parent's first execution. The child only started: no completion, no
-  `turn.stop`, no `agent.stop`. 2.2.6 waited for the same late child, and
-  `agent.stop` dispatched.
+  `turn.stop`, no `agent.stop`. 2.2.6 waited for the same late child:
+  `agent.stop` dispatched, and its result started a second parent execution
+  with no turn id. A prompt child on 2.2.6 joined the running parent
+  execution instead. Repeated on both builds, with the same results, before
+  the profile rationales were narrowed to this. No stop or notice drive was
+  run with an opt-in child, so their timing there is not claimed.
 - The `stop` drive's child added one `agent.stop` and changed no other count.
   It had to prevent once per event and session (above), not per session.
 

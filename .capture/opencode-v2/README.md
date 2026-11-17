@@ -307,7 +307,8 @@ What was probed, each on Windows with isolated state and the loopback model
   own execution's text, on 2.0.17 and 2.3.0.
 - `subagent-opt-in`: the opt-in `background: true` argument on 2.0.17 and
   2.2.6. On 2.0.17, a child that finished while `run` was still going
-  dispatched `agent.stop`. With `HKN_CHILD_DELAY_MS=3000` (constructed timing,
+  dispatched `agent.stop`, and its result started a second parent execution
+  without a turn id. With `HKN_CHILD_DELAY_MS=3000` (constructed timing,
   unset by default), `run --standalone` exited first: the child only started,
   and neither its `turn.stop` nor `agent.stop` dispatched. 2.2.6 waited for the
   same late child, and its result started a second parent execution.
