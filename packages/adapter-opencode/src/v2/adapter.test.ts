@@ -1340,12 +1340,18 @@ describe("v2 agent.stop from a child's completion (#231)", () => {
     "turn.stop.prevent": "approximate",
     "turn.stop.notify": "approximate",
     "agent.stop.observe": "approximate",
+    "agent.start.observe": "approximate",
   } as const;
 
   async function replay(
     rows: Row[],
     hooks: Parameters<typeof definePlugin>[0]["hooks"],
-    options: { capabilities?: Record<string, string>; synthetic?: (input: unknown) => unknown } = {},
+    options: {
+      capabilities?: Record<string, string>;
+      synthetic?: (input: unknown) => unknown;
+      get?: (input: { sessionID: string }) => unknown;
+      settleMs?: number;
+    } = {},
   ) {
     const callbacks: Record<string, (event: Record<string, unknown>) => Promise<void>> = {};
     let done = false;
@@ -1360,6 +1366,7 @@ describe("v2 agent.stop from a child's completion (#231)", () => {
             return { dispose: async () => {} };
           },
           synthetic: options.synthetic ?? (() => undefined),
+          ...(options.get ? { get: options.get } : {}),
         },
         tool: { hook: vi.fn() },
         event: {
@@ -1374,7 +1381,7 @@ describe("v2 agent.stop from a child's completion (#231)", () => {
       },
     );
     await vi.waitFor(() => expect(done).toBe(true));
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    await new Promise((resolve) => setTimeout(resolve, options.settleMs ?? 50));
     await cleanup();
   }
 
@@ -1390,9 +1397,11 @@ describe("v2 agent.stop from a child's completion (#231)", () => {
         hook("turn.stop", { id: "stop", run: record(seen) }),
         hook("agent.stop", { id: "agent", run: record(seen) }),
       ]);
+      // The child's own turn.stop names its agent ids, as on Copilot (#232);
+      // the parent's names none.
       expect(seen).toEqual([
         { event: "session.start", session: child },
-        { event: "turn.stop", session: child },
+        { event: "turn.stop", session: child, correlationAgentId: child, parentAgentId: parent },
         {
           event: "agent.stop",
           session: parent,
@@ -1496,6 +1505,221 @@ describe("v2 agent.stop from a child's completion (#231)", () => {
         { event: "turn.stop", session: child },
         { event: "turn.stop", session: parent },
       ]);
+    });
+
+    const started = {
+      event: "agent.start",
+      session: parent,
+      agentId: child,
+      agentType: agent,
+      correlationAgentId: child,
+      parentAgentId: parent,
+    };
+    const childStop = { event: "turn.stop", session: child, correlationAgentId: child, parentAgentId: parent };
+    const agentStop = {
+      event: "agent.stop",
+      session: parent,
+      agentId: child,
+      agentType: agent,
+      correlationAgentId: child,
+      parentAgentId: parent,
+    };
+    const everyHook = (seen: Seen[]) => [
+      hook("agent.start", { id: "agent-start", run: record(seen) }),
+      hook("session.start", { id: "start", run: record(seen) }),
+      hook("turn.stop", { id: "stop", run: record(seen) }),
+      hook("agent.stop", { id: "agent", run: record(seen) }),
+    ];
+
+    it("U7: reports the child's creation as one agent.start under the parent, before its session.start", async () => {
+      const seen: Seen[] = [];
+      await replay(rows, everyHook(seen));
+      expect(seen).toEqual([
+        started,
+        { event: "session.start", session: child },
+        childStop,
+        agentStop,
+        { event: "turn.stop", session: parent },
+      ]);
+      // An agent.start hook alone subscribes too.
+      const alone: Seen[] = [];
+      await replay(rows, [hook("agent.start", { id: "agent-start", run: record(alone) })]);
+      expect(alone).toEqual([started]);
+    });
+
+    // A child whose session.created never reached this instance, as after a
+    // plugin reload, or for a child created through the API before lazy setup:
+    // only its prompt, and a session.get lookup, can link it to its parent.
+    const unseen = rows.filter((row) => !(row.event["type"] === "session.created" && data(row)["sessionID"] === child));
+    const parentPrompt = rows.find((row) => row.hook === "prompt" && row.event["sessionID"] === parent)!;
+    // The captured shape of session.get's result for a child (.capture/opencode-v2 README, #232).
+    const stored = (sessionID: string, directory = rows[0]!.directory) => ({
+      id: sessionID,
+      location: { directory },
+      ...(sessionID === child ? { parentID: parent, agent, title: "Offline child result capture" } : {}),
+    });
+    // What a child this instance never saw created dispatches without a link:
+    // its own turn.stop, with no agent ids, and no agent.stop. The two
+    // sessions' stops are not ordered with each other while a lookup waits.
+    const today = [
+      { event: "turn.stop", session: child },
+      { event: "turn.stop", session: parent },
+    ];
+    const asToday = (seen: Seen[]) => {
+      expect(seen).toHaveLength(today.length);
+      expect(seen).toEqual(expect.arrayContaining(today));
+    };
+
+    it.each([
+      ["already settled", 0],
+      ["still pending", 30],
+    ])(
+      "U8: recovers a child it never saw created from session.get at its prompt, the lookup %s",
+      async (_, delayMs) => {
+        const calls: string[] = [];
+        const seen: Seen[] = [];
+        // A second prompt to the parent: each session is looked up once.
+        await replay([...unseen, parentPrompt], everyHook(seen), {
+          get: async ({ sessionID }) => {
+            calls.push(sessionID);
+            if (delayMs) await new Promise((resolve) => setTimeout(resolve, delayMs));
+            return stored(sessionID);
+          },
+          settleMs: 50 + delayMs,
+        });
+        // No agent.start and no session.start: the child's creation was not seen.
+        // Ordered within each session only: while the lookup is pending, the
+        // parent's stop is not held behind the child's.
+        expect(seen.filter((entry) => entry.session !== parent || entry.event !== "turn.stop")).toEqual([
+          childStop,
+          agentStop,
+        ]);
+        expect(seen.filter((entry) => entry.session === parent && entry.event === "turn.stop")).toEqual([
+          { event: "turn.stop", session: parent },
+        ]);
+        expect(calls.sort()).toEqual([child, parent].sort());
+      },
+    );
+
+    type Get = (input: { sessionID: string }) => unknown;
+    const failing: [string, Get | undefined][] = [
+      [
+        "throws",
+        () => {
+          throw new Error("boom");
+        },
+      ],
+      [
+        "rejects as not found",
+        async () => {
+          throw Object.assign(new Error(""), { name: "Session.NotFoundError" });
+        },
+      ],
+      // Rejecting while the child's completion waits for it.
+      [
+        "rejects after the completion arrived",
+        async () => {
+          await new Promise((resolve) => setTimeout(resolve, 30));
+          throw new Error("server gone");
+        },
+      ],
+      ["returns no record", async () => ({})],
+      ["is absent", undefined],
+    ];
+    it.each(failing)("U9: leaves the child as before when session.get %s, and reports nothing", async (_, get) => {
+      const errors = vi.spyOn(console, "error").mockImplementation(() => undefined);
+      try {
+        const seen: Seen[] = [];
+        await replay(unseen, everyHook(seen), { ...(get ? { get } : {}), settleMs: 100 });
+        asToday(seen);
+        expect(errors).not.toHaveBeenCalled();
+      } finally {
+        errors.mockRestore();
+      }
+    });
+
+    it("U9: waits at most 2 s for a lookup that never settles, and only in the child's own queue", async () => {
+      const errors = vi.spyOn(console, "error").mockImplementation(() => undefined);
+      try {
+        const at: { event: string; session: string | undefined; ms: number }[] = [];
+        const begin = Date.now();
+        const timed = (event: { event: string; session: { id?: string } }) =>
+          void at.push({ event: event.event, session: event.session.id, ms: Date.now() - begin });
+        await replay(
+          unseen,
+          [hook("turn.stop", { id: "stop", run: timed }), hook("agent.stop", { id: "agent", run: timed })],
+          {
+            get: ({ sessionID }) => (sessionID === child ? new Promise(() => undefined) : stored(sessionID)),
+            settleMs: 2500,
+          },
+        );
+        // The parent's stop is not held behind the child's lookup.
+        expect(at.map(({ event, session }) => ({ event, session }))).toEqual([
+          { event: "turn.stop", session: parent },
+          { event: "turn.stop", session: child },
+        ]);
+        expect(at[0]!.ms).toBeLessThan(1000);
+        expect(at[1]!.ms).toBeGreaterThanOrEqual(1900);
+        expect(errors).not.toHaveBeenCalled();
+      } finally {
+        errors.mockRestore();
+      }
+    }, 10000);
+
+    it("U10: does not link a child whose stored record is in another location", async () => {
+      const seen: Seen[] = [];
+      await replay(unseen, everyHook(seen), {
+        get: async ({ sessionID }) => stored(sessionID, rows[0]!.directory + "-elsewhere"),
+      });
+      asToday(seen);
+    });
+
+    it("U11: posts no stop prevention or notice for a recovered child", async () => {
+      const posts: { sessionID: string }[] = [];
+      const seen: Seen[] = [];
+      await replay(
+        unseen,
+        [
+          hook("turn.stop", {
+            id: "notice",
+            capabilities: { "turn.stop.notify": "required" },
+            run: () => notify("notice"),
+          }),
+          hook("turn.stop", {
+            id: "prevent",
+            capabilities: { "turn.stop.prevent": "required" },
+            run(event) {
+              record(seen)(event);
+              return preventStop("keep working");
+            },
+          }),
+        ],
+        {
+          synthetic: (input) => void posts.push(input as { sessionID: string }),
+          get: async ({ sessionID }) => stored(sessionID),
+        },
+      );
+      expect(seen).toEqual([childStop, { event: "turn.stop", session: parent }]);
+      expect(posts.map((post) => post.sessionID)).toEqual([parent, parent]);
+    });
+
+    it("U12: never looks up a session whose prompt this instance did not see", async () => {
+      // A child prompted through another instance, such as a background child
+      // still running across a reload: only its events reach this one.
+      const calls: string[] = [];
+      const seen: Seen[] = [];
+      await replay(
+        unseen.filter((row) => !(row.hook === "prompt" && row.event["sessionID"] === child)),
+        everyHook(seen),
+        {
+          get: async ({ sessionID }) => {
+            calls.push(sessionID);
+            return stored(sessionID);
+          },
+        },
+      );
+      expect(seen).toEqual([{ event: "turn.stop", session: parent }]);
+      expect(calls).toEqual([parent]);
     });
   });
 });

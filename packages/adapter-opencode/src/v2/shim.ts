@@ -21,6 +21,8 @@ export interface OpenCodeV2Context {
     hook(name: string, callback: Callback): Promise<Registration>;
     /** Admits a user-role message; `resume: false` leaves it pending without starting an execution. */
     synthetic?(input: { sessionID: string; text: string; resume: boolean }): unknown;
+    /** The session's stored record, with `parentID` and `agent` for a child (probed on 2.0.17, 2.2.6 and 2.3.0). */
+    get?(input: { sessionID: string }): unknown;
   };
   tool: { hook(name: string, callback: Callback): Promise<Registration> };
   permission?: { hook(name: string, callback: Callback): Promise<Registration> };
@@ -106,6 +108,7 @@ export async function setupOpenCodeV2(
   const subscribes =
     events.has("session.start") ||
     events.has("turn.stop") ||
+    events.has("agent.start") ||
     events.has("agent.stop") ||
     events.has("context.compact.after");
   // The shell each session's `shell` tool was last said to run (ADR-0029). The
@@ -186,6 +189,7 @@ export async function setupOpenCodeV2(
     modelRequest = false,
     execution?: OpenCodeV2Execution,
     child?: OpenCodeV2Child,
+    subagent?: OpenCodeV2Child,
   ) => {
     let event: HookEvent;
     const shell = typeof native.sessionID === "string" ? statedShells.get(native.sessionID) : undefined;
@@ -200,6 +204,7 @@ export async function setupOpenCodeV2(
           ...(execution ? { execution } : {}),
           ...(shell !== undefined ? { shell } : {}),
           ...(child ? { child } : {}),
+          ...(subagent ? { subagent } : {}),
         },
       );
     } catch (error) {
@@ -272,6 +277,41 @@ export async function setupOpenCodeV2(
     if (application.synthetic) await post(native, event, application.synthetic);
   };
   const runFailingOpen = (...args: Parameters<typeof run>) => failingOpen(args[0], () => run(...args));
+  // A child whose session.created this instance never saw (one created before
+  // its setup, or before a reload) is looked up when its prompt reaches this
+  // instance's prompt hook, and only there: the prompt hook goes to one live
+  // instance, so the lookup cannot report a child twice. Never from the event
+  // subscription, which also reaches an old instance still running the child.
+  // Recover, never claim: a lookup that throws, times out, or finds no parent
+  // in this location leaves the session as it was, silently, since not found
+  // and slow are expected states and nothing here can tell the user.
+  const LOOKUP_TIMEOUT_MS = 2_000;
+  const lookups = new Map<string, Promise<OpenCodeV2Child | undefined>>();
+  const readsLink = events.has("turn.stop") || events.has("agent.stop");
+  const lookUp = (sessionID: string) => {
+    const get = ctx.session.get;
+    if (typeof get !== "function") return;
+    const pending = withTimeout(
+      Promise.resolve().then(() => get.call(ctx.session, { sessionID })),
+      LOOKUP_TIMEOUT_MS,
+    )
+      .then((info): OpenCodeV2Child | undefined => {
+        const session = record(info);
+        const parentID = session.parentID;
+        const directory = record(session.location).directory;
+        if (typeof parentID !== "string" || typeof directory !== "string" || comparable(directory) !== here)
+          return undefined;
+        // Stored, so the post guard keeps stop prevention and notices off it too.
+        const found = children.get(sessionID) ?? { parentID, agent: session.agent };
+        children.set(sessionID, found);
+        return found;
+      })
+      .catch(() => undefined)
+      .finally(() => {
+        if (lookups.get(sessionID) === pending) lookups.delete(sessionID);
+      });
+    lookups.set(sessionID, pending);
+  };
   const cleanup = async () => {
     controller.abort();
     await Promise.allSettled(registrations.map((r) => r.dispose()));
@@ -287,6 +327,9 @@ export async function setupOpenCodeV2(
           "prompt",
           guarded("prompt", async (e) => {
             const sessionID = typeof e.sessionID === "string" ? e.sessionID : undefined;
+            // Not awaited: the prompt does not wait for the lookup.
+            if (readsLink && sessionID !== undefined && !local.has(sessionID) && !children.has(sessionID))
+              lookUp(sessionID);
             if (sessionID !== undefined) local.add(sessionID);
             // Recorded before dispatch: the execution it starts cannot begin until
             // this hook returns. A blocked prompt starts none, so it is dropped.
@@ -411,10 +454,31 @@ export async function setupOpenCodeV2(
                   if (finished !== undefined) execution = finished;
                 }
               }
-              enqueue(sessionID, () => run("event", event, false, execution));
+              const child = children.get(sessionID);
+              // The subagent's start, then the child's own session.start: the
+              // agent's lifecycle encloses the child session's.
+              if (event.type === "session.created" && child !== undefined && events.has("agent.start"))
+                enqueue(sessionID, () => run("event", event, false, undefined, child));
+              const pending =
+                child === undefined && completions.has(String(event.type)) ? lookups.get(sessionID) : undefined;
+              if (pending !== undefined) {
+                // Its prompt hook started a lookup that has not settled: wait for
+                // it, bounded, in this session's own queue only, then report as
+                // for a known child, or as before if it found none.
+                enqueue(sessionID, async () => {
+                  const found = await pending;
+                  // Work queued before cleanup does not start after it; this wait
+                  // ends after it began, so it is held to the same rule.
+                  if (controller.signal.aborted) return;
+                  await runFailingOpen("event", event, false, execution, undefined, found);
+                  if (found !== undefined && events.has("agent.stop") && childStops.has(String(event.type)))
+                    await run("event", event, false, execution, found);
+                });
+                continue;
+              }
+              enqueue(sessionID, () => run("event", event, false, execution, undefined, child));
               // The child's own turn.stop first, then its agent.stop, in the
               // same queue. Both report the same execution.
-              const child = children.get(sessionID);
               if (child !== undefined && events.has("agent.stop") && childStops.has(String(event.type)))
                 enqueue(sessionID, () => run("event", event, false, execution, child));
             } catch (error) {

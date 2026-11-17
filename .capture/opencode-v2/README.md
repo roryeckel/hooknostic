@@ -321,7 +321,106 @@ child, a 2.3.0 inbox item whose `state` is not `completed`, the opt-in
 `background` argument on builds other than 2.0.17 and 2.2.6, and deeper
 nesting. A child created before plugin setup or elsewhere dispatches no
 `agent.stop`, and an interrupted child dispatches only its own `turn.stop`.
-`agent.start`, and agent ids on the child's own `turn.stop`, are #232.
+`agent.start`, agent ids on the child's own `turn.stop`, and the `session.get`
+recovery are #232, below.
+
+## Subagent start, agent ids and recovery (#232)
+
+Three additions on top of #231, all from signals the subscription and the
+plugin context already carry.
+
+**`agent.start`.** The child's `session.created` (with `parentID`), seen in
+the plugin's own location, is also the subagent's start. The shim queues
+`agent.start` under the parent, then the child's own `session.start`, in the
+child's queue, so the agent's lifecycle encloses the child session's. Every
+field comes from that one event, so `agent.id`, `correlation.agentId`,
+`agent.type` and `correlation.parentAgentId` are rated `exact`. The event is
+`approximate` because it is asynchronous: in every drive the child's own
+prompt hook ran before its `session.created` reached the subscription, so the
+child's `prompt.before` precedes `agent.start`. The dispatch is not ordered
+with the parent's `tool.after`: a background child's launch notice can come
+first or second. No vocabulary change: the subagent tool's `description` is
+`raw.event.data.title`, and its prompt is the child's own `prompt.before`.
+
+**Agent ids on the child's own `turn.stop`.** The child's completion now
+carries `correlation.agentId` (the child, `exact`: the completion's own
+`sessionID`) and `correlation.parentAgentId` (the parent, `emulated`:
+remembered or looked up). This is the shape of Copilot's captured
+`turn-stop-subagent`. The runtime does not strip undeclared fields
+(ADR-0027 rates them), so every `turn.stop` hook sees them; a top-level
+`turn.stop` has neither.
+
+**Recovery (`session.get`).** A child whose `session.created` this instance
+never saw is looked up when its prompt reaches this instance's prompt hook,
+and only there. The lookup is not awaited by the prompt. Only that child's
+own completion waits for it, in its own queue, at most 2 s. A lookup that
+throws, times out, or returns no `parentID` or another location leaves the
+session as before, silently. A recovered child is stored as a known child, so
+it also takes no stop prevention or notices.
+
+The procedure is `../opencode-v2-audit/session-get` (`probe.mjs` runs `serve`
+with only a probe plugin, which calls `ctx.session.get` from the prompt hook
+and from the subscription and records each instance's view). Windows,
+isolated state, loopback model, 2026-11-16:
+
+| Scenario | 2.0.17 | 2.2.6 | 2.3.0 |
+| --- | --- | --- | --- |
+| `reload-followup`: idle reload (old instance disposed), then a follow-up to the same child | The new instance sees the child's prompt and completion, never its `session.created`; the lookup at the prompt returns the parent | same | same |
+| `api-child-presetup`: `POST /session {parentID}` before any prompt, so before lazy setup, then a prompt to the child | The API dropped `parentID`: not a child | Missed `session.created`; the lookup returns the parent | same as 2.2.6 |
+| `reload-mid-child`: reload while a child runs (its reply 4 s late) | The old instance is never disposed (8 s after everything ended) and handles the child; the new one also receives every later event | The old instance handles the child's completion, then is disposed | The old instance is disposed before the child completes; the new one sees only the completion, with no prompt: a miss |
+| `reload-mid-child-then-followup` | After the follow-up both instances dispatch the parent's and the child's stops | old instance disposed; no duplicates | old instance disposed; no duplicates |
+| `otherloc-both`: API child with `parentID` and another `location` | Location kept, `parentID` dropped | Put in the parent's location | Put in the parent's location |
+
+`ctx.session.get` was a function on all three builds and returned the
+stored record itself (not `{ data }`), with `parentID`, `agent`, `location`
+and `title` for a child. An unknown id rejected with
+`Session.NotFoundError` in under 1 ms. Over every lookup in those runs, from
+the prompt hook and from the subscription, none hung:
+
+| Build | Lookups | Median | p95 | Max |
+| --- | --- | --- | --- | --- |
+| 2.0.17 | 48 | 0.5 ms | 1.8 ms | 7 ms |
+| 2.2.6 | 42 | 0.5 ms | 2.4 ms | 2.8 ms |
+| 2.3.0 | 55 | 0.5 ms | 7 ms | 7.3 ms |
+
+Through the shim, with the generated playback hooks (`drive.mjs`
+`subagent-reload`, `subagent-api-child`, `subagent-reload-stop`; playback
+tests "after a plugin reload", "created through the API", "takes no stop
+prevention"):
+
+- `subagent-reload` on 2.0.17, 2.2.6 and 2.3.0: after the capture plugin's
+  `cleanup` record confirms the old instance is gone, the follow-up child's
+  `turn.stop` carries both agent ids, and exactly one more `agent.stop`
+  follows, with `agent.type` from the lookup. No second `agent.start`.
+- `subagent-api-child`: the child's `turn.stop` carries both ids and one
+  `agent.stop` follows on 2.2.6 and 2.3.0, where the API kept `parentID`. On
+  2.0.17 it is an ordinary session. The test branches on the API's response,
+  not on the version.
+- `subagent-reload-stop` (prevention and notices on every stop), then a
+  prompt straight to the child: the child ran exactly three executions and
+  none of its requests carried the stop reason or the notice. With the child
+  not stored (mutant `recovery-not-stored-playback`) the recovered child's
+  stop was prevented and it ran a third execution before the direct prompt.
+
+Not recovered, and not claimed:
+
+- **A background child still running across a reload** (`reload-mid-child`
+  on 2.3.0). Its prompt went through the old instance, so the new one has no
+  prompt to look up from. A lookup from the event path would find it, but on
+  2.0.17 and 2.2.6 the old instance still handles the child, so the child
+  would be reported twice. Tracked in #236.
+- **A child in another location.** Not reproduced: subagent children took
+  the parent's location in every capture, and 2.2.6 and 2.3.0 put an API
+  child for another location in the parent's. If one occurs, the lookup in
+  its own location's instance would cover it.
+- **The 2.0.17 reload leak.** A reload while an execution runs leaves the
+  old instance alive. After a follow-up, both instances dispatch the parent's
+  and the child's `turn.stop`, and, with recovery, the child's `agent.stop`
+  (reproduced with the shim). The event `id` is shared, so the duplicates are
+  identifiable; de-duplication is #236.
+- An interrupted child (its `turn.stop` carries the ids; no `agent.stop`),
+  and agent ids on the child's other events (`tool.*`, `session.start`,
+  `prompt.before`).
 
 ## Nested checkouts
 

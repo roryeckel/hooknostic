@@ -15,7 +15,7 @@ export async function readEventRecords(path) {
 export async function driveLifecycle({ executable, root, project, env, model, remote }) {
   const server = spawn(executable, ["serve", "--stdio", "--hostname", "127.0.0.1", "--port", "0"], {
     cwd: project,
-    env: { ...env, OPENCODE_SERVER_PASSWORD: "hooknostic-local", HOOKNOSTIC_PLAYBACK_EFFECTS: env.HKN_PROBE_EFFECT === "sessions-deny" ? "permission-deny" : env.HKN_PROBE_EFFECT === "stop" ? "prevent-stop-once,notify" : "context-add" },
+    env: { ...env, OPENCODE_SERVER_PASSWORD: "hooknostic-local", HOOKNOSTIC_PLAYBACK_EFFECTS: env.HKN_PROBE_EFFECT === "sessions-deny" ? "permission-deny" : env.HKN_PROBE_EFFECT === "stop" || env.HKN_PROBE_EFFECT === "subagent-reload-stop" ? "prevent-stop-once,notify" : "context-add" },
     windowsHide: true,
     stdio: ["pipe", "pipe", "pipe"],
   });
@@ -58,6 +58,11 @@ export async function driveLifecycle({ executable, root, project, env, model, re
     if (env.HKN_PROBE_EFFECT === "stop") {
       const audit = await (await import("./stop-audit.mjs")).auditStops({ api, wait, records, model, project });
       await writeFile(join(root, "stops.json"), JSON.stringify({ ...audit, records: await records(), requests: model.requests, errors: model.errors }, null, 2));
+      return;
+    }
+    if (env.HKN_PROBE_EFFECT.startsWith("subagent-reload") || env.HKN_PROBE_EFFECT === "subagent-api-child") {
+      const audit = await (await import("./reload-audit.mjs")).auditReload({ api, wait, records, model, project, mode: env.HKN_PROBE_EFFECT });
+      await writeFile(join(root, "reload.json"), JSON.stringify({ ...audit, records: await records(), requests: model.requests, errors: model.errors }, null, 2));
       return;
     }
     if (env.HKN_PROBE_EFFECT.endsWith("-oauth")) {

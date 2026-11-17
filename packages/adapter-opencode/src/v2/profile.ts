@@ -246,6 +246,34 @@ export const opencodeV2CapabilityProfiles: CapabilityProfile[] = [
           artifact: ".capture/opencode-v2-audit",
           what: "The 2.0.17 opt-in background probe with the child's reply 3 s late: run --standalone waited for the child, which dispatched its turn.stop and agent.stop, and its result started a second parent execution.",
         },
+        {
+          version: "2.0.17",
+          date: "2026-11-16",
+          method: "captured",
+          artifact: "fixtures/opencode/2.0/subagent-start.input.json",
+          what: "From the same subagent drive as subagent-stop: the child's session.created (parentID, agent) decodes as agent.start under the parent, and its completion, with the remembered parent, as the child's own turn.stop carrying correlation.agentId and correlation.parentAgentId (turn-stop-subagent). Replayed, agent.start precedes the child's session.start.",
+        },
+        {
+          version: "2.0.17",
+          date: "2026-11-16",
+          method: "live-probe",
+          artifact: ".capture/opencode-v2-audit",
+          what: "session.get over serve, Windows, isolated state (session-get probe): a function returning the stored record, with parentID and agent for a child, in a median 0.5 ms. The child's prompt hook ran before its session.created reached the subscription. After an idle reload the new instance saw a follow-up child's prompt and completion but not its creation, and the shim, looking the child up at its prompt, dispatched its turn.stop with agent ids and one agent.stop, and posted nothing for it under prevention. The API dropped a child's parentID. A reload while a child ran left the old instance alive: both dispatched later stops.",
+        },
+        {
+          version: "2.2.6",
+          date: "2026-11-16",
+          method: "live-probe",
+          artifact: ".capture/opencode-v2-audit",
+          what: "The 2.0.17 session.get probe and shim drives repeated: the follow-up after an idle reload was recovered, as was a child created through the API with parentID before lazy setup. A reload while a child ran: the old instance handled its completion, then was disposed. An API child for another location was put in the parent's.",
+        },
+        {
+          version: "2.3.0",
+          date: "2026-11-16",
+          method: "live-probe",
+          artifact: ".capture/opencode-v2-audit",
+          what: "The 2.2.6 results repeated, except a reload while a background child ran: the old instance was disposed before the child completed, and the new one saw only the completion, so neither the child's turn.stop nor its agent.stop was reported.",
+        },
       ],
     },
     // Optional event fields (ADR-0027). The turn fields rest on the 2.0.18
@@ -267,17 +295,43 @@ export const opencodeV2CapabilityProfiles: CapabilityProfile[] = [
       "agent.stop.agent.type": {
         level: "emulated",
         rationale:
-          "the agent named by the child's session.created, remembered from the event subscription; the completion does not carry it.",
+          "the agent named by the child's session.created, remembered from the event subscription, or found by session.get when the plugin never saw it (see agent.stop.observe); the completion does not carry it.",
       },
       "agent.stop.correlation.parentAgentId": {
         level: "emulated",
         rationale:
-          "the parent's session id, from the child's session.created parentID, remembered from the event subscription; also the event's session.id.",
+          "the parent's session id, from the child's session.created parentID, remembered from the event subscription, or found by session.get when the plugin never saw it (see agent.stop.observe); also the event's session.id.",
       },
       "agent.stop.lastMessage": {
         level: "emulated",
         rationale:
           "assembled as turn.stop.lastMessage is, from the child's own session.text.ended events, and only when an agent.stop hook declares it. Absent when the child failed before it ended any text.",
+      },
+      "agent.start.agent.id": {
+        level: "exact",
+        rationale: "the child's session id, from its session.created.",
+      },
+      "agent.start.correlation.agentId": {
+        level: "exact",
+        rationale: "the child's session id, as agent.id.",
+      },
+      "agent.start.agent.type": {
+        level: "exact",
+        rationale: "the agent the child's session.created names.",
+      },
+      "agent.start.correlation.parentAgentId": {
+        level: "exact",
+        rationale: "the parentID the child's session.created carries; also the event's session.id.",
+      },
+      "turn.stop.correlation.agentId": {
+        level: "exact",
+        rationale:
+          "on a subagent child's own turn.stop only: the child's session id, which the completion carries. Set for a child whose session.created the plugin saw in its own location, or whose parent session.get found when the child's prompt reached this plugin instance (see agent.stop.observe). Absent on a top-level session's turn.stop.",
+      },
+      "turn.stop.correlation.parentAgentId": {
+        level: "emulated",
+        rationale:
+          "on a subagent child's own turn.stop only: the parent's session id, remembered from the child's session.created or found by session.get, for the same children as correlation.agentId. The completion does not carry it.",
       },
       "prompt.before.correlation.turnId": {
         level: "exact",
@@ -347,22 +401,27 @@ export const opencodeV2CapabilityProfiles: CapabilityProfile[] = [
       "turn.stop.observe": {
         level: "approximate",
         rationale:
-          "Via execution succeeded, failed and interrupted events. These report execution completion, including manual compaction; they are asynchronous observations and cannot prevent completion. The subscription delivers every location's sessions, so only sessions created in or prompted through the plugin's location dispatch; a session first seen after a plugin reload is attributed at its next prompt. The completion carries only the session id; lastMessage and correlation.turnId are assembled from earlier events, see the field ratings. Hooks run in the server process: through the background service a hook still running when `opencode run` exits completes there, but `run --standalone` terminates its private server without calling plugin cleanup, so such a hook is cut off. Up to 2.2.7 a subagent runs in the foreground by default; from 2.3.0 it always runs in the background, as one given the tool's opt-in background argument did on 2.0.17 and 2.2.6. With a background child one prompt can end in several top-level completions (observed on 2.3.0, and with an opt-in child on 2.0.17 and 2.2.6): the parent's execution can end before its child, and the child's result then starts another, which dispatches its own turn.stop. A subagent child's own completion dispatches turn.stop under the child's session id, and a succeeded or failed one then also dispatches agent.stop under the parent's (see agent.stop.observe).",
+          "Via execution succeeded, failed and interrupted events. These report execution completion, including manual compaction; they are asynchronous observations and cannot prevent completion. The subscription delivers every location's sessions, so only sessions created in or prompted through the plugin's location dispatch; a session first seen after a plugin reload is attributed at its next prompt. The completion carries only the session id; lastMessage and correlation.turnId are assembled from earlier events, see the field ratings. Hooks run in the server process: through the background service a hook still running when `opencode run` exits completes there, but `run --standalone` terminates its private server without calling plugin cleanup, so such a hook is cut off. Up to 2.2.7 a subagent runs in the foreground by default; from 2.3.0 it always runs in the background, as one given the tool's opt-in background argument did on 2.0.17 and 2.2.6. With a background child one prompt can end in several top-level completions (observed on 2.3.0, and with an opt-in child on 2.0.17 and 2.2.6): the parent's execution can end before its child, and the child's result then starts another, which dispatches its own turn.stop. A subagent child's own completion dispatches turn.stop under the child's session id, carrying the child as correlation.agentId and its parent as correlation.parentAgentId, and a succeeded or failed one then also dispatches agent.stop under the parent's (see agent.stop.observe, which says which children are recognized).",
       },
       "turn.stop.prevent": {
         level: "approximate",
         rationale:
-          "No native stop hook. After a succeeded execution, the reason is admitted with session.synthetic and resume, which starts a new execution carrying it as a user-role message; the first execution has already completed. Failed and interrupted executions and child sessions (session.created parentID) post nothing, so an interrupt is never overridden. There is no stop_hook_active flag or block cap: a hook that always prevents loops. Requires a session that outlives the event; a child created before plugin setup is not recognized. Best-effort: a silent no-op without a session id or if the post fails. Prevention does not wait for a background subagent: the continuation can run and stop again before the child's result arrives and starts another execution (observed on 2.3.0, where every subagent runs in the background). Earlier builds run a subagent in the foreground by default. A child given their opt-in background argument, probed on 2.0.17 and 2.2.6 for agent.stop and the run cut-off, started another parent execution there too when it finished after its parent; prevention timing with such a child was not probed.",
+          "No native stop hook. After a succeeded execution, the reason is admitted with session.synthetic and resume, which starts a new execution carrying it as a user-role message; the first execution has already completed. Failed and interrupted executions and child sessions (session.created parentID) post nothing, so an interrupt is never overridden. There is no stop_hook_active flag or block cap: a hook that always prevents loops. Requires a session that outlives the event. A child is recognized as agent.stop.observe says: one whose session.created the plugin did not see is recognized once its prompt reaches this plugin instance, and then posts nothing either, but a background child still running across a plugin reload is not (observed on 2.3.0), and would take posts. Best-effort: a silent no-op without a session id or if the post fails. Prevention does not wait for a background subagent: the continuation can run and stop again before the child's result arrives and starts another execution (observed on 2.3.0, where every subagent runs in the background). Earlier builds run a subagent in the foreground by default. A child given their opt-in background argument, probed on 2.0.17 and 2.2.6 for agent.stop and the run cut-off, started another parent execution there too when it finished after its parent; prevention timing with such a child was not probed.",
       },
       "turn.stop.notify": {
         level: "approximate",
         rationale:
           "No user-only channel for server plugins; toast and attention are TUI-only. The message is admitted to the session inbox with session.synthetic resume:false and starts no execution, but neither the TUI nor the message API shows it until the session next runs, when it arrives as a user-role message the model reads. Posted under the same succeeded, top-level-session conditions as turn.stop.prevent. The next run can also be one a background subagent's result starts, so the notice can reach the model without another user prompt (observed on 2.3.0, where every subagent runs in the background). On 2.0.17 and 2.2.6 a child given the opt-in background argument that finished after its parent also started such a run, but whether a pending notice reached it was not probed. Best-effort.",
       },
+      "agent.start.observe": {
+        level: "approximate",
+        rationale:
+          "No subagent start callback. A child's session.created (with parentID), seen on the event subscription in the plugin's own location, dispatches agent.start under the parent's session id, just before the child's own session.start. Asynchronous and observe-only: the child already exists, and its own prompt.before has already been dispatched; the dispatch is not ordered with the parent's tool.after, which a background child's launch notice can precede or follow. To stop a subagent from starting, block tool.before for kind agent. A follow-up to an existing child (the subagent tool's sessionID) creates no session and dispatches none, nor does a child recognized only by session.get (see agent.stop.observe). Up to 2.2.7 a subagent runs in the foreground by default; from 2.3.0 it always runs in the background, as one given the tool's opt-in background argument did on 2.0.17 and 2.2.6.",
+      },
       "agent.stop.observe": {
         level: "approximate",
         rationale:
-          "No subagent stop callback. A child session's own execution succeeded or failed event, for a child whose session.created (with parentID) the plugin saw in its own location, dispatches agent.stop under the parent's session id, right after the child's own turn.stop, which still fires under the child's session id. A child created before plugin setup or in another location is not recognized, and an interrupted child is not reported. Asynchronous: the child's result has already gone back to the parent or been queued for it. Each completion dispatches, so a follow-up to the same child (the subagent tool's sessionID) dispatches again with the same agent.id. Hooks run in the server process, so a background child still running when `opencode run --standalone` exits is cut off and dispatches nothing: observed on 2.0.17 with the opt-in background argument, while 2.2.6 waited for the same late child.",
+          "No subagent stop callback. A child session's own execution succeeded or failed event, for a recognized child, dispatches agent.stop under the parent's session id, right after the child's own turn.stop, which still fires under the child's session id. A child is recognized when the plugin saw its session.created (with parentID) in its own location, or, when it did not (a child created before a plugin reload, or through the API before lazy plugin setup), once the child's next prompt reaches this plugin instance: the prompt hook then looks up its parent with session.get, bounded at 2 s, and a lookup that fails, times out or finds no parent in this location leaves the child unrecognized. Not recognized: a background child still running when the plugin reloads, whose prompt went through the old instance (observed on 2.3.0, where the old instance was disposed before the child completed); and a child in another location, which was not reproduced (subagent children took the parent's location in every capture). On 2.0.17 the API dropped a new session's parentID. An interrupted child is not reported. Asynchronous: the child's result has already gone back to the parent or been queued for it. Each completion dispatches, so a follow-up to the same child (the subagent tool's sessionID) dispatches again with the same agent.id. Hooks run in the server process, so a background child still running when `opencode run --standalone` exits is cut off and dispatches nothing: observed on 2.0.17 with the opt-in background argument, while 2.2.6 waited for the same late child. On 2.0.17 a plugin reload while an execution runs leaves the old plugin instance alive, so both instances dispatch that child's later stops, its agent.stop included (observed; turn.stop is duplicated the same way).",
       },
       "agent.stop.prevent": {
         level: "unsupported",

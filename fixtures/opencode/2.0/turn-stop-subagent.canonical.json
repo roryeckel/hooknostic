@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "harness": {
+    "id": "opencode",
+    "nativeEvent": "event",
+    "version": "2.0.17"
+  },
+  "session": {
+    "id": "ses_e19e96d3fffeiu5x5MfSgj0Lby",
+    "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-v2-b2UXYt\\project"
+  },
+  "correlation": {
+    "agentId": "ses_e19e96d3fffeiu5x5MfSgj0Lby",
+    "parentAgentId": "ses_e19e96ea6ffeTebF8hY5M1gb4s"
+  },
+  "event": "turn.stop",
+  "lastMessage": "hooknostic-child-result"
+}

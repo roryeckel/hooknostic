@@ -397,6 +397,10 @@ export async function buildPlaybackArtifact(
       "agent.stop.lastMessage",
       "agent.stop.agent.type",
       "agent.stop.correlation.parentAgentId",
+      "agent.start.agent.type",
+      "agent.start.correlation.parentAgentId",
+      "turn.stop.correlation.agentId",
+      "turn.stop.correlation.parentAgentId",
     ] as const
   ).filter((field) => {
     const level = resolution.fields?.[field]?.level;

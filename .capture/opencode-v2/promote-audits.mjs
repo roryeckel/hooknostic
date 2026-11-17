@@ -59,6 +59,21 @@ if (process.argv[2] === "subagent-stop") {
     await write("subagent-stop.input.json", input);
     await write("subagent-stop.enrichment.json", enrichment);
     await write("subagent-stop.canonical.json", canonical);
+    // From the same drive (#232): the child's session.created as agent.start,
+    // and the same completion as the child's own turn.stop with its agent ids.
+    // The enrichment is what the shim hands the decoder for each.
+    const start = { child: enrichment.child };
+    const started = decodeOpenCodeV2(created, { targetId: "opencode", harnessVersion: opencodeV2Harness.referenceVersion }, start);
+    if (started.event !== "agent.start") throw new Error(`${root}: the child's session.created did not decode as agent.start`);
+    await write("subagent-start.input.json", created);
+    await write("subagent-start.enrichment.json", start);
+    await write("subagent-start.canonical.json", (({ raw, ...rest }) => rest)(started));
+    const own = { subagent: enrichment.child, execution: enrichment.execution };
+    const stopped = decodeOpenCodeV2(input, { targetId: "opencode", harnessVersion: opencodeV2Harness.referenceVersion }, own);
+    if (stopped.event !== "turn.stop" || stopped.correlation.agentId !== child) throw new Error(`${root}: the child's turn.stop carries no agent id`);
+    await write("turn-stop-subagent.input.json", input);
+    await write("turn-stop-subagent.enrichment.json", own);
+    await write("turn-stop-subagent.canonical.json", (({ raw, ...rest }) => rest)(stopped));
   }
   process.exit(0);
 }

@@ -351,7 +351,7 @@ if (effect === "notifications") {
   if (model.requests.length) throw new Error("Notification probe made a model request");
   process.exit(0);
 }
-if (effect === "lifecycle" || effect.startsWith("sessions") || effect === "stop" || effect.startsWith("provider-") || effect.endsWith("-oauth")) {
+if (effect === "lifecycle" || effect.startsWith("sessions") || effect === "stop" || effect.startsWith("provider-") || effect.endsWith("-oauth") || effect.startsWith("subagent-reload") || effect === "subagent-api-child") {
   const { driveLifecycle } = await import("./lifecycle.mjs");
   try {
     await diagnostics.run("native-lifecycle", () => driveLifecycle({ executable, root, project, env, model, remote }));

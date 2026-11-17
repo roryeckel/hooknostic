@@ -37,7 +37,7 @@ notification remains unsupported.
 | execution-failed/interrupted | captured | Deliberate HTTP 400 and rejected approval, respectively |
 | session-audit/permissions.json | captured + constructed labels/counts | Allow, accept, reject and configured-deny controls |
 | remote/observations.json | captured + constructed scenario labels | HTTP execution/headers and absent legacy SSE fallback |
-| session-created-child | captured | Subagent child creation carrying the parent as `parentID`, and the child's `agent`; both are what `agent.stop` reports for the child (see Subagent completion below) |
+| session-created-child | captured | Subagent child creation carrying the parent as `parentID`, and the child's `agent`; both are what `agent.start` and `agent.stop` report for the child (see Subagent completion below, whose `subagent-start` decodes the same event from a later drive) |
 | execution-interrupted-user | captured | User interrupt of a pending request (`reason: "user"`) |
 | stop-audit/outcomes.json | captured counts + constructed labels | Execution counts per session for the `stop` drive |
 
@@ -180,11 +180,15 @@ and the subagent arguments were scripted; the envelopes are the harness's own.
 Promoted with
 `promote-audits.mjs subagent-stop <2.0.17-subagent-root> <2.3.0-subagent-root>`,
 which redacts the capturing account's home-directory segment to `user`, as
-above.
+above. #232 promoted the same two roots again, adding `subagent-start` and
+`turn-stop-subagent` from the same 2.0.17 drive as `subagent-stop`; the
+existing files came out unchanged.
 
 | Case | Provenance | Observation |
 | --- | --- | --- |
 | subagent-stop | captured event, constructed enrichment | The 2.0.17 child's own `session.execution.succeeded`, which carries only the child's `sessionID`. `.enrichment.json` holds what the shim hands the decoder beside it (never in `raw`): `child`, the `parentID` and `agent` from the child's `session.created`, and the child's captured `session.text.ended` data. Decodes as `agent.stop` under the parent |
+| subagent-start | captured event, constructed enrichment | The same 2.0.17 child's `session.created`, carrying `parentID` and `agent`. `.enrichment.json` holds `child`, which the shim builds from this same event. Decodes as `agent.start` under the parent, with the child as `agent.id` and `correlation.agentId` and the parent as `correlation.parentAgentId` (#232) |
+| turn-stop-subagent | captured event, constructed enrichment | The same completion as `subagent-stop`, as the child's own `turn.stop`. `.enrichment.json` holds `subagent` (the parent and agent from the child's `session.created`) and the child's text. Decodes as `turn.stop` under the child, with the child as `correlation.agentId` and the parent as `correlation.parentAgentId` (#232) |
 | subagent-stop/events-2.0.17.jsonl | captured | One drive in capture order: the prompt hooks, and every `session.*` event the plugin's subscription received, for parent and child. The child ran in the foreground |
 | subagent-stop/events-2.3.0.jsonl | captured | The same on 2.3.0. The child ran in the background, and its result reached the parent as a `subagent` inbox item while the parent's execution was still running |
 

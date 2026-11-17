@@ -7596,11 +7596,11 @@ function planOpenCodeApplication(result) {
   return application;
 }
 var POST_TIMEOUT_MS = 1e4;
-function withTimeout(promise) {
+function withTimeout(promise, ms = POST_TIMEOUT_MS) {
   promise.catch(() => void 0);
   let timer;
   const expiry = new Promise((resolvePromise) => {
-    timer = setTimeout(() => resolvePromise(void 0), POST_TIMEOUT_MS);
+    timer = setTimeout(() => resolvePromise(void 0), ms);
   });
   return Promise.race([promise, expiry]).finally(() => {
     if (timer !== void 0) clearTimeout(timer);

@@ -3828,7 +3828,10 @@ describe("hooknostic inspect", () => {
     const text = captureIO();
     expect(await runInspect({ target: "opencode", registry, io: text.io })).toBe(0);
     expect(text.out()).toContain("emulated     turn.stop.correlation.turnId");
-    expect(text.out()).not.toContain("turn.stop.correlation.parentAgentId");
+    // A subagent child's own turn.stop names its agent ids (#232); its tool
+    // events still do not, so a field OpenCode never produces stays unlisted.
+    expect(text.out()).toContain("emulated     turn.stop.correlation.parentAgentId");
+    expect(text.out()).not.toContain("tool.before.correlation.agentId");
     const typo = captureIO();
     expect(await runInspect({ target: "claude", field: "turn.stop.lastMesage", registry, io: typo.io })).toBe(2);
     expect(typo.err()).toContain('unknown field "turn.stop.lastMesage"');
