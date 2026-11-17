@@ -389,3 +389,176 @@ both captured sequences, so each unit mutant fails in both:
 
 Three #231 mutants were re-anchored because the line they edit now passes the
 child: `stop-event-queue`, `agent-stop-child-turn-stop` and `agent-stop-order`.
+
+## Reloaded plugin instances (Windows, 2.0.17, 2.2.6 and 2.3.0, 2026-11-16)
+
+Question: after a plugin reload, can each event be reported once across the
+old and new plugin instances, and can a disposed instance hand the sessions it
+knew to the new one (#236)? The design, the tables and what is not claimed are
+in `../opencode-v2/README.md` (Reloaded plugin instances).
+
+Method, each against the native executables of 2.0.17, 2.2.6 and 2.3.0 in
+private prefixes, with isolated state and the loopback model. No paid model
+or real credential was used, and the host's `OPENCODE*` and `OPENCHAMBER*`
+variables were cleared.
+
+- `session-get/probe.mjs` with the two scenarios added for this,
+  `overlap-new-session` and `reload-mid-child-then-new-child`, and with
+  `reload-mid-child-then-followup` and `reload-followup`: one run of each per
+  build, and five more of `reload-mid-child` on 2.3.0, with
+  `HKN_CHILD_DELAY_MS=4000` and `HKN_TAIL_MS=4000` (constructed timing). Only
+  the probe plugin is loaded, so these record the host, not the shim.
+  `session-get/instances.mjs <outcome.json>...` reports, per run, each
+  instance's setup and disposal, the event ids both heard and which heard
+  each first, replays, subscribe lag, and how long after the old instance's
+  cleanup a running child's completion reached the new one.
+- `drive.mjs subagent-reload-running`, `subagent-reload-running-stop`,
+  `subagent-reload-restart` and `subagent-reload-restart-stop`, through the
+  generated playback hooks (`reload-audit.mjs`); the restart drives restart
+  `serve` with the same state instead of reloading the location.
+- During planning, 68 earlier runs of the same probe (with an experimental
+  shim beside it) were analysed the same way; their totals are quoted where
+  this section says so.
+
+Observations (`instances.mjs` over this session's 17 runs):
+
+- 187 watched events, every one with an `id`. The 34 ids both instances heard
+  were heard by the old instance first (23) or in the same millisecond (11),
+  never by the new one first. The new instance never heard an event published
+  before its setup, and no event the old one heard after that setup was
+  missing from the new one.
+- 2.0.17 never disposed the old instance after a reload during an execution;
+  on an idle reload every build disposed it before setting up the new one.
+  2.2.6 and 2.3.0 disposed it about 3.9 s after the new one's setup, when the
+  execution ended.
+- 2.2.6: the old instance heard the child's completion 5 ms before its
+  cleanup. 2.3.0: in 8 of 8 runs the child's completion reached the new
+  instance 12 to 27 ms after the old instance's cleanup, and the old one never
+  heard it (35 of 35 during planning, 12 to 172 ms).
+- 2.0.17: a new child created after the reload reached both instances as
+  `session.created`; on 2.2.6 and 2.3.0, only the new one.
+
+Through the shim, the three running-reload playback tests fail on `f6cc7de8`
+(#232's merge, the shim before this change) on every build, and pass with it,
+10 runs of the three per build, 30 of 30, with no re-drive. The
+server-restart tests pass on every build and fail with the lookup disabled
+or not stored.
+
+Mutants (`../opencode-v2/verify-mutations.mjs`; the full run on 2.0.17
+killed 133 of 133, and every file was restored byte for byte):
+
+| Mutant | Defect | Killed by |
+| --- | --- | --- |
+| `reload-no-deposit` | Disposal hands nothing over | R1, R7, R9, R10, R9b, Q3, Q4, R15, R16 |
+| `reload-no-superseded` | Only the claim decides: the first to read wins | R2, R5, R6, R11, L1 |
+| `reload-no-dedupe` | Every instance dispatches | R2, R5, R6, R8, R9, R11, L1, L2 |
+| `reload-claim-when-alone` | Claims are written with one instance alive | R3, and #232's U2, U3, U6, U7 |
+| `reload-key-without-plugin`, `-location` | Another plugin, or another location, shares the group | R4 |
+| `reload-no-child-elsewhere` | The prompt hook ignores other instances and the handover | R2 |
+| `reload-prompt-known-not-stored` | The child found there is not linked | R2 |
+| `reload-prompt-lookup-ignores-handover` | The prompt hook looks up a child the handover knows | R2, R7 |
+| `reload-no-inherited-execution` | The running execution is not taken over | R1, R7, Q3 |
+| `reload-inherited-child-not-stored` | The child link is not taken over | R1, R10, Q4, R15, R16 |
+| `reload-newest-loses` | The older instance wins | R2, R5, R6, R11, L1 |
+| `reload-gate-after-agent-start` | `agent.start` is queued before the gate | R5 |
+| `reload-gate-without-compaction` | Compaction is not de-duplicated | R6, R9 |
+| `reload-alone-skips-claims` | A lone instance ignores an earlier claim | R8 |
+| `reload-claims-unbounded`, `reload-running-not-preferred` | No bound; running executions not kept first | R9 |
+| `reload-bound-oldest-first` | Eviction ignores running executions across handovers | R9b |
+| `reload-forget-when-none-live` | The handover is dropped when no instance is live | R10, R9b, R16 |
+| `reload-no-id-dropped` | An event without an id is dropped | R11 |
+| `reload-no-unlinked` | A handover without the child link turns off #232's lookup | R13 |
+| `reload-subscription-end-keeps-live` | An instance whose subscription ended still silences older ones | R12 (both variants) |
+| `reload-adopt-not-newest` | An older instance consumes the handover | Q4 |
+| `reload-adopt-keeps-entry` | Adopting leaves the entry behind | Q4 |
+| `reload-adopt-only-unknown` | No merge into a session the new instance already knew | R7, Q3 |
+| `reload-merge-keeps-pending` | The steered prompt's id survives the merge | Q3 |
+| `reload-handover-after-abort` | The handover waits for the busy queue | R15 |
+| `reload-no-abort-break` | An event yielded after the abort is read | R16 |
+| `reload-no-dedupe-playback` | As `reload-no-dedupe` | the three running-reload tests (2.0.17); the overlap and prevention tests (2.2.6, 2.3.0) |
+| `reload-newest-loses-playback` | As `reload-newest-loses` | the overlap test and every-completion test (2.0.17); the overlap test (2.2.6) |
+| `reload-gate-after-agent-start-playback` | As `reload-gate-after-agent-start` | the every-completion test, the new child (2.0.17) |
+| `recovery-disabled-playback` | As `recovery-disabled` | the server-restart test, on every build |
+| `recovery-not-stored-playback` | As `recovery-not-stored` | the server-restart prevention test, on every build |
+
+Run separately, outside `verify-mutations.mjs`, because the reference
+build never disposes the old instance: `no-deposit` (the every-completion
+test on 2.2.6 and 2.3.0), `no-inherited-execution` and
+`inherited-child-not-stored` (2.3.0; the latter also the prevention test).
+`live-add-after-task` (the instance joins `live` only after its subscription
+task starts) survives everything: that task's first step runs synchronously,
+so the order cannot be observed. It is a comment in the code.
+
+Re-anchored, because the lines they edit changed: `location-filter`,
+`location-filter-playback`, `recovery-disabled`, `recovery-every-prompt` and
+`recovery-event-path`. `recovery-disabled-playback` and
+`recovery-not-stored-playback` now run the server-restart tests: since #236
+the reload drives' child is handed over, not looked up, so they no longer
+need the lookup.
+### Review round (2026-11-17)
+
+The two implementation reviews found one regression and three gaps.
+
+- **A prompt steered into an execution the old instance still ran** reached
+  the new instance, which then reported the session's stop (the old one
+  yielded) without the execution's text or turn id, and kept the steered
+  prompt's id for a later execution, which is wrong, not missing. The new
+  instance now takes a copy of that execution (text, and the id of the prompt
+  that started it) at the steered prompt, and a text segment both instances
+  buffer is kept once. The dispatch rule is unchanged, so this cannot
+  dispatch twice. The `subagent-reload-running-steer` drive prompts the parent
+  and the running child after the reload, with prevention on. Before the fix
+  it failed on 2.0.17 and 2.2.6 (the child's stop without text or turn id)
+  and, once the parent's prevention continuation answered 1.5 s late, on
+  2.3.0 in 3 of 3 runs (a later parent stop carried the steered prompt's id);
+  with the fix it passes on all three.
+- **A disposed newer instance leaving the group,** and **the plugin root in
+  the group's key,** had no test; **a handover merging, never overwriting,**
+  had none either.
+
+| Mutant | Defect | Killed by |
+| --- | --- | --- |
+| `reload-steer-no-takeover` | The steered prompt takes nothing over | Q5 |
+| `reload-text-not-deduplicated` | A segment both instances buffered is kept twice | Q5 |
+| `reload-cleanup-keeps-live` | A disposed instance stays in the group | R17 |
+| `reload-key-without-root` | Two package copies with different roots share a group | R4 |
+| `reload-adopt-overwrites-execution`, `-child` | The handover replaces what the new instance had | Q6 |
+| `reload-steer-no-takeover-playback` | As `reload-steer-no-takeover` | the steer test, on all three builds |
+
+Q3 now pins the handover merge for a prompt taken after the old instance's
+cleanup but before the new one read any of the session's events (a prompt
+while the old instance still runs is Q5's shape). `adopt-execution-unread`
+(the handover's execution taken by an instance that reads neither text nor
+turn id) survives every test: such an entry changes only what a later
+handover counts as running. It is guarded in the code. `unlinked` is cleared
+at cleanup.
+
+After this round the full `verify-mutations.mjs` run on 2.0.17 killed 140 of
+140, every file restored byte for byte. The three running-reload tests and
+the steer test passed 10 runs of 10 on each of 2.0.17, 2.2.6 and 2.3.0, with
+no re-drive.
+### Second review round (2026-11-17)
+
+- **A reload that adds hooks reading the turn's fields** still gave a
+  steered prompt's id to a later execution: the old instance, whose hooks
+  read no fields, tracked no execution, so the new one found nothing to take
+  over and kept the steered id. Both reviewers reproduced it, in a unit test
+  and live on 2.0.17, 2.2.6 and 2.3.0. Every instance now tracks the start
+  and end of each execution it sees, whatever its hooks; text and prompt ids
+  are still kept only where a hook reads them. A copy without a prompt id
+  then drops the steered id: missing, never wrong. The `adopt()` guard on
+  reading hooks is gone with it, as is the `adopt-execution-unread` mutant it
+  needed. Q7 pins it; it fails on `105f6347` with the continuation's stop
+  carrying `msg_steered`. No drive covers it: the playback hooks are built
+  once per drive with every field they can read.
+- **The copy comes from the newest other instance** that runs the
+  execution, not the oldest (Q8, three instances).
+
+| Mutant | Defect | Killed by |
+| --- | --- | --- |
+| `reload-tracking-only-when-read` | Executions are tracked only where a hook reads text or turn ids | Q7 |
+| `reload-steer-copies-oldest` | The oldest instance's execution is copied | Q8 |
+
+`subagent-late-turn-id`'s anchor moved by one indentation level and was
+re-anchored. The residual is a reload that adds the first subscribing hook:
+the old instance has no subscription and tracks nothing, as before #236.

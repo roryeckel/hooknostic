@@ -395,7 +395,12 @@ prevention"):
 - `subagent-reload` on 2.0.17, 2.2.6 and 2.3.0: after the capture plugin's
   `cleanup` record confirms the old instance is gone, the follow-up child's
   `turn.stop` carries both agent ids, and exactly one more `agent.stop`
-  follows, with `agent.type` from the lookup. No second `agent.start`.
+  follows, with `agent.type` from the lookup. No second `agent.start`. Since
+  #236 the old instance hands the child over when it is disposed, so this
+  drive no longer needs the lookup; `subagent-reload-restart` and
+  `subagent-reload-restart-stop` restart `serve` with the same state instead,
+  where only the lookup can recognize the child, and pin the same outcomes on
+  every build.
 - `subagent-api-child`: the child's `turn.stop` carries both ids and one
   `agent.stop` follows on 2.2.6 and 2.3.0, where the API kept `parentID`. On
   2.0.17 it is an ordinary session. The test branches on the API's response,
@@ -408,26 +413,94 @@ prevention"):
 
 Not recovered, and not claimed:
 
-- **A background child still running across a reload** (`reload-mid-child`
-  on 2.3.0). Its prompt went through the old instance, so the new one has no
-  prompt to look up from. A lookup from the event path would find it, but on
-  2.0.17 and 2.2.6 the old instance still handles the child, so the child
-  would be reported twice. Tracked in #236.
 - **A child in another location.** Not reproduced: subagent children took
   the parent's location in every capture, and 2.2.6 and 2.3.0 put an API
   child for another location in the parent's. If one occurs, the lookup in
   its own location's instance would cover it.
-- **The 2.0.17 reload leak.** A reload while an execution runs leaves the
-  old instance alive. After a follow-up, both instances dispatch the parent's
-  and the child's `turn.stop`, and, with recovery, the child's `agent.stop`
-  (reproduced with the shim). The event `id` is shared, so the duplicates are
-  identifiable. A child created after such a reload is seen created by both
-  instances, so its `agent.start` and `session.start` are presumably
-  dispatched twice too: inferred from the code, not probed. De-duplication is
-  #236.
 - An interrupted child (its `turn.stop` carries the ids; no `agent.stop`),
   and agent ids on the child's other events (`tool.*`, `session.start`,
   `prompt.before`).
+
+A background child still running across a reload, and the 2.0.17 reload
+leak's duplicates, were listed here as not recovered; #236 covers both
+(below).
+
+## Reloaded plugin instances (#236)
+
+A reload while an execution runs leaves two plugin instances in one `serve`
+process. The host side, from `.capture/opencode-v2-audit/session-get`
+(`probe.mjs` with the probe plugin only, then `instances.mjs`; Windows,
+isolated state, loopback model, 2026-11-16):
+
+| Build | Idle reload | Reload while a child runs |
+| --- | --- | --- |
+| 2.0.17 | the old instance is disposed before the new one is set up | the old instance is **never** disposed |
+| 2.2.6 | the same | the old instance is disposed when the execution ends, about 3.9 s after the new one's setup; it hears the child's completion first |
+| 2.3.0 | the same | the old instance is disposed **before** the child's completion reaches the new one, and never hears it (8 of 8 runs, 12 to 27 ms) |
+
+Over 17 runs and 187 watched events: every event had an `id`; the 34 ids
+both instances heard were heard by the old one first (23) or in the same
+millisecond (11), never by the new one first; the new instance never heard an
+event published before its setup; and no event the old one heard after that
+setup was missing from the new one. On 2.0.17 a new child created after the
+reload is seen created by both instances.
+
+Through the shim, with the generated playback hooks (`drive.mjs`
+`subagent-reload-running` and `subagent-reload-running-stop`, through
+`reload-audit.mjs`). The parent delegates a child that answers 4 s late; the
+location reloads while it runs, and the drive waits for the capture plugin's
+second `setup`. A fresh top-level session is prompted while both instances
+live (`overlap`, asserted). Then the parent follows up the same child, and
+delegates a new one. The drive counts completions by distinct event id: on
+2.0.17 the leaked old capture instance records every event a second time.
+
+| Playback test | 2.0.17 | 2.2.6 | 2.3.0 |
+| --- | --- | --- | --- |
+| A session started during the overlap reports once | before: `session.start` twice | before: twice | before: twice |
+| Every completion once (parent, the child across the reload, the new child), `agent.start` once per child | before: duplicate stops and `agent.stop`s; the new child's `agent.start` twice | before: the parent's stop after the reload missed | before: the child's `turn.stop` and `agent.stop`, and the parent's follow-on stop, missed |
+| Prevention once, never into a child | before: the fresh session's model saw the stop reason twice | before: twice | before: twice |
+| A prompt steered into an execution the old instance still runs (`subagent-reload-running-steer`) | before: the child's `turn.stop` without its text or turn id, and the parent's continuation carried the steered prompt's id (2 of 2) | before: the child's `turn.stop` without its text or turn id | before: a later parent stop carried the steered prompt's id (3 of 3) |
+
+The steer drive (review round) prompts the parent and the running child after
+the reload, with prevention on; on 2.3.0 the parent's prevention continuation
+answers 1.5 s late, so the steered parent execution ends while the old
+instance lives (constructed timing). Whether a prompt was steered or started
+its own execution is read from the captured events: the session's next
+execution event after the prompt is a start or a completion.
+
+With the shim all four pass on each build: 10 runs of the four tests per
+build, no re-drive needed (and 10 runs of the first three per build before
+the review round). The test drives once more if the
+old instance was gone before the fresh session completed (once among the
+captured 2.3.0 runs), or if the drive timed out on its transport before the
+reload; never for a failed assertion.
+
+Not claimed, or claimed with a limit (see `docs/opencode-families.md`):
+
+- **The order of disposal on 2.3.0** is observed in every capture, not
+  promised. Worst case, a build that delivers the child's completion first:
+  if the old instance still receives it, it reports it, once; it is missed
+  only if the host stops delivering events to the old instance before
+  calling its cleanup, and then the new one skips it because it does not
+  know the session yet.
+- **A second reload** while the newer instance still has work running,
+  queued or pending can drop an event the older one would have reported (a
+  stop, or a `session.start`, `agent.start` or `context.compact.after`)
+  (accepted and documented; #238 records the reasoning; pinned by unit
+  tests L1 and L2).
+- **Compaction during an overlap,** a prompt the new instance took after
+  the handover but before reading the session's events (unit test Q3), and
+  a segment both instances buffered around a steered prompt (Q5), a reload
+  that adds hooks reading the turn's fields (Q7), and three instances where
+  the newest other one's execution must be copied (Q8), are covered by unit
+  tests only: no drive reproduces them. The playback hooks are generated once
+  per drive with every field they can read, so a drive cannot reload into
+  hooks that declare different fields without building a second artifact.
+- **A reload that adds the first subscribing hook:** the old instance had no
+  subscription, tracked no execution, and a steered prompt's id can still
+  reach a later execution, as before #236.
+- A server restart, or a reload across two Hooknostic releases: each
+  instance reports as before.
 
 ## Nested checkouts
 

@@ -289,6 +289,8 @@ describe.skipIf(!enabled)("OpenCode v2 offline playback", () => {
     agentType?: string;
     correlationAgentId?: string;
     parentAgentId?: string;
+    nativeId?: string;
+    instance?: string;
   };
   async function driveSubagent(mode: string) {
     const result = await runProcess(
@@ -480,16 +482,14 @@ describe.skipIf(!enabled)("OpenCode v2 offline playback", () => {
       expect([entry.correlationAgentId, entry.parentAgentId]).toEqual([undefined, undefined]);
   }, 70000);
   // Children this plugin instance never saw created (#232), over `serve`.
-  async function driveReload(mode: string) {
-    const result = await runProcess(
-      process.execPath,
-      ["--experimental-strip-types", ".capture/opencode-v2/drive.mjs", mode],
-      {
-        cwd: fileURLToPath(new URL("../../..", import.meta.url)),
-        env: process.env,
-        timeoutMs: 90000,
-      },
-    );
+  const runReload = (mode: string) =>
+    runProcess(process.execPath, ["--experimental-strip-types", ".capture/opencode-v2/drive.mjs", mode], {
+      cwd: fileURLToPath(new URL("../../..", import.meta.url)),
+      env: process.env,
+      timeoutMs: 90000,
+    });
+  async function driveReload(mode: string, ran?: Awaited<ReturnType<typeof runReload>>) {
+    const result = ran ?? (await runReload(mode));
     expect(result.code, result.stdout + result.stderr).toBe(0);
     const { root } = JSON.parse(result.stdout.split("\n").find((line) => line.startsWith('{"root"'))!);
     const audit = JSON.parse(await readFile(join(root, "reload.json"), "utf8"));
@@ -500,7 +500,10 @@ describe.skipIf(!enabled)("OpenCode v2 offline playback", () => {
       .map((line) => JSON.parse(line) as TraceEntry);
     return { audit, trace };
   }
-  it("recognizes a followed-up subagent after a plugin reload, by looking up its parent", async () => {
+  // Since #236 the old instance hands the child over when it is disposed, so
+  // the new one knows it before its prompt; the restart test below is where
+  // only the lookup can recognize it.
+  it("recognizes a followed-up subagent after a plugin reload", async () => {
     const { audit, trace } = await driveReload("subagent-reload");
     const { parentID: parent, childID: child } = audit;
     // The old instance was disposed (the capture plugin's cleanup ran) before
@@ -540,6 +543,38 @@ describe.skipIf(!enabled)("OpenCode v2 offline playback", () => {
       { sessionId: parent, agentId: child, agentType: "general", lastMessage: "hooknostic-child-follow-up-result" },
     ]);
   }, 100000);
+  it("recognizes a followed-up subagent after a server restart, by looking up its parent", async () => {
+    // A new process: no plugin instance hands the child over (#236), so the
+    // lookup at the child's prompt is what recognizes it, on every build.
+    const { audit, trace } = await driveReload("subagent-reload-restart");
+    const { parentID: parent, childID: child } = audit;
+    const records = audit.records as { hook: string; event: { type?: string; data?: { sessionID?: string } } }[];
+    expect(records.filter((row) => row.hook === "setup").length).toBeGreaterThanOrEqual(2);
+    const completions = records.flatMap((row, index) =>
+      row.hook === "event" && row.event.type === "session.execution.succeeded" && row.event.data?.sessionID === child
+        ? [index]
+        : [],
+    );
+    expect(completions).toHaveLength(2);
+    expect(completions[1]).toBeGreaterThan(audit.reloadedAt);
+    expect(trace.filter((entry) => entry.event === "agent.start").map(({ agentId }) => agentId)).toEqual([child]);
+    expect(
+      trace
+        .filter((entry) => entry.event === "turn.stop" && entry.sessionId === child)
+        .map(({ correlationAgentId, parentAgentId }) => ({ correlationAgentId, parentAgentId })),
+    ).toEqual([
+      { correlationAgentId: child, parentAgentId: parent },
+      { correlationAgentId: child, parentAgentId: parent },
+    ]);
+    expect(
+      trace
+        .filter((entry) => entry.event === "agent.stop")
+        .map(({ sessionId, agentId, agentType }) => ({ sessionId, agentId, agentType })),
+    ).toEqual([
+      { sessionId: parent, agentId: child, agentType: "general" },
+      { sessionId: parent, agentId: child, agentType: "general" },
+    ]);
+  }, 100000);
   it("recognizes a subagent child created through the API before plugin setup, where the API keeps its parent", async () => {
     const { audit, trace } = await driveReload("subagent-api-child");
     const { parentID: parent, childID: child } = audit;
@@ -561,10 +596,18 @@ describe.skipIf(!enabled)("OpenCode v2 offline playback", () => {
     }
   }, 100000);
   it("a subagent recovered after a plugin reload takes no stop prevention or notice", async () => {
+    await expectNoPostToRecoveredChild("subagent-reload-stop");
+  }, 100000);
+  // Since #236 the reload above hands the child over; after a restart only
+  // the lookup links it, so only this one pins that the lookup stores it.
+  it("a subagent recovered after a server restart takes no stop prevention or notice", async () => {
+    await expectNoPostToRecoveredChild("subagent-reload-restart-stop");
+  }, 100000);
+  async function expectNoPostToRecoveredChild(mode: string) {
     // With prevention and notices on every stop: the child's own stops must
     // post nothing, so prompting it once more starts exactly one execution
     // whose request carries neither the reason nor the notice.
-    const { audit, trace } = await driveReload("subagent-reload-stop");
+    const { audit, trace } = await driveReload(mode);
     expect(audit.childAfter).toMatchObject({ started: 2, succeeded: 2 });
     expect(audit.childFinal).toMatchObject({ started: 3, succeeded: 3 });
     expect(audit.childRequests).toBe(3);
@@ -574,7 +617,168 @@ describe.skipIf(!enabled)("OpenCode v2 offline playback", () => {
         .filter((entry) => entry.event === "turn.stop" && entry.sessionId === audit.childID)
         .map(({ correlationAgentId }) => correlationAgentId),
     ).toEqual([audit.childID, audit.childID, audit.childID]);
-  }, 100000);
+  }
+  // A reload while a child runs (#236): OpenCode keeps the old plugin instance
+  // until that execution ends (2.2.6, 2.3.0) or for good (2.0.17), and both
+  // hear every event, with the same event ids.
+  type Row = { hook: string; event: { id?: string; type?: string; data?: { sessionID?: string } } };
+  // Thrown by .capture/opencode-v2/reload-audit.mjs for a timeout before its reload.
+  const TRANSPORT_BEFORE_RELOAD = "hooknostic-transport-timeout-before-reload";
+  async function driveRunning(mode: string) {
+    // At most one more drive for each of two host conditions, never for a
+    // failed assertion. The overlap is the host's timing: once among the
+    // captured 2.3.0 runs the old instance went before the new one was set
+    // up. A transport timeout before the reload has hit a local server about
+    // once in 80 drives; the drive marks it, and nothing was tested yet.
+    const redrives = new Set<string>();
+    for (;;) {
+      const ran = await runReload(mode);
+      if (ran.code !== 0 && !redrives.has("transport") && (ran.stdout + ran.stderr).includes(TRANSPORT_BEFORE_RELOAD)) {
+        redrives.add("transport");
+        console.log(`[#236 re-drive] ${mode}: transport timeout before the reload`);
+        continue;
+      }
+      const drive = await driveReload(mode, ran);
+      if (!drive.audit.overlap && !redrives.has("overlap")) {
+        redrives.add("overlap");
+        console.log(`[#236 re-drive] ${mode}: no overlap`);
+        continue;
+      }
+      return drive;
+    }
+  }
+  // Distinct: on 2.0.17 the leaked old capture instance records each event again, with the same id.
+  const completionIds = (
+    records: Row[],
+    sessionID: string,
+    types = /^session\.execution\.(succeeded|failed|interrupted)$/,
+  ) =>
+    [
+      ...new Set(
+        records
+          .filter(
+            (row) =>
+              row.hook === "event" && types.test(row.event.type ?? "") && row.event.data?.sessionID === sessionID,
+          )
+          .map((row) => row.event.id!),
+      ),
+    ].sort();
+  const dispatched = (trace: TraceEntry[], event: string, key: "sessionId" | "agentId", id: string) =>
+    trace.filter((entry) => entry.event === event && entry[key] === id);
+  it("reports a session started while a reloaded plugin's old instance still runs once (#236)", async () => {
+    const { audit, trace } = await driveRunning("subagent-reload-running");
+    expect(audit.overlap).toBe(true);
+    const fresh = audit.freshID as string;
+    expect(dispatched(trace, "session.start", "sessionId", fresh)).toHaveLength(1);
+    const prompts = dispatched(trace, "prompt.before", "sessionId", fresh).map((entry) => entry.turnId);
+    expect(prompts).toHaveLength(1);
+    // From the instance that took its prompt, so with that prompt's turn id.
+    expect(
+      dispatched(trace, "turn.stop", "sessionId", fresh).map(({ nativeId, turnId }) => ({ nativeId, turnId })),
+    ).toEqual(completionIds(audit.records, fresh).map((nativeId) => ({ nativeId, turnId: prompts[0] })));
+  }, 200000);
+  it("reports every completion once across a reload while a subagent runs (#236)", async () => {
+    const { audit, trace } = await driveRunning("subagent-reload-running");
+    const {
+      parentID: parent,
+      childID: child,
+      secondID: second,
+    } = audit as { parentID: string; childID: string; secondID: string };
+    // One turn.stop per completion: the parent's, the child's (running across
+    // the reload, then followed up) and the new child's.
+    for (const session of [parent, child, second])
+      expect(
+        dispatched(trace, "turn.stop", "sessionId", session)
+          .map((entry) => entry.nativeId)
+          .sort(),
+      ).toEqual(completionIds(audit.records, session!));
+    // One agent.stop per succeeded or failed child completion.
+    for (const agent of [child, second])
+      expect(
+        dispatched(trace, "agent.stop", "agentId", agent!)
+          .map((entry) => entry.nativeId)
+          .sort(),
+      ).toEqual(completionIds(audit.records, agent!, /^session\.execution\.(succeeded|failed)$/));
+    // Each child started once, though a leaked old instance (2.0.17) also sees the new one created.
+    expect(trace.filter((entry) => entry.event === "agent.start").map((entry) => entry.agentId)).toEqual([
+      child,
+      second,
+    ]);
+    expect(dispatched(trace, "session.start", "sessionId", second!)).toHaveLength(1);
+    // The child that ran across the reload keeps its text and agent ids.
+    expect(dispatched(trace, "turn.stop", "sessionId", child!)[0]).toMatchObject({
+      lastMessage: "hooknostic-child-result",
+      correlationAgentId: child,
+      parentAgentId: parent,
+    });
+    expect(dispatched(trace, "agent.stop", "agentId", child!)[0]).toMatchObject({
+      sessionId: parent,
+      agentType: "general",
+      lastMessage: "hooknostic-child-result",
+    });
+    // Each parent prompt's turn id on exactly one parent stop: the instance
+    // that took the prompt reported it.
+    const parentStops = dispatched(trace, "turn.stop", "sessionId", parent!);
+    for (const turnId of dispatched(trace, "prompt.before", "sessionId", parent!).map((entry) => entry.turnId))
+      expect(parentStops.filter((entry) => entry.turnId === turnId)).toHaveLength(1);
+  }, 200000);
+  it("a prompt steered into an execution the old instance still runs keeps its text and turn id (#236)", async () => {
+    const { audit, trace } = await driveRunning("subagent-reload-running-steer");
+    expect(audit.overlap).toBe(true);
+    const { parentID: parent, childID: child } = audit as { parentID: string; childID: string };
+    console.log(
+      `[#236 steer] ${JSON.stringify({ child: audit.child, parent: audit.parent, parentRunning: audit.parentRunning })}`,
+    );
+    const turnIds = (session: string) =>
+      dispatched(trace, "prompt.before", "sessionId", session).map((entry) => entry.turnId);
+    // The child's first prompt, through the old instance, and the one steered into its execution.
+    const [original, steered] = turnIds(child);
+    expect(turnIds(child)).toHaveLength(2);
+    const childStops = dispatched(trace, "turn.stop", "sessionId", child);
+    expect(childStops.map((entry) => entry.nativeId).sort()).toEqual(completionIds(audit.records, child));
+    // The execution the old instance ran: its text, and the id of the prompt that started it.
+    expect(childStops[0]).toMatchObject({ lastMessage: "hooknostic-child-result", turnId: original });
+    expect(dispatched(trace, "agent.stop", "agentId", child)[0]).toMatchObject({
+      lastMessage: "hooknostic-child-result",
+    });
+    // A prompt steered into a running execution starts none of its own, so its
+    // id is on no stop: absent, never wrong. One the host ran as its own
+    // execution is on that execution's stop. Branch on what the host did: the
+    // session's next event after the prompt is a start, or a completion.
+    const records = audit.records as Row[];
+    const startedItsOwn = (session: string, turnId: string | undefined) => {
+      const at = records.findIndex(
+        (row) => row.hook === "prompt" && (row.event as { messageID?: string }).messageID === turnId,
+      );
+      const next = records
+        .slice(at + 1)
+        .find(
+          (row) =>
+            row.hook === "event" &&
+            row.event.data?.sessionID === session &&
+            /^session\.execution\./.test(row.event.type ?? ""),
+        );
+      return next?.event.type === "session.execution.started";
+    };
+    for (const [session, turnId] of [
+      [child, steered],
+      [parent, turnIds(parent).at(-1)],
+    ] as const)
+      expect(trace.filter((entry) => entry.event === "turn.stop" && entry.turnId === turnId)).toHaveLength(
+        startedItsOwn(session, turnId) ? 1 : 0,
+      );
+  }, 200000);
+  it("prevents a stop once across a reload, and never a subagent's (#236)", async () => {
+    const { audit, trace } = await driveRunning("subagent-reload-running-stop");
+    expect(audit.overlap).toBe(true);
+    // Each instance would prevent the fresh session's stop: its model saw the reason once.
+    expect(audit.freshReasons).toBe(1);
+    expect(audit.childPosts).toBe(0);
+    const stops = trace
+      .filter((entry) => entry.event === "turn.stop" || entry.event === "agent.stop")
+      .map((entry) => `${entry.event} ${entry.nativeId}`);
+    expect(new Set(stops).size).toBe(stops.length);
+  }, 200000);
   it("observes typed tool failures and replaces rich output in recorded requests", async () => {
     const result = await runProcess(
       process.execPath,

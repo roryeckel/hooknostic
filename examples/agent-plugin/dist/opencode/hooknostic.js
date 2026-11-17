@@ -7788,6 +7788,32 @@ async function failingOpen(hook2, work) {
     reportInternalError(error2, hook2);
   }
 }
+var INSTANCES = /* @__PURE__ */ Symbol.for("hooknostic.opencode.v2.instances/1");
+var CLAIMED_EVENTS = 1024;
+var INHERITED_SESSIONS = 256;
+function instanceGroup(key) {
+  const shared = globalThis;
+  const groups = shared[INSTANCES] ??= /* @__PURE__ */ new Map();
+  let group = groups.get(key);
+  if (group === void 0) {
+    group = { generations: 0, live: /* @__PURE__ */ new Set(), claimed: /* @__PURE__ */ new Set(), inherited: /* @__PURE__ */ new Map() };
+    groups.set(key, group);
+  }
+  return group;
+}
+function bound(collection, limit) {
+  while (collection.size > limit) {
+    const oldest = collection.keys().next();
+    if (oldest.done === true) return;
+    collection.delete(oldest.value);
+  }
+}
+function boundInherited(inherited, limit) {
+  while (inherited.size > limit) {
+    const idle = [...inherited].find(([, entry]) => entry.execution === void 0)?.[0];
+    inherited.delete(idle ?? inherited.keys().next().value);
+  }
+}
 var guarded = (hook2, callback) => (event) => failingOpen(hook2, () => callback(event));
 async function setupOpenCodeV2(plugin, options2, ctx) {
   const targetId = options2.targetId ?? "opencode";
@@ -7803,6 +7829,42 @@ async function setupOpenCodeV2(plugin, options2, ctx) {
     return process.platform === "win32" ? trimmed.toLowerCase() : trimmed;
   };
   const here = comparable(ctx.location.directory);
+  const group = instanceGroup([plugin.name, targetId, here, options2.pluginRoot ?? ""].join("\0"));
+  const generation = ++group.generations;
+  const peer = {
+    generation,
+    knows: (type, sessionID) => type === "session.created" || local.has(sessionID),
+    child: (sessionID) => children.get(sessionID),
+    // Read only after setup, when `executions` (declared below) exists.
+    running: (sessionID) => executions.get(sessionID)
+  };
+  const superseded = (type, sessionID) => [...group.live].some((other) => other.generation > generation && other.knows(type, sessionID));
+  const newest = () => ![...group.live].some((other) => other.generation > generation);
+  let joined = false;
+  const unlinked = /* @__PURE__ */ new Set();
+  const claim2 = (id) => {
+    if (typeof id !== "string") return true;
+    if (group.claimed.has(id)) return false;
+    if (group.live.size < 2) return true;
+    group.claimed.add(id);
+    bound(group.claimed, CLAIMED_EVENTS);
+    return true;
+  };
+  const childElsewhere = (sessionID) => {
+    for (const other of group.live) {
+      const found = other === peer ? void 0 : other.child(sessionID);
+      if (found !== void 0) return found;
+    }
+    return group.inherited.get(sessionID)?.child;
+  };
+  const runningElsewhere = (sessionID) => {
+    const others = [...group.live].filter((other) => other !== peer).sort((a, b) => b.generation - a.generation);
+    for (const other of others) {
+      const found = other.running(sessionID);
+      if (found !== void 0) return found;
+    }
+    return void 0;
+  };
   const declares = (event, field) => plugin.hooks.some(
     (h) => h.event === event && hookAppliesToTarget(h, targetId) && (h.fields ?? []).includes(`${event}.${field}`)
   );
@@ -7948,7 +8010,38 @@ async function setupOpenCodeV2(plugin, options2, ctx) {
     });
     lookups.set(sessionID, pending);
   };
+  const adopt = (sessionID) => {
+    const inherited = group.inherited.get(sessionID);
+    if (inherited === void 0) return false;
+    group.inherited.delete(sessionID);
+    local.add(sessionID);
+    if (inherited.child !== void 0 && !children.has(sessionID)) children.set(sessionID, inherited.child);
+    if (!children.has(sessionID)) unlinked.add(sessionID);
+    if (inherited.execution !== void 0 && !executions.has(sessionID)) {
+      executions.set(sessionID, inherited.execution);
+      pendingPrompts.delete(sessionID);
+    }
+    return true;
+  };
+  const handOver = () => {
+    const running = [...local].filter((sessionID) => executions.has(sessionID));
+    const idle = [...local].filter((sessionID) => !executions.has(sessionID));
+    const handed = [...idle.slice(Math.max(0, idle.length - (INHERITED_SESSIONS - running.length))), ...running];
+    for (const sessionID of handed.slice(-INHERITED_SESSIONS)) {
+      const child = children.get(sessionID);
+      const execution = executions.get(sessionID);
+      group.inherited.delete(sessionID);
+      group.inherited.set(sessionID, { ...child ? { child } : {}, ...execution ? { execution } : {} });
+    }
+    boundInherited(group.inherited, INHERITED_SESSIONS);
+  };
   const cleanup = async () => {
+    group.live.delete(peer);
+    if (joined) {
+      joined = false;
+      handOver();
+    }
+    unlinked.clear();
     controller.abort();
     await Promise.allSettled(registrations.map((r) => r.dispose()));
     await task;
@@ -7963,9 +8056,20 @@ async function setupOpenCodeV2(plugin, options2, ctx) {
           "prompt",
           guarded("prompt", async (e) => {
             const sessionID = typeof e.sessionID === "string" ? e.sessionID : void 0;
-            if (readsLink && sessionID !== void 0 && !local.has(sessionID) && !children.has(sessionID))
-              lookUp(sessionID);
+            if (sessionID !== void 0 && !children.has(sessionID) && (!local.has(sessionID) || unlinked.delete(sessionID))) {
+              const known = childElsewhere(sessionID);
+              if (known !== void 0) children.set(sessionID, known);
+              else if (readsLink) lookUp(sessionID);
+            }
             if (sessionID !== void 0) local.add(sessionID);
+            if (sessionID !== void 0 && !executions.has(sessionID)) {
+              const running = runningElsewhere(sessionID);
+              if (running !== void 0)
+                executions.set(sessionID, {
+                  ...running.prompt ? { prompt: running.prompt } : {},
+                  text: [...running.text]
+                });
+            }
             if (readsPrompt && sessionID !== void 0) {
               if (executions.has(sessionID)) pendingPrompts.delete(sessionID);
               else pendingPrompts.set(sessionID, { sessionID, messageID: e.messageID });
@@ -8034,12 +8138,17 @@ async function setupOpenCodeV2(plugin, options2, ctx) {
       );
     }
     if (subscribes) {
+      group.live.add(peer);
+      joined = true;
       task = (async () => {
         try {
           for await (const event of ctx.event.subscribe({ signal: controller.signal })) {
+            if (controller.signal.aborted) break;
             try {
               const data = event.data !== null && typeof event.data === "object" ? event.data : {};
               const sessionID = typeof data.sessionID === "string" ? data.sessionID : "";
+              const type = String(event.type);
+              if (group.inherited.has(sessionID) && newest()) adopt(sessionID);
               if (event.type === "session.created") {
                 const location = data.location ?? event.location;
                 if (typeof location?.directory !== "string" || comparable(location.directory) !== here) continue;
@@ -8048,27 +8157,28 @@ async function setupOpenCodeV2(plugin, options2, ctx) {
                   children.set(sessionID, { parentID: data.parentID, agent: data.agent });
               } else if (!local.has(sessionID)) continue;
               let execution;
-              if (readsText || readsPrompt) {
-                if (event.type === "session.execution.started") {
-                  const prompt = pendingPrompts.get(sessionID);
-                  pendingPrompts.delete(sessionID);
-                  executions.set(sessionID, { ...prompt ? { prompt } : {}, text: [] });
-                } else if (event.type === "session.text.ended" && readsText) {
-                  const running = executions.get(sessionID);
-                  if (running !== void 0) {
-                    if (running.text.at(-1)?.["assistantMessageID"] !== data.assistantMessageID) running.text = [];
+              if (event.type === "session.execution.started") {
+                const prompt = pendingPrompts.get(sessionID);
+                pendingPrompts.delete(sessionID);
+                executions.set(sessionID, { ...prompt ? { prompt } : {}, text: [] });
+              } else if (event.type === "session.text.ended" && readsText) {
+                const running = executions.get(sessionID);
+                if (running !== void 0) {
+                  if (running.text.at(-1)?.["assistantMessageID"] !== data.assistantMessageID) running.text = [];
+                  if (typeof data.ordinal !== "number" || !running.text.some((segment) => segment["ordinal"] === data.ordinal))
                     running.text.push({
                       assistantMessageID: data.assistantMessageID,
                       ordinal: data.ordinal,
                       text: data.text
                     });
-                  }
-                } else if (completions.has(String(event.type))) {
-                  const finished = executions.get(sessionID);
-                  executions.delete(sessionID);
-                  if (finished !== void 0) execution = finished;
                 }
+              } else if (completions.has(String(event.type))) {
+                const finished = executions.get(sessionID);
+                executions.delete(sessionID);
+                if (finished !== void 0 && (readsText || readsPrompt)) execution = finished;
               }
+              if ((type === "session.created" || completions.has(type) || type === "session.compaction.ended") && (superseded(type, sessionID) || !claim2(event.id)))
+                continue;
               const child = children.get(sessionID);
               if (event.type === "session.created" && child !== void 0 && events.has("agent.start"))
                 enqueue(sessionID, () => run("event", event, false, void 0, child));
@@ -8093,6 +8203,8 @@ async function setupOpenCodeV2(plugin, options2, ctx) {
           }
         } catch (error2) {
           if (!controller.signal.aborted) reportInternalError(error2, "event");
+        } finally {
+          if (!controller.signal.aborted) group.live.delete(peer);
         }
       })();
     }

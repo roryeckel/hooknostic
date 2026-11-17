@@ -2,7 +2,9 @@
 // model and the HTTP API. No credentials; isolated state under <root>.
 // usage: node probe.mjs <opencode-executable> <scenario> <root>
 // Scenarios: baseline, reload-mid-child, reload-mid-child-then-followup,
-// reload-followup, api-child-presetup, otherloc-both. Writes <root>/outcome.json.
+// reload-followup, api-child-presetup, otherloc-both; and for #236
+// overlap-new-session and reload-mid-child-then-new-child (instances.mjs reads
+// them). Writes <root>/outcome.json.
 // Constructed timing: HKN_CHILD_DELAY_MS delays the child's model reply;
 // HKN_TAIL_MS keeps the server up after the scenario (to see a late disposal).
 import { spawn } from "node:child_process";
@@ -212,6 +214,35 @@ try {
       );
       await settle();
     }
+    if (scenario === "reload-mid-child-then-new-child") {
+      // #236: a new child, not a follow-up, after the reload: on a build that
+      // keeps the old instance, both instances see it created.
+      await api(`/session/${parent}/prompt`, { text: "hooknostic-go again" });
+      step("prompted for a new child");
+      outcome.child2 = await wait("second child created", async () =>
+        (await records()).find((r) => r.kind === "event" && r.type === "session.created" && r.parentID && r.sessionID !== child)
+          ?.sessionID,
+      );
+      await wait("second child succeeded", () => succeeded(outcome.child2), 60000);
+      await settle();
+    }
+  } else if (scenario === "overlap-new-session") {
+    // #236: a reload while a child runs, then a new top-level session prompted
+    // while the old instance may still live.
+    const parent = await create();
+    outcome.parent = parent;
+    await api(`/session/${parent}/prompt`, { text: "hooknostic-go" });
+    outcome.child = await wait("child created", childCreated);
+    await api("/location/reload", {});
+    step("reloaded");
+    await delay(300);
+    const fresh = await create();
+    outcome.fresh = fresh;
+    await api(`/session/${fresh}/prompt`, { text: "plain prompt" });
+    step("prompted fresh session");
+    await wait("fresh succeeded", () => succeeded(fresh), 30000);
+    await wait("child succeeded", () => succeeded(outcome.child), 60000);
+    await settle();
   } else if (scenario === "reload-followup") {
     const parent = await create();
     outcome.parent = parent;

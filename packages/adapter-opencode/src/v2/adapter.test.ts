@@ -29,6 +29,13 @@ const adapter = resolveTargetAdapter(facade, target).adapter!;
 const fixtures = fileURLToPath(new URL("../../../../fixtures/opencode/2.0/", import.meta.url));
 describeAdapterContract(adapter, { fixturesDir: fixtures });
 
+// #236: the shim shares its live instances through globalThis, which outlives
+// every test in this file; a test's cleanup hands its sessions to the next.
+const instancesRegistry = Symbol.for("hooknostic.opencode.v2.instances/1");
+const resetInstances = () => void delete (globalThis as Record<symbol, unknown>)[instancesRegistry];
+beforeEach(resetInstances);
+afterEach(resetInstances);
+
 describe("OpenCode family selection", () => {
   it("selects complete implementations from named target ranges", () => {
     const detect = vi.fn(async () => ({ installed: true, version: opencodeHarness.referenceVersion }));
@@ -1789,5 +1796,736 @@ describe("v2 agent.stop from a child's completion (#231)", () => {
       expect(seen).toEqual([{ event: "turn.stop", session: parent }]);
       expect(calls).toEqual([parent]);
     });
+  });
+});
+
+describe("v2 reloaded plugin instances (#236)", () => {
+  // The captured background subagent drive (2.3.0), cut where a reload left
+  // two instances: OpenCode keeps the old one until its running execution
+  // ends (2.2.6, 2.3.0) or for good (2.0.17), and both hear every event.
+  type Row = { hook: string; directory: string; event: Record<string, unknown> };
+  const rows = readFileSync(fixtures + "subagent-stop/events-2.3.0.jsonl", "utf8")
+    .trim()
+    .split("\n")
+    .map((line) => JSON.parse(line) as Row);
+  const data = (row: Row) => (row.event["data"] ?? {}) as Record<string, unknown>;
+  const directory = rows[0]!.directory;
+  const created = rows.find((row) => row.event["type"] === "session.created" && data(row)["parentID"])!;
+  const child = data(created)["sessionID"] as string;
+  const parent = data(created)["parentID"] as string;
+  const completion = (sessionID: string) =>
+    rows.findIndex(
+      (row) => row.event["type"] === "session.execution.succeeded" && data(row)["sessionID"] === sessionID,
+    );
+  const prompt = (sessionID: string) =>
+    rows.find((row) => row.hook === "prompt" && row.event["sessionID"] === sessionID);
+  const capabilities = {
+    "session.start.observe": "approximate",
+    "turn.stop.observe": "approximate",
+    "turn.stop.prevent": "approximate",
+    "agent.stop.observe": "approximate",
+  } as const;
+  type Seen = {
+    by: string;
+    event: string;
+    session?: string;
+    agentId?: string;
+    agentType?: string;
+    lastMessage?: string;
+    turnId?: string;
+  };
+
+  /** One plugin instance with its own subscription, fed by `publish`. */
+  async function instance(
+    by: string,
+    seen: Seen[],
+    options: {
+      name?: string;
+      directory?: string;
+      posts?: unknown[];
+      /** Extra observe-only hooks: agent.start, session.start, context.compact.after. */
+      extra?: ("agent.start" | "session.start" | "context.compact.after")[];
+      get?: (input: { sessionID: string }) => unknown;
+      /** The turn.stop hook waits for `until` on this session's stops: a busy queue. */
+      block?: { session: string; until: Promise<void> };
+      /** The host's subscription throws, or ends, at once. */
+      subscription?: "throws" | "ends";
+      /** The plugin root a package-delivered bundle resolves (`ctx.plugin.root`). */
+      pluginRoot?: string;
+      /** Hooks that declare no fields: the instance needs neither text nor turn ids. */
+      bare?: boolean;
+      /** Also record the agent type. */
+      types?: boolean;
+      /** One buffered event the host still yields after the abort. */
+      afterAbort?: Record<string, unknown>;
+    } = {},
+  ) {
+    const queue: Record<string, unknown>[] = [];
+    let wake: (() => void) | undefined;
+    const callbacks: Record<string, (event: Record<string, unknown>) => Promise<void>> = {};
+    const note = (event: {
+      event: string;
+      session: { id?: string };
+      agent?: { id?: string; type?: string };
+      lastMessage?: string;
+      correlation: { turnId?: string };
+    }) =>
+      void seen.push({
+        by,
+        event: event.event,
+        ...(event.session.id !== undefined ? { session: event.session.id } : {}),
+        ...(event.agent?.id !== undefined ? { agentId: event.agent.id } : {}),
+        ...(event.lastMessage !== undefined ? { lastMessage: event.lastMessage } : {}),
+        ...(event.correlation.turnId !== undefined ? { turnId: event.correlation.turnId } : {}),
+        ...(options.types && event.agent?.type !== undefined ? { agentType: event.agent.type } : {}),
+      });
+    const cleanup = await setupOpenCodeV2(
+      definePlugin({
+        name: options.name ?? "reloaded",
+        hooks: [
+          options.posts
+            ? hook("turn.stop", {
+                id: "stop",
+                fields: ["lastMessage", "correlation.turnId"],
+                capabilities: { "turn.stop.prevent": "required" },
+                run(event) {
+                  note(event);
+                  return preventStop("keep working");
+                },
+              })
+            : hook("turn.stop", {
+                id: "stop",
+                fields: options.bare ? [] : ["lastMessage", "correlation.turnId"],
+                async run(event) {
+                  if (options.block !== undefined && event.session.id === options.block.session)
+                    await options.block.until;
+                  note(event);
+                },
+              }),
+          hook("agent.stop", { id: "agent", fields: options.bare ? [] : ["lastMessage"], run: note }),
+          ...(options.extra ?? []).map((name) => hook(name, { id: name, run: note })),
+        ],
+      }),
+      {
+        capabilities: {
+          ...capabilities,
+          "agent.start.observe": "approximate",
+          "session.start.observe": "approximate",
+          "context.compact.after.observe": "approximate",
+        },
+        ...(options.pluginRoot !== undefined ? { pluginRoot: options.pluginRoot } : {}),
+      },
+      {
+        location: { directory: options.directory ?? directory },
+        session: {
+          hook: async (name, callback) => {
+            callbacks[name] = callback;
+            return { dispose: async () => {} };
+          },
+          synthetic: (input) => void options.posts?.push(input),
+          ...(options.get ? { get: options.get } : {}),
+        },
+        tool: { hook: vi.fn() },
+        event: {
+          async *subscribe({ signal }) {
+            if (options.subscription === "throws") throw new Error("hooknostic-subscription-lost");
+            if (options.subscription === "ends") return;
+            while (!signal.aborted) {
+              const next = queue.shift();
+              if (next !== undefined) yield next;
+              else await new Promise<void>((resolve) => (wake = resolve));
+            }
+            if (options.afterAbort !== undefined) yield structuredClone(options.afterAbort);
+          },
+        },
+      },
+    );
+    const publish = (event: Record<string, unknown>) => {
+      queue.push(structuredClone(event));
+      wake?.();
+    };
+    return {
+      publish,
+      prompt: (row: Row | undefined) => callbacks["prompt"]?.(structuredClone(row!.event)),
+      /** Replays rows: prompts through this instance, events to every instance in `to`. */
+      async feed(
+        from: number,
+        until: number,
+        to: { publish: typeof publish }[] = [{ publish }],
+        except: (row: Row) => boolean = () => false,
+      ) {
+        for (const row of rows.slice(from, until).filter((row) => !except(row))) {
+          if (row.hook === "prompt") await callbacks["prompt"]?.(structuredClone(row.event));
+          else for (const target of to) target.publish(row.event);
+        }
+        await new Promise((resolve) => setTimeout(resolve, 30));
+      },
+      cleanup: async () => {
+        const done = cleanup();
+        wake?.();
+        await done;
+      },
+    };
+  }
+
+  it("R1: the instance after a reload reports a child still running when the old one is disposed", async () => {
+    // 3b on 2.3.0: the old instance is disposed before the child's completion reaches anyone.
+    const seen: Seen[] = [];
+    const old = await instance("old", seen);
+    await old.feed(0, completion(child));
+    const next = await instance("new", seen);
+    await old.cleanup();
+    await next.feed(completion(child), rows.length);
+    await next.cleanup();
+    expect(
+      seen
+        .filter((entry) => entry.by === "new")
+        .map(({ by, event, session, agentId, lastMessage }) => ({ by, event, session, agentId, lastMessage })),
+    ).toEqual([
+      { by: "new", event: "turn.stop", session: child, lastMessage: "hooknostic-child-result" },
+      { by: "new", event: "agent.stop", session: parent, agentId: child, lastMessage: "hooknostic-child-result" },
+      { by: "new", event: "turn.stop", session: parent, lastMessage: expect.any(String) },
+    ]);
+  });
+
+  it("R2: two live instances report each completion once, from the newest that knows the session", async () => {
+    // The 2.0.17 leak: the old instance lives on, and the follow-up prompts reach only the new one.
+    const seen: Seen[] = [];
+    const posts: unknown[] = [];
+    const old = await instance("old", seen, { posts });
+    await old.feed(0, rows.indexOf(created) + 1);
+    const next = await instance("new", seen, { posts });
+    await next.prompt(prompt(parent));
+    await next.prompt(prompt(child));
+    // Old first, as OpenCode delivered them in every capture.
+    await old.feed(rows.indexOf(created) + 1, rows.length, [old, next]);
+    await old.cleanup();
+    await next.cleanup();
+    expect(seen.map(({ by, event, session, agentId }) => ({ by, event, session, agentId }))).toEqual([
+      { by: "new", event: "turn.stop", session: child },
+      { by: "new", event: "agent.stop", session: parent, agentId: child },
+      { by: "new", event: "turn.stop", session: parent },
+    ]);
+    // One prevention, on the parent: never two, never one on the child.
+    expect(posts).toEqual([{ sessionID: parent, text: "keep working", resume: true }]);
+  });
+
+  it("R3: an instance alone claims nothing, and dispatches a repeated event as before", async () => {
+    // Alone and with no claim written earlier by an instance that had company
+    // (R8 pins that one): nothing reads differently from before #236.
+    const seen: Seen[] = [];
+    const only = await instance("only", seen);
+    await only.feed(0, rows.length);
+    only.publish(rows[completion(parent)]!.event);
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    await only.cleanup();
+    expect(seen.filter((entry) => entry.event === "turn.stop" && entry.session === parent)).toHaveLength(2);
+  });
+
+  const settle = () => new Promise((resolve) => setTimeout(resolve, 30));
+  it("R4: instances of another plugin, or in another location, each report as before", async () => {
+    const seen: Seen[] = [];
+    const first = await instance("first", seen);
+    const other = await instance("other-plugin", seen, { name: "another" });
+    const elsewhere = await instance("elsewhere", seen, { directory: directory + "-elsewhere" });
+    // Two package-delivered copies of the same plugin, in the same location,
+    // that differ only in the plugin root they resolve.
+    const rootA = await instance("root-a", seen, { pluginRoot: "/plugins/a/package" });
+    const rootB = await instance("root-b", seen, { pluginRoot: "/plugins/b/package" });
+    const all = [first, other, elsewhere, rootA, rootB];
+    // Constructed: the parent prompted through every instance, so each knows it.
+    for (const each of all) await each.prompt(prompt(parent));
+    for (const each of all) each.publish(rows[completion(parent)]!.event);
+    await settle();
+    for (const each of all) await each.cleanup();
+    expect(seen.map((entry) => entry.by).sort()).toEqual(["elsewhere", "first", "other-plugin", "root-a", "root-b"]);
+  });
+
+  it("R5: a child created while two instances live starts once, from the newest", async () => {
+    const seen: Seen[] = [];
+    const extra = ["agent.start", "session.start"] as const;
+    const old = await instance("old", seen, { extra: [...extra] });
+    const next = await instance("new", seen, { extra: [...extra] });
+    // Prompts reach the old instance only; every event reaches both.
+    await old.feed(0, rows.length, [old, next]);
+    for (const each of [old, next]) await each.cleanup();
+    expect(seen.filter((entry) => entry.event === "agent.start" || entry.event === "session.start")).toEqual([
+      { by: "new", event: "agent.start", session: parent, agentId: child },
+      { by: "new", event: "session.start", session: child },
+    ]);
+    // Each completion once: the child's from the newest that knows it, the parent's from the only one.
+    expect(
+      seen.filter((entry) => entry.event.endsWith(".stop")).map(({ by, event, session }) => ({ by, event, session })),
+    ).toEqual([
+      { by: "new", event: "turn.stop", session: child },
+      { by: "new", event: "agent.stop", session: parent },
+      { by: "old", event: "turn.stop", session: parent },
+    ]);
+  });
+
+  it("R6: a compaction while two instances live is reported once", async () => {
+    const compacted = JSON.parse(readFileSync(fixtures + "compaction-ended.input.json", "utf8")) as Row;
+    const session = data(compacted)["sessionID"] as string;
+    const seen: Seen[] = [];
+    const old = await instance("old", seen, { extra: ["context.compact.after"], directory: compacted.directory });
+    const next = await instance("new", seen, { extra: ["context.compact.after"], directory: compacted.directory });
+    for (const each of [old, next]) await each.prompt({ hook: "prompt", directory: "", event: { sessionID: session } });
+    for (const each of [old, next]) each.publish(compacted.event);
+    await settle();
+    for (const each of [old, next]) await each.cleanup();
+    expect(seen).toEqual([{ by: "new", event: "context.compact.after", session }]);
+  });
+
+  it("R7: a handed-over child prompted after the reload needs no lookup and keeps its running text", async () => {
+    // 3a beside the handover: the old instance went while the child ran, then
+    // the child's prompt reached the new one before its completion did.
+    const seen: Seen[] = [];
+    const lookups: string[] = [];
+    const get = ({ sessionID }: { sessionID: string }) => {
+      lookups.push(sessionID);
+      return { parentID: parent, agent: "general", location: { directory } };
+    };
+    const old = await instance("old", seen);
+    await old.feed(0, completion(child));
+    const next = await instance("new", seen, { get });
+    await old.cleanup();
+    await next.prompt(prompt(child));
+    await next.feed(completion(child), rows.length);
+    await next.cleanup();
+    expect(lookups).toEqual([]);
+    expect(
+      seen.map(({ by, event, session, agentId, lastMessage }) => ({ by, event, session, agentId, lastMessage })),
+    ).toEqual([
+      { by: "new", event: "turn.stop", session: child, lastMessage: "hooknostic-child-result" },
+      { by: "new", event: "agent.stop", session: parent, agentId: child, lastMessage: "hooknostic-child-result" },
+      { by: "new", event: "turn.stop", session: parent, lastMessage: expect.any(String) },
+    ]);
+  });
+
+  it("R8: a completion the old instance reported stays reported after it hands the child on", async () => {
+    // 2.2.6: the old instance reports the child's completion, then goes; the
+    // new one reads the same event later, after the handover taught it the child.
+    const seen: Seen[] = [];
+    const old = await instance("old", seen);
+    await old.feed(0, rows.indexOf(created) + 1);
+    const next = await instance("new", seen);
+    await old.feed(rows.indexOf(created) + 1, completion(child) + 1, [old, next]);
+    await old.cleanup();
+    next.publish(rows[completion(child)]!.event);
+    await settle();
+    await next.cleanup();
+    expect(
+      seen
+        .filter((entry) => entry.session === child || entry.agentId === child)
+        .map(({ by, event }) => ({ by, event })),
+    ).toEqual([
+      { by: "old", event: "turn.stop" },
+      { by: "old", event: "agent.stop" },
+    ]);
+  });
+
+  it("R9: the claims and the handover are bounded, keeping the newest and every running execution", async () => {
+    type Group = { claimed: Set<string>; inherited: Map<string, unknown>; live: Set<unknown> };
+    const groups = () => [...((globalThis as Record<symbol, Map<string, Group>>)[instancesRegistry]?.values() ?? [])];
+    const seen: Seen[] = [];
+    const old = await instance("old", seen);
+    const next = await instance("new", seen);
+    await next.prompt(prompt(parent));
+    const compactions = Array.from({ length: 1030 }, (_, index) => ({
+      id: `evt_bound_${index}`,
+      type: "session.compaction.ended",
+      data: { sessionID: parent },
+    }));
+    for (const event of compactions) next.publish(event);
+    await settle();
+    const [group] = groups();
+    expect(group!.claimed.size).toBe(1024);
+    expect(group!.claimed.has("evt_bound_5")).toBe(false);
+    expect(group!.claimed.has("evt_bound_6")).toBe(true);
+    // 300 sessions, the first of them still running when the instance goes.
+    for (let index = 0; index < 300; index++)
+      await old.prompt({ hook: "prompt", directory, event: { sessionID: `ses_bound_${index}` } });
+    old.publish({ id: "evt_running", type: "session.execution.started", data: { sessionID: "ses_bound_0" } });
+    await settle();
+    await old.cleanup();
+    expect(group!.inherited.size).toBe(256);
+    expect(group!.inherited.has("ses_bound_0")).toBe(true);
+    expect(group!.inherited.has("ses_bound_299")).toBe(true);
+    expect(group!.inherited.has("ses_bound_44")).toBe(false);
+    expect(group!.inherited.has("ses_bound_45")).toBe(true);
+    await next.cleanup();
+  });
+
+  it("R10: an instance set up after every other has gone still takes over their running child", async () => {
+    // 2.3.0, once in 19 runs: the old instance was disposed before the new one was set up.
+    const seen: Seen[] = [];
+    const old = await instance("old", seen);
+    await old.feed(0, completion(child));
+    await old.cleanup();
+    const next = await instance("new", seen);
+    await next.feed(completion(child), rows.length);
+    await next.cleanup();
+    expect(seen.filter((entry) => entry.by === "new").map(({ event, session }) => ({ event, session }))).toEqual([
+      { event: "turn.stop", session: child },
+      { event: "agent.stop", session: parent },
+      { event: "turn.stop", session: parent },
+    ]);
+  });
+
+  it("R11: an event without an id is still reported once, by the newest that knows it", async () => {
+    const seen: Seen[] = [];
+    const old = await instance("old", seen);
+    const next = await instance("new", seen);
+    for (const each of [old, next]) await each.prompt(prompt(parent));
+    const { id: _id, ...anonymous } = rows[completion(parent)]!.event;
+    for (const each of [old, next]) each.publish(anonymous);
+    await settle();
+    for (const each of [old, next]) await each.cleanup();
+    expect(seen.map(({ by, event }) => ({ by, event }))).toEqual([{ by: "new", event: "turn.stop" }]);
+  });
+
+  /** The one group's handed-over sessions, read from the shared registry. */
+  const handedOver = () =>
+    [
+      ...((globalThis as Record<symbol, Map<string, { inherited: Map<string, unknown> }>>)[
+        instancesRegistry
+      ]?.values() ?? []),
+    ][0]?.inherited;
+  /** A completion of the parent's, constructed with its own event id. */
+  const stopped = (id: string) => ({ id, type: "session.execution.succeeded", data: { sessionID: parent } });
+  /** A hook that waits until released: a busy queue. */
+  const gate = () => {
+    let release!: () => void;
+    const until = new Promise<void>((resolve) => (release = resolve));
+    return { until, release };
+  };
+
+  it("R9b: a later handover of idle sessions evicts them before an earlier one's running execution", async () => {
+    const seen: Seen[] = [];
+    const running = await instance("running", seen);
+    await running.prompt({ hook: "prompt", directory, event: { sessionID: "ses_still_running" } });
+    running.publish({ id: "evt_started", type: "session.execution.started", data: { sessionID: "ses_still_running" } });
+    await settle();
+    await running.cleanup();
+    const idle = await instance("idle", seen);
+    for (let index = 0; index < 256; index++)
+      await idle.prompt({ hook: "prompt", directory, event: { sessionID: `ses_idle_${index}` } });
+    await idle.cleanup();
+    expect(handedOver()!.size).toBe(256);
+    expect(handedOver()!.has("ses_still_running")).toBe(true);
+    expect(handedOver()!.has("ses_idle_0")).toBe(false);
+  });
+
+  for (const subscription of ["throws", "ends"] as const)
+    it(`R12: a newer instance whose subscription ${subscription === "throws" ? "threw" : "ended"} does not silence an older one`, async () => {
+      const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+      const seen: Seen[] = [];
+      const old = await instance("old", seen);
+      const next = await instance("new", seen, { subscription });
+      // Both took the parent's prompt, so the newer one knows the session.
+      for (const each of [old, next]) await each.prompt(prompt(parent));
+      await settle();
+      old.publish(rows[completion(parent)]!.event);
+      await settle();
+      for (const each of [old, next]) await each.cleanup();
+      errors.mockRestore();
+      expect(seen.map(({ by, event, session }) => ({ by, event, session }))).toEqual([
+        { by: "old", event: "turn.stop", session: parent },
+      ]);
+    });
+
+  it("R13: a child handed over without its link is still looked up at its next prompt", async () => {
+    // The old instance never saw the child created and had no session.get, so
+    // it handed the child on as a plain session; the new one's subscription
+    // adopts it before the child's prompt arrives.
+    const seen: Seen[] = [];
+    const lookups: string[] = [];
+    const get = ({ sessionID }: { sessionID: string }) => {
+      lookups.push(sessionID);
+      return { parentID: parent, agent: "general", location: { directory } };
+    };
+    const old = await instance("old", seen);
+    await old.feed(0, completion(child), undefined, (row) => row === created);
+    const next = await instance("new", seen, { get });
+    await old.cleanup();
+    next.publish({ id: "evt_status", type: "session.status", data: { sessionID: child } });
+    await settle();
+    await next.prompt(prompt(child));
+    await next.feed(completion(child), rows.length);
+    await next.cleanup();
+    expect(lookups).toEqual([child]);
+    expect(seen.filter((entry) => entry.event === "agent.stop").map(({ by, agentId }) => ({ by, agentId }))).toEqual([
+      { by: "new", agentId: child },
+    ]);
+  });
+
+  it("Q3: a child prompted at the new instance before it adopts the handover still gets the handed-over text", async () => {
+    // 2.3.0: the old instance is disposed while the child still runs, and the
+    // prompt reaches the new instance before any of the child's events does:
+    // steered into that execution, which only the handover carries. (A prompt
+    // while the old instance still lives takes its execution over at once:
+    // Q5.) The prompt is its own message, so its id differs from the child's
+    // first prompt's.
+    const seen: Seen[] = [];
+    const old = await instance("old", seen);
+    await old.feed(0, completion(child));
+    const next = await instance("new", seen);
+    await old.cleanup();
+    await next.prompt({ hook: "prompt", directory, event: { sessionID: child, messageID: "msg_steered" } });
+    await next.feed(completion(child), completion(child) + 1);
+    // A later execution of the child that no prompt started: the steered
+    // prompt's id must not land on it.
+    next.publish({ id: "evt_again", type: "session.execution.started", data: { sessionID: child } });
+    next.publish({ id: "evt_again_done", type: "session.execution.succeeded", data: { sessionID: child } });
+    await settle();
+    await next.cleanup();
+    expect(
+      seen
+        .filter((entry) => entry.event === "turn.stop" && entry.session === child)
+        .map(({ by, lastMessage, turnId }) => ({ by, lastMessage, turnId })),
+    ).toEqual([
+      { by: "new", lastMessage: "hooknostic-child-result", turnId: prompt(child)!.event["messageID"] },
+      { by: "new", lastMessage: undefined, turnId: undefined },
+    ]);
+  });
+
+  it("Q4: with three instances, only the newest takes over what the middle one handed on", async () => {
+    const seen: Seen[] = [];
+    const oldest = await instance("oldest", seen);
+    const middle = await instance("middle", seen);
+    await middle.feed(0, completion(child));
+    const latest = await instance("latest", seen);
+    await middle.cleanup();
+    // The oldest hears each event first, as OpenCode delivered them.
+    await latest.feed(completion(child), rows.length, [oldest, latest]);
+    expect(handedOver()!.has(child)).toBe(false);
+    for (const each of [oldest, latest]) await each.cleanup();
+    expect(
+      seen
+        .filter((entry) => entry.session === child || entry.agentId === child)
+        .map(({ by, event }) => ({ by, event })),
+    ).toEqual([
+      { by: "latest", event: "turn.stop" },
+      { by: "latest", event: "agent.stop" },
+    ]);
+  });
+
+  it("R15: a successor reading a completion while the old instance drains a busy queue finds it handed over", async () => {
+    const busy = gate();
+    const seen: Seen[] = [];
+    const old = await instance("old", seen, { block: { session: parent, until: busy.until } });
+    await old.feed(0, completion(child));
+    // A stop of the parent's is still running in the old instance.
+    old.publish(stopped("evt_busy"));
+    await settle();
+    const next = await instance("new", seen);
+    const closing = old.cleanup();
+    await next.feed(completion(child), completion(child) + 1);
+    busy.release();
+    await closing;
+    await next.cleanup();
+    expect(seen.filter((entry) => entry.by === "new").map(({ event, session }) => ({ event, session }))).toEqual([
+      { event: "turn.stop", session: child },
+      { event: "agent.stop", session: parent },
+    ]);
+  });
+
+  it("R16: an event the host still yields after the abort is not read", async () => {
+    // Read, it would let the disposed instance take back its own handover:
+    // no newer instance is live yet (2.3.0, once in the captures).
+    const seen: Seen[] = [];
+    const old = await instance("old", seen, {
+      afterAbort: { id: "evt_late", type: "session.status", data: { sessionID: child } },
+    });
+    await old.feed(0, completion(child));
+    await old.cleanup();
+    const next = await instance("new", seen);
+    await next.feed(completion(child), completion(child) + 1);
+    await next.cleanup();
+    expect(seen.filter((entry) => entry.by === "new").map(({ event }) => event)).toEqual(["turn.stop", "agent.stop"]);
+  });
+
+  // An accepted, documented limit (#238 records the reasoning), pinned here so
+  // that any change to it is deliberate: a claim taken by an instance that is
+  // then disposed before its queued work runs is reported by no instance.
+  it("L1 (#238): a second reload while the newer instance still has a stop queued drops that stop", async () => {
+    const busy = gate();
+    const seen: Seen[] = [];
+    const first = await instance("first", seen);
+    const second = await instance("second", seen, { block: { session: parent, until: busy.until } });
+    for (const each of [first, second]) await each.prompt(prompt(parent));
+    for (const each of [first, second]) each.publish(stopped("evt_pin_running"));
+    await settle();
+    for (const each of [first, second]) each.publish(stopped("evt_pin_queued"));
+    await settle();
+    // The second reload: a third instance, and the second disposed with that stop still queued.
+    const third = await instance("third", seen);
+    const closing = second.cleanup();
+    busy.release();
+    await closing;
+    for (const each of [first, third]) await each.cleanup();
+    // The first instance knew the session and yielded; nobody reports evt_pin_queued.
+    expect(seen.map(({ by, event }) => `${by} ${event}`)).toEqual(["second turn.stop"]);
+  });
+
+  it("L2 (#238): a session learned from a prompt after another instance's claim is not reported by either", async () => {
+    const busy = gate();
+    const seen: Seen[] = [];
+    const old = await instance("old", seen, { block: { session: parent, until: busy.until } });
+    const next = await instance("new", seen);
+    await old.prompt(prompt(parent));
+    for (const each of [old, next]) each.publish(stopped("evt_pin_running"));
+    await settle();
+    // Claimed by the old instance, queued behind its running stop.
+    old.publish(stopped("evt_pin_queued"));
+    await settle();
+    // The new instance learns the session only now, then reads the same stop.
+    await next.prompt(prompt(parent));
+    next.publish(stopped("evt_pin_queued"));
+    await settle();
+    const closing = old.cleanup();
+    busy.release();
+    await closing;
+    await next.cleanup();
+    // Before #236 the new instance reported evt_pin_queued; now nobody does.
+    expect(seen.map(({ by, event }) => `${by} ${event}`)).toEqual(["old turn.stop"]);
+  });
+
+  it("Q5: a prompt steered into an execution the old instance still runs keeps that execution's text and id", async () => {
+    // The 2.0.17 and 2.2.6 order: the completion reaches both instances while
+    // the old one lives. The new instance took the steered prompt, so it
+    // reports; the old one holds the execution.
+    const seen: Seen[] = [];
+    const text = rows.findIndex(
+      (row) => row.event["type"] === "session.text.ended" && data(row)["sessionID"] === child,
+    );
+    const old = await instance("old", seen);
+    await old.feed(0, text + 1);
+    const next = await instance("new", seen);
+    // A segment both instances buffer: still unread by the new one when the
+    // prompt takes the old one's text over, then read.
+    next.publish(rows[text]!.event);
+    void next.prompt({ hook: "prompt", directory, event: { sessionID: child, messageID: "msg_steered" } });
+    await settle();
+    await old.feed(text + 1, completion(child) + 1, [old, next]);
+    // A later execution of the child that no prompt started.
+    for (const each of [old, next]) {
+      each.publish({ id: "evt_later", type: "session.execution.started", data: { sessionID: child } });
+      each.publish({ id: "evt_later_done", type: "session.execution.succeeded", data: { sessionID: child } });
+    }
+    await settle();
+    for (const each of [old, next]) await each.cleanup();
+    expect(
+      seen
+        .filter((entry) => entry.session === child || entry.agentId === child)
+        .map(({ by, event, lastMessage, turnId }) => ({ by, event, lastMessage, turnId })),
+    ).toEqual([
+      {
+        by: "new",
+        event: "turn.stop",
+        lastMessage: "hooknostic-child-result",
+        turnId: prompt(child)!.event["messageID"],
+      },
+      { by: "new", event: "agent.stop", lastMessage: "hooknostic-child-result", turnId: undefined },
+      { by: "new", event: "turn.stop", lastMessage: undefined, turnId: undefined },
+      { by: "new", event: "agent.stop", lastMessage: undefined, turnId: undefined },
+    ]);
+  });
+
+  it("Q6: a handover merges into a session the new instance already runs, and never overwrites", async () => {
+    const seen: Seen[] = [];
+    const old = await instance("old", seen);
+    await old.feed(0, completion(child));
+    const next = await instance("new", seen, { types: true });
+    // The new instance's own link and execution, different from the old one's.
+    for (const event of [
+      {
+        id: "evt_own_created",
+        type: "session.created",
+        data: { sessionID: child, parentID: parent, agent: "explore", location: { directory } },
+      },
+      { id: "evt_own_started", type: "session.execution.started", data: { sessionID: child } },
+      {
+        id: "evt_own_text",
+        type: "session.text.ended",
+        data: { sessionID: child, assistantMessageID: "msg_own", ordinal: 0, text: "own text" },
+      },
+    ])
+      next.publish(event);
+    await settle();
+    await old.cleanup();
+    next.publish(rows[completion(child)]!.event);
+    await settle();
+    await next.cleanup();
+    expect(
+      seen
+        .filter((entry) => entry.by === "new")
+        .map(({ event, agentType, lastMessage }) => ({ event, agentType, lastMessage })),
+    ).toEqual([
+      { event: "turn.stop", agentType: undefined, lastMessage: "own text" },
+      { event: "agent.stop", agentType: "explore", lastMessage: "own text" },
+    ]);
+  });
+
+  it("Q7: a reload that adds field-reading hooks gives a steered prompt's id to no execution", async () => {
+    // The old instance's hooks read no turn fields; the new one's do, and
+    // prevent every stop. The prompt is steered into the parent's execution,
+    // which only the old instance saw start.
+    const seen: Seen[] = [];
+    const posts: unknown[] = [];
+    const old = await instance("old", seen, { bare: true });
+    await old.feed(0, completion(parent));
+    const next = await instance("new", seen, { posts });
+    await next.prompt({ hook: "prompt", directory, event: { sessionID: parent, messageID: "msg_steered" } });
+    await old.feed(completion(parent), completion(parent) + 1, [old, next]);
+    // The continuation the prevention starts: no prompt hook runs for it.
+    for (const each of [old, next]) {
+      each.publish({ id: "evt_continued", type: "session.execution.started", data: { sessionID: parent } });
+      each.publish({ id: "evt_continued_done", type: "session.execution.succeeded", data: { sessionID: parent } });
+    }
+    await settle();
+    for (const each of [old, next]) await each.cleanup();
+    // The old instance kept no prompt id, so both are missing; never the steered one.
+    expect(
+      seen
+        .filter((entry) => entry.session === parent && entry.event === "turn.stop")
+        .map(({ by, turnId }) => ({ by, turnId })),
+    ).toEqual([
+      { by: "new", turnId: undefined },
+      { by: "new", turnId: undefined },
+    ]);
+  });
+
+  it("Q8: a steered prompt copies the newest other instance's execution", async () => {
+    // Three instances: the oldest reads no turn fields, the middle one took
+    // the child's prompt and holds its text and id.
+    const seen: Seen[] = [];
+    const text = rows.findIndex(
+      (row) => row.event["type"] === "session.text.ended" && data(row)["sessionID"] === child,
+    );
+    const oldest = await instance("oldest", seen, { bare: true });
+    const middle = await instance("middle", seen);
+    await middle.feed(0, text + 1, [oldest, middle]);
+    const latest = await instance("latest", seen);
+    await latest.prompt({ hook: "prompt", directory, event: { sessionID: child, messageID: "msg_steered" } });
+    await middle.feed(text + 1, completion(child) + 1, [oldest, middle, latest]);
+    for (const each of [oldest, middle, latest]) await each.cleanup();
+    expect(
+      seen
+        .filter((entry) => entry.session === child && entry.event === "turn.stop")
+        .map(({ by, lastMessage, turnId }) => ({ by, lastMessage, turnId })),
+    ).toEqual([{ by: "latest", lastMessage: "hooknostic-child-result", turnId: prompt(child)!.event["messageID"] }]);
+  });
+
+  it("R17: an older instance reports again once the newer one is disposed", async () => {
+    const seen: Seen[] = [];
+    const older = await instance("older", seen);
+    const newer = await instance("newer", seen);
+    for (const each of [older, newer]) await each.prompt(prompt(parent));
+    await newer.cleanup();
+    older.publish(rows[completion(parent)]!.event);
+    await settle();
+    await older.cleanup();
+    expect(seen.map(({ by, event }) => ({ by, event }))).toEqual([{ by: "older", event: "turn.stop" }]);
   });
 });
