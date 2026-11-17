@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { mkdir, mkdtemp, readdir, realpath, rm, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
@@ -263,10 +263,16 @@ try {
   );
   await run("npm", ["install", "--ignore-scripts", "--no-audit", "--no-fund"], downgrade);
   // The layout under test: the CLI's in-range Zod, hoisted to the root, is
-  // what the replacement must displace.
+  // what the replacement must displace, and the CLI's edge to the SDK is
+  // served by the hoisted SDK, not a nested copy: that non-root edge into the
+  // SDK is one of the loop's three conditions.
   const hoisted = installedVersion("zod/package.json", downgrade);
   assert.equal(dirname(hoisted.path), join(downgrade, "node_modules", "zod"));
   assert.ok(semver.satisfies(hoisted.version, range), `the hoisted Zod ${hoisted.version} must satisfy ${range}`);
+  assert.ok(
+    !existsSync(join(downgrade, "node_modules", "hooknostic", "node_modules", "@hooknostic", "sdk")),
+    "the CLI must share the hoisted SDK, not nest its own",
+  );
   const older = "3.23.8";
   assert.ok(!semver.satisfies(older, range), `zod@${older} must fall outside ${range}`);
   const replace = await runProcess(
@@ -282,8 +288,10 @@ try {
     `npm install zod@${older} must end on its own, not loop (#240): ${replace.failure?.message}; ` +
       `${overrides} "overriding peer dependency" warnings`,
   );
+  // npm's own error code line, not "could not resolve", which the loop's
+  // warnings print as well.
   assert.ok(
-    !replace.ok && /\bERESOLVE\b/.test(replaceOutput) && /could not resolve/i.test(replaceOutput),
+    !replace.ok && /^npm error code ERESOLVE$/m.test(replaceOutput),
     `npm install zod@${older} must fail with ERESOLVE (exit ${replace.exitCode}):\n${replaceOutput}`,
   );
   console.log(`npm downgrade to zod@${older}: refused with ERESOLVE (exit ${replace.exitCode}), no loop`);
