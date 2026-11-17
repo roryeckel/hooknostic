@@ -139,7 +139,7 @@ in under a second. Three conditions together trigger it: an optional peer on
 a package, a non-root edge into that package (`hooknostic` depends on
 `@hooknostic/sdk`), and an explicit replacement of the peer's package already
 in the tree. Two tiny packages with no Hooknostic code reproduce it on every
-npm from 7.24.2 to 12.2.2; 7.24.1 and earlier fail cleanly.
+npm tested from 7.24.2 through 12.2.2; 7.24.1 and earlier fail cleanly.
 
 Measured on npm 10 and 11, pnpm 12 (default, without auto-installed peers,
 with strict peers, and both) and Yarn 4 (`node-modules` and Plug'n'Play), the

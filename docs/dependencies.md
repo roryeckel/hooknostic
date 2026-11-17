@@ -41,9 +41,12 @@ as for a security fix, not on every Zod release. The published CLI also takes
 and its Zod included, is inlined into its bundle, so that dependency exists for
 generated artifacts. A shim's SDK schemas take Zod from the CLI's install when
 the SDK reaches no Zod in the project, silently, or reaches one outside the
-SDK's peer range, including any Zod 3.24 or older, which has no `zod/v4`; that
-case reports HN109. Sharing the catalog keeps that dependency equal to the
-peer range, so the copy it supplies always satisfies it. When the project's
+SDK's peer range. A project that installs the CLI beside the SDK normally
+reaches the CLI's Zod; reaching none happens in an SDK-only project built by a
+global or `npx` CLI, or under Yarn Plug'n'Play. Reaching a Zod outside the
+range, including any Zod 3.24 or older, which has no `zod/v4`, reports HN109.
+Sharing the catalog keeps that dependency equal to the peer range, so the copy
+it supplies always satisfies it. When the project's
 Zod satisfies the range, the SDK and the project's own code share that one
 installed copy. This follows the [upstream peer dependency guidance](https://zod.dev/library-authors#how-to-configure-peer-dependencies)
 and lets schema types resolve against the consumer's instance. Zod 3 peers and
