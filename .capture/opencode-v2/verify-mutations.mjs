@@ -33,7 +33,7 @@ const cases = [
   // The late-child test kills it from 2.3.0, where a child's result starts an
   // unprompted parent execution; on every build the stop test's prevention
   // continuation, which no prompt starts either, does.
-  ["subagent-late-turn-id", "packages/adapter-opencode/src/v2/shim.ts", "const prompt = pendingPrompts.get(sessionID);\n                  pendingPrompts.delete(sessionID);", "const prompt = pendingPrompts.get(sessionID);", playback, "late background child|prevents and notifies"],
+  ["subagent-late-turn-id", "packages/adapter-opencode/src/v2/shim.ts", "const prompt = pendingPrompts.get(sessionID);\n                pendingPrompts.delete(sessionID);", "const prompt = pendingPrompts.get(sessionID);", playback, "late background child|prevents and notifies"],
   ["audit-notifications", ".capture/opencode-v2/notification-server.js", 'await registration.events.emit("message", { text: "hooknostic-server-notification" });', 'await Promise.resolve();', playback, "companion TUI notification"],
   ["audit-oauth-refresh", ".capture/opencode-v2/oauth-mcp.mjs", 'Date.now() < expires', 'true', playback, "OAuth"],
   ["audit-error-drift", "scripts/compare-capture-shapes.mjs", 'event.status === "error"', 'false', "scripts/compare-capture-shapes.test.mjs", "separates v2 typed"],
@@ -320,10 +320,15 @@ const cases = [
   // disposed instance leaves the group; the plugin root keys the group; a
   // handover merges, never overwrites.
   ["reload-steer-no-takeover", shim, "const running = runningElsewhere(sessionID);", 'const running = undefined as Inherited["execution"];', unit, "Q5:"],
-  ["reload-text-not-deduplicated", shim, 'if (!running.text.some((segment) => segment["ordinal"] === data.ordinal))', "if (true)", unit, "Q5:"],
+  ["reload-text-not-deduplicated", shim, '!running.text.some((segment) => segment["ordinal"] === data.ordinal)', "true", unit, "Q5:"],
+  // Second review round: every instance tracks its running executions, so a
+  // reload that adds field-reading hooks still drops a steered prompt's id;
+  // and the copy comes from the newest other instance that has one.
+  ["reload-tracking-only-when-read", shim, '              if (event.type === "session.execution.started") {', '              if (event.type === "session.execution.started" && (readsText || readsPrompt)) {', unit, "Q7:"],
+  ["reload-steer-copies-oldest", shim, "(a, b) => b.generation - a.generation", "(a, b) => a.generation - b.generation", unit, "Q8:"],
   ["reload-cleanup-keeps-live", shim, "    group.live.delete(peer);\n    if (joined) {", "    if (joined) {", unit, "R17:"],
   ["reload-key-without-root", shim, '[plugin.name, targetId, here, options.pluginRoot ?? ""]', "[plugin.name, targetId, here]", unit, "R4:"],
-  ["reload-adopt-overwrites-execution", shim, "if ((readsText || readsPrompt) && inherited.execution !== undefined && !executions.has(sessionID)) {", "if ((readsText || readsPrompt) && inherited.execution !== undefined) {", unit, "Q6:"],
+  ["reload-adopt-overwrites-execution", shim, "if (inherited.execution !== undefined && !executions.has(sessionID)) {", "if (inherited.execution !== undefined) {", unit, "Q6:"],
   ["reload-adopt-overwrites-child", shim, "if (inherited.child !== undefined && !children.has(sessionID)) children.set(", "if (inherited.child !== undefined) children.set(", unit, "Q6:"],
   // Playback on the real binary.
   ["agent-start-playback", "packages/adapter-opencode/src/v2/shim.ts", '              if (event.type === "session.created" && child !== undefined && events.has("agent.start"))\n                enqueue(sessionID, () => run("event", event, false, undefined, child));\n', "", playback, "one agent.stop under its parent"],

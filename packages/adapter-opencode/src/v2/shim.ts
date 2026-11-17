@@ -195,10 +195,17 @@ export async function setupOpenCodeV2(
     }
     return group.inherited.get(sessionID)?.child;
   };
-  /** An execution another live instance of this bundle is still running for the session. */
+  /**
+   * An execution another live instance of this bundle is still running for
+   * the session, from the newest that has one: the latest loaded hooks, and
+   * so the instance most likely to hold the prompt id. If that execution had
+   * in fact ended unheard, the prompt taking the copy drops its own id, which
+   * then goes missing, never wrong.
+   */
   const runningElsewhere = (sessionID: string): Inherited["execution"] => {
-    for (const other of group.live) {
-      const found = other === peer ? undefined : other.running(sessionID);
+    const others = [...group.live].filter((other) => other !== peer).sort((a, b) => b.generation - a.generation);
+    for (const other of others) {
+      const found = other.running(sessionID);
       if (found !== undefined) return found;
     }
     return undefined;
@@ -456,8 +463,12 @@ export async function setupOpenCodeV2(
     local.add(sessionID);
     if (inherited.child !== undefined && !children.has(sessionID)) children.set(sessionID, inherited.child);
     if (!children.has(sessionID)) unlinked.add(sessionID);
-    // Only where something reads it: an execution nobody buffers never ends here.
-    if ((readsText || readsPrompt) && inherited.execution !== undefined && !executions.has(sessionID)) {
+    // Every instance tracks each execution's end, so an execution taken over
+    // here always ends here too. A prompt this instance took meanwhile was
+    // steered into it, or queued behind it, which cannot be told apart here;
+    // either way its id is dropped: missing, never wrong, even if the
+    // execution had in fact ended unheard and the prompt started the next one.
+    if (inherited.execution !== undefined && !executions.has(sessionID)) {
       executions.set(sessionID, inherited.execution);
       pendingPrompts.delete(sessionID);
     }
@@ -527,8 +538,11 @@ export async function setupOpenCodeV2(
             // stop reports them, and this prompt then waits for no execution
             // (below), as it would if this instance had run it all along. A
             // copy: both instances keep buffering the same events, and a
-            // segment buffered twice is kept once.
-            if (sessionID !== undefined && (readsText || readsPrompt) && !executions.has(sessionID)) {
+            // segment buffered twice is kept once. Every instance tracks its
+            // running executions, whatever its hooks, so this holds even when
+            // the other was loaded with hooks that read no turn fields: the copy
+            // then has no prompt id, and the turn id is missing, never wrong.
+            if (sessionID !== undefined && !executions.has(sessionID)) {
               const running = runningElsewhere(sessionID);
               if (running !== undefined)
                 executions.set(sessionID, {
@@ -658,31 +672,41 @@ export async function setupOpenCodeV2(
               // a completion is queued behind a slow hook, but the text it reports
               // must be the text that ended before it (captured on 2.0.18:
               // session.text.ended, then session.step.ended, then succeeded).
+              // Every execution's start and end is tracked, whatever the hooks
+              // declare (#236): another instance of this bundle, loaded with
+              // hooks that read the turn's fields, may take a prompt steered into
+              // this execution and must learn that it runs, so that prompt's id
+              // waits for none. One small entry per running session. Its text
+              // is kept only when a hook reads it, and a prompt id only when a
+              // hook reads that (pendingPrompts is filled only then).
               let execution: OpenCodeV2Execution | undefined;
-              if (readsText || readsPrompt) {
-                if (event.type === "session.execution.started") {
-                  const prompt = pendingPrompts.get(sessionID);
-                  pendingPrompts.delete(sessionID);
-                  executions.set(sessionID, { ...(prompt ? { prompt } : {}), text: [] });
-                } else if (event.type === "session.text.ended" && readsText) {
-                  const running = executions.get(sessionID);
-                  if (running !== undefined) {
-                    // Only the latest assistant message's segments are kept: a memory
-                    // bound, since the decoder reports only the last message anyway.
-                    if (running.text.at(-1)?.["assistantMessageID"] !== data.assistantMessageID) running.text = [];
-                    // Kept once: text taken over from another instance (#236) may already hold it.
-                    if (!running.text.some((segment) => segment["ordinal"] === data.ordinal))
-                      running.text.push({
-                        assistantMessageID: data.assistantMessageID,
-                        ordinal: data.ordinal,
-                        text: data.text,
-                      });
-                  }
-                } else if (completions.has(String(event.type))) {
-                  const finished = executions.get(sessionID);
-                  executions.delete(sessionID);
-                  if (finished !== undefined) execution = finished;
+              if (event.type === "session.execution.started") {
+                const prompt = pendingPrompts.get(sessionID);
+                pendingPrompts.delete(sessionID);
+                executions.set(sessionID, { ...(prompt ? { prompt } : {}), text: [] });
+              } else if (event.type === "session.text.ended" && readsText) {
+                const running = executions.get(sessionID);
+                if (running !== undefined) {
+                  // Only the latest assistant message's segments are kept: a memory
+                  // bound, since the decoder reports only the last message anyway.
+                  if (running.text.at(-1)?.["assistantMessageID"] !== data.assistantMessageID) running.text = [];
+                  // Kept once: text taken over from another instance (#236) may
+                  // already hold it. A segment without a numeric ordinal is kept.
+                  if (
+                    typeof data.ordinal !== "number" ||
+                    !running.text.some((segment) => segment["ordinal"] === data.ordinal)
+                  )
+                    running.text.push({
+                      assistantMessageID: data.assistantMessageID,
+                      ordinal: data.ordinal,
+                      text: data.text,
+                    });
                 }
+              } else if (completions.has(String(event.type))) {
+                const finished = executions.get(sessionID);
+                executions.delete(sessionID);
+                // Passed on only when a hook reads it, as before (ADR-0027).
+                if (finished !== undefined && (readsText || readsPrompt)) execution = finished;
               }
               // Only these dispatch from the subscription; hooks reach one instance
               // already. Before agent.start and the pending lookup, so an instance

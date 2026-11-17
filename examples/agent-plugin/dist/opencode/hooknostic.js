@@ -7858,8 +7858,9 @@ async function setupOpenCodeV2(plugin, options2, ctx) {
     return group.inherited.get(sessionID)?.child;
   };
   const runningElsewhere = (sessionID) => {
-    for (const other of group.live) {
-      const found = other === peer ? void 0 : other.running(sessionID);
+    const others = [...group.live].filter((other) => other !== peer).sort((a, b) => b.generation - a.generation);
+    for (const other of others) {
+      const found = other.running(sessionID);
       if (found !== void 0) return found;
     }
     return void 0;
@@ -8016,7 +8017,7 @@ async function setupOpenCodeV2(plugin, options2, ctx) {
     local.add(sessionID);
     if (inherited.child !== void 0 && !children.has(sessionID)) children.set(sessionID, inherited.child);
     if (!children.has(sessionID)) unlinked.add(sessionID);
-    if ((readsText || readsPrompt) && inherited.execution !== void 0 && !executions.has(sessionID)) {
+    if (inherited.execution !== void 0 && !executions.has(sessionID)) {
       executions.set(sessionID, inherited.execution);
       pendingPrompts.delete(sessionID);
     }
@@ -8061,7 +8062,7 @@ async function setupOpenCodeV2(plugin, options2, ctx) {
               else if (readsLink) lookUp(sessionID);
             }
             if (sessionID !== void 0) local.add(sessionID);
-            if (sessionID !== void 0 && (readsText || readsPrompt) && !executions.has(sessionID)) {
+            if (sessionID !== void 0 && !executions.has(sessionID)) {
               const running = runningElsewhere(sessionID);
               if (running !== void 0)
                 executions.set(sessionID, {
@@ -8156,27 +8157,25 @@ async function setupOpenCodeV2(plugin, options2, ctx) {
                   children.set(sessionID, { parentID: data.parentID, agent: data.agent });
               } else if (!local.has(sessionID)) continue;
               let execution;
-              if (readsText || readsPrompt) {
-                if (event.type === "session.execution.started") {
-                  const prompt = pendingPrompts.get(sessionID);
-                  pendingPrompts.delete(sessionID);
-                  executions.set(sessionID, { ...prompt ? { prompt } : {}, text: [] });
-                } else if (event.type === "session.text.ended" && readsText) {
-                  const running = executions.get(sessionID);
-                  if (running !== void 0) {
-                    if (running.text.at(-1)?.["assistantMessageID"] !== data.assistantMessageID) running.text = [];
-                    if (!running.text.some((segment) => segment["ordinal"] === data.ordinal))
-                      running.text.push({
-                        assistantMessageID: data.assistantMessageID,
-                        ordinal: data.ordinal,
-                        text: data.text
-                      });
-                  }
-                } else if (completions.has(String(event.type))) {
-                  const finished = executions.get(sessionID);
-                  executions.delete(sessionID);
-                  if (finished !== void 0) execution = finished;
+              if (event.type === "session.execution.started") {
+                const prompt = pendingPrompts.get(sessionID);
+                pendingPrompts.delete(sessionID);
+                executions.set(sessionID, { ...prompt ? { prompt } : {}, text: [] });
+              } else if (event.type === "session.text.ended" && readsText) {
+                const running = executions.get(sessionID);
+                if (running !== void 0) {
+                  if (running.text.at(-1)?.["assistantMessageID"] !== data.assistantMessageID) running.text = [];
+                  if (typeof data.ordinal !== "number" || !running.text.some((segment) => segment["ordinal"] === data.ordinal))
+                    running.text.push({
+                      assistantMessageID: data.assistantMessageID,
+                      ordinal: data.ordinal,
+                      text: data.text
+                    });
                 }
+              } else if (completions.has(String(event.type))) {
+                const finished = executions.get(sessionID);
+                executions.delete(sessionID);
+                if (finished !== void 0 && (readsText || readsPrompt)) execution = finished;
               }
               if ((type === "session.created" || completions.has(type) || type === "session.compaction.ended") && (superseded(type, sessionID) || !claim2(event.id)))
                 continue;

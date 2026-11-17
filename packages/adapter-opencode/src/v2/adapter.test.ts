@@ -1852,6 +1852,8 @@ describe("v2 reloaded plugin instances (#236)", () => {
       subscription?: "throws" | "ends";
       /** The plugin root a package-delivered bundle resolves (`ctx.plugin.root`). */
       pluginRoot?: string;
+      /** Hooks that declare no fields: the instance needs neither text nor turn ids. */
+      bare?: boolean;
       /** Also record the agent type. */
       types?: boolean;
       /** One buffered event the host still yields after the abort. */
@@ -1893,14 +1895,14 @@ describe("v2 reloaded plugin instances (#236)", () => {
               })
             : hook("turn.stop", {
                 id: "stop",
-                fields: ["lastMessage", "correlation.turnId"],
+                fields: options.bare ? [] : ["lastMessage", "correlation.turnId"],
                 async run(event) {
                   if (options.block !== undefined && event.session.id === options.block.session)
                     await options.block.until;
                   note(event);
                 },
               }),
-          hook("agent.stop", { id: "agent", fields: ["lastMessage"], run: note }),
+          hook("agent.stop", { id: "agent", fields: options.bare ? [] : ["lastMessage"], run: note }),
           ...(options.extra ?? []).map((name) => hook(name, { id: name, run: note })),
         ],
       }),
@@ -2463,6 +2465,56 @@ describe("v2 reloaded plugin instances (#236)", () => {
       { event: "turn.stop", agentType: undefined, lastMessage: "own text" },
       { event: "agent.stop", agentType: "explore", lastMessage: "own text" },
     ]);
+  });
+
+  it("Q7: a reload that adds field-reading hooks gives a steered prompt's id to no execution", async () => {
+    // The old instance's hooks read no turn fields; the new one's do, and
+    // prevent every stop. The prompt is steered into the parent's execution,
+    // which only the old instance saw start.
+    const seen: Seen[] = [];
+    const posts: unknown[] = [];
+    const old = await instance("old", seen, { bare: true });
+    await old.feed(0, completion(parent));
+    const next = await instance("new", seen, { posts });
+    await next.prompt({ hook: "prompt", directory, event: { sessionID: parent, messageID: "msg_steered" } });
+    await old.feed(completion(parent), completion(parent) + 1, [old, next]);
+    // The continuation the prevention starts: no prompt hook runs for it.
+    for (const each of [old, next]) {
+      each.publish({ id: "evt_continued", type: "session.execution.started", data: { sessionID: parent } });
+      each.publish({ id: "evt_continued_done", type: "session.execution.succeeded", data: { sessionID: parent } });
+    }
+    await settle();
+    for (const each of [old, next]) await each.cleanup();
+    // The old instance kept no prompt id, so both are missing; never the steered one.
+    expect(
+      seen
+        .filter((entry) => entry.session === parent && entry.event === "turn.stop")
+        .map(({ by, turnId }) => ({ by, turnId })),
+    ).toEqual([
+      { by: "new", turnId: undefined },
+      { by: "new", turnId: undefined },
+    ]);
+  });
+
+  it("Q8: a steered prompt copies the newest other instance's execution", async () => {
+    // Three instances: the oldest reads no turn fields, the middle one took
+    // the child's prompt and holds its text and id.
+    const seen: Seen[] = [];
+    const text = rows.findIndex(
+      (row) => row.event["type"] === "session.text.ended" && data(row)["sessionID"] === child,
+    );
+    const oldest = await instance("oldest", seen, { bare: true });
+    const middle = await instance("middle", seen);
+    await middle.feed(0, text + 1, [oldest, middle]);
+    const latest = await instance("latest", seen);
+    await latest.prompt({ hook: "prompt", directory, event: { sessionID: child, messageID: "msg_steered" } });
+    await middle.feed(text + 1, completion(child) + 1, [oldest, middle, latest]);
+    for (const each of [oldest, middle, latest]) await each.cleanup();
+    expect(
+      seen
+        .filter((entry) => entry.session === child && entry.event === "turn.stop")
+        .map(({ by, lastMessage, turnId }) => ({ by, lastMessage, turnId })),
+    ).toEqual([{ by: "latest", lastMessage: "hooknostic-child-result", turnId: prompt(child)!.event["messageID"] }]);
   });
 
   it("R17: an older instance reports again once the newer one is disposed", async () => {
