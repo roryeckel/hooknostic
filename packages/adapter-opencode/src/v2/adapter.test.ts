@@ -2321,9 +2321,9 @@ describe("v2 reloaded plugin instances (#236)", () => {
     expect(seen.filter((entry) => entry.by === "new").map(({ event }) => event)).toEqual(["turn.stop", "agent.stop"]);
   });
 
-  // Accepted limit, tracked in #238 and pinned here so a change to it is
-  // deliberate: a claim taken by an instance that is then disposed before its
-  // queued work runs is reported by no instance.
+  // An accepted, documented limit (#238 records the reasoning), pinned here so
+  // that any change to it is deliberate: a claim taken by an instance that is
+  // then disposed before its queued work runs is reported by no instance.
   it("L1 (#238): a second reload while the newer instance still has a stop queued drops that stop", async () => {
     const busy = gate();
     const seen: Seen[] = [];

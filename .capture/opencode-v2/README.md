@@ -476,7 +476,8 @@ Not claimed, or claimed with a limit (see `docs/opencode-families.md`):
   know the session yet.
 - **A second reload** while the newer instance still has work running,
   queued or pending can drop a stop the older one would have reported
-  (accepted limit, #238; pinned by unit tests L1 and L2).
+  (accepted and documented; #238 records the reasoning; pinned by unit
+  tests L1 and L2).
 - **Compaction during an overlap,** and a session the new instance was
   prompted for before the handover (unit test Q3), are covered by unit tests
   only: no drive reproduces them.

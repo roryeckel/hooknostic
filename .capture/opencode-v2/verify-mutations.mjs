@@ -261,7 +261,8 @@ const cases = [
   ["recovery-event-path", "packages/adapter-opencode/src/v2/shim.ts", "              else if (!local.has(sessionID)) continue;", "              else if (!local.has(sessionID)) {\n                lookUp(sessionID);\n                continue;\n              }", unit, "U12:"],
   // One dispatch per event across reloaded plugin instances, and the handover
   // of a disposed instance's sessions (#236). Unit tests R1-R16, Q3, Q4, and
-  // L1/L2, which pin the accepted limit tracked in #238.
+  // L1/L2, which pin the accepted, documented limit (#238 records the
+  // reasoning).
   ["reload-no-deposit", shim, "group.inherited.set(sessionID, {", "void sessionID, void ({", unit, "R1:|R10:|R15:"],
   ["reload-no-superseded", shim, "(superseded(type, sessionID) || !claim(event.id))", "!claim(event.id)", unit, "R2:|R5:"],
   ["reload-no-dedupe", shim, "(superseded(type, sessionID) || !claim(event.id))", "false", unit, "R2:|L1|L2"],

@@ -144,8 +144,9 @@ Limits:
   reported, because the older one yielded. The same holds when an older
   instance is disposed with a stop it claimed still queued, and the newer
   instance learned the session only after that claim; before #236 the newer
-  instance reported it. This is an accepted limit, tracked in
-  [#238](https://github.com/roryeckel/hooknostic/issues/238).
+  instance reported it. This limit is accepted and documented;
+  [#238](https://github.com/roryeckel/hooknostic/issues/238) records the
+  reasoning.
 - **One server process and one Hooknostic release.** A server restart, or a
   reload that also changes the Hooknostic release, leaves each instance
   reporting as before, so a reload that upgrades from a release without
