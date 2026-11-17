@@ -350,13 +350,17 @@ remembered or looked up). This is the shape of Copilot's captured
 (ADR-0027 rates them), so every `turn.stop` hook sees them; a top-level
 `turn.stop` has neither.
 
-**Recovery (`session.get`).** A child whose `session.created` this instance
-never saw is looked up when its prompt reaches this instance's prompt hook,
-and only there. The lookup is not awaited by the prompt. Only that child's
-own completion waits for it, in its own queue, at most 2 s. A lookup that
-throws, times out, or returns no `parentID` or another location leaves the
-session as before, silently. A recovered child is stored as a known child, so
-it also takes no stop prevention or notices.
+**Recovery (`session.get`).** Any session whose `session.created` this
+instance never saw is looked up when its prompt reaches this instance's
+prompt hook, and only there. That is not only a child: a top-level `serve`
+session created before lazy setup, and every existing session's first prompt
+after a reload, are looked up too. The lookup is not awaited by the prompt.
+Only that session's own completion waits for it, in its own queue, at most
+2 s (about 0.5 ms measured), so a top-level session's `turn.stop` can wait as
+well. Cleanup's abort settles a pending lookup at once, so disposal never
+waits on it. A lookup that throws, times out, or returns no `parentID` or
+another location leaves the session as before, silently. A recovered child is
+stored as a known child, so it also takes no stop prevention or notices.
 
 The procedure is `../opencode-v2-audit/session-get` (`probe.mjs` runs `serve`
 with only a probe plugin, which calls `ctx.session.get` from the prompt hook
@@ -417,7 +421,10 @@ Not recovered, and not claimed:
   old instance alive. After a follow-up, both instances dispatch the parent's
   and the child's `turn.stop`, and, with recovery, the child's `agent.stop`
   (reproduced with the shim). The event `id` is shared, so the duplicates are
-  identifiable; de-duplication is #236.
+  identifiable. A child created after such a reload is seen created by both
+  instances, so its `agent.start` and `session.start` are presumably
+  dispatched twice too: inferred from the code, not probed. De-duplication is
+  #236.
 - An interrupted child (its `turn.stop` carries the ids; no `agent.stop`),
   and agent ids on the child's other events (`tool.*`, `session.start`,
   `prompt.before`).

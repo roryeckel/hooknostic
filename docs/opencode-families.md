@@ -88,9 +88,15 @@ holding the prompt. This covers a follow-up to a child after a plugin reload,
 and a child created through the API before lazy plugin setup (2.2.6 and
 later; 2.0.17's API dropped the `parentID`). Such a child reports `agent.stop`
 and its agent ids, and takes no stop prevention or notices, but reports no
-`agent.start`. Only that child's own completion waits for the lookup, at most
-2 s. A lookup that fails, times out or finds no parent in this location leaves
-the child as an ordinary session. Still not recognized:
+`agent.start`. The lookup runs for any session whose `session.created` this
+instance did not see, not only for children: a top-level `serve` session
+created before lazy setup, and every existing session's first prompt after a
+reload, are looked up too. Only that session's own completion waits for it,
+at most 2 s (a lookup took about 0.5 ms in the probes), so a top-level
+session's `turn.stop` can wait as well. Other sessions are never held, and
+plugin cleanup never waits on a lookup. A lookup that fails, times out or
+finds no parent in this location leaves the session as it was. Still not
+recognized:
 
 - A background child still running when the plugin reloads. Its prompt went
   through the old instance, and on 2.3.0 that instance was disposed before
@@ -103,9 +109,12 @@ the child as an ordinary session. Still not recognized:
 
 On 2.0.17 a plugin reload while an execution runs leaves the old plugin
 instance alive, and both instances then dispatch that session's later stops
-(observed; a recovered child's `agent.stop` is duplicated too). De-duplication
-across instances, and recovering a child still running across a reload, are
-tracked in [#236](https://github.com/roryeckel/hooknostic/issues/236).
+(observed; a recovered child's `agent.stop` is duplicated too). A child created
+after such a reload is seen created by both instances, so its `agent.start`
+and `session.start` are presumably dispatched twice as well: inferred from the
+code, not probed. De-duplication across instances, and recovering a child
+still running across a reload, are tracked in
+[#236](https://github.com/roryeckel/hooknostic/issues/236).
 
 Before 2.3.0 a subagent runs in the foreground by default. With the tool's
 opt-in `background` argument, a child still running when
