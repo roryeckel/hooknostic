@@ -241,8 +241,11 @@ const cases = [
   ["recovery-not-stored", "packages/adapter-opencode/src/v2/shim.ts", "        children.set(sessionID, found);\n", "", unit, "U11:"],
   // Cleanup while a completion waits on its lookup: the wait must neither hold
   // disposal (the abort settles it) nor dispatch once it ends.
-  ["recovery-cleanup-guard", "packages/adapter-opencode/src/v2/shim.ts", "                  if (controller.signal.aborted) return;\n", "", unit, "U13:"],
+  ["recovery-cleanup-guard", "packages/adapter-opencode/src/v2/shim.ts", "so nothing is dispatched then.\n                  if (controller.signal.aborted) return;\n", "so nothing is dispatched then.\n", unit, "U13:"],
   ["recovery-cleanup-unraced", "packages/adapter-opencode/src/v2/shim.ts", "      LOOKUP_TIMEOUT_MS,\n      controller.signal,\n", "      LOOKUP_TIMEOUT_MS,\n", unit, "U14:"],
+  // Cleanup beginning while a recovered child's turn.stop hook runs: the
+  // agent.stop that follows inline must not start.
+  ["recovery-cleanup-recheck", "packages/adapter-opencode/src/v2/shim.ts", "                  // before it starts; this one follows inline, in the same order.\n                  if (controller.signal.aborted) return;\n", "                  // before it starts; this one follows inline, in the same order.\n", unit, "U15:"],
   ["recovery-event-path", "packages/adapter-opencode/src/v2/shim.ts", "            } else if (!local.has(sessionID)) continue;", "            } else if (!local.has(sessionID)) {\n              lookUp(sessionID);\n              continue;\n            }", unit, "U12:"],
   // Playback on the real binary.
   ["agent-start-playback", "packages/adapter-opencode/src/v2/shim.ts", '              if (event.type === "session.created" && child !== undefined && events.has("agent.start"))\n                enqueue(sessionID, () => run("event", event, false, undefined, child));\n', "", playback, "one agent.stop under its parent"],

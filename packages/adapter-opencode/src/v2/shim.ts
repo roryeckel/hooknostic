@@ -476,6 +476,10 @@ export async function setupOpenCodeV2(
                   // does not start after it, so nothing is dispatched then.
                   if (controller.signal.aborted) return;
                   await runFailingOpen("event", event, false, execution, undefined, found);
+                  // Checked again: cleanup may have begun while the turn.stop hook
+                  // ran. A known child's agent.stop is its own queued job, checked
+                  // before it starts; this one follows inline, in the same order.
+                  if (controller.signal.aborted) return;
                   if (found !== undefined && events.has("agent.stop") && childStops.has(String(event.type)))
                     await run("event", event, false, execution, found);
                 });

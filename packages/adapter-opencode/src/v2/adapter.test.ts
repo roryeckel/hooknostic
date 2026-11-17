@@ -1692,6 +1692,40 @@ describe("v2 agent.stop from a child's completion (#231)", () => {
       expect(after).toEqual([]);
     });
 
+    it("U15: starts no agent.stop for a recovered child once cleanup began during its turn.stop", async () => {
+      // The completion waits on the lookup, which then finds the child; its
+      // turn.stop hook is still running when the instance is disposed.
+      let release!: () => void;
+      const gate = new Promise<void>((resolve) => (release = resolve));
+      let entered = false;
+      const agentStops: string[] = [];
+      await replay(
+        unseen,
+        [
+          hook("turn.stop", {
+            id: "stop",
+            async run(event) {
+              if (event.session.id !== child) return;
+              entered = true;
+              await gate;
+            },
+          }),
+          hook("agent.stop", { id: "agent", run: (event) => void agentStops.push(event.agent.id ?? "") }),
+        ],
+        {
+          get: async ({ sessionID }) => {
+            if (sessionID === child) await new Promise((resolve) => setTimeout(resolve, 30));
+            return stored(sessionID);
+          },
+          settleMs: 150,
+          // Cleanup aborts first; the hook returns only after that.
+          onCleanup: () => void setTimeout(release, 20),
+        },
+      );
+      expect(entered).toBe(true);
+      expect(agentStops).toEqual([]);
+    });
+
     it("U14: disposes promptly, without waiting for a lookup that never settles", async () => {
       const { cleanupMs } = await replay(unseen, everyHook([]), {
         get: ({ sessionID }) => (sessionID === child ? new Promise(() => undefined) : stored(sessionID)),

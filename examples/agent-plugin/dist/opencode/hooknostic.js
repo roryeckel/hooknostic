@@ -8078,6 +8078,7 @@ async function setupOpenCodeV2(plugin, options2, ctx) {
                   const found = await pending;
                   if (controller.signal.aborted) return;
                   await runFailingOpen("event", event, false, execution, void 0, found);
+                  if (controller.signal.aborted) return;
                   if (found !== void 0 && events.has("agent.stop") && childStops.has(String(event.type)))
                     await run("event", event, false, execution, found);
                 });
