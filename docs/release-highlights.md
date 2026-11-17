@@ -8,7 +8,9 @@ source under a guard. A rejection, a timer that throws or a `process.exit` is
 reported, rather than ending the process with its own exit code or a stack
 trace, and a leaked handle no longer hangs a command. Every shim reports the
 errors it absorbs, in one format, and fails open. A new warning, HN110, names
-a CLI and an SDK from different releases.
+a CLI and an SDK from different releases. On OpenCode v2, subagents now
+report `agent.start` and `agent.stop`, and each event is reported once across
+a plugin reload.
 
 Several of these changes affect exit codes and output that scripts read. The
 breaking changes come first, each with its upgrade step.
@@ -175,6 +177,12 @@ breaking changes come first, each with its upgrade step.
   with it, five of its fields changed shape: see
   [importing SDK schemas](upgrading/sdk-schemas-subpath.md) and
   [configuration](configuration.md).
+- **On OpenCode v2, a subagent's own `turn.stop` carries its agent ids.** A
+  child's `turn.stop` now has `correlation.agentId` (the child) and
+  `correlation.parentAgentId` (the parent), as on Copilot; a top-level
+  `turn.stop` has neither. Every `turn.stop` hook sees them, declared or not;
+  such a hook has always also run for each child. To upgrade, a hook meant
+  for top-level stops only can skip a stop that has `correlation.agentId`.
 - **`runCli` no longer takes over its caller's process.** This affects only
   programs that call the exported `runCli(argv, options)`. It never replaces
   `process.exit`, adds process listeners, claims stdout or forces an exit,
@@ -204,13 +212,10 @@ breaking changes come first, each with its upgrade step.
     ([#216](https://github.com/roryeckel/hooknostic/issues/216)). Run
     `yarn hooknostic` to get the check.
   - The message names the SDK's path, relative to the configuration's
-    directory when the SDK is inside it, so a committed build report names no
-    machine's path.
+    directory when the SDK is inside it. HN110 never changes an exit code.
   - The remedy is to install `hooknostic` at the SDK's version and run that
     CLI: `npx hooknostic` from the project, or `yarn hooknostic` under
     Plug'n'Play.
-  - HN110 never changes an exit code. In `--json` output and
-    `hooknostic-build.json`, it is one more diagnostic.
 - **Generated runtimes bring their own Zod when yours cannot serve.** Every
   runtime still validates effects with Zod. A build uses your project's Zod
   for the SDK's schemas when it is in the SDK's peer range, sharing one copy
@@ -219,6 +224,27 @@ breaking changes come first, each with its upgrade step.
   naming the Zod it found. That includes Zod 3.24 and older, which have no
   `zod/v4`. The check reads one manifest instead of resolving the import, so
   it adds no nested resolve to a bundle.
+- **OpenCode v2 reports finished subagents as `agent.stop`, and their start
+  as `agent.start`.** Both are reported under the parent's `session.id`, with
+  the child as `agent.id` and `correlation.agentId`, the parent as
+  `correlation.parentAgentId`, and the child's agent type. Both are
+  observe-only, on 2.0.17 and later.
+  - `agent.start` comes just before the child's own `session.start`, after
+    its `prompt.before`, and is not ordered with the parent's `tool.after`.
+    To stop a subagent from starting, block `tool.before` for
+    `kind: "agent"`.
+  - `agent.stop` follows the child's own `turn.stop` when the child succeeds
+    or fails, and reports again for each follow-up to it. When a hook
+    declares it, `lastMessage` holds the child's last text: on 2.3.0, the
+    way to get a background child's result.
+- **OpenCode v2 recognizes a child it never saw created.** After a server
+  restart, or for a child created through the API before the plugin set up
+  (2.2.6 and later), the prompt hook looks up the child's parent with
+  `session.get`. The child then reports `agent.stop` and its agent ids, but
+  no `agent.start`, and takes no stop prevention or notices. The lookup fails
+  open, and only that session's own completion waits for it, for at most 2
+  seconds, so a top-level `turn.stop` can wait too. See
+  [OpenCode families](opencode-families.md).
 
 ## What is fixed
 
@@ -232,10 +258,10 @@ breaking changes come first, each with its upgrade step.
   [the capture](../.capture/opencode-v2-plugin-stderr/README.md).
 - **The OpenCode v2 shim fails open on its own errors.** OpenCode 2.x fails
   closed whenever a plugin callback throws. A shim defect therefore denied
-  tool calls and permissions, replaced tool results, and failed prompt,
-  context, generate and compaction requests. It also showed the internal
-  message to the model as if it were a block reason. Every host callback the
-  v2 shim registers is now guarded.
+  tool calls and permissions, replaced tool results, failed prompt, context,
+  generate and compaction requests, and showed the model the internal message
+  as a block reason. Every host callback the v2 shim registers is now
+  guarded.
   - Deliberate blocks still propagate.
   - A deny that cannot be written falls back to the host's own evaluation.
   - One unreadable event no longer ends the event subscription.
@@ -259,10 +285,25 @@ breaking changes come first, each with its upgrade step.
   themselves throw on a revoked proxy. A plugin that threw one made a command
   shim exit 1, which is a denial on Copilot `preToolUse`. In the Pi
   extension, the throw stopped the remaining MCP servers from registering.
-  The checks and message rendering are now proxy-safe, and they read an
-  error's message once.
+  The checks and message rendering are now proxy-safe.
 - **Pi and OpenCode v1 guard host reads.** Pi's per-event setup and OpenCode
   v1's plugin-input reads now sit inside the fail-open boundary.
+
+### OpenCode v2 plugin reloads
+
+- **Each event is reported once across a plugin reload.** A reload while an
+  execution runs leaves two plugin instances receiving every event: until
+  that execution ends on 2.2.6 and 2.3.0, and for good on 2.0.17. A session
+  started in that window reported `session.start` and `turn.stop` twice, and
+  a stop could be prevented twice. Now each start, stop and compaction event
+  is reported once, on 2.0.17, 2.2.6 and 2.3.0, by the newest instance that
+  knows the session, with the hooks as last loaded.
+- **Stops lost across a reload are recovered.** When OpenCode disposes the
+  old instance, it now hands its sessions and running executions to the new
+  one. On 2.3.0 that recovers a subagent still running across the reload
+  (its `turn.stop`, with its last message and agent ids, its `agent.stop`,
+  and the parent's next `turn.stop`); on 2.2.6, the parent's `turn.stop`. A
+  recovered parent stop can take stop prevention.
 
 ### The CLI
 
@@ -308,6 +349,12 @@ breaking changes come first, each with its upgrade step.
 - The `tool.shell` and `tool.file` docs, including the SDK's TSDoc, say that
   a view is also absent when the input does not match the captured shape.
 
+### Dependencies
+
+- `@hooknostic/agent-plugin` now requires minimatch `^11.0.8`.
+- Workspace tooling moves to pnpm 12.21, ESLint 10.15 and Prettier 3.10.1.
+  No published API changes with them.
+
 ## Limits
 
 - **HN109 is a warning, not a fix.** When your Zod is out of range, the SDK's
@@ -330,13 +377,28 @@ breaking changes come first, each with its upgrade step.
   `opencode run --standalone --print-logs` is the only path measured to show
   plugin output. The TUI and the background service are unmeasured.
 - **On OpenCode 2.3, a `tool.after` hook on a subagent call sees the launch
-  notice.** OpenCode 2.3.0 always runs subagents in the background, so the
-  hook sees "The subagent is working in the background...", not the child's
-  result, which reaches the parent later as a separate message. 2.3.0 is
-  inside OpenCode v2's recommended and validated `>=2.0.17 <3` ranges, but
-  scheduled playback fails its subagent check there; the latest version to
-  pass scheduled playback is 2.2.6
+  notice.** From 2.3.0 OpenCode always runs subagents in the background, by
+  design, so the hook sees "The subagent is working in the background...",
+  not the child's result, which reaches the parent later as a separate
+  message. Read the result from `agent.stop`'s `lastMessage`. One prompt can
+  then end in several top-level stops: if the parent finishes first, the
+  child's result starts another parent execution, whose `turn.stop` has no
+  `correlation.turnId`, and stop prevention does not wait for a running
+  child. 2.3.0 is validated, by scheduled playback and by captures
   ([#219](https://github.com/roryeckel/hooknostic/issues/219)).
+- **OpenCode v2 plugin reloads have limits.** De-duplication holds within
+  one server process and one Hooknostic release, so a reload that also
+  upgrades from an older release can still report twice.
+  - A second reload while the newer instance still has a hook running, or an
+    event queued or pending, can drop that event (accepted and documented,
+    [#238](https://github.com/roryeckel/hooknostic/issues/238)).
+  - On 2.3.0, recovering a running subagent relies on OpenCode disposing the
+    old instance before the child's completion arrives, as in every capture.
+    If the order flips, the completion can be missed, never reported twice.
+  - After a reload that adds the first subscribing hook, a prompt steered
+    into an execution the old instance runs can have its turn id reported on
+    a later execution it did not start: a wrong turn id, as before.
+  - Compaction de-duplication is unit-tested only; no drive covers it.
 - **The guards cover accidental failures in the `hooknostic` command and the
   shims.** Your code runs as trusted code, and Hooknostic is not a sandbox:
   rearranging Node's process listeners can defeat a guard, and
@@ -352,8 +414,9 @@ breaking changes come first, each with its upgrade step.
 - **Harness support ranges are unchanged; newer builds are validated.** Every
   recommended range, validated range and reference build is as in 0.12.0.
   Scheduled playback now validates Claude Code 2.1.325, Codex 0.169.0,
-  Copilot 1.0.112 and pi 1.5.2, up from 2.1.319, 0.167.0, 1.0.107 and 1.5.0.
-  OpenCode v1 (1.19.5) and v2 (2.2.6) keep their latest playback records, and
-  new captures add `validatedOn` evidence for OpenCode 2.0.17 and 2.2.7.
+  Copilot 1.0.112, pi 1.5.2 and OpenCode v2 2.3.0, up from 2.1.319, 0.167.0,
+  1.0.107, 1.5.0 and 2.2.6; OpenCode v1 keeps 1.19.5. OpenCode v2 gains new
+  `validatedOn` records: captures on 2.0.17 and 2.3.0, and live probes on
+  2.0.17, 2.2.6, 2.2.7 and 2.3.0.
 
 Start with the [README](../README.md).
