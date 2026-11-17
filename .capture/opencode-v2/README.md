@@ -459,7 +459,7 @@ delegates a new one. The drive counts completions by distinct event id: on
 | A session started during the overlap reports once | before: `session.start` twice | before: twice | before: twice |
 | Every completion once (parent, the child across the reload, the new child), `agent.start` once per child | before: duplicate stops and `agent.stop`s; the new child's `agent.start` twice | before: the parent's stop after the reload missed | before: the child's `turn.stop` and `agent.stop`, and the parent's follow-on stop, missed |
 | Prevention once, never into a child | before: the fresh session's model saw the stop reason twice | before: twice | before: twice |
-| A prompt steered into an execution the old instance still runs (`subagent-reload-running-steer`) | before: the child's `turn.stop` without its text or turn id | before: the same | before: a later parent stop carried the steered prompt's id (3 of 3) |
+| A prompt steered into an execution the old instance still runs (`subagent-reload-running-steer`) | before: the child's `turn.stop` without its text or turn id, and the parent's continuation carried the steered prompt's id (2 of 2) | before: the child's `turn.stop` without its text or turn id | before: a later parent stop carried the steered prompt's id (3 of 3) |
 
 The steer drive (review round) prompts the parent and the running child after
 the reload, with prevention on; on 2.3.0 the parent's prevention continuation
@@ -490,8 +490,15 @@ Not claimed, or claimed with a limit (see `docs/opencode-families.md`):
   tests L1 and L2).
 - **Compaction during an overlap,** a prompt the new instance took after
   the handover but before reading the session's events (unit test Q3), and
-  a segment both instances buffered around a steered prompt (Q5), are
-  covered by unit tests only: no drive reproduces them.
+  a segment both instances buffered around a steered prompt (Q5), a reload
+  that adds hooks reading the turn's fields (Q7), and three instances where
+  the newest other one's execution must be copied (Q8), are covered by unit
+  tests only: no drive reproduces them. The playback hooks are generated once
+  per drive with every field they can read, so a drive cannot reload into
+  hooks that declare different fields without building a second artifact.
+- **A reload that adds the first subscribing hook:** the old instance had no
+  subscription, tracked no execution, and a steered prompt's id can still
+  reach a later execution, as before #236.
 - A server restart, or a reload across two Hooknostic releases: each
   instance reports as before.
 

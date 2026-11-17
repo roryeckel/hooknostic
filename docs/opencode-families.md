@@ -109,14 +109,18 @@ and compaction event is still reported once
 ([#236](https://github.com/roryeckel/hooknostic/issues/236)): by the newest
 instance that knows the session, which runs the hooks as last loaded. Prompts
 reach the new instance, so it has their turn ids. A prompt steered into an
-execution the old instance is still running starts no execution of its own:
-the new instance then takes over that execution's text and the turn id of
-the prompt that started it, and the steered prompt's id is reported on no
-stop. A session or subagent started in that window reports `session.start`
-and `agent.start` once, and a stop is reported, prevented and notified once.
-All of this was observed on all three builds; before, each instance reported
-it. Compaction is reported once by the same rule, but that is unit-tested
-only: no drive compacts during a reload.
+execution the old instance is still running starts no execution of its own.
+The old instance tracks every execution it sees start, whatever its hooks
+declare, so the new instance takes over that execution: its text and the
+turn id of the prompt that started it, where the old instance's hooks read
+them (otherwise both are missing, never wrong). The steered prompt's id is
+reported on no stop. A session or subagent started in that window reports
+`session.start` and `agent.start` once, and a stop is reported, prevented
+and notified once. All of this was observed on all three builds; before,
+each instance reported it. Compaction is reported once by the same rule, a
+reload that adds hooks reading the turn's fields gives a steered prompt's id
+to no execution, and a text segment both instances buffered is kept once,
+but those three are unit-tested only: no drive covers them.
 
 "Newest" counts any newer instance with a subscribing hook (`session.start`,
 `turn.stop`, `agent.start`, `agent.stop` or `context.compact.after`), whatever
@@ -128,8 +132,8 @@ old hooks while it lives.
 When OpenCode disposes the old instance, it hands the sessions it knew, with
 their running executions, to the newest live instance of the same plugin in
 the same location and plugin root (at most 256 sessions; those with a running
-execution are kept first). On 2.3.0 that recovers a background child still running across the
-reload: its `turn.stop`, with its last message and agent ids, its
+execution are kept first). On 2.3.0 that recovers a background child still
+running across the reload: its `turn.stop`, with its last message and agent ids, its
 `agent.stop`, and the parent's next `turn.stop`. On 2.2.6 it recovers the
 parent's `turn.stop`. All of these were missed before. A child handed over
 without its parent is still looked up at its next prompt.
@@ -165,6 +169,13 @@ Limits:
   reports it neither took the prompt that started the execution nor got that
   execution from another instance: for example, a session it knows only from
   its `session.created`, whose prompt an older instance took.
+- **A reload that adds the first subscribing hook.** An old instance with no
+  subscribing hook (`session.start`, `turn.stop`, `agent.start`, `agent.stop`
+  or `context.compact.after`) has no subscription and is in no group, so it
+  tracks no execution and the new instance cannot learn that one runs. A
+  prompt steered into such an execution keeps its id at the new instance,
+  which can then report it on a later execution the prompt did not start: a
+  wrong turn id. This was so before #236 too.
 
 Before 2.3.0 a subagent runs in the foreground by default. With the tool's
 opt-in `background` argument, a child still running when

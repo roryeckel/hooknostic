@@ -537,3 +537,28 @@ After this round the full `verify-mutations.mjs` run on 2.0.17 killed 140 of
 140, every file restored byte for byte. The three running-reload tests and
 the steer test passed 10 runs of 10 on each of 2.0.17, 2.2.6 and 2.3.0, with
 no re-drive.
+### Second review round (2026-11-17)
+
+- **A reload that adds hooks reading the turn's fields** still gave a
+  steered prompt's id to a later execution: the old instance, whose hooks
+  read no fields, tracked no execution, so the new one found nothing to take
+  over and kept the steered id. Both reviewers reproduced it, in a unit test
+  and live on 2.0.17, 2.2.6 and 2.3.0. Every instance now tracks the start
+  and end of each execution it sees, whatever its hooks; text and prompt ids
+  are still kept only where a hook reads them. A copy without a prompt id
+  then drops the steered id: missing, never wrong. The `adopt()` guard on
+  reading hooks is gone with it, as is the `adopt-execution-unread` mutant it
+  needed. Q7 pins it; it fails on `105f6347` with the continuation's stop
+  carrying `msg_steered`. No drive covers it: the playback hooks are built
+  once per drive with every field they can read.
+- **The copy comes from the newest other instance** that runs the
+  execution, not the oldest (Q8, three instances).
+
+| Mutant | Defect | Killed by |
+| --- | --- | --- |
+| `reload-tracking-only-when-read` | Executions are tracked only where a hook reads text or turn ids | Q7 |
+| `reload-steer-copies-oldest` | The oldest instance's execution is copied | Q8 |
+
+`subagent-late-turn-id`'s anchor moved by one indentation level and was
+re-anchored. The residual is a reload that adds the first subscribing hook:
+the old instance has no subscription and tracks nothing, as before #236.
