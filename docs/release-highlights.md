@@ -9,8 +9,8 @@ reported, rather than ending the process with its own exit code or a stack
 trace, and a leaked handle no longer hangs a command. Every shim reports the
 errors it absorbs, in one format, and fails open. A new warning, HN110, names
 a CLI and an SDK from different releases. On OpenCode v2, subagents now
-report `agent.start` and `agent.stop`, and each event is reported once across
-a plugin reload.
+report `agent.start` and `agent.stop`, and a plugin reload no longer reports
+a start or stop twice.
 
 Several of these changes affect exit codes and output that scripts read. The
 breaking changes come first, each with its upgrade step.
@@ -182,7 +182,9 @@ breaking changes come first, each with its upgrade step.
   `correlation.parentAgentId` (the parent), as on Copilot; a top-level
   `turn.stop` has neither. Every `turn.stop` hook sees them, declared or not;
   such a hook has always also run for each child. To upgrade, a hook meant
-  for top-level stops only can skip a stop that has `correlation.agentId`.
+  for top-level stops only can skip a stop that has `correlation.agentId`; a
+  child the plugin does not recognize, such as one whose lookup failed, still
+  has neither.
 - **`runCli` no longer takes over its caller's process.** This affects only
   programs that call the exported `runCli(argv, options)`. It never replaces
   `process.exit`, adds process listeners, claims stdout or forces an exit,
@@ -241,9 +243,10 @@ breaking changes come first, each with its upgrade step.
   restart, or for a child created through the API before the plugin set up
   (2.2.6 and later), the prompt hook looks up the child's parent with
   `session.get`. The child then reports `agent.stop` and its agent ids, but
-  no `agent.start`, and takes no stop prevention or notices. The lookup fails
-  open, and only that session's own completion waits for it, for at most 2
-  seconds, so a top-level `turn.stop` can wait too. See
+  no `agent.start`, and takes no stop prevention or notices. Any session the
+  plugin never saw created is looked up, top-level ones included, and only
+  that session's completion waits for the lookup, for at most 2 seconds. A
+  lookup that fails leaves the session as before. See
   [OpenCode families](opencode-families.md).
 
 ## What is fixed
@@ -253,8 +256,7 @@ breaking changes come first, each with its upgrade step.
 - **OpenCode v2 reports handler errors.** A handler that throws or overruns
   its budget still fails open. The v2 shim now writes the same
   `hooknostic <code> [<hookId>]: <message>` line as the other shims, where
-  before it wrote nothing. On OpenCode 2.0.17 and 2.2.7, plugin output is
-  visible only under `opencode run --standalone --print-logs`. See
+  before it wrote nothing. See
   [the capture](../.capture/opencode-v2-plugin-stderr/README.md).
 - **The OpenCode v2 shim fails open on its own errors.** OpenCode 2.x fails
   closed whenever a plugin callback throws. A shim defect therefore denied
@@ -291,13 +293,14 @@ breaking changes come first, each with its upgrade step.
 
 ### OpenCode v2 plugin reloads
 
-- **Each event is reported once across a plugin reload.** A reload while an
-  execution runs leaves two plugin instances receiving every event: until
+- **A plugin reload no longer reports a start or stop twice.** A reload while
+  an execution runs leaves two plugin instances receiving every event: until
   that execution ends on 2.2.6 and 2.3.0, and for good on 2.0.17. A session
   started in that window reported `session.start` and `turn.stop` twice, and
-  a stop could be prevented twice. Now each start, stop and compaction event
-  is reported once, on 2.0.17, 2.2.6 and 2.3.0, by the newest instance that
-  knows the session, with the hooks as last loaded.
+  a stop could be prevented twice. Now each start and stop event is reported
+  once on 2.0.17, 2.2.6 and 2.3.0, and each compaction event by the same rule
+  (unit-tested only), by the newest instance that knows the session, with the
+  hooks as last loaded.
 - **Stops lost across a reload are recovered.** When OpenCode disposes the
   old instance, it now hands its sessions and running executions to the new
   one. On 2.3.0 that recovers a subagent still running across the reload
@@ -365,9 +368,7 @@ breaking changes come first, each with its upgrade step.
   `pnpm dlx` and `yarn dlx` are unsupported
   ([#190](https://github.com/roryeckel/hooknostic/issues/190)). With the
   project's Zod in range, `yarn dlx` builds on Windows (Node 22 and 24) and
-  on Linux with Node 24; otherwise it fails with HN504. On Linux with Node
-  22, `yarn dlx` that shares Yarn's global cache with the project fails
-  with HN501 ("controlled by multiple pnpapi instances") whatever the Zod.
+  on Linux with Node 24; otherwise it fails with HN504.
 - **HN110 compares release numbers, not contents.** A CLI before 0.13.0
   never warns. `dispatch` does not check. `doctor` does not report HN110 for
   a package-only or hooks-only configuration, or for one that fails to load.
@@ -377,14 +378,14 @@ breaking changes come first, each with its upgrade step.
   `opencode run --standalone --print-logs` is the only path measured to show
   plugin output. The TUI and the background service are unmeasured.
 - **On OpenCode 2.3, a `tool.after` hook on a subagent call sees the launch
-  notice.** From 2.3.0 OpenCode always runs subagents in the background, by
-  design, so the hook sees "The subagent is working in the background...",
-  not the child's result, which reaches the parent later as a separate
-  message. Read the result from `agent.stop`'s `lastMessage`. One prompt can
-  then end in several top-level stops: if the parent finishes first, the
-  child's result starts another parent execution, whose `turn.stop` has no
-  `correlation.turnId`, and stop prevention does not wait for a running
-  child. 2.3.0 is validated, by scheduled playback and by captures
+  notice.** From 2.3.0 OpenCode always runs subagents in the background, so the
+  hook sees "The subagent is working in the background...", not the child's
+  result, which reaches the parent later as a separate message. Read the
+  result from `agent.stop`'s `lastMessage`. One prompt can then end in several
+  top-level stops: if the parent finishes first, the child's result starts
+  another parent execution, whose `turn.stop` has no `correlation.turnId`, and
+  stop prevention does not wait for a running child. 2.3.0 is validated, by
+  scheduled playback and by captures
   ([#219](https://github.com/roryeckel/hooknostic/issues/219)).
 - **OpenCode v2 plugin reloads have limits.** De-duplication holds within
   one server process and one Hooknostic release, so a reload that also
@@ -398,7 +399,8 @@ breaking changes come first, each with its upgrade step.
   - After a reload that adds the first subscribing hook, a prompt steered
     into an execution the old instance runs can have its turn id reported on
     a later execution it did not start: a wrong turn id, as before.
-  - Compaction de-duplication is unit-tested only; no drive covers it.
+  - A reload that removes every subscribing hook leaves the old instance
+    reporting with the old hooks while it lives.
 - **The guards cover accidental failures in the `hooknostic` command and the
   shims.** Your code runs as trusted code, and Hooknostic is not a sandbox:
   rearranging Node's process listeners can defeat a guard, and
