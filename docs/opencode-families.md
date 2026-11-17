@@ -95,26 +95,64 @@ reload, are looked up too. Only that session's own completion waits for it,
 at most 2 s (a lookup took about 0.5 ms in the probes), so a top-level
 session's `turn.stop` can wait as well. Other sessions are never held, and
 plugin cleanup never waits on a lookup. A lookup that fails, times out or
-finds no parent in this location leaves the session as it was. Still not
-recognized:
+finds no parent in this location leaves the session as it was. A child still
+running when the plugin reloads is recognized through the old instance's
+handover (below). Still not recognized: a child in another location. This was
+not reproduced: subagent children took the parent's location in every
+capture, and on 2.2.6 and 2.3.0 an API child created for another location was
+put in the parent's.
 
-- A background child still running when the plugin reloads. Its prompt went
-  through the old instance, and on 2.3.0 that instance was disposed before
-  the child completed, so neither its `turn.stop` nor its `agent.stop` was
-  reported (observed). Looking it up from the event subscription instead
-  would report it twice on builds whose old instance still handles it.
-- A child in another location. This was not reproduced: subagent children
-  took the parent's location in every capture, and on 2.2.6 and 2.3.0 an API
-  child created for another location was put in the parent's.
+**Plugin reloads.** A reload while an execution runs leaves two instances of the plugin: OpenCode
+keeps the old one until that execution ends on 2.2.6 and 2.3.0, and for good
+on 2.0.17. Both receive every event, with the same event id. Each start, stop
+and compaction event is still reported once
+([#236](https://github.com/roryeckel/hooknostic/issues/236)): by the newest
+instance that knows the session, which took the latest prompt, has its turn
+id, and runs the hooks as last loaded. A session or subagent started in that
+window reports `session.start` and `agent.start` once, and a stop is reported,
+prevented and notified once. All of this was observed on all three builds;
+before, each instance reported it.
 
-On 2.0.17 a plugin reload while an execution runs leaves the old plugin
-instance alive, and both instances then dispatch that session's later stops
-(observed; a recovered child's `agent.stop` is duplicated too). A child created
-after such a reload is seen created by both instances, so its `agent.start`
-and `session.start` are presumably dispatched twice as well: inferred from the
-code, not probed. De-duplication across instances, and recovering a child
-still running across a reload, are tracked in
-[#236](https://github.com/roryeckel/hooknostic/issues/236).
+"Newest" counts any newer instance with a subscribing hook (`session.start`,
+`turn.stop`, `agent.start`, `agent.stop` or `context.compact.after`), whatever
+its own hooks are. A reload that removes a hook therefore silences that hook
+in the old instance too. A reload that removes every subscribing hook leaves
+the new instance out of the count, and the old one keeps reporting with the
+old hooks while it lives.
+
+When OpenCode disposes the old instance, it hands the sessions it knew, with
+their running executions, to the newest instance of the same plugin in the
+same location (at most 256 sessions; those with a running execution are kept
+first). On 2.3.0 that recovers a background child still running across the
+reload: its `turn.stop`, with its last message and agent ids, its
+`agent.stop`, and the parent's next `turn.stop`. On 2.2.6 it recovers the
+parent's `turn.stop`. All of these were missed before. A child handed over
+without its parent is still looked up at its next prompt.
+
+Limits:
+
+- **The order of disposal.** In every capture on 2.3.0 the old instance was
+  disposed before the child's completion reached the new one, and never
+  received that completion itself. If a build delivered the completion
+  first, the old instance would still report it if it received it, once; it
+  is missed only if the host stops delivering events to the old instance
+  before calling its cleanup, and then the new instance skips it because it
+  does not know the session yet. After such a flip, the next prompt's
+  execution may report no turn id: missing, never wrong.
+- **A second reload** while the newer instance still has a hook running, or
+  a stop queued or pending, can drop a stop the older instance would have
+  reported, because the older one yielded. The same holds when an older
+  instance is disposed with a stop it claimed still queued, and the newer
+  instance learned the session only after that claim; before #236 the newer
+  instance reported it. This is an accepted limit, tracked in
+  [#238](https://github.com/roryeckel/hooknostic/issues/238).
+- **One server process and one Hooknostic release.** A server restart, or a
+  reload that also changes the Hooknostic release, leaves each instance
+  reporting as before, so a reload that upgrades from a release without
+  this can still report twice while both instances live.
+- **Memory.** Shared per plugin and location for the server's lifetime: at
+  most 1,024 recent event ids and 256 handed-over sessions. On 2.0.17 each
+  leaked old instance also stays registered, by the host's own leak.
 
 Before 2.3.0 a subagent runs in the foreground by default. With the tool's
 opt-in `background` argument, a child still running when
