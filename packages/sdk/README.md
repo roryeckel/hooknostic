@@ -39,7 +39,7 @@ for the supported events and effects. Licensed under Apache-2.0.
 Writing hooks and configuration needs no Zod: the `@hooknostic/sdk` entry never
 loads it. The runtime validation schemas live at `@hooknostic/sdk/schemas`, for
 tooling that validates Hooknostic objects or composes them with its own
-schemas. They are Zod 4 Classic schemas, and importing them needs the optional
+schemas. They are Zod 4 Classic schemas, and importing them needs the SDK's
 `zod` peer at `^4.6.7`:
 
 ```ts

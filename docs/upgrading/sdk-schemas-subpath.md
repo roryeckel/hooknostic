@@ -1,7 +1,8 @@
 # Importing SDK schemas from `@hooknostic/sdk/schemas`
 
 The SDK's runtime Zod schemas have moved from the `@hooknostic/sdk` root to the
-`@hooknostic/sdk/schemas` subpath, and `zod` is now an optional peer. Writing
+`@hooknostic/sdk/schemas` subpath, the only SDK entry that needs its `zod`
+peer. Writing
 hooks and configuration no longer needs Zod: the root entry never loads it, at
 runtime or in its type declarations. This is an explicit SDK breaking change
 ([ADR-0040](../decisions/0040-sdk-schemas-subpath.md)). The package version is
@@ -100,10 +101,15 @@ CLI:
 pnpm add -D @hooknostic/sdk hooknostic
 ```
 
-Because the peer is optional, package managers no longer install Zod for the
-SDK. If you added `zod` only to satisfy the SDK, you can remove it. Importing
-`@hooknostic/sdk/schemas` without Zod installed fails with Node's
-`Cannot find package 'zod'` error.
+The SDK's `zod` peer is still required, so npm and pnpm install Zod for it
+by default, and Yarn reports it as missing with a YN0002 warning. Hooks and
+configuration never import it either way. pnpm with
+`strict-peer-dependencies` on and `auto-install-peers` off fails the install
+until `zod` is listed, as before. Importing `@hooknostic/sdk/schemas` without
+Zod installed fails with Node's `Cannot find package 'zod'` error.
+
+To change a project's Zod to a release outside the peer range, npm refuses
+with `ERESOLVE`. Don't retry with `--force`: npm loops instead of installing.
 
 ## Rebuild generated artifacts
 

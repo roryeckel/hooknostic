@@ -1239,7 +1239,7 @@ third-party adapters is a post-stabilization step that reuses the SDK's dist pat
 The SDK has two entries. The root, `@hooknostic/sdk`, is the authoring API and
 canonical types in plain TypeScript; it loads no Zod at runtime and names none in its
 declarations, so authors install no Zod. `@hooknostic/sdk/schemas` holds the Zod 4
-runtime schemas and needs the SDK's optional `zod` peer.
+runtime schemas and needs the SDK's `zod` peer.
 
 ```
 hooknostic/
