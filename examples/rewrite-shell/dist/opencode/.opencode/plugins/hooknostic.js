@@ -7608,14 +7608,20 @@ function planOpenCodeApplication(result) {
   return application;
 }
 var POST_TIMEOUT_MS = 1e4;
-function withTimeout(promise, ms = POST_TIMEOUT_MS) {
+function withTimeout(promise, ms = POST_TIMEOUT_MS, signal) {
   promise.catch(() => void 0);
   let timer;
+  let onAbort;
   const expiry = new Promise((resolvePromise) => {
     timer = setTimeout(() => resolvePromise(void 0), ms);
+    if (signal === void 0) return;
+    onAbort = () => resolvePromise(void 0);
+    if (signal.aborted) onAbort();
+    else signal.addEventListener("abort", onAbort, { once: true });
   });
   return Promise.race([promise, expiry]).finally(() => {
     if (timer !== void 0) clearTimeout(timer);
+    if (onAbort !== void 0) signal?.removeEventListener("abort", onAbort);
   });
 }
 var V1_STATEMENT = /^Be aware: OS: \S+, Shell: (\S+)[ \t]*\r?$/gm;

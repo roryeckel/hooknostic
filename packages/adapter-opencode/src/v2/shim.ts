@@ -277,14 +277,17 @@ export async function setupOpenCodeV2(
     if (application.synthetic) await post(native, event, application.synthetic);
   };
   const runFailingOpen = (...args: Parameters<typeof run>) => failingOpen(args[0], () => run(...args));
-  // A child whose session.created this instance never saw (one created before
-  // its setup, or before a reload) is looked up when its prompt reaches this
-  // instance's prompt hook, and only there: the prompt hook goes to one live
-  // instance, so the lookup cannot report a child twice. Never from the event
-  // subscription, which also reaches an old instance still running the child.
-  // Recover, never claim: a lookup that throws, times out, or finds no parent
-  // in this location leaves the session as it was, silently, since not found
-  // and slow are expected states and nothing here can tell the user.
+  // Any session whose session.created this instance never saw (a child created
+  // before its setup or before a reload, but also a top-level session created
+  // before lazy setup, and every existing session's first prompt after a
+  // reload) is looked up when its prompt reaches this instance's prompt hook,
+  // and only there: the prompt hook goes to one live instance, so the lookup
+  // cannot report a child twice. Never from the event subscription, which also
+  // reaches an old instance still running the child. Recover, never claim: a
+  // lookup that throws, times out, or finds no parent in this location leaves
+  // the session as it was, silently, since not found and slow are expected
+  // states and nothing here can tell the user. Cleanup settles it at once, so
+  // disposal never waits on it and no timer outlives the instance.
   const LOOKUP_TIMEOUT_MS = 2_000;
   const lookups = new Map<string, Promise<OpenCodeV2Child | undefined>>();
   const readsLink = events.has("turn.stop") || events.has("agent.stop");
@@ -294,6 +297,7 @@ export async function setupOpenCodeV2(
     const pending = withTimeout(
       Promise.resolve().then(() => get.call(ctx.session, { sessionID })),
       LOOKUP_TIMEOUT_MS,
+      controller.signal,
     )
       .then((info): OpenCodeV2Child | undefined => {
         const session = record(info);
@@ -464,11 +468,12 @@ export async function setupOpenCodeV2(
               if (pending !== undefined) {
                 // Its prompt hook started a lookup that has not settled: wait for
                 // it, bounded, in this session's own queue only, then report as
-                // for a known child, or as before if it found none.
+                // for a known child, or as before if it found none. The session
+                // may be top-level, whose turn.stop then waits too (at most 2 s).
                 enqueue(sessionID, async () => {
                   const found = await pending;
-                  // Work queued before cleanup does not start after it; this wait
-                  // ends after it began, so it is held to the same rule.
+                  // Cleanup settles this wait at once; work queued before cleanup
+                  // does not start after it, so nothing is dispatched then.
                   if (controller.signal.aborted) return;
                   await runFailingOpen("event", event, false, execution, undefined, found);
                   if (found !== undefined && events.has("agent.stop") && childStops.has(String(event.type)))

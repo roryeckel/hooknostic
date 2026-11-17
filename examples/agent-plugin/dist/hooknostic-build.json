@@ -171,7 +171,7 @@
       },
       "projection": {
         "status": "success",
-        "contentDigest": "sha256:320dc62f3353f1265c170eec3989620f33c14638625a75c9223812284855544f",
+        "contentDigest": "sha256:d32b7581909a942d82cd65dcca9e9eab027f22613dc665b4880374061ffa37f9",
         "copiedFileCount": 6,
         "directories": [
           "package/.agents",
@@ -226,7 +226,7 @@
       },
       "projection": {
         "status": "success",
-        "contentDigest": "sha256:9d9e7a5f9763c92b9227c1af1f0120cfab324c9ec75c7451850a06b5f73cfef8",
+        "contentDigest": "sha256:1d4875c29221cd30fd319f1a401d4a7cb84afcbd4123930bcb740cf5c41c3a48",
         "copiedFileCount": 5,
         "directories": [
           "package/.agents",

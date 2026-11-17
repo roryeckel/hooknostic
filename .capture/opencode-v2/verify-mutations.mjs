@@ -239,6 +239,10 @@ const cases = [
   ["recovery-sync-throw", "packages/adapter-opencode/src/v2/shim.ts", "Promise.resolve().then(() => get.call(ctx.session, { sessionID }))", "Promise.resolve(get.call(ctx.session, { sessionID }))", unit, "U9: leaves the child"],
   ["recovery-no-location-check", "packages/adapter-opencode/src/v2/shim.ts", ' || typeof directory !== "string" || comparable(directory) !== here)', ")", unit, "U10:"],
   ["recovery-not-stored", "packages/adapter-opencode/src/v2/shim.ts", "        children.set(sessionID, found);\n", "", unit, "U11:"],
+  // Cleanup while a completion waits on its lookup: the wait must neither hold
+  // disposal (the abort settles it) nor dispatch once it ends.
+  ["recovery-cleanup-guard", "packages/adapter-opencode/src/v2/shim.ts", "                  if (controller.signal.aborted) return;\n", "", unit, "U13:"],
+  ["recovery-cleanup-unraced", "packages/adapter-opencode/src/v2/shim.ts", "      LOOKUP_TIMEOUT_MS,\n      controller.signal,\n", "      LOOKUP_TIMEOUT_MS,\n", unit, "U14:"],
   ["recovery-event-path", "packages/adapter-opencode/src/v2/shim.ts", "            } else if (!local.has(sessionID)) continue;", "            } else if (!local.has(sessionID)) {\n              lookUp(sessionID);\n              continue;\n            }", unit, "U12:"],
   // Playback on the real binary.
   ["agent-start-playback", "packages/adapter-opencode/src/v2/shim.ts", '              if (event.type === "session.created" && child !== undefined && events.has("agent.start"))\n                enqueue(sessionID, () => run("event", event, false, undefined, child));\n', "", playback, "one agent.stop under its parent"],

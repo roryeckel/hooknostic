@@ -378,6 +378,8 @@ both captured sequences, so each unit mutant fails in both:
 | `recovery-no-location-check` | A record in another location is accepted | U10 |
 | `recovery-not-stored` | A found child is returned but not stored | U11: the recovered child takes posts |
 | `recovery-event-path` | Unknown sessions are looked up from the subscription | U12 |
+| `recovery-cleanup-guard` | A completion waiting on its lookup still dispatches once cleanup has begun | U13 |
+| `recovery-cleanup-unraced` | The pending lookup is not settled by cleanup's abort, so disposal waits for its 2 s bound | U14: cleanup took about 1.9 s |
 | `agent-start-playback` | No `agent.start` is queued | P6, the subagent drive |
 | `agent-start-every-event-playback` | As `agent-start-every-event` | P6, `subagent-followup`; P8 |
 | `turn-stop-agent-ids-playback` | As `turn-stop-agent-ids` | P6; P7, the late-child test |

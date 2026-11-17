@@ -1351,8 +1351,9 @@ describe("v2 agent.stop from a child's completion (#231)", () => {
       synthetic?: (input: unknown) => unknown;
       get?: (input: { sessionID: string }) => unknown;
       settleMs?: number;
+      onCleanup?: () => void;
     } = {},
-  ) {
+  ): Promise<{ cleanupMs: number }> {
     const callbacks: Record<string, (event: Record<string, unknown>) => Promise<void>> = {};
     let done = false;
     const cleanup = await setupOpenCodeV2(
@@ -1382,7 +1383,10 @@ describe("v2 agent.stop from a child's completion (#231)", () => {
     );
     await vi.waitFor(() => expect(done).toBe(true));
     await new Promise((resolve) => setTimeout(resolve, options.settleMs ?? 50));
+    options.onCleanup?.();
+    const begin = Date.now();
     await cleanup();
+    return { cleanupMs: Date.now() - begin };
   }
 
   it("has a foreground and a background capture", () => {
@@ -1650,7 +1654,7 @@ describe("v2 agent.stop from a child's completion (#231)", () => {
           [hook("turn.stop", { id: "stop", run: timed }), hook("agent.stop", { id: "agent", run: timed })],
           {
             get: ({ sessionID }) => (sessionID === child ? new Promise(() => undefined) : stored(sessionID)),
-            settleMs: 2500,
+            settleMs: 4000,
           },
         );
         // The parent's stop is not held behind the child's lookup.
@@ -1665,6 +1669,36 @@ describe("v2 agent.stop from a child's completion (#231)", () => {
         errors.mockRestore();
       }
     }, 10000);
+
+    it("U13: dispatches nothing after cleanup for a completion still waiting on its lookup", async () => {
+      // The child's completion is queued behind its pending lookup when the
+      // instance is disposed; the lookup settles only afterwards.
+      let release!: (value: unknown) => void;
+      const late = new Promise((resolve) => (release = resolve));
+      let cleaning = false;
+      const after: string[] = [];
+      const seen = (event: { event: string; session: { id?: string } }) =>
+        void (cleaning && after.push(`${event.event}:${event.session.id}`));
+      await replay(
+        unseen,
+        [hook("turn.stop", { id: "stop", run: seen }), hook("agent.stop", { id: "agent", run: seen })],
+        {
+          get: ({ sessionID }) => (sessionID === child ? late : stored(sessionID)),
+          onCleanup: () => (cleaning = true),
+        },
+      );
+      release(stored(child));
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(after).toEqual([]);
+    });
+
+    it("U14: disposes promptly, without waiting for a lookup that never settles", async () => {
+      const { cleanupMs } = await replay(unseen, everyHook([]), {
+        get: ({ sessionID }) => (sessionID === child ? new Promise(() => undefined) : stored(sessionID)),
+      });
+      // The lookup's bound is 2 s; cleanup must not wait on it.
+      expect(cleanupMs).toBeLessThan(500);
+    });
 
     it("U10: does not link a child whose stored record is in another location", async () => {
       const seen: Seen[] = [];
