@@ -75,8 +75,7 @@ if (effect === "notifications") {
 if (
   effect === "artifact" ||
   effect === "results" ||
-  effect === "subagent" ||
-  effect === "subagent-late" ||
+  effect.startsWith("subagent") ||
   effect === "tools" ||
   effect.startsWith("mcp-") ||
   effect === "lifecycle" ||

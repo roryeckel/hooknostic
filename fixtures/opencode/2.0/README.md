@@ -37,7 +37,7 @@ notification remains unsupported.
 | execution-failed/interrupted | captured | Deliberate HTTP 400 and rejected approval, respectively |
 | session-audit/permissions.json | captured + constructed labels/counts | Allow, accept, reject and configured-deny controls |
 | remote/observations.json | captured + constructed scenario labels | HTTP execution/headers and absent legacy SSE fallback |
-| session-created-child | captured | Subagent child creation carrying the parent as `parentID` |
+| session-created-child | captured | Subagent child creation carrying the parent as `parentID`, and the child's `agent`; both are what `agent.stop` reports for the child (see Subagent completion below) |
 | execution-interrupted-user | captured | User interrupt of a pending request (`reason: "user"`) |
 | stop-audit/outcomes.json | captured counts + constructed labels | Execution counts per session for the `stop` drive |
 
@@ -66,7 +66,7 @@ Same version/date and Windows platform; procedure: `.capture/opencode-v2-audit`.
 | --- | --- | --- |
 | tool-read-error | captured | Typed missing-file error, input and call ID |
 | tool-rich-after | captured | Custom tool result with content, structured output and metadata |
-| tool-subagent-after | captured | Completed foreground child; result returned to parent model request. Holds for 2.0.17 through 2.2.7; see the background capture below for 2.3.0 |
+| tool-subagent-after | captured | Completed foreground child; result returned to parent model request. Holds for 2.0.17 through 2.2.7; see the background capture below for 2.3.0. The child's own completion is `agent.stop`; see Subagent completion below |
 | audits/providers.json | constructed summary of captured callbacks/requests | Anthropic Messages and Responses HTTP context across four routes, including successful compaction |
 | audits/oauth-project.json, audits/oauth-package.json | captured HTTP rows + constructed labels and output check | Discovery, dynamic registration, PKCE, refresh after rejected expiry and authenticated execution |
 | audits/notifications.json | captured plugin records | Server RPC received by companion TUI, attention disabled under defaults, cleanup on exit; terminal rendering separately asserted in playback |
@@ -169,3 +169,29 @@ the canonical `harness.version` is the adapter's reference build. 2.2.7 still
 returned a foreground child's result as the tool result, so `tool-subagent-after`
 stays the evidence for the earlier builds. Procedure and limits:
 `.capture/opencode-v2-audit`.
+
+## Subagent completion (Windows, 2.0.17 and 2.3.0, 2026-11-16)
+
+A child's own completion becomes `agent.stop` under its parent (#231).
+Captured with `drive.mjs subagent` against the native executables of 2.0.17
+(foreground child) and 2.3.0 (background child), with isolated state and the
+loopback model; no paid model or real credential was used. The model replies
+and the subagent arguments were scripted; the envelopes are the harness's own.
+Promoted with
+`promote-audits.mjs subagent-stop <2.0.17-subagent-root> <2.3.0-subagent-root>`,
+which redacts the capturing account's home-directory segment to `user`, as
+above.
+
+| Case | Provenance | Observation |
+| --- | --- | --- |
+| subagent-stop | captured event, constructed enrichment | The 2.0.17 child's own `session.execution.succeeded`, which carries only the child's `sessionID`. `.enrichment.json` holds what the shim hands the decoder beside it (never in `raw`): `child`, the `parentID` and `agent` from the child's `session.created`, and the child's captured `session.text.ended` data. Decodes as `agent.stop` under the parent |
+| subagent-stop/events-2.0.17.jsonl | captured | One drive in capture order: the prompt hooks, and every `session.*` event the plugin's subscription received, for parent and child. The child ran in the foreground |
+| subagent-stop/events-2.3.0.jsonl | captured | The same on 2.3.0. The child ran in the background, and its result reached the parent as a `subagent` inbox item while the parent's execution was still running |
+
+In both drives the parent's `session.created` preceded plugin setup and is
+absent; the parent is the plugin's own through its prompt hook. The child's
+`session.created`, execution and text events reached the same subscription.
+The sequences are unmapped bus events, kept in a subdirectory and not named
+`*.input.json`, as with `turn-fields`. As elsewhere in this directory, the
+canonical `harness.version` is the adapter's reference build. Procedure and
+limits: `.capture/opencode-v2-audit`.

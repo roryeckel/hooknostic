@@ -29,6 +29,39 @@ if (process.argv[2] === "subagent-background") {
   await write("subagent-background/inbox-subagent-completed.json", inbox);
   process.exit(0);
 }
+// `promote-audits.mjs subagent-stop <foreground-root> <background-root>`: two
+// `subagent` drives, the first on a build that runs the child in the
+// foreground (the reference build), the second on one that runs it in the
+// background (2.3.0 or later). The foreground child's completion becomes the
+// `subagent-stop` decode case, with the shim's enrichment beside it; each
+// drive's prompts and session events, in capture order, become a replay
+// sequence named for the build.
+if (process.argv[2] === "subagent-stop") {
+  await mkdir(new URL("subagent-stop/", destination), { recursive: true });
+  for (const [root, expected] of [[process.argv[3], "completed"], [process.argv[4], "running"]]) {
+    const rows = JSON.parse(redact(JSON.stringify(await events(root))));
+    const launch = rows.find(row => row.hook === "execute.after" && row.event.tool === "subagent");
+    if (launch?.event.result?.output?.status !== expected) throw new Error(`${root}: subagent launch is not ${expected}`);
+    const created = rows.find(row => row.hook === "event" && row.event.type === "session.created" && row.event.data?.parentID);
+    const child = created?.event.data.sessionID;
+    if (child !== launch.event.result.output.sessionID) throw new Error(`${root}: no session.created for the child`);
+    const sequence = rows.filter(row => row.hook === "prompt" || (row.hook === "event" && String(row.event.type).startsWith("session.")));
+    await writeFile(new URL(`subagent-stop/events-${created.event.data.version}.jsonl`, destination), sequence.map(row => JSON.stringify(row)).join("\n") + "\n");
+    if (expected !== "completed") continue;
+    const input = rows.find(row => row.hook === "event" && row.event.type === "session.execution.succeeded" && row.event.data?.sessionID === child);
+    const text = rows.filter(row => row.hook === "event" && row.event.type === "session.text.ended" && row.event.data?.sessionID === child)
+      .map(row => ({ assistantMessageID: row.event.data.assistantMessageID, ordinal: row.event.data.ordinal, text: row.event.data.text }));
+    // What the shim hands the decoder: the child's parent and agent from its
+    // session.created, and its buffered text.
+    const enrichment = { child: { parentID: created.event.data.parentID, agent: created.event.data.agent }, execution: { text } };
+    const { raw, ...canonical } = decodeOpenCodeV2(input, { targetId: "opencode", harnessVersion: opencodeV2Harness.referenceVersion }, enrichment);
+    if (canonical.event !== "agent.stop") throw new Error(`${root}: the child's completion did not decode as agent.stop`);
+    await write("subagent-stop.input.json", input);
+    await write("subagent-stop.enrichment.json", enrichment);
+    await write("subagent-stop.canonical.json", canonical);
+  }
+  process.exit(0);
+}
 const [anthropic, responses, subagent, projectOAuth, packageOAuth, notifications] = process.argv.slice(2);
 await mkdir(new URL("audits/", destination), { recursive: true });
 const providers = [];

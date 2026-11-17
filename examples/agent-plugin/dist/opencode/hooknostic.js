@@ -7620,7 +7620,7 @@ function planOpenCodeV2Application(result) {
       application.content = typeof effect.output === "string" ? effect.output : JSON.stringify(effect.output);
     if (effect.kind === "addContext") (application.system ??= []).push({ type: "text", text: effect.context });
   }
-  if (result.event === "turn.stop") {
+  if (result.event === "turn.stop" || result.event === "agent.stop") {
     const synthetic = result.effects.flatMap(
       ({ effect }) => effect.kind === "notify" ? [{ text: effect.message, resume: false }] : []
     );
@@ -7736,6 +7736,17 @@ function decodeOpenCodeV2(raw, invocation, enrichment = {}) {
       String(event.type)
     )) {
       const { lastMessage, turnId } = turnFields2(enrichment.execution);
+      if (enrichment.child !== void 0 && typeof sessionID === "string" && event.type !== "session.execution.interrupted") {
+        const { parentID, agent } = enrichment.child;
+        return {
+          ...base,
+          session: { id: parentID, cwd: base.session.cwd },
+          correlation: { agentId: sessionID, parentAgentId: parentID },
+          event: "agent.stop",
+          agent: { id: sessionID, ...typeof agent === "string" ? { type: agent } : {} },
+          ...lastMessage !== void 0 ? { lastMessage } : {}
+        };
+      }
       return {
         ...base,
         ...turnId !== void 0 ? { correlation: { ...base.correlation, turnId } } : {},
@@ -7765,7 +7776,7 @@ async function setupOpenCodeV2(plugin, options2, ctx) {
   const registrations = [];
   const controller = new AbortController();
   let task;
-  const children = /* @__PURE__ */ new Set();
+  const children = /* @__PURE__ */ new Map();
   const queues = /* @__PURE__ */ new Map();
   const local = /* @__PURE__ */ new Set();
   const comparable = (path) => {
@@ -7773,11 +7784,11 @@ async function setupOpenCodeV2(plugin, options2, ctx) {
     return process.platform === "win32" ? trimmed.toLowerCase() : trimmed;
   };
   const here = comparable(ctx.location.directory);
-  const declares = (field) => plugin.hooks.some(
-    (h) => h.event === "turn.stop" && hookAppliesToTarget(h, targetId) && (h.fields ?? []).includes(field)
+  const declares = (event, field) => plugin.hooks.some(
+    (h) => h.event === event && hookAppliesToTarget(h, targetId) && (h.fields ?? []).includes(`${event}.${field}`)
   );
-  const readsText = declares("turn.stop.lastMessage");
-  const readsPrompt = declares("turn.stop.correlation.turnId");
+  const readsText = declares("turn.stop", "lastMessage") || declares("agent.stop", "lastMessage");
+  const readsPrompt = declares("turn.stop", "correlation.turnId");
   const pendingPrompts = /* @__PURE__ */ new Map();
   const executions = /* @__PURE__ */ new Map();
   const completions = /* @__PURE__ */ new Set([
@@ -7785,7 +7796,8 @@ async function setupOpenCodeV2(plugin, options2, ctx) {
     "session.execution.failed",
     "session.execution.interrupted"
   ]);
-  const subscribes = events.has("session.start") || events.has("turn.stop") || events.has("context.compact.after");
+  const childStops = /* @__PURE__ */ new Set(["session.execution.succeeded", "session.execution.failed"]);
+  const subscribes = events.has("session.start") || events.has("turn.stop") || events.has("agent.stop") || events.has("context.compact.after");
   const readsShell = events.has("tool.before") || events.has("tool.after") || events.has("tool.error");
   const statedShells = /* @__PURE__ */ new Map();
   const STATED_SHELL_SESSIONS = 256;
@@ -7803,6 +7815,7 @@ async function setupOpenCodeV2(plugin, options2, ctx) {
     }
   };
   const post = async (native, event, messages) => {
+    if (event.event !== "turn.stop") return;
     const sessionID = event.session.id;
     if (native.type !== "session.execution.succeeded" || sessionID === void 0 || children.has(sessionID)) return;
     if (typeof ctx.session.synthetic !== "function") return;
@@ -7822,7 +7835,7 @@ async function setupOpenCodeV2(plugin, options2, ctx) {
       if (queues.get(key) === next) queues.delete(key);
     });
   };
-  const run = async (hook2, native, modelRequest = false, execution) => {
+  const run = async (hook2, native, modelRequest = false, execution, child) => {
     let event;
     const shell = typeof native.sessionID === "string" ? statedShells.get(native.sessionID) : void 0;
     const shellDialect = dialectOfStatedShell(shell);
@@ -7830,7 +7843,11 @@ async function setupOpenCodeV2(plugin, options2, ctx) {
       event = decodeOpenCodeV2(
         { hook: hook2, directory: ctx.location.directory, event: native },
         { targetId, ...options2.harnessVersion ? { harnessVersion: options2.harnessVersion } : {} },
-        { ...execution ? { execution } : {}, ...shell !== void 0 ? { shell } : {} }
+        {
+          ...execution ? { execution } : {},
+          ...shell !== void 0 ? { shell } : {},
+          ...child ? { child } : {}
+        }
       );
     } catch (error2) {
       if (isInstance(error2, OpenCodeV2DecodeError)) return;
@@ -7981,7 +7998,8 @@ async function setupOpenCodeV2(plugin, options2, ctx) {
                 const location = data.location ?? event.location;
                 if (typeof location?.directory !== "string" || comparable(location.directory) !== here) continue;
                 local.add(sessionID);
-                if (typeof data.parentID === "string") children.add(sessionID);
+                if (typeof data.parentID === "string")
+                  children.set(sessionID, { parentID: data.parentID, agent: data.agent });
               } else if (!local.has(sessionID)) continue;
               let execution;
               if (readsText || readsPrompt) {
@@ -8006,6 +8024,9 @@ async function setupOpenCodeV2(plugin, options2, ctx) {
                 }
               }
               enqueue(sessionID, () => run("event", event, false, execution));
+              const child = children.get(sessionID);
+              if (child !== void 0 && events.has("agent.stop") && childStops.has(String(event.type)))
+                enqueue(sessionID, () => run("event", event, false, execution, child));
             } catch (error2) {
               reportInternalError(error2, "event");
             }
@@ -8023,7 +8044,7 @@ async function setupOpenCodeV2(plugin, options2, ctx) {
 }
 
 // hooknostic-shim-entry.ts
-var options = { "targetId": "opencode", "capabilities": { "session.start.observe": "approximate", "session.start.notify": "unsupported", "prompt.before.observe": "exact", "prompt.before.block": "exact", "tool.before.observe": "exact", "tool.before.block": "exact", "tool.before.input.replace": "exact", "tool.after.observe": "exact", "tool.error.observe": "approximate", "tool.after.output.replace": "approximate", "model.request.before.observe": "approximate", "model.request.before.context.add": "approximate", "turn.stop.observe": "approximate", "turn.stop.prevent": "approximate", "turn.stop.notify": "approximate", "context.compact.before.observe": "exact", "context.compact.before.context.add": "exact", "context.compact.after.observe": "emulated", "permission.request.observe": "approximate", "permission.request.block": "approximate" }, "policy": { "onHookError": "continue", "timeoutMs": 5e3, "contextCharLimit": 16e3, "notifyCharLimit": 2e3 }, "minimumCapabilityLevel": "emulated" };
+var options = { "targetId": "opencode", "capabilities": { "session.start.observe": "approximate", "session.start.notify": "unsupported", "prompt.before.observe": "exact", "prompt.before.block": "exact", "tool.before.observe": "exact", "tool.before.block": "exact", "tool.before.input.replace": "exact", "tool.after.observe": "exact", "tool.error.observe": "approximate", "tool.after.output.replace": "approximate", "model.request.before.observe": "approximate", "model.request.before.context.add": "approximate", "turn.stop.observe": "approximate", "turn.stop.prevent": "approximate", "turn.stop.notify": "approximate", "agent.stop.observe": "approximate", "agent.stop.prevent": "unsupported", "agent.stop.notify": "unsupported", "context.compact.before.observe": "exact", "context.compact.before.context.add": "exact", "context.compact.after.observe": "emulated", "permission.request.observe": "approximate", "permission.request.block": "approximate" }, "policy": { "onHookError": "continue", "timeoutMs": 5e3, "contextCharLimit": 16e3, "notifyCharLimit": 2e3 }, "minimumCapabilityLevel": "emulated" };
 options.pluginRoot = pluginRootFrom(import.meta.url, "package");
 var HooknosticPlugin = { id: "hooknostic." + hooks_default.name + ".opencode", setup: (ctx) => setupOpenCodeV2(hooks_default, options, ctx) };
 var hooknostic_shim_entry_default = HooknosticPlugin;

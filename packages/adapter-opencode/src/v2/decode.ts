@@ -17,10 +17,10 @@ export interface OpenCodeV2NativeEvent {
 export interface OpenCodeV2Enrichment {
   /**
    * What the shim saw of the execution a completion ends, gathered when a
-   * turn.stop hook declares a turn field: the prompt hook's ids for the
-   * prompt that started it, and the `session.text.ended` data of its last
-   * assistant message that produced text. The completion event itself carries
-   * only the session id.
+   * turn.stop hook declares a turn field, or an agent.stop hook declares
+   * lastMessage: the prompt hook's ids for the prompt that started it, and
+   * the `session.text.ended` data of its last assistant message that produced
+   * text. The completion event itself carries only the session id.
    */
   execution?: OpenCodeV2Execution;
   /**
@@ -29,6 +29,18 @@ export interface OpenCodeV2Enrichment {
    * names the interpreter, so this is the only source of `tool.shell.dialect`.
    */
   shell?: unknown;
+  /**
+   * Set when the completing session was created as a child: its
+   * `session.created` carried a `parentID`, and the `agent` it runs. A
+   * succeeded or failed completion then decodes as `agent.stop` under the
+   * parent's session. The completion itself names only the child.
+   */
+  child?: OpenCodeV2Child;
+}
+
+export interface OpenCodeV2Child {
+  parentID: string;
+  agent?: unknown;
 }
 
 export interface OpenCodeV2Execution {
@@ -130,6 +142,24 @@ export function decodeOpenCodeV2(
       )
     ) {
       const { lastMessage, turnId } = turnFields(enrichment.execution);
+      // A child's own completion is also the subagent's stop, reported under
+      // the parent as on Claude and Copilot. An interrupted child is left
+      // unclaimed: interruption was not probed.
+      if (
+        enrichment.child !== undefined &&
+        typeof sessionID === "string" &&
+        event.type !== "session.execution.interrupted"
+      ) {
+        const { parentID, agent } = enrichment.child;
+        return {
+          ...base,
+          session: { id: parentID, cwd: base.session.cwd },
+          correlation: { agentId: sessionID, parentAgentId: parentID },
+          event: "agent.stop",
+          agent: { id: sessionID, ...(typeof agent === "string" ? { type: agent } : {}) },
+          ...(lastMessage !== undefined ? { lastMessage } : {}),
+        };
+      }
       return {
         ...base,
         ...(turnId !== undefined ? { correlation: { ...base.correlation, turnId } } : {}),

@@ -1279,3 +1279,223 @@ describe("v2 turn.stop fields (ADR-0027)", () => {
     expect(await replay(rows, ["lastMessage"])).toEqual([{ lastMessage: "playback complete\nsecond part" }]);
   });
 });
+
+describe("v2 agent.stop from a child's completion (#231)", () => {
+  // Captured `subagent` drives, prompts and session events in capture order
+  // (.capture/opencode-v2 promote-audits.mjs subagent-stop): one build running
+  // the child in the foreground, one running it in the background.
+  type Row = { hook: string; directory: string; event: Record<string, unknown> };
+  const data = (row: Row) => (row.event["data"] ?? {}) as Record<string, unknown>;
+  const sequences = readdirSync(fixtures + "subagent-stop").map((file) => {
+    const rows = readFileSync(fixtures + "subagent-stop/" + file, "utf8")
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line) as Row);
+    const created = rows.find((row) => row.event["type"] === "session.created" && data(row)["parentID"])!;
+    const background = rows.some(
+      (row) =>
+        row.event["type"] === "session.inbox.enqueued" &&
+        JSON.stringify(data(row)["item"]).includes('"source":"subagent"'),
+    );
+    return {
+      file,
+      rows,
+      background,
+      child: data(created)["sessionID"] as string,
+      parent: data(created)["parentID"] as string,
+      agent: data(created)["agent"] as string,
+    };
+  });
+  const childText = "hooknostic-child-result";
+  type Seen = {
+    event: string;
+    session: string | undefined;
+    agentId?: string;
+    agentType?: string;
+    correlationAgentId?: string;
+    parentAgentId?: string;
+    lastMessage?: string;
+  };
+  const record =
+    (seen: Seen[]) =>
+    (event: {
+      event: string;
+      session: { id?: string };
+      correlation: { agentId?: string; parentAgentId?: string };
+      agent?: { id?: string; type?: string };
+      lastMessage?: string;
+    }) =>
+      void seen.push({
+        event: event.event,
+        session: event.session.id,
+        ...(event.agent?.id !== undefined ? { agentId: event.agent.id } : {}),
+        ...(event.agent?.type !== undefined ? { agentType: event.agent.type } : {}),
+        ...(event.correlation.agentId !== undefined ? { correlationAgentId: event.correlation.agentId } : {}),
+        ...(event.correlation.parentAgentId !== undefined ? { parentAgentId: event.correlation.parentAgentId } : {}),
+        ...(event.lastMessage !== undefined ? { lastMessage: event.lastMessage } : {}),
+      });
+  const capabilities = {
+    "session.start.observe": "approximate",
+    "turn.stop.observe": "approximate",
+    "turn.stop.prevent": "approximate",
+    "turn.stop.notify": "approximate",
+    "agent.stop.observe": "approximate",
+  } as const;
+
+  async function replay(
+    rows: Row[],
+    hooks: Parameters<typeof definePlugin>[0]["hooks"],
+    options: { capabilities?: Record<string, string>; synthetic?: (input: unknown) => unknown } = {},
+  ) {
+    const callbacks: Record<string, (event: Record<string, unknown>) => Promise<void>> = {};
+    let done = false;
+    const cleanup = await setupOpenCodeV2(
+      definePlugin({ name: "agent-stop", hooks }),
+      { capabilities: (options.capabilities ?? capabilities) as Record<string, "approximate"> },
+      {
+        location: { directory: rows[0]!.directory },
+        session: {
+          hook: async (name, callback) => {
+            callbacks[name] = callback;
+            return { dispose: async () => {} };
+          },
+          synthetic: options.synthetic ?? (() => undefined),
+        },
+        tool: { hook: vi.fn() },
+        event: {
+          async *subscribe() {
+            for (const row of rows) {
+              if (row.hook === "prompt") await callbacks["prompt"]?.(structuredClone(row.event));
+              else yield structuredClone(row.event);
+            }
+            done = true;
+          },
+        },
+      },
+    );
+    await vi.waitFor(() => expect(done).toBe(true));
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    await cleanup();
+  }
+
+  it("has a foreground and a background capture", () => {
+    expect(sequences.map((sequence) => sequence.background).sort()).toEqual([false, true]);
+  });
+
+  describe.each(sequences)("$file", ({ rows, child, parent, agent }) => {
+    it("U2: reports the child's turn.stop, then its agent.stop under the parent", async () => {
+      const seen: Seen[] = [];
+      await replay(rows, [
+        hook("session.start", { id: "start", run: record(seen) }),
+        hook("turn.stop", { id: "stop", run: record(seen) }),
+        hook("agent.stop", { id: "agent", run: record(seen) }),
+      ]);
+      expect(seen).toEqual([
+        { event: "session.start", session: child },
+        { event: "turn.stop", session: child },
+        {
+          event: "agent.stop",
+          session: parent,
+          agentId: child,
+          agentType: agent,
+          correlationAgentId: child,
+          parentAgentId: parent,
+        },
+        { event: "turn.stop", session: parent },
+      ]);
+      // An agent.stop hook alone subscribes too.
+      const alone: Seen[] = [];
+      await replay(rows, [hook("agent.stop", { id: "agent", run: record(alone) })]);
+      expect(alone.map(({ event, session, agentId }) => ({ event, session, agentId }))).toEqual([
+        { event: "agent.stop", session: parent, agentId: child },
+      ]);
+    });
+
+    it("U3: reports the child's last message only when an agent.stop hook declares it", async () => {
+      const undeclared: Seen[] = [];
+      await replay(rows, [hook("agent.stop", { id: "agent", run: record(undeclared) })]);
+      expect(undeclared).toEqual([expect.not.objectContaining({ lastMessage: expect.anything() })]);
+      const declared: Seen[] = [];
+      await replay(rows, [hook("agent.stop", { id: "agent", fields: ["lastMessage"], run: record(declared) })]);
+      expect(declared).toEqual([expect.objectContaining({ event: "agent.stop", lastMessage: childText })]);
+    });
+
+    it("U4: posts nothing for agent.stop, even with prevention and notices rated", async () => {
+      const posts: unknown[] = [];
+      const seen: Seen[] = [];
+      await replay(
+        rows,
+        [
+          hook("agent.stop", {
+            id: "notice",
+            capabilities: { "agent.stop.notify": "required" },
+            run: () => notify("notice"),
+          }),
+          hook("agent.stop", {
+            id: "prevent",
+            capabilities: { "agent.stop.prevent": "required" },
+            run(event) {
+              record(seen)(event);
+              return preventStop("keep working");
+            },
+          }),
+        ],
+        {
+          capabilities: { ...capabilities, "agent.stop.prevent": "approximate", "agent.stop.notify": "approximate" },
+          synthetic: (input) => void posts.push(input),
+        },
+      );
+      expect(seen.map((entry) => entry.event)).toEqual(["agent.stop"]);
+      expect(posts).toEqual([]);
+    });
+
+    it("U5: keeps the child's own turn.stop, with the same text its agent.stop reports", async () => {
+      const seen: Seen[] = [];
+      await replay(rows, [
+        hook("turn.stop", { id: "stop", fields: ["lastMessage"], run: record(seen) }),
+        hook("agent.stop", { id: "agent", fields: ["lastMessage"], run: record(seen) }),
+      ]);
+      expect(seen.map(({ event, session, lastMessage }) => ({ event, session, lastMessage }))).toEqual([
+        { event: "turn.stop", session: child, lastMessage: childText },
+        { event: "agent.stop", session: parent, lastMessage: childText },
+        { event: "turn.stop", session: parent, lastMessage: expect.any(String) },
+      ]);
+    });
+
+    it("U6: reports a child that failed before any text, and not one that was interrupted", async () => {
+      // Constructed from the captured sequence: the child's text events are
+      // dropped and its completion becomes a failure or an interruption.
+      const ended = (type: string) =>
+        rows
+          .filter((row) => !(data(row)["sessionID"] === child && String(row.event["type"]).startsWith("session.text.")))
+          .map((row) =>
+            data(row)["sessionID"] === child && row.event["type"] === "session.execution.succeeded"
+              ? { ...row, event: { ...row.event, type } }
+              : row,
+          );
+      const failed: Seen[] = [];
+      await replay(ended("session.execution.failed"), [
+        hook("agent.stop", { id: "agent", fields: ["lastMessage"], run: record(failed) }),
+      ]);
+      expect(failed).toEqual([
+        {
+          event: "agent.stop",
+          session: parent,
+          agentId: child,
+          agentType: agent,
+          correlationAgentId: child,
+          parentAgentId: parent,
+        },
+      ]);
+      const interrupted: Seen[] = [];
+      await replay(ended("session.execution.interrupted"), [
+        hook("turn.stop", { id: "stop", run: record(interrupted) }),
+        hook("agent.stop", { id: "agent", run: record(interrupted) }),
+      ]);
+      expect(interrupted.map(({ event, session }) => ({ event, session }))).toEqual([
+        { event: "turn.stop", session: child },
+        { event: "turn.stop", session: parent },
+      ]);
+    });
+  });
+});

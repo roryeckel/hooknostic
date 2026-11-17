@@ -298,8 +298,8 @@ function playbackPluginSource(
           return block("permission denied by harness playback");
         }
         if (effects.includes("prevent-stop-once") && ("${event}" === "turn.stop" || "${event}" === "agent.stop") &&
-            (event.raw?.stop_hook_active ?? false) !== true && !preventedSessions.has(event.session.id ?? "")) {
-          preventedSessions.add(event.session.id ?? "");
+            (event.raw?.stop_hook_active ?? false) !== true && !preventedSessions.has("${event}:" + (event.session.id ?? ""))) {
+          preventedSessions.add("${event}:" + (event.session.id ?? ""));
           return preventStop("stop prevented once by harness playback");
         }
         if (effects.includes("session-start-notify") && "${event}" === "session.start") {
@@ -333,7 +333,12 @@ function playbackPluginSource(
           toolMcp: event.tool?.mcp,
           shellDialect: event.tool?.shell?.dialect,
           lastMessage: event.lastMessage,
-          turnId: event.correlation.turnId,${label === undefined ? "" : `\n          label: ${JSON.stringify(label)},`}
+          turnId: event.correlation.turnId,
+          sessionId: event.session.id,
+          agentId: event.agent?.id,
+          agentType: event.agent?.type,
+          correlationAgentId: event.correlation.agentId,
+          parentAgentId: event.correlation.parentAgentId,${label === undefined ? "" : `\n          label: ${JSON.stringify(label)},`}
         }) + "\\n");${extraEffects}
       },
     })`;
@@ -357,7 +362,9 @@ import {
 const tracePath = process.env["HOOKNOSTIC_PLAYBACK_TRACE"];
 if (!tracePath) throw new Error("HOOKNOSTIC_PLAYBACK_TRACE is required");
 // OpenCode has no stop_hook_active flag and runs hooks in-process; command-hook
-// harnesses start a fresh process per dispatch, where this stays empty.
+// harnesses start a fresh process per dispatch, where this stays empty. Keyed
+// by event and session: OpenCode v2 reports a child's agent.stop under its
+// parent's session, which must not use up the parent's own turn.stop prevention.
 const preventedSessions = new Set();
 
 export default definePlugin({
@@ -383,7 +390,14 @@ export async function buildPlaybackArtifact(
   const target = targetFor(adapter, artifactDir, override);
   const resolution = adapter.capabilities(target);
   const fields = (
-    ["prompt.before.correlation.turnId", "turn.stop.lastMessage", "turn.stop.correlation.turnId"] as const
+    [
+      "prompt.before.correlation.turnId",
+      "turn.stop.lastMessage",
+      "turn.stop.correlation.turnId",
+      "agent.stop.lastMessage",
+      "agent.stop.agent.type",
+      "agent.stop.correlation.parentAgentId",
+    ] as const
   ).filter((field) => {
     const level = resolution.fields?.[field]?.level;
     return level !== undefined && level !== "unsupported";
