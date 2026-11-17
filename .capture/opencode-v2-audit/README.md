@@ -290,7 +290,7 @@ both captured sequences, so each unit mutant fails in both:
 | `agent-stop-parent-link-playback` | As `agent-stop-parent-link` | P1, the subagent drive |
 | `agent-stop-order` | `agent.stop` queued before the child's `turn.stop` | P2, the late-child test |
 | `agent-stop-succeeded-only-playback` | As `agent-stop-succeeded-only` | P3, `subagent-fail` |
-| `agent-stop-once-per-child` | A child is forgotten after its first stop | P4, `subagent-followup` |
+| `agent-stop-once-per-child` | A child is forgotten as its first `agent.stop` is queued, so that one still fires | P4, `subagent-followup`: one `agent.stop` instead of two. P1 still passes, so the mutant tests the follow-up claim alone |
 | `agent-stop-prevent-key` | Playback prevents once per session, not per event | P5, the stop test: the lifecycle probe times out |
 | `agent-stop-post-guard-playback` | `post` no longer refuses `agent.stop`, and `agent.stop.prevent` is rated | P5: the parent's last request carries the stop reason twice. The post joined its running execution, so no execution count changed |
 

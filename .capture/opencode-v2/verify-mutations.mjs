@@ -180,8 +180,9 @@ const cases = [
     "late background child",
   ],
   ["agent-stop-succeeded-only-playback", "packages/adapter-opencode/src/v2/shim.ts", 'new Set(["session.execution.succeeded", "session.execution.failed"])', 'new Set(["session.execution.succeeded"])', playback, "failed before any text"],
-  // Pins the follow-up claim: a child reported once would drop the second.
-  ["agent-stop-once-per-child", "packages/adapter-opencode/src/v2/shim.ts", "const child = children.get(sessionID);", "const child = children.get(sessionID); children.delete(sessionID);", playback, "followed-up subagent"],
+  // Pins the follow-up claim: the child is forgotten once its first agent.stop
+  // is queued, so that first stop still fires and only the follow-up's is lost.
+  ["agent-stop-once-per-child", "packages/adapter-opencode/src/v2/shim.ts", 'enqueue(sessionID, () => run("event", event, false, execution, child));', '{ children.delete(sessionID); enqueue(sessionID, () => run("event", event, false, execution, child)); }', playback, "followed-up subagent"],
   // Keyed by session alone, the child's agent.stop takes the parent's one
   // prevention, and the stop drive times out waiting for it.
   [
