@@ -532,3 +532,8 @@ while the old instance still runs is Q5's shape). `adopt-execution-unread`
 turn id) survives every test: such an entry changes only what a later
 handover counts as running. It is guarded in the code. `unlinked` is cleared
 at cleanup.
+
+After this round the full `verify-mutations.mjs` run on 2.0.17 killed 140 of
+140, every file restored byte for byte. The three running-reload tests and
+the steer test passed 10 runs of 10 on each of 2.0.17, 2.2.6 and 2.3.0, with
+no re-drive.
