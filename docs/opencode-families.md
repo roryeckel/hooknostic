@@ -53,25 +53,64 @@ result also started another parent execution, reporting `turn.stop` without
 prevention timing with such a child were not probed there.
 [Capture](../.capture/opencode-v2-audit/README.md).
 
-V2 reports a finished subagent as `agent.stop` (validated on 2.0.17, 2.2.6
-and 2.3.0). When a child session the plugin saw created in its own location
-succeeds or fails, the child's own `turn.stop` fires first, under the child's
-session id, and `agent.stop` follows under the parent's. Its `session.id` and
-`correlation.parentAgentId` are the parent, `agent.id` and
-`correlation.agentId` the child, `agent.type` the agent the child was created
-with, and `lastMessage`, when a hook declares it, the child's last text. A
-`turn.stop` hook therefore also runs for each child, and cannot yet tell a
-child's stop from a top-level one (#232). On Claude, by its hook
-documentation, a subagent's stop is a `SubagentStop` and not a `Stop`.
-`agent.stop` is observe-only: the child's result has already gone back to the
-parent, or been queued for it, so prevention and notices are unsupported and
-nothing is posted. Each completion dispatches, so a follow-up to the same
-child (the subagent tool's `sessionID`) reports again with the same
-`agent.id`. Not reported: a child created before plugin setup or in another
-location, and an interrupted child. Before 2.3.0 a subagent runs in the
-foreground by default. With the tool's opt-in `background` argument, a child
-still running when `opencode run --standalone` exits is cut off and reports
-nothing: observed on 2.0.17, while 2.2.6 waited for the same child.
+V2 reports a subagent's start as `agent.start` and its finish as `agent.stop`
+(validated on 2.0.17, 2.2.6 and 2.3.0). Both are reported under the parent:
+their `session.id` and `correlation.parentAgentId` are the parent, `agent.id`
+and `correlation.agentId` the child, and `agent.type` the agent the child was
+created with.
+
+`agent.start` comes from the child's `session.created`, seen in the plugin's
+own location, and is dispatched just before the child's own `session.start`.
+It is observe-only and asynchronous. By then the child exists and its own
+`prompt.before` has already run, and the dispatch is not ordered with the
+parent's `tool.after`, which for a background child carries the launch
+notice. To stop a subagent from starting, block `tool.before` for
+`kind: "agent"`. A follow-up to an existing child (the subagent tool's
+`sessionID`) creates no session and starts nothing.
+
+When a recognized child succeeds or fails, its own `turn.stop` fires first,
+under the child's session id, and `agent.stop` follows under the parent's,
+with `lastMessage`, when a hook declares it, holding the child's last text. A
+`turn.stop` hook therefore also runs for each child. The child's `turn.stop`
+carries `correlation.agentId` (the child) and `correlation.parentAgentId` (the
+parent), as on Copilot; a top-level `turn.stop` carries neither. On Claude, by
+its hook documentation, a subagent's stop is a `SubagentStop` and not a
+`Stop`. `agent.stop` is observe-only: the child's result has already gone
+back to the parent, or been queued for it, so prevention and notices are
+unsupported and nothing is posted. Each completion dispatches, so a follow-up
+to the same child reports again with the same `agent.id`. An interrupted
+child is not reported as `agent.stop`.
+
+A child is recognized when the plugin saw its `session.created`. When it did
+not, the child is still recognized once its next prompt reaches this plugin
+instance: the prompt hook looks up its parent with `session.get`, without
+holding the prompt. This covers a follow-up to a child after a plugin reload,
+and a child created through the API before lazy plugin setup (2.2.6 and
+later; 2.0.17's API dropped the `parentID`). Such a child reports `agent.stop`
+and its agent ids, and takes no stop prevention or notices, but reports no
+`agent.start`. Only that child's own completion waits for the lookup, at most
+2 s. A lookup that fails, times out or finds no parent in this location leaves
+the child as an ordinary session. Still not recognized:
+
+- A background child still running when the plugin reloads. Its prompt went
+  through the old instance, and on 2.3.0 that instance was disposed before
+  the child completed, so neither its `turn.stop` nor its `agent.stop` was
+  reported (observed). Looking it up from the event subscription instead
+  would report it twice on builds whose old instance still handles it.
+- A child in another location. This was not reproduced: subagent children
+  took the parent's location in every capture, and on 2.2.6 and 2.3.0 an API
+  child created for another location was put in the parent's.
+
+On 2.0.17 a plugin reload while an execution runs leaves the old plugin
+instance alive, and both instances then dispatch that session's later stops
+(observed; a recovered child's `agent.stop` is duplicated too). De-duplication
+across instances, and recovering a child still running across a reload, are
+tracked in [#236](https://github.com/roryeckel/hooknostic/issues/236).
+
+Before 2.3.0 a subagent runs in the foreground by default. With the tool's
+opt-in `background` argument, a child still running when
+`opencode run --standalone` exits is cut off and reports nothing: observed on
+2.0.17, while 2.2.6 waited for the same child.
 [Capture](../.capture/opencode-v2-audit/README.md). Legacy SSE
 remains unsupported. SSE receives no fallback
 GET after a failed POST in the captured baseline. Default MCP OAuth discovery,
