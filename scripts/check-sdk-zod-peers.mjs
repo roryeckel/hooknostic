@@ -133,8 +133,9 @@ try {
     console.log(`Packed SDK with Zod ${version}: types, composition and V4 errors passed`);
   }
 
-  // The SDK alone, its optional peer not installed: the root must type-check
-  // with library checking on and run, while the schemas subpath cannot load.
+  // The SDK alone, its peer not installed, as Yarn or pnpm without auto-installed
+  // peers leaves it: the root must type-check with library checking on and
+  // run, while the schemas subpath cannot load.
   const zodFree = await consumerProject(directory, { "@hooknostic/sdk": sdk }, zodFreeConsumer);
   await run("pnpm", ["install", "--ignore-scripts", "--config.auto-install-peers=false"], zodFree);
   await run(process.execPath, [compiler, "-p", join(zodFree, "tsconfig.json")], root);
@@ -190,7 +191,7 @@ try {
     "@example/pinned-zod": tarball(pinnedTarball),
     "@hooknostic/sdk": sdk,
   });
-  // npm's default peer handling installs an in-range Zod for the optional peer
+  // npm's default peer handling installs an in-range Zod for the SDK's peer
   // once any Zod is in the tree, nesting the old one. Projects that set
   // legacy-peer-deps (npm 3-6 behaviour, still common in .npmrc) ignore the
   // peer, and npm hoists zod@3.25.76 beside the SDK with no ERESOLVE.
@@ -247,8 +248,48 @@ try {
     `npm consumer with a hoisted zod@3.25.76: bundled zod@${cliZod.version} and warned HN109\n\n${reportedNpm}`,
   );
 
+  // The documented install, the CLI and the SDK in one project, then a Zod
+  // outside the SDK's peer range added to it. npm must refuse with ERESOLVE.
+  // While the peer was optional, npm 7.24.2 and later looped here instead,
+  // printing "ERESOLVE overriding peer dependency" until killed (#240). A loop
+  // trips the output limit or the timeout, and runProcess kills its tree.
+  const downgrade = await mkdtemp(join(directory, "npm-downgrade-"));
+  await writeFile(
+    join(downgrade, "package.json"),
+    JSON.stringify({
+      private: true,
+      devDependencies: { "@hooknostic/sdk": sdk, hooknostic: tarball(cliTarball) },
+    }),
+  );
+  await run("npm", ["install", "--ignore-scripts", "--no-audit", "--no-fund"], downgrade);
+  // The layout under test: the CLI's in-range Zod, hoisted to the root, is
+  // what the replacement must displace.
+  const hoisted = installedVersion("zod/package.json", downgrade);
+  assert.equal(dirname(hoisted.path), join(downgrade, "node_modules", "zod"));
+  assert.ok(semver.satisfies(hoisted.version, range), `the hoisted Zod ${hoisted.version} must satisfy ${range}`);
+  const older = "3.23.8";
+  assert.ok(!semver.satisfies(older, range), `zod@${older} must fall outside ${range}`);
+  const replace = await runProcess(
+    "npm",
+    ["install", "--save-dev", `zod@${older}`, "--ignore-scripts", "--no-audit", "--no-fund"],
+    { cwd: downgrade, timeoutMs: 120_000 },
+  );
+  const replaceOutput = `${replace.stdout}${replace.stderr}`;
+  const overrides = replaceOutput.split("ERESOLVE overriding peer dependency").length - 1;
+  assert.equal(
+    replace.failure,
+    undefined,
+    `npm install zod@${older} must end on its own, not loop (#240): ${replace.failure?.message}; ` +
+      `${overrides} "overriding peer dependency" warnings`,
+  );
+  assert.ok(
+    !replace.ok && /\bERESOLVE\b/.test(replaceOutput) && /could not resolve/i.test(replaceOutput),
+    `npm install zod@${older} must fail with ERESOLVE (exit ${replace.exitCode}):\n${replaceOutput}`,
+  );
+  console.log(`npm downgrade to zod@${older}: refused with ERESOLVE (exit ${replace.exitCode}), no loop`);
+
   // A pnpm project that declares zod@3.24.4 itself: pnpm links it as the SDK's
-  // optional peer with only a warning. That release predates `zod/v4`, so the
+  // peer with only a warning. That release predates `zod/v4`, so the
   // SDK's import cannot resolve against it, yet the build must still name it
   // in HN109 rather than fall back silently (ADR-0040).
   const pnpmProject = await exampleProject(
