@@ -16,7 +16,8 @@ const cases = [
   ["audit-responses-stream", "packages/cli/test/harness-playback.ts", readFileSync("packages/cli/test/harness-playback.ts", "utf8").match(/    const text = action.text \?\? "playback complete";[\s\S]+?    events.push\(\{/)[0], '    events.push({', playback, "provider-responses"],
   ["audit-subagent", "packages/adapter-opencode/src/v2/toolmap.ts", 'subagent: "agent"', 'subagent: "other"', playback, "subagent result"],
   // Killed on the reference build, which this moves past the boundary.
-  ["subagent-background-boundary", "packages/adapter-opencode/src/v2/profile.ts", 'version: "2.3.0",\n          date: "2026-11-16",\n          method: "captured",', 'version: "2.0.17",\n          date: "2026-11-16",\n          method: "captured",', playback, "subagent result"],
+  // Anchored on the boundary record's artifact line, so only that record moves.
+  ["subagent-background-boundary", "packages/adapter-opencode/src/v2/profile.ts", 'version: "2.3.0",\n          date: "2026-11-16",\n          method: "captured",\n          artifact: "fixtures/opencode/2.0/tool-subagent-background-after.input.json",', 'version: "2.0.17",\n          date: "2026-11-16",\n          method: "captured",\n          artifact: "fixtures/opencode/2.0/tool-subagent-background-after.input.json",', playback, "subagent result"],
   // The late-child test kills it from 2.3.0, where a child's result starts an
   // unprompted parent execution; on every build the stop test's prevention
   // continuation, which no prompt starts either, does.

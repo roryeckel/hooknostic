@@ -216,7 +216,7 @@ Mutants, each run against the named build, killed, and restored byte for byte:
 
 | Mutant | Change | Killed by |
 | --- | --- | --- |
-| `subagent-background-boundary` | The boundary record's version moved to 2.0.17 | The subagent test on 2.0.17; the late and stop tests too |
+| `subagent-background-boundary` | The boundary record's version moved to 2.0.17. Anchored on the record's artifact line, since a second 2.3.0 `captured` record now exists | The subagent test on 2.0.17; the late and stop tests too |
 | `audit-subagent` (existing) | `subagent` classified `other` | The subagent test on 2.3.0 |
 | `subagent-late-turn-id` | The shim keeps a pending prompt id past the execution it starts | The late test on 2.3.0, and the stop test on every build, whose prevention continuation no prompt starts either. The late test alone let it survive before 2.3.0 |
 | (manual) | The decoder reads `result.output` instead of `result.content` | The `tool-subagent-background-after` decode case |
