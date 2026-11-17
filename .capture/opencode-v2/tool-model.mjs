@@ -92,10 +92,18 @@ export async function startToolModel(project, mcpOnly = false, remote = false, a
     // Constructed timing: the child answers 3 s late, so a background child
     // (2.3.0 and later) outlives its parent's first execution.
     if (child && audit === "subagent-late") await new Promise(resolve => setTimeout(resolve, 3000));
+    // #236, constructed timing: in the steer drive the continuation a stop
+    // prevention starts in the parent answers 1.5 s late, so a prompt to the
+    // parent lands while it runs, and it ends while the old plugin instance
+    // still lives (it holds the parent's execution; the child runs for 4 s).
+    if (!child && audit === "subagent-reload-running-steer" &&
+        JSON.stringify(request.messages?.at(-1)?.content ?? "").includes("stop prevented once by harness playback"))
+      await new Promise(resolve => setTimeout(resolve, 1500));
     // #236, constructed timing: the first child answers 4 s late, so the plugin
     // reload lands while it runs and the old instance outlives the reload.
     if (child && String(audit).startsWith("subagent-reload-running") && !followUp &&
-        !JSON.stringify(request.messages).includes("hooknostic-second-child"))
+        !JSON.stringify(request.messages).includes("hooknostic-second-child") &&
+        !JSON.stringify(request.messages).includes("hooknostic-steer"))
       await new Promise(resolve => setTimeout(resolve, 4000));
     // Constructed failure: HTTP 400 fails the child's execution at once (a 500
     // is retried for about 90 s before it fails).

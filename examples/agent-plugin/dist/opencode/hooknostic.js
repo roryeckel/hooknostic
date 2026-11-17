@@ -7834,7 +7834,9 @@ async function setupOpenCodeV2(plugin, options2, ctx) {
   const peer = {
     generation,
     knows: (type, sessionID) => type === "session.created" || local.has(sessionID),
-    child: (sessionID) => children.get(sessionID)
+    child: (sessionID) => children.get(sessionID),
+    // Read only after setup, when `executions` (declared below) exists.
+    running: (sessionID) => executions.get(sessionID)
   };
   const superseded = (type, sessionID) => [...group.live].some((other) => other.generation > generation && other.knows(type, sessionID));
   const newest = () => ![...group.live].some((other) => other.generation > generation);
@@ -7854,6 +7856,13 @@ async function setupOpenCodeV2(plugin, options2, ctx) {
       if (found !== void 0) return found;
     }
     return group.inherited.get(sessionID)?.child;
+  };
+  const runningElsewhere = (sessionID) => {
+    for (const other of group.live) {
+      const found = other === peer ? void 0 : other.running(sessionID);
+      if (found !== void 0) return found;
+    }
+    return void 0;
   };
   const declares = (event, field) => plugin.hooks.some(
     (h) => h.event === event && hookAppliesToTarget(h, targetId) && (h.fields ?? []).includes(`${event}.${field}`)
@@ -8007,7 +8016,7 @@ async function setupOpenCodeV2(plugin, options2, ctx) {
     local.add(sessionID);
     if (inherited.child !== void 0 && !children.has(sessionID)) children.set(sessionID, inherited.child);
     if (!children.has(sessionID)) unlinked.add(sessionID);
-    if (inherited.execution !== void 0 && !executions.has(sessionID)) {
+    if ((readsText || readsPrompt) && inherited.execution !== void 0 && !executions.has(sessionID)) {
       executions.set(sessionID, inherited.execution);
       pendingPrompts.delete(sessionID);
     }
@@ -8031,6 +8040,7 @@ async function setupOpenCodeV2(plugin, options2, ctx) {
       joined = false;
       handOver();
     }
+    unlinked.clear();
     controller.abort();
     await Promise.allSettled(registrations.map((r) => r.dispose()));
     await task;
@@ -8051,6 +8061,14 @@ async function setupOpenCodeV2(plugin, options2, ctx) {
               else if (readsLink) lookUp(sessionID);
             }
             if (sessionID !== void 0) local.add(sessionID);
+            if (sessionID !== void 0 && (readsText || readsPrompt) && !executions.has(sessionID)) {
+              const running = runningElsewhere(sessionID);
+              if (running !== void 0)
+                executions.set(sessionID, {
+                  ...running.prompt ? { prompt: running.prompt } : {},
+                  text: [...running.text]
+                });
+            }
             if (readsPrompt && sessionID !== void 0) {
               if (executions.has(sessionID)) pendingPrompts.delete(sessionID);
               else pendingPrompts.set(sessionID, { sessionID, messageID: e.messageID });
@@ -8147,11 +8165,12 @@ async function setupOpenCodeV2(plugin, options2, ctx) {
                   const running = executions.get(sessionID);
                   if (running !== void 0) {
                     if (running.text.at(-1)?.["assistantMessageID"] !== data.assistantMessageID) running.text = [];
-                    running.text.push({
-                      assistantMessageID: data.assistantMessageID,
-                      ordinal: data.ordinal,
-                      text: data.text
-                    });
+                    if (!running.text.some((segment) => segment["ordinal"] === data.ordinal))
+                      running.text.push({
+                        assistantMessageID: data.assistantMessageID,
+                        ordinal: data.ordinal,
+                        text: data.text
+                      });
                   }
                 } else if (completions.has(String(event.type))) {
                   const finished = executions.get(sessionID);

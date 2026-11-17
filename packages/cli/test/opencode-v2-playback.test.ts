@@ -722,6 +722,52 @@ describe.skipIf(!enabled)("OpenCode v2 offline playback", () => {
     for (const turnId of dispatched(trace, "prompt.before", "sessionId", parent!).map((entry) => entry.turnId))
       expect(parentStops.filter((entry) => entry.turnId === turnId)).toHaveLength(1);
   }, 200000);
+  it("a prompt steered into an execution the old instance still runs keeps its text and turn id (#236)", async () => {
+    const { audit, trace } = await driveRunning("subagent-reload-running-steer");
+    expect(audit.overlap).toBe(true);
+    const { parentID: parent, childID: child } = audit as { parentID: string; childID: string };
+    console.log(
+      `[#236 steer] ${JSON.stringify({ child: audit.child, parent: audit.parent, parentRunning: audit.parentRunning })}`,
+    );
+    const turnIds = (session: string) =>
+      dispatched(trace, "prompt.before", "sessionId", session).map((entry) => entry.turnId);
+    // The child's first prompt, through the old instance, and the one steered into its execution.
+    const [original, steered] = turnIds(child);
+    expect(turnIds(child)).toHaveLength(2);
+    const childStops = dispatched(trace, "turn.stop", "sessionId", child);
+    expect(childStops.map((entry) => entry.nativeId).sort()).toEqual(completionIds(audit.records, child));
+    // The execution the old instance ran: its text, and the id of the prompt that started it.
+    expect(childStops[0]).toMatchObject({ lastMessage: "hooknostic-child-result", turnId: original });
+    expect(dispatched(trace, "agent.stop", "agentId", child)[0]).toMatchObject({
+      lastMessage: "hooknostic-child-result",
+    });
+    // A prompt steered into a running execution starts none of its own, so its
+    // id is on no stop: absent, never wrong. One the host ran as its own
+    // execution is on that execution's stop. Branch on what the host did: the
+    // session's next event after the prompt is a start, or a completion.
+    const records = audit.records as Row[];
+    const startedItsOwn = (session: string, turnId: string | undefined) => {
+      const at = records.findIndex(
+        (row) => row.hook === "prompt" && (row.event as { messageID?: string }).messageID === turnId,
+      );
+      const next = records
+        .slice(at + 1)
+        .find(
+          (row) =>
+            row.hook === "event" &&
+            row.event.data?.sessionID === session &&
+            /^session\.execution\./.test(row.event.type ?? ""),
+        );
+      return next?.event.type === "session.execution.started";
+    };
+    for (const [session, turnId] of [
+      [child, steered],
+      [parent, turnIds(parent).at(-1)],
+    ] as const)
+      expect(trace.filter((entry) => entry.event === "turn.stop" && entry.turnId === turnId)).toHaveLength(
+        startedItsOwn(session, turnId) ? 1 : 0,
+      );
+  }, 200000);
   it("prevents a stop once across a reload, and never a subagent's (#236)", async () => {
     const { audit, trace } = await driveRunning("subagent-reload-running-stop");
     expect(audit.overlap).toBe(true);

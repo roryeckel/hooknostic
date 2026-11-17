@@ -1825,7 +1825,15 @@ describe("v2 reloaded plugin instances (#236)", () => {
     "turn.stop.prevent": "approximate",
     "agent.stop.observe": "approximate",
   } as const;
-  type Seen = { by: string; event: string; session?: string; agentId?: string; lastMessage?: string; turnId?: string };
+  type Seen = {
+    by: string;
+    event: string;
+    session?: string;
+    agentId?: string;
+    agentType?: string;
+    lastMessage?: string;
+    turnId?: string;
+  };
 
   /** One plugin instance with its own subscription, fed by `publish`. */
   async function instance(
@@ -1842,6 +1850,10 @@ describe("v2 reloaded plugin instances (#236)", () => {
       block?: { session: string; until: Promise<void> };
       /** The host's subscription throws, or ends, at once. */
       subscription?: "throws" | "ends";
+      /** The plugin root a package-delivered bundle resolves (`ctx.plugin.root`). */
+      pluginRoot?: string;
+      /** Also record the agent type. */
+      types?: boolean;
       /** One buffered event the host still yields after the abort. */
       afterAbort?: Record<string, unknown>;
     } = {},
@@ -1852,7 +1864,7 @@ describe("v2 reloaded plugin instances (#236)", () => {
     const note = (event: {
       event: string;
       session: { id?: string };
-      agent?: { id?: string };
+      agent?: { id?: string; type?: string };
       lastMessage?: string;
       correlation: { turnId?: string };
     }) =>
@@ -1863,6 +1875,7 @@ describe("v2 reloaded plugin instances (#236)", () => {
         ...(event.agent?.id !== undefined ? { agentId: event.agent.id } : {}),
         ...(event.lastMessage !== undefined ? { lastMessage: event.lastMessage } : {}),
         ...(event.correlation.turnId !== undefined ? { turnId: event.correlation.turnId } : {}),
+        ...(options.types && event.agent?.type !== undefined ? { agentType: event.agent.type } : {}),
       });
     const cleanup = await setupOpenCodeV2(
       definePlugin({
@@ -1898,6 +1911,7 @@ describe("v2 reloaded plugin instances (#236)", () => {
           "session.start.observe": "approximate",
           "context.compact.after.observe": "approximate",
         },
+        ...(options.pluginRoot !== undefined ? { pluginRoot: options.pluginRoot } : {}),
       },
       {
         location: { directory: options.directory ?? directory },
@@ -2012,13 +2026,17 @@ describe("v2 reloaded plugin instances (#236)", () => {
     const first = await instance("first", seen);
     const other = await instance("other-plugin", seen, { name: "another" });
     const elsewhere = await instance("elsewhere", seen, { directory: directory + "-elsewhere" });
-    const all = [first, other, elsewhere];
+    // Two package-delivered copies of the same plugin, in the same location,
+    // that differ only in the plugin root they resolve.
+    const rootA = await instance("root-a", seen, { pluginRoot: "/plugins/a/package" });
+    const rootB = await instance("root-b", seen, { pluginRoot: "/plugins/b/package" });
+    const all = [first, other, elsewhere, rootA, rootB];
     // Constructed: the parent prompted through every instance, so each knows it.
     for (const each of all) await each.prompt(prompt(parent));
     for (const each of all) each.publish(rows[completion(parent)]!.event);
     await settle();
     for (const each of all) await each.cleanup();
-    expect(seen.map((entry) => entry.by).sort()).toEqual(["elsewhere", "first", "other-plugin"]);
+    expect(seen.map((entry) => entry.by).sort()).toEqual(["elsewhere", "first", "other-plugin", "root-a", "root-b"]);
   });
 
   it("R5: a child created while two instances live starts once, from the newest", async () => {
@@ -2239,15 +2257,19 @@ describe("v2 reloaded plugin instances (#236)", () => {
     ]);
   });
 
-  it("Q3: a child prompted at the new instance before the handover still gets the handed-over text", async () => {
-    // The prompt reached the new instance while the old one still ran the
-    // child: steered into that execution, which only the handover carries.
+  it("Q3: a child prompted at the new instance before it adopts the handover still gets the handed-over text", async () => {
+    // 2.3.0: the old instance is disposed while the child still runs, and the
+    // prompt reaches the new instance before any of the child's events does:
+    // steered into that execution, which only the handover carries. (A prompt
+    // while the old instance still lives takes its execution over at once:
+    // Q5.) The prompt is its own message, so its id differs from the child's
+    // first prompt's.
     const seen: Seen[] = [];
     const old = await instance("old", seen);
     await old.feed(0, completion(child));
     const next = await instance("new", seen);
-    await next.prompt(prompt(child));
     await old.cleanup();
+    await next.prompt({ hook: "prompt", directory, event: { sessionID: child, messageID: "msg_steered" } });
     await next.feed(completion(child), completion(child) + 1);
     // A later execution of the child that no prompt started: the steered
     // prompt's id must not land on it.
@@ -2365,5 +2387,93 @@ describe("v2 reloaded plugin instances (#236)", () => {
     await next.cleanup();
     // Before #236 the new instance reported evt_pin_queued; now nobody does.
     expect(seen.map(({ by, event }) => `${by} ${event}`)).toEqual(["old turn.stop"]);
+  });
+
+  it("Q5: a prompt steered into an execution the old instance still runs keeps that execution's text and id", async () => {
+    // The 2.0.17 and 2.2.6 order: the completion reaches both instances while
+    // the old one lives. The new instance took the steered prompt, so it
+    // reports; the old one holds the execution.
+    const seen: Seen[] = [];
+    const text = rows.findIndex(
+      (row) => row.event["type"] === "session.text.ended" && data(row)["sessionID"] === child,
+    );
+    const old = await instance("old", seen);
+    await old.feed(0, text + 1);
+    const next = await instance("new", seen);
+    // A segment both instances buffer: still unread by the new one when the
+    // prompt takes the old one's text over, then read.
+    next.publish(rows[text]!.event);
+    void next.prompt({ hook: "prompt", directory, event: { sessionID: child, messageID: "msg_steered" } });
+    await settle();
+    await old.feed(text + 1, completion(child) + 1, [old, next]);
+    // A later execution of the child that no prompt started.
+    for (const each of [old, next]) {
+      each.publish({ id: "evt_later", type: "session.execution.started", data: { sessionID: child } });
+      each.publish({ id: "evt_later_done", type: "session.execution.succeeded", data: { sessionID: child } });
+    }
+    await settle();
+    for (const each of [old, next]) await each.cleanup();
+    expect(
+      seen
+        .filter((entry) => entry.session === child || entry.agentId === child)
+        .map(({ by, event, lastMessage, turnId }) => ({ by, event, lastMessage, turnId })),
+    ).toEqual([
+      {
+        by: "new",
+        event: "turn.stop",
+        lastMessage: "hooknostic-child-result",
+        turnId: prompt(child)!.event["messageID"],
+      },
+      { by: "new", event: "agent.stop", lastMessage: "hooknostic-child-result", turnId: undefined },
+      { by: "new", event: "turn.stop", lastMessage: undefined, turnId: undefined },
+      { by: "new", event: "agent.stop", lastMessage: undefined, turnId: undefined },
+    ]);
+  });
+
+  it("Q6: a handover merges into a session the new instance already runs, and never overwrites", async () => {
+    const seen: Seen[] = [];
+    const old = await instance("old", seen);
+    await old.feed(0, completion(child));
+    const next = await instance("new", seen, { types: true });
+    // The new instance's own link and execution, different from the old one's.
+    for (const event of [
+      {
+        id: "evt_own_created",
+        type: "session.created",
+        data: { sessionID: child, parentID: parent, agent: "explore", location: { directory } },
+      },
+      { id: "evt_own_started", type: "session.execution.started", data: { sessionID: child } },
+      {
+        id: "evt_own_text",
+        type: "session.text.ended",
+        data: { sessionID: child, assistantMessageID: "msg_own", ordinal: 0, text: "own text" },
+      },
+    ])
+      next.publish(event);
+    await settle();
+    await old.cleanup();
+    next.publish(rows[completion(child)]!.event);
+    await settle();
+    await next.cleanup();
+    expect(
+      seen
+        .filter((entry) => entry.by === "new")
+        .map(({ event, agentType, lastMessage }) => ({ event, agentType, lastMessage })),
+    ).toEqual([
+      { event: "turn.stop", agentType: undefined, lastMessage: "own text" },
+      { event: "agent.stop", agentType: "explore", lastMessage: "own text" },
+    ]);
+  });
+
+  it("R17: an older instance reports again once the newer one is disposed", async () => {
+    const seen: Seen[] = [];
+    const older = await instance("older", seen);
+    const newer = await instance("newer", seen);
+    for (const each of [older, newer]) await each.prompt(prompt(parent));
+    await newer.cleanup();
+    older.publish(rows[completion(parent)]!.event);
+    await settle();
+    await older.cleanup();
+    expect(seen.map(({ by, event }) => ({ by, event }))).toEqual([{ by: "older", event: "turn.stop" }]);
   });
 });

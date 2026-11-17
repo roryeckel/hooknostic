@@ -20,7 +20,7 @@ export async function driveLifecycle({ executable, root, project, env, model, re
   const start = () => {
     server = spawn(executable, ["serve", "--stdio", "--hostname", "127.0.0.1", "--port", "0"], {
       cwd: project,
-      env: { ...env, OPENCODE_SERVER_PASSWORD: "hooknostic-local", HOOKNOSTIC_PLAYBACK_EFFECTS: env.HKN_PROBE_EFFECT === "sessions-deny" ? "permission-deny" : env.HKN_PROBE_EFFECT === "stop" || env.HKN_PROBE_EFFECT === "subagent-reload-stop" || env.HKN_PROBE_EFFECT === "subagent-reload-running-stop" || env.HKN_PROBE_EFFECT === "subagent-reload-restart-stop" ? "prevent-stop-once,notify" : "context-add" },
+      env: { ...env, OPENCODE_SERVER_PASSWORD: "hooknostic-local", HOOKNOSTIC_PLAYBACK_EFFECTS: env.HKN_PROBE_EFFECT === "sessions-deny" ? "permission-deny" : env.HKN_PROBE_EFFECT === "stop" || env.HKN_PROBE_EFFECT === "subagent-reload-stop" || env.HKN_PROBE_EFFECT === "subagent-reload-running-stop" || env.HKN_PROBE_EFFECT === "subagent-reload-restart-stop" || env.HKN_PROBE_EFFECT === "subagent-reload-running-steer" ? "prevent-stop-once,notify" : "context-add" },
       windowsHide: true,
       stdio: ["pipe", "pipe", "pipe"],
     });

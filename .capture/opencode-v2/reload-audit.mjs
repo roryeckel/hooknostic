@@ -127,6 +127,32 @@ async function auditRunning({ api, wait, records, model, create, prompt, count, 
   // The new instance is set up; the old one still runs the child.
   await wait(async () => (await rows("setup")) > setups);
   const reloadedAt = (await records()).length;
+  if (mode === "subagent-reload-running-steer") {
+    // A prompt to a session the old instance still runs an execution for:
+    // the child always (its reply is 4 s late), and the parent, which is
+    // still running only where the child runs in the foreground (before
+    // 2.3.0). With prevention and notices on, so a lingering prompt id would
+    // reach the continuation a prevention starts.
+    const running = async (id) => {
+      const o = await outcome(id);
+      return o.started > o.succeeded + o.failed + o.interrupted;
+    };
+    const childRunning = await running(childID);
+    const parentRunning = await running(parent);
+    const steeredAt = (await records()).length;
+    await prompt(parent, "hooknostic-steer-parent: answer in text.");
+    await prompt(childID, "hooknostic-child-task: hooknostic-steer.");
+    await wait(async () => (await count(childID, "succeeded")) >= 1);
+    const firstCleanup = (await records()).findIndex((row) => row.hook === "cleanup");
+    await delay(1000);
+    await quiet(parent, childID);
+    return {
+      parentID: parent, childID, reloadedAt, steeredAt, childRunning, parentRunning,
+      // Overlap: the old instance was not yet disposed when the prompts were sent.
+      overlap: childRunning && (firstCleanup === -1 || firstCleanup > steeredAt),
+      parent: await outcome(parent), child: await outcome(childID),
+    };
+  }
   const freshID = (await create()).id;
   await prompt(freshID, "hooknostic-fresh: answer in text.");
   await wait(async () => (await count(freshID, "succeeded")) >= 1);

@@ -269,7 +269,7 @@ const cases = [
   ["reload-claim-when-alone", shim, "    if (group.live.size < 2) return true;\n", "", unit, "R3:"],
   ["reload-key-without-plugin", shim, "[plugin.name, targetId, here,", "[targetId, here,", unit, "R4:"],
   ["reload-key-without-location", shim, "[plugin.name, targetId, here,", "[plugin.name, targetId,", unit, "R4:"],
-  ["reload-no-child-elsewhere", shim, "    for (const other of group.live) {\n      const found", "    for (const other of [] as Peer[]) {\n      const found", unit, "R2:"],
+  ["reload-no-child-elsewhere", shim, "      const found = other === peer ? undefined : other.child(sessionID);", "      const found = undefined as OpenCodeV2Child | undefined;", unit, "R2:|Q5:"],
   ["reload-no-inherited-execution", shim, "      executions.set(sessionID, inherited.execution);", "      void 0;", unit, "R1:|R7:|Q3:"],
   ["reload-newest-loses", shim, "other.generation > generation && other.knows", "other.generation < generation && other.knows", unit, "R2:|R5:|L1"],
   [
@@ -315,6 +315,16 @@ const cases = [
     "R15:",
   ],
   ["reload-no-abort-break", shim, "            if (controller.signal.aborted) break;\n", "", unit, "R16:"],
+  // The implementation reviews: a prompt steered into an execution an older
+  // instance still runs takes that execution over, its text kept once; a
+  // disposed instance leaves the group; the plugin root keys the group; a
+  // handover merges, never overwrites.
+  ["reload-steer-no-takeover", shim, "const running = runningElsewhere(sessionID);", 'const running = undefined as Inherited["execution"];', unit, "Q5:"],
+  ["reload-text-not-deduplicated", shim, 'if (!running.text.some((segment) => segment["ordinal"] === data.ordinal))', "if (true)", unit, "Q5:"],
+  ["reload-cleanup-keeps-live", shim, "    group.live.delete(peer);\n    if (joined) {", "    if (joined) {", unit, "R17:"],
+  ["reload-key-without-root", shim, '[plugin.name, targetId, here, options.pluginRoot ?? ""]', "[plugin.name, targetId, here]", unit, "R4:"],
+  ["reload-adopt-overwrites-execution", shim, "if ((readsText || readsPrompt) && inherited.execution !== undefined && !executions.has(sessionID)) {", "if ((readsText || readsPrompt) && inherited.execution !== undefined) {", unit, "Q6:"],
+  ["reload-adopt-overwrites-child", shim, "if (inherited.child !== undefined && !children.has(sessionID)) children.set(", "if (inherited.child !== undefined) children.set(", unit, "Q6:"],
   // Playback on the real binary.
   ["agent-start-playback", "packages/adapter-opencode/src/v2/shim.ts", '              if (event.type === "session.created" && child !== undefined && events.has("agent.start"))\n                enqueue(sessionID, () => run("event", event, false, undefined, child));\n', "", playback, "one agent.stop under its parent"],
   ["agent-start-every-event-playback", "packages/adapter-opencode/src/v2/shim.ts", 'if (event.type === "session.created" && child !== undefined && events.has("agent.start"))', 'if (child !== undefined && events.has("agent.start"))', playback, "followed-up subagent"],
@@ -332,6 +342,7 @@ const cases = [
   // killed only on 2.2.6 and 2.3.0, whose old instance is disposed; they are
   // recorded in .capture/opencode-v2-audit/README.md, not run here.
   ["reload-no-dedupe-playback", shim, "(superseded(type, sessionID) || !claim(event.id))", "false", playback, "#236"],
+  ["reload-steer-no-takeover-playback", shim, "const running = runningElsewhere(sessionID);", 'const running = undefined as Inherited["execution"];', playback, "steered into"],
   ["reload-newest-loses-playback", shim, "other.generation > generation && other.knows", "other.generation < generation && other.knows", playback, "#236"],
   [
     "reload-gate-after-agent-start-playback",

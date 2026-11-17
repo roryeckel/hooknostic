@@ -79,6 +79,8 @@ interface Peer {
    */
   knows(type: string, sessionID: string): boolean;
   child(sessionID: string): OpenCodeV2Child | undefined;
+  /** The session's running execution as this instance buffers it, if it does. */
+  running(sessionID: string): Inherited["execution"];
 }
 interface Inherited {
   child?: OpenCodeV2Child;
@@ -157,6 +159,8 @@ export async function setupOpenCodeV2(
     generation,
     knows: (type, sessionID) => type === "session.created" || local.has(sessionID),
     child: (sessionID) => children.get(sessionID),
+    // Read only after setup, when `executions` (declared below) exists.
+    running: (sessionID) => executions.get(sessionID),
   };
   const superseded = (type: string, sessionID: string) =>
     [...group.live].some((other) => other.generation > generation && other.knows(type, sessionID));
@@ -190,6 +194,14 @@ export async function setupOpenCodeV2(
       if (found !== undefined) return found;
     }
     return group.inherited.get(sessionID)?.child;
+  };
+  /** An execution another live instance of this bundle is still running for the session. */
+  const runningElsewhere = (sessionID: string): Inherited["execution"] => {
+    for (const other of group.live) {
+      const found = other === peer ? undefined : other.running(sessionID);
+      if (found !== undefined) return found;
+    }
+    return undefined;
   };
   // An execution's completion carries only the session id, so the turn's
   // fields are assembled from what came before it, and only when a hook
@@ -444,7 +456,8 @@ export async function setupOpenCodeV2(
     local.add(sessionID);
     if (inherited.child !== undefined && !children.has(sessionID)) children.set(sessionID, inherited.child);
     if (!children.has(sessionID)) unlinked.add(sessionID);
-    if (inherited.execution !== undefined && !executions.has(sessionID)) {
+    // Only where something reads it: an execution nobody buffers never ends here.
+    if ((readsText || readsPrompt) && inherited.execution !== undefined && !executions.has(sessionID)) {
       executions.set(sessionID, inherited.execution);
       pendingPrompts.delete(sessionID);
     }
@@ -477,6 +490,7 @@ export async function setupOpenCodeV2(
       joined = false;
       handOver();
     }
+    unlinked.clear();
     controller.abort();
     await Promise.allSettled(registrations.map((r) => r.dispose()));
     await task;
@@ -507,6 +521,21 @@ export async function setupOpenCodeV2(
               else if (readsLink) lookUp(sessionID);
             }
             if (sessionID !== undefined) local.add(sessionID);
+            // Steered into an execution another live instance of this bundle
+            // still runs (#236): this instance, which reports the session from
+            // now on, takes over that execution's prompt id and text, so the
+            // stop reports them, and this prompt then waits for no execution
+            // (below), as it would if this instance had run it all along. A
+            // copy: both instances keep buffering the same events, and a
+            // segment buffered twice is kept once.
+            if (sessionID !== undefined && (readsText || readsPrompt) && !executions.has(sessionID)) {
+              const running = runningElsewhere(sessionID);
+              if (running !== undefined)
+                executions.set(sessionID, {
+                  ...(running.prompt ? { prompt: running.prompt } : {}),
+                  text: [...running.text],
+                });
+            }
             // Recorded before dispatch: the execution it starts cannot begin until
             // this hook returns. A blocked prompt starts none, so it is dropped.
             // A prompt admitted while an execution runs is steered into that one,
@@ -587,7 +616,12 @@ export async function setupOpenCodeV2(
     if (subscribes) {
       // Before the task starts, though its first step runs synchronously
       // anyway: an older instance must already yield to this one for the
-      // first event this subscription can hear.
+      // first event this subscription can hear. The other way round is not
+      // covered: an event an older instance had already received but not yet
+      // read when this one joined is yielded by it, though this one never
+      // hears it. No such lag was seen in any capture (no event the old
+      // instance heard after this setup was missing here); closing it would
+      // need the host to say when each subscription started.
       group.live.add(peer);
       joined = true;
       task = (async () => {
@@ -636,11 +670,13 @@ export async function setupOpenCodeV2(
                     // Only the latest assistant message's segments are kept: a memory
                     // bound, since the decoder reports only the last message anyway.
                     if (running.text.at(-1)?.["assistantMessageID"] !== data.assistantMessageID) running.text = [];
-                    running.text.push({
-                      assistantMessageID: data.assistantMessageID,
-                      ordinal: data.ordinal,
-                      text: data.text,
-                    });
+                    // Kept once: text taken over from another instance (#236) may already hold it.
+                    if (!running.text.some((segment) => segment["ordinal"] === data.ordinal))
+                      running.text.push({
+                        assistantMessageID: data.assistantMessageID,
+                        ordinal: data.ordinal,
+                        text: data.text,
+                      });
                   }
                 } else if (completions.has(String(event.type))) {
                   const finished = executions.get(sessionID);
