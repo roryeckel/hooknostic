@@ -1,7 +1,7 @@
 # Hook authoring without Zod, and every failure in your code reported
 
-0.13.0 moves the SDK's Zod schemas to `@hooknostic/sdk/schemas`, so writing
-hooks and configuration no longer needs Zod. Most of the rest is about what
+0.13.0 moves the SDK's Zod schemas to `@hooknostic/sdk/schemas`, so hooks
+and configuration no longer import Zod. Most of the rest is about what
 happens when code fails, yours or Hooknostic's. The command shims,
 `hooknostic dispatch` and every other command now run your config and hook
 source under a guard. A rejection, a timer that throws or a `process.exit` is
@@ -21,26 +21,55 @@ breaking changes come first, each with its upgrade step.
   from the SDK root and cannot bundle against this SDK. Keep
   `@hooknostic/sdk`, `@hooknostic/agent-plugin` and the `hooknostic` CLI on
   the same release. From 0.13.0, the CLI warns HN110 when it and the
-  project's SDK differ.
+  project's SDK differ. To upgrade, add `@hooknostic/agent-plugin@0.13.0` if
+  you depend on it:
+
+  ```sh
+  npm install --save-dev @hooknostic/sdk@0.13.0 hooknostic@0.13.0
+  ```
+
+  With pnpm, run `pnpm add -D @hooknostic/sdk@0.13.0 hooknostic@0.13.0`,
+  adding `--allow-build=esbuild` if the project has not
+  [allowed esbuild's install script](getting-started.md#1-install-the-authoring-and-cli-packages)
+  yet. Without it, pnpm 12 exits 1 with `ERR_PNPM_IGNORED_BUILDS`, though
+  the packages are installed. If your project imports the SDK or
+  `@hooknostic/agent-plugin` at runtime, use `--save` (pnpm: without `-D`)
+  for those instead, so they stay regular dependencies. The same commands
+  with `@latest` are in [upgrading](upgrading/README.md).
 - **The SDK's schemas move to `@hooknostic/sdk/schemas`.** Every `*Schema`
   export moves from `@hooknostic/sdk` to the subpath, including
   `runtimeDiagnosticCodeSchema`, `handlerErrorSchema` and `hookResultSchema`.
   Nothing else moves: `definePlugin`, `hook`, `defineConfig`, the effect
   helpers, `RUNTIME_DIAGNOSTIC_CODES` and every type stay at the root. The
-  root never loads Zod, at runtime or in its type declarations, and `zod` is
-  now an optional peer.
+  root never loads Zod, at runtime or in its type declarations: only
+  `@hooknostic/sdk/schemas` needs it. The SDK's `zod@^4.6.7` peer stays
+  required, as in 0.12.0. Making it optional sent npm into an endless loop
+  when a project downgraded Zod
+  ([#240](https://github.com/roryeckel/hooknostic/issues/240),
+  [#242](https://github.com/roryeckel/hooknostic/pull/242)).
 
-  To upgrade, change the imports:
+  Until you change the imports, `check` and `build` fail with HN501 and
+  esbuild's `No matching export in
+  "node_modules/@hooknostic/sdk/dist/index.js" for import
+  "targetConfigSchema"`, naming the schema. The remediation printed with it
+  does not mention the subpath. To upgrade, change the imports:
 
   ```ts
   import { effectSchema, toolInvocationSchema } from "@hooknostic/sdk/schemas";
   ```
 
-  Code that imports the subpath needs `zod@^4.6.7`. If you added `zod` only
-  to satisfy the SDK, you can remove it. If you keep a `zod` dependency, keep
-  it at `^4.6.7` or a newer 4.x floor: npm refuses an older one with
-  `ERESOLVE`, and under pnpm the build warns HN109. See
-  [importing SDK schemas](upgrading/sdk-schemas-subpath.md).
+  The SDK's `zod` peer stays required: npm and pnpm install Zod beside the
+  SDK, shared with the CLI's copy, so hooks and configuration need no `zod`
+  of your own. Code that imports the subpath should list `zod@^4.6.7` in its
+  own dependencies, because it imports Zod. Under Yarn Plug'n'Play that
+  import fails until it does (`yarn add -D zod@^4.6.7`).
+
+  Keep a `zod` dependency at `^4.6.7` or a newer 4.x floor. With
+  `hooknostic` and `@hooknostic/sdk` installed, npm refuses an older Zod
+  with `ERESOLVE`; don't retry with `--force`, which can leave npm unable
+  to finish. If your own code needs Zod 3, install it under an alias such as
+  `zod3@npm:zod@3`. Under pnpm and Yarn the install warns, and the build
+  warns HN109. See [importing SDK schemas](upgrading/sdk-schemas-subpath.md).
 - **Under Yarn Plug'n'Play, run Hooknostic through Yarn.** `npx`, a global
   install and `pnpm dlx` run without the project's PnP runtime, and the build
   now fails with HN504. `yarn dlx` is not supported either. It fails with
@@ -68,6 +97,10 @@ breaking changes come first, each with its upgrade step.
 - **Commands exit 2 when your config or hook source fails.** `check`,
   `build`, `sync`, `verify`, `recover`, `doctor` and `inspect --config` load
   them under a guard. A load that fails is HN501, and the command exits 2.
+  `sync`, `verify`, `recover` and `doctor` print a config that fails to load
+  as its message alone, without the code, and their `--json` lists it under
+  `errors` (`configurationErrors` for `doctor`) rather than as a diagnostic,
+  as in 0.12.
   That covers a top-level throw, a `process.exit`, a rejection, a timer that
   throws, a top-level `await` or thenable default export that never settles,
   and a default export that throws when read, from a getter or a proxy. The
@@ -114,8 +147,12 @@ breaking changes come first, each with its upgrade step.
 - **Some error and JSON output changes.** A usage or configuration mistake
   prints a plain message, followed by the usage for a usage error. Before, it
   printed `hooknostic: unexpected error:` and a stack. Exit codes are
-  unchanged. Under `--json`, a usage error keeps its single JSON line. These
-  reports change:
+  unchanged. Under `--json`, the CLI's own usage checks keep their single
+  JSON line: `init` without `--local`, `--dry-run` outside `sync`,
+  `--unguarded` outside `dispatch`, and an invalid `--delivery`. An unknown
+  option or command, `inspect` without a target, `dispatch` without exactly
+  one `--target` and an empty `--target` still print plain text on stderr,
+  with nothing on stdout. These reports change:
   - **`inspect --config` with a config that fails to load:** `errors` holds
     one `"HN501: <message>"` entry per diagnostic. A new `diagnostics` array
     holds the same diagnostic objects as `check --json`. The report is
@@ -221,7 +258,10 @@ breaking changes come first, each with its upgrade step.
 - **Generated runtimes bring their own Zod when yours cannot serve.** Every
   runtime still validates effects with Zod. A build uses your project's Zod
   for the SDK's schemas when it is in the SDK's peer range, sharing one copy
-  with your code. With no Zod, it uses the CLI's own copy without a word.
+  with your code. Because the SDK's `zod` peer is required, npm and pnpm
+  give the SDK a Zod in range, shared with the CLI's copy, so this is the
+  usual case. Where the SDK reaches no Zod at all, the build uses the CLI's
+  own copy without a word.
   With a Zod outside the range, it uses the CLI's copy and warns HN109,
   naming the Zod it found. That includes Zod 3.24 and older, which have no
   `zod/v4`. The check reads one manifest instead of resolving the import, so
@@ -348,6 +388,14 @@ breaking changes come first, each with its upgrade step.
 
 ### Documentation
 
+- Getting started gives the project its own `package.json` before the
+  install, allows esbuild's install script and runs the CLI with
+  `pnpm exec` under pnpm 12, shows the build report beside the
+  configuration, and says when `doctor` exits 2
+  ([#241](https://github.com/roryeckel/hooknostic/issues/241),
+  [#243](https://github.com/roryeckel/hooknostic/pull/243)).
+- The upgrading guide gives the one command that upgrades the SDK and the CLI
+  together ([#243](https://github.com/roryeckel/hooknostic/pull/243)).
 - The shell-name lists drop `exec_command`, which never reaches a hook.
 - The `tool.shell` and `tool.file` docs, including the SDK's TSDoc, say that
   a view is also absent when the input does not match the captured shape.
