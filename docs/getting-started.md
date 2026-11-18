@@ -39,10 +39,11 @@ pnpm add -D --allow-build=esbuild @hooknostic/sdk hooknostic
 Then run each `npx hooknostic` command below as `pnpm exec hooknostic`: `pnpm init`
 names pnpm in the `devEngines` field, so npm's `npx` refuses to run in the project.
 
-Hook authors need no Zod. The generated runtimes carry their own copy, and only
-code that imports the SDK's runtime schemas from `@hooknostic/sdk/schemas`
-needs `zod@^4.6.7`. Add it as your own dependency: the CLI's copy usually
-resolves there too, but it belongs to the CLI and can change with it.
+Hooks and configuration never import Zod, and the generated runtimes carry their
+own copy. Only code that imports the SDK's runtime schemas from
+`@hooknostic/sdk/schemas` uses it. If yours does, list `zod@^4.6.7` in your own
+dependencies, because your code imports it. Under Yarn Plug'n'Play that import
+fails until you do.
 
 Under Yarn Plug'n'Play, run each `npx hooknostic` command below as
 `yarn hooknostic`: outside Yarn's runtime the build fails with HN504. Either
