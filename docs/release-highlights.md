@@ -34,8 +34,13 @@ breaking changes come first, each with its upgrade step.
   yet. Without it, pnpm 12 exits 1 with `ERR_PNPM_IGNORED_BUILDS`, though
   the packages are installed. If your project imports the SDK or
   `@hooknostic/agent-plugin` at runtime, use `--save` (pnpm: without `-D`)
-  for those instead, so they stay regular dependencies. The same commands
-  with `@latest` are in [upgrading](upgrading/README.md).
+  for those instead, so they stay regular dependencies. Both package managers
+  save a `^0.13.0` range; if your project pins exact versions, add
+  `--save-exact`. The same commands with `@latest` are in
+  [upgrading](upgrading/README.md). Expect the re-sync to rewrite most of each
+  generated runtime, even with Zod and esbuild unchanged, because this release
+  bundles the same code in a different layout. Commit the regenerated output
+  with the version bump.
 - **The SDK's schemas move to `@hooknostic/sdk/schemas`.** Every `*Schema`
   export moves from `@hooknostic/sdk` to the subpath, including
   `runtimeDiagnosticCodeSchema`, `handlerErrorSchema` and `hookResultSchema`.
