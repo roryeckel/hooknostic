@@ -17,13 +17,33 @@ Hook authors use `@hooknostic/sdk` (the authoring API) and `hooknostic` (the CLI
 `@hooknostic/agent-plugin` is the public loader/projection-contract package for tool
 authors; the CLI already contains what it needs to project Agent Plugins.
 
+Give the empty folder its own `package.json` before you install: without one,
+npm installs into the nearest parent folder that has one. Hooknostic is ESM, so
+set `"type": "module"` too:
+
 ```bash
+npm init -y
+npm pkg set type=module
 npm install --save-dev @hooknostic/sdk hooknostic
 ```
 
-Hook authors need no Zod. The generated runtimes carry their own copy, and only
-code that imports the SDK's runtime schemas from `@hooknostic/sdk/schemas`
-needs `zod@^4.6.7` installed.
+With pnpm 12, `pnpm init` already sets `"type": "module"`. Allow esbuild's
+install script when you add the packages, or pnpm exits 1 with
+`ERR_PNPM_IGNORED_BUILDS` on this and every later install:
+
+```bash
+pnpm init
+pnpm add -D --allow-build=esbuild @hooknostic/sdk hooknostic
+```
+
+Then run each `npx hooknostic` command below as `pnpm exec hooknostic`: `pnpm init`
+names pnpm in the `devEngines` field, so npm's `npx` refuses to run in the project.
+
+Hooks and configuration never import Zod, and the generated runtimes carry their
+own copy. Only code that imports the SDK's runtime schemas from
+`@hooknostic/sdk/schemas` uses it. If yours does, list `zod@^4.6.7` in your own
+dependencies, because your code imports it. Under Yarn Plug'n'Play that import
+fails until you do.
 
 Under Yarn Plug'n'Play, run each `npx hooknostic` command below as
 `yarn hooknostic`: outside Yarn's runtime the build fails with HN504. Either
@@ -37,9 +57,8 @@ and under `yarn dlx` looking it up would break the build (#216).
 > [publishing guide](publishing.md#testing-without-publishing-the-everyday-flow)
 > shows the packing commands. Everything below is identical from that point on.
 
-Your project needs `"type": "module"` in `package.json` (Hooknostic is ESM), and
-TypeScript if you want type checking while authoring (the CLI bundles your source
-itself, so a separate compile step isn't required).
+Add TypeScript if you want type checking while authoring. It's optional: the CLI
+bundles your source itself, so a separate compile step isn't required.
 
 ## 2. Write your first hook
 
@@ -138,15 +157,16 @@ exactly, so `check` passes clean. Put this command in CI.
 npx hooknostic build
 ```
 
-This runs the same analysis, then bundles your hook code and emits one self-contained
-directory per target:
+This runs the same analysis, then bundles your hook code, emits one self-contained
+directory per target, and writes the build report beside the config:
 
 ```
+hooknostic.config.ts
+hooknostic-build.json    ← the build report
 dist/
 ├── claude/     a complete Claude Code plugin (manifest + hooks.json + bundled runtime)
 ├── codex/      a .codex/ tree to copy into a repo root
-├── opencode/   an OpenCode project plugin tree (.opencode/plugins/hooknostic.js)
-└── hooknostic-build.json    ← the build report
+└── opencode/   an OpenCode project plugin tree (.opencode/plugins/hooknostic.js)
 ```
 
 The build is atomic — if any selected target fails, nothing is written. Open
@@ -199,9 +219,13 @@ npx hooknostic inspect claude    # show the capability table: what can this targ
 ```
 
 `doctor` inspects installed versions, runtime availability, and project wiring; it warns when an installed
-harness is newer than what the adapter has been validated against. `inspect` renders
-the adapter's capability table — support level and rationale per capability — which is
-how you answer "would `requestApproval` work on OpenCode?" without trial and error.
+harness is newer than what the adapter has been validated against. It exits 2 when
+a configured harness isn't installed (`MISS`) or is outside its supported range
+(`WARN`), so with this config it exits 2 on a machine that lacks any of the three
+or has one outside its supported range, such as OpenCode 2.x against `>=1.18 <2`.
+`inspect` renders the adapter's capability table — support level and rationale per
+capability — which is how you answer "would `requestApproval` work on OpenCode?"
+without trial and error.
 
 ## Where next
 

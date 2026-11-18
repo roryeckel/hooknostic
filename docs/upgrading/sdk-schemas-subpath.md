@@ -144,7 +144,12 @@ Zod your SDK reaches only when it satisfies the SDK's `zod` peer range
 imports Zod. Otherwise the SDK's schemas use the `hooknostic` CLI's own Zod,
 in one of two cases:
 
-- Your project has no Zod that the SDK can reach. The build says nothing.
+- The SDK reaches no Zod. The build says nothing. npm and pnpm install a Zod
+  for the SDK's required peer, so with them this is rare. Under Yarn
+  Plug'n'Play the SDK never reaches the CLI's copy, so a project that lists no
+  `zod` builds its hooks this way, but a configuration or hook that imports
+  `@hooknostic/sdk/schemas` fails to load with HN501 until the project lists
+  `zod@^4.6.7`.
 - The SDK reaches a Zod outside the range: one too old to provide `zod/v4`
   (3.24 and earlier), or a Zod 3 pulled in by another dependency. The build
   still succeeds, with an HN109 warning that names the version found and the
@@ -169,3 +174,5 @@ stays silent: checking the project's SDK there would load the project's PnP
 runtime beside dlx's and break the build. Run `yarn hooknostic` to get the
 check. Rebuild or re-sync with the new CLI to regenerate owned output.
 Artifact bytes change even when your sources do not.
+
+To upgrade the SDK and CLI together, use the command in [Upgrading](README.md).
