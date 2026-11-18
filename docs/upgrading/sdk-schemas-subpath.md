@@ -96,6 +96,8 @@ Code that imports `@hooknostic/sdk/schemas` needs `zod@^4.6.7` installed beside
 the SDK:
 
 ```sh
+npm install --save-dev @hooknostic/sdk hooknostic zod@^4.6.7
+# or
 pnpm add -D --allow-build=esbuild @hooknostic/sdk hooknostic zod@^4.6.7
 ```
 
@@ -103,6 +105,8 @@ A project that only authors hooks and configuration needs just the SDK and the
 CLI:
 
 ```sh
+npm install --save-dev @hooknostic/sdk hooknostic
+# or
 pnpm add -D --allow-build=esbuild @hooknostic/sdk hooknostic
 ```
 
