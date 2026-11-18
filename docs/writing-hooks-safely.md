@@ -94,8 +94,8 @@ under `errors` (`configurationErrors` for `doctor`) rather than as a diagnostic;
 comes after it loaded is a `hooknostic internal` line, and the command still exits 2,
 though `build` or `sync` may already have written its output. A timer or socket your
 source leaves open no longer keeps the command running once it is done. This is the
-`hooknostic` command only: the
-exported `runCli`, called from your own program, runs them in your process unguarded.
+`hooknostic` command only: the exported `runCli`, called from your own program, runs
+them in your process unguarded.
 
 ## Keep imported modules free of side effects
 

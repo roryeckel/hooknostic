@@ -548,6 +548,8 @@ Each target directory is independently distributable; the small bundled runtime 
 duplicated per target.
 
 ```
+hooknostic.config.ts
+hooknostic-build.json                   ← the build report, beside the config
 dist/
 ├── claude/                          ← package and hooks in one plugin
 │   ├── .claude-plugin/plugin.json
@@ -559,13 +561,12 @@ dist/
 │   ├── skills/…
 │   ├── hooks.json
 │   └── hooknostic/hooknostic.mjs
-├── opencode/                           ← delivery: "package"
-│   ├── package.json          ← exports["./server"]
-│   ├── index.js             ← the only module OpenCode loads
-│   ├── hooknostic.js
-│   ├── hooknostic-agent-plugin.js
-│   └── package/…
-└── hooknostic-build.json
+└── opencode/                           ← delivery: "package"
+    ├── package.json          ← exports["./server"]
+    ├── index.js             ← the only module OpenCode loads
+    ├── hooknostic.js
+    ├── hooknostic-agent-plugin.js
+    └── package/…
 ```
 
 A target's package and its hooks share one `output`. A projection replaces that

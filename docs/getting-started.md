@@ -219,10 +219,12 @@ npx hooknostic inspect claude    # show the capability table: what can this targ
 
 `doctor` inspects installed versions, runtime availability, and project wiring; it warns when an installed
 harness is newer than what the adapter has been validated against. It exits 2 when
-anything needs attention, including a configured harness that isn't installed
-(`MISS`), so with this config it exits 2 on a machine that lacks any of the three.
+a configured harness isn't installed (`MISS`) or is outside its supported range
+(`WARN`), so with this config it exits 2 on a machine that lacks any of the three
+or has one outside its supported range, such as OpenCode 2.x against `>=1.18 <2`.
 `inspect` renders the adapter's capability table — support level and rationale per
-capability — which is how you answer "would `requestApproval` work on OpenCode?" without trial and error.
+capability — which is how you answer "would `requestApproval` work on OpenCode?"
+without trial and error.
 
 ## Where next
 

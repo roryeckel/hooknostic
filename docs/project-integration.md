@@ -121,11 +121,12 @@ verification drift, and 2 for invalid configuration, conflicts, or operational
 failure. `doctor` has no exit 1: drifted wiring, a configuration error, and any
 harness it marks `MISS` or `WARN` (not installed, of unknown version, or outside
 its validated or recommended range) exit 2. The config and hook source run in the
-CLI's process: one that fails while it loads is HN501. For a config, these
-commands print only the message, `failed to load config <path>: ...`, without the
-code, and `--json` lists it under `errors` (`configurationErrors` for `doctor`);
-a hook source's failure keeps the code. One that fails later, from a timer or a
-rejection nothing handles, is reported as a `hooknostic internal` line. Either exits 2, which takes
+CLI's process: one that fails while it loads is HN501. For a config, `sync`,
+`verify`, `recover` and `doctor` print only the message,
+`failed to load config <path>: ...`, without the code, and `--json` lists it under
+`errors` (`configurationErrors` for `doctor`); a hook source's failure keeps the
+code. One that fails later, from a timer or a rejection nothing handles, is
+reported as a `hooknostic internal` line. Either exits 2, which takes
 precedence over drift's 1, though `sync` may already have written its changes. A
 dry run with planned changes succeeds; conflicts fail. Project commands
 reject `--target`: removing a project target from configuration schedules removal
