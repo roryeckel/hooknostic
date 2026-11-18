@@ -168,10 +168,11 @@ Supporting those invocations is tracked in
 [#190](https://github.com/roryeckel/hooknostic/issues/190).
 
 Keep the SDK and CLI on the same Hooknostic release: an older CLI cannot bundle
-against this SDK. [Upgrading](README.md) gives the command that upgrades them
-together. From this release on, a CLI that builds against an SDK from
+against this SDK. From this release on, a CLI that builds against an SDK from
 another release warns HN110. Under `yarn dlx` in a Plug'n'Play project, HN110
 stays silent: checking the project's SDK there would load the project's PnP
 runtime beside dlx's and break the build. Run `yarn hooknostic` to get the
 check. Rebuild or re-sync with the new CLI to regenerate owned output.
 Artifact bytes change even when your sources do not.
+
+To upgrade the SDK and CLI together, use the command in [Upgrading](README.md).
