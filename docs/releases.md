@@ -84,6 +84,13 @@ preparation branch, then dispatch **Release prepare** from that branch. A local
 version bump can be used as a rehearsal, but must stay out of the preparation
 commit. Let the workflow generate the final bump and artifacts.
 
+HN110 cannot flag a tree built before the bump. Until the workflow bumps the
+versions, a CLI built or packed from the tree still carries the previous
+release's version, so it is silent against the registry's SDK of that version
+even though its shims and runtime differ: HN110 compares release numbers, not
+contents. When rehearsing before the bump, pair a CLI packed from the tree
+with an SDK packed from the same tree, not with the registry's.
+
 For example, replacing `X.Y.Z` with the chosen version:
 
 ```powershell

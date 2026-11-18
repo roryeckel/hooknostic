@@ -3,9 +3,8 @@
 The SDK's runtime Zod schemas have moved from the `@hooknostic/sdk` root to the
 `@hooknostic/sdk/schemas` subpath, the only SDK entry that needs its `zod`
 peer. Hooks and configuration no longer import Zod: the root entry never loads
-it, at runtime or in its type declarations. This is an explicit SDK breaking change
-([ADR-0040](../decisions/0040-sdk-schemas-subpath.md)). The package version is
-selected separately through the [release workflow](../releases.md).
+it, at runtime or in its type declarations. This is an explicit SDK breaking
+change in 0.13.0 ([ADR-0040](../decisions/0040-sdk-schemas-subpath.md)).
 
 ## Who is affected
 
@@ -53,9 +52,9 @@ load, with HN501 and esbuild's error:
 ERROR: No matching export in "node_modules/@hooknostic/sdk/dist/index.js" for import "effectSchema"
 ```
 
-One change ships in the same release. Zod 4 used to drop a `__proto__` name
-without a diagnostic. `hooknosticConfigSchema` now rejects it in four fields:
-as a target name and as a name in `components.excludeFor`,
+One change ships in the same release, 0.13.0. Zod 4 used to drop a
+`__proto__` name without a diagnostic. `hooknosticConfigSchema` now rejects
+it in four fields: as a target name and as a name in `components.excludeFor`,
 `components.mcpOverrides` and a materializer's `inputs`. In
 `components.mcpOverrides.<target>.servers` it now keeps a server named
 `__proto__`, as `components.mcpEnvironment` already did. To see that name, those
@@ -97,6 +96,8 @@ Code that imports `@hooknostic/sdk/schemas` needs `zod@^4.6.7` installed beside
 the SDK:
 
 ```sh
+npm install --save-dev @hooknostic/sdk hooknostic zod@^4.6.7
+# or
 pnpm add -D --allow-build=esbuild @hooknostic/sdk hooknostic zod@^4.6.7
 ```
 
@@ -104,6 +105,8 @@ A project that only authors hooks and configuration needs just the SDK and the
 CLI:
 
 ```sh
+npm install --save-dev @hooknostic/sdk hooknostic
+# or
 pnpm add -D --allow-build=esbuild @hooknostic/sdk hooknostic
 ```
 
@@ -168,8 +171,8 @@ Supporting those invocations is tracked in
 [#190](https://github.com/roryeckel/hooknostic/issues/190).
 
 Keep the SDK and CLI on the same Hooknostic release: an older CLI cannot bundle
-against this SDK. From this release on, a CLI that builds against an SDK from
-another release warns HN110. Under `yarn dlx` in a Plug'n'Play project, HN110
+against this SDK. From 0.13.0, a CLI that builds against an SDK from another
+release warns HN110. Under `yarn dlx` in a Plug'n'Play project, HN110
 stays silent: checking the project's SDK there would load the project's PnP
 runtime beside dlx's and break the build. Run `yarn hooknostic` to get the
 check. Rebuild or re-sync with the new CLI to regenerate owned output.

@@ -8136,8 +8136,8 @@ export {
 /*!
 Bundled package notices
 
-@hooknostic/adapter-opencode@0.12.0
-@hooknostic/runtime@0.12.0
+@hooknostic/adapter-opencode@0.13.0
+@hooknostic/runtime@0.13.0
 LICENSE
 Apache License
                            Version 2.0, January 2004
@@ -8345,8 +8345,8 @@ Apache License
 /*!
 Bundled package notices
 
-@hooknostic/sdk@0.12.0
-hooknostic@0.12.0
+@hooknostic/sdk@0.13.0
+hooknostic@0.13.0
 LICENSE
 Apache License
                            Version 2.0, January 2004

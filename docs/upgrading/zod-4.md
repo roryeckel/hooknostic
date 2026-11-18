@@ -6,8 +6,8 @@ Zod 3 schema API exported by earlier releases, including when those schemas
 were composed with a consumer's own Zod 3 instance. The package version is
 selected separately through the [release workflow](../releases.md).
 
-> **Releases after 0.12.0.** This guide describes 0.12.0. Later releases move
-> the schemas to `@hooknostic/sdk/schemas`; the `zod` peer stays required.
+> **Releases after 0.12.0.** This guide describes 0.12.0. From 0.13.0, the
+> schemas move to `@hooknostic/sdk/schemas`; the `zod` peer stays required.
 > Hooks and configuration then import no Zod: the SDK root never loads it, and
 > the `hooknostic` CLI brings its own Zod, which satisfies the peer and which
 > generated runtimes use when the project has none. Only code that imports

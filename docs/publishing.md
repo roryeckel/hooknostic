@@ -57,6 +57,10 @@ Agents never publish.
 - Routine OIDC releases from the public repository carry npm provenance. The
   owner's first-package bootstrap is published with `--provenance=false`;
   its CI-built tarballs and checksums remain attached to the GitHub Release.
+- The CLI's bundle is code-split: `dist/index.js` (the package entry) and
+  `dist/main.js` (the command's entry, imported by `dist/hooknostic.mjs`)
+  share `dist/chunk-*.js`. When checking a packed CLI tarball, confirm all of
+  them are present and that the binary runs.
 - Published packages include their own READMEs and license. The CLI also ships
   `dist/THIRD_PARTY_NOTICES.txt`; generated runtimes and MCP launchers embed
   their bundled dependencies' license and notice text.

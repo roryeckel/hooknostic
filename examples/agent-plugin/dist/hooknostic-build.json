@@ -1,10 +1,10 @@
 {
   "schemaVersion": 2,
-  "hooknosticVersion": "0.12.0",
+  "hooknosticVersion": "0.13.0",
   "targets": {
     "claude": {
       "status": "success",
-      "adapter": "claude@0.12.0",
+      "adapter": "claude@0.13.0",
       "requestedVersion": ">=2.1 <3",
       "output": "./dist/claude",
       "capabilities": {
@@ -15,7 +15,7 @@
       },
       "projection": {
         "status": "success",
-        "contentDigest": "sha256:667de9d959ea3f8773b081849515c5790ee183499f9508cba6ed98588805c860",
+        "contentDigest": "sha256:92aa4d3dae73fc88892927df19b97b975bec560f2cda299ac869eb196761f784",
         "copiedFileCount": 3,
         "components": {
           "agent-plugin.manifest": {
@@ -52,7 +52,7 @@
     },
     "codex": {
       "status": "success",
-      "adapter": "codex@0.12.0",
+      "adapter": "codex@0.13.0",
       "requestedVersion": ">=0.153 <1",
       "output": "./dist/codex",
       "capabilities": {
@@ -63,7 +63,7 @@
       },
       "projection": {
         "status": "success",
-        "contentDigest": "sha256:f484bf0a2cc3064ef759cfe75d56d375b9eb17ea7e46f6b61f34c03fac4934e4",
+        "contentDigest": "sha256:a6e5ce587dc6c7587ff381c19c08bed1ad97492788fedacbd120e9450de4ec67",
         "copiedFileCount": 3,
         "directories": [
           ".agents",
@@ -107,7 +107,7 @@
     },
     "copilot": {
       "status": "success",
-      "adapter": "copilot@0.12.0",
+      "adapter": "copilot@0.13.0",
       "requestedVersion": ">=1.0.101 <2",
       "output": "./dist/copilot",
       "capabilities": {
@@ -118,7 +118,7 @@
       },
       "projection": {
         "status": "success",
-        "contentDigest": "sha256:3fa3046b58c3433dc3e4076262a9f32778bfe41cab83bb5982c3218f66f6a856",
+        "contentDigest": "sha256:823c5555405b23fbec6fc6c6866864a8452e4c1fb4860c543ce4a8ba794feee5",
         "copiedFileCount": 4,
         "directories": [
           ".agents",
@@ -160,7 +160,7 @@
     },
     "opencode": {
       "status": "success",
-      "adapter": "opencode@0.12.0",
+      "adapter": "opencode@0.13.0",
       "requestedVersion": ">=2.0.17 <3",
       "output": "./dist/opencode",
       "capabilities": {
@@ -171,7 +171,7 @@
       },
       "projection": {
         "status": "success",
-        "contentDigest": "sha256:078a248ab9a13d94efb5610f6f47c1bdfb229590338aa2df63e58a4de8a8ecf2",
+        "contentDigest": "sha256:4df13c92c0a86620c320126e4becabb4fb3d73f8489b849e042d7bd4250ae274",
         "copiedFileCount": 6,
         "directories": [
           "package/.agents",
@@ -215,7 +215,7 @@
     },
     "legacy": {
       "status": "success",
-      "adapter": "opencode@0.12.0",
+      "adapter": "opencode@0.13.0",
       "requestedVersion": ">=1.18 <2",
       "output": "./dist/opencode-v1",
       "capabilities": {
@@ -226,7 +226,7 @@
       },
       "projection": {
         "status": "success",
-        "contentDigest": "sha256:1d4875c29221cd30fd319f1a401d4a7cb84afcbd4123930bcb740cf5c41c3a48",
+        "contentDigest": "sha256:4996a1cb005e00272e49b0b1c55d7f57d38ea64bd8b8f68f19abeabf056deaeb",
         "copiedFileCount": 5,
         "directories": [
           "package/.agents",
@@ -271,7 +271,7 @@
     },
     "pi": {
       "status": "success",
-      "adapter": "pi@0.12.0",
+      "adapter": "pi@0.13.0",
       "requestedVersion": ">=1 <2",
       "output": "./dist/pi",
       "capabilities": {
@@ -282,7 +282,7 @@
       },
       "projection": {
         "status": "success",
-        "contentDigest": "sha256:e3ffbc5803675a8d775ff9ceec4278b03461030fc0391bdecbf47ce76d467965",
+        "contentDigest": "sha256:df7a37775c81f953d247d1129efe59bd8a6ad5d6f1a07fe035d1c691176274d3",
         "copiedFileCount": 6,
         "directories": [
           "package/.agents",

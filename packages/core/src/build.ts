@@ -75,7 +75,7 @@ import { projectPath } from "./project-files.js";
 import { anotherInstallsPnpRuntime, sdkReleaseSkew } from "./sdk-resolution.js";
 import { type AuthoredProjectSkill, planProjectSkillPolicies } from "./skill-policy.js";
 
-export const HOOKNOSTIC_VERSION = "0.12.0";
+export const HOOKNOSTIC_VERSION = "0.13.0";
 
 export interface BuildOptions {
   configPath: string;
