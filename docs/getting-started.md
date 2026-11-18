@@ -52,7 +52,7 @@ another release than the project's `@hooknostic/sdk` does not warn HN110
 there: a global run outside Yarn's runtime cannot resolve the project's SDK,
 and under `yarn dlx` looking it up would break the build (#216).
 
-> **Trying unreleased changes?** The command above installs the latest release
+> **Trying unreleased changes?** The commands above install the latest release
 > from npm. To try a checkout of this repo instead, pack the SDK and CLI from it
 > as tarballs and install both of those, so they stay on one release; the
 > [publishing guide](publishing.md#testing-without-publishing-the-everyday-flow)
