@@ -145,7 +145,7 @@ async function zodFreeTemporaryDirectory(prefix: string): Promise<string> {
   return root;
 }
 
-describe("an SDK installed without its optional Zod peer", () => {
+describe("an SDK installed without its Zod peer", () => {
   /** The stand-in SDK's declared peer range; the plugin reads it from the manifest. */
   const PEER = "^4.6.7";
   const ownZodManifest = createRequire(import.meta.url).resolve("zod/package.json");
@@ -195,7 +195,7 @@ describe("an SDK installed without its optional Zod peer", () => {
    * asked. `zod` names a recognizable stand-in's version (or `null` for a
    * manifest with none), so the output shows whose Zod was bundled. `peer` is
    * the SDK's declared range. `layout: "pnpm"` puts the SDK in a virtual-store
-   * entry whose `zod` links the project's, as pnpm links an optional peer;
+   * entry whose `zod` links the project's, as pnpm links a peer;
    * `sdkEntry` then goes through the project's `@hooknostic/sdk` link.
    */
   async function project(
@@ -224,7 +224,6 @@ describe("an SDK installed without its optional Zod peer", () => {
         name: "@hooknostic/sdk",
         type: "module",
         peerDependencies: { zod: options.peer ?? PEER },
-        peerDependenciesMeta: { zod: { optional: true } },
       }),
     );
     await writeFile(join(sdk, "LICENSE"), "Example SDK license.");
@@ -425,7 +424,7 @@ describe("an SDK installed without its optional Zod peer", () => {
 
   for (const layout of ["pnpm", "npm"] as const) {
     it(`warns when the SDK reaches a Zod too old for zod/v4 (${layout})`, async () => {
-      // pnpm links the project's Zod 3.24 as the SDK's optional peer; npm hoists
+      // pnpm links the project's Zod 3.24 as the SDK's peer; npm hoists
       // it beside the SDK. Either way the SDK's zod/v4 cannot resolve against it.
       const { root, sdkEntry } = await project({ zod: "3.24.4", v4: false, layout });
       try {
@@ -782,7 +781,6 @@ describe("a Yarn Plug'n'Play install outside Yarn's runtime (#183)", () => {
         type: "module",
         exports: { ".": "./dist/index.js", "./schemas": "./dist/schemas.js" },
         peerDependencies: { zod: "^4.6.7" },
-        peerDependenciesMeta: { zod: { optional: true } },
       }),
       LICENSE: "Example SDK license.",
       "dist/index.js": 'export const root = "root";',

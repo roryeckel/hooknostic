@@ -49,11 +49,6 @@
   "peerDependencies": {
     "zod": "catalog:zod-peer"
   },
-  "peerDependenciesMeta": {
-    "zod": {
-      "optional": true
-    }
-  },
   "devDependencies": {
     "zod": "catalog:zod4"
   }

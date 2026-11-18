@@ -1,9 +1,9 @@
 # Importing SDK schemas from `@hooknostic/sdk/schemas`
 
 The SDK's runtime Zod schemas have moved from the `@hooknostic/sdk` root to the
-`@hooknostic/sdk/schemas` subpath, and `zod` is now an optional peer. Writing
-hooks and configuration no longer needs Zod: the root entry never loads it, at
-runtime or in its type declarations. This is an explicit SDK breaking change
+`@hooknostic/sdk/schemas` subpath, the only SDK entry that needs its `zod`
+peer. Hooks and configuration no longer import Zod: the root entry never loads
+it, at runtime or in its type declarations. This is an explicit SDK breaking change
 ([ADR-0040](../decisions/0040-sdk-schemas-subpath.md)). The package version is
 selected separately through the [release workflow](../releases.md).
 
@@ -46,6 +46,13 @@ subpath is an export-map entry, so TypeScript needs the export-aware module
 resolution (`node16`, `nodenext` or `bundler`) that the root entry already
 requires.
 
+A hook or configuration that still imports a schema from the root fails to
+load, with HN501 and esbuild's error:
+
+```text
+ERROR: No matching export in "node_modules/@hooknostic/sdk/dist/index.js" for import "effectSchema"
+```
+
 One change ships in the same release. Zod 4 used to drop a `__proto__` name
 without a diagnostic. `hooknosticConfigSchema` now rejects it in four fields:
 as a target name and as a name in `components.excludeFor`,
@@ -84,26 +91,50 @@ where `__proto__` is involved: an own `__proto__` name, or a record whose
 prototype was replaced, for example by an object literal entry written as
 `__proto__: {...}`.
 
-## Install Zod only where you import the schemas
+## Zod is needed only where you import the schemas
 
 Code that imports `@hooknostic/sdk/schemas` needs `zod@^4.6.7` installed beside
 the SDK:
 
 ```sh
-pnpm add -D @hooknostic/sdk hooknostic zod@^4.6.7
+pnpm add -D --allow-build=esbuild @hooknostic/sdk hooknostic zod@^4.6.7
 ```
 
 A project that only authors hooks and configuration needs just the SDK and the
 CLI:
 
 ```sh
-pnpm add -D @hooknostic/sdk hooknostic
+pnpm add -D --allow-build=esbuild @hooknostic/sdk hooknostic
 ```
 
-Because the peer is optional, package managers no longer install Zod for the
-SDK. If you added `zod` only to satisfy the SDK, you can remove it. Importing
-`@hooknostic/sdk/schemas` without Zod installed fails with Node's
-`Cannot find package 'zod'` error.
+The SDK's `zod` peer is still required. Installed with the CLI, as above, it
+is satisfied by the Zod the CLI depends on, under npm, pnpm (strict peers and
+auto-install off included) and Yarn. Yarn still reports YN0002 when the
+project doesn't list `zod`. Hooks and configuration never import it.
+
+Installed without the CLI, the SDK gets Zod from npm and from pnpm's defaults.
+pnpm with `strict-peer-dependencies` on and `auto-install-peers` off fails that
+SDK-only install until `zod` is listed, as before, and Yarn adds no Zod. Where
+no Zod is reachable, as in such an SDK-only install, importing
+`@hooknostic/sdk/schemas` fails with Node's `Cannot find package 'zod'` error
+until the project lists `zod`. Yarn Plug'n'Play never lets the SDK reach the
+CLI's copy, so there the import fails ("tried to access zod (a peer
+dependency) but it isn't provided by your application") even with the CLI
+installed, until the project lists `zod`.
+
+Keep the project's Zod at `^4.6.7` or a newer 4.x release. npm refuses a
+release outside that range, such as `zod@3`, with `ERESOLVE`. Don't retry
+with `--force`: npm then loops instead of installing. `--legacy-peer-deps`
+installs Zod 3, but the SDK then reaches it, and a configuration or hook that
+imports `@hooknostic/sdk/schemas` fails to load with HN501
+(`Could not resolve "zod/v4"`). If your own code needs Zod 3, install it under
+an npm alias beside the SDK's Zod 4 and import it as `zod3`:
+
+```sh
+npm install --save-dev zod3@npm:zod@3
+```
+
+The SDK keeps Zod 4, and a build bundles each copy where it is imported.
 
 ## Rebuild generated artifacts
 

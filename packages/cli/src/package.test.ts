@@ -88,9 +88,11 @@ describe("public package outputs", () => {
       types: "./dist/schemas.d.ts",
       default: "./dist/schemas.js",
     });
-    // Only the schemas subpath needs Zod (ADR-0040).
+    // Only the schemas subpath needs Zod (ADR-0040), but the peer stays
+    // required: an optional one sends npm's arborist into a loop when a
+    // project replaces its Zod (#240).
     expect(manifest.peerDependencies).toEqual({ zod: expect.any(String) });
-    expect(manifest.peerDependenciesMeta).toEqual({ zod: { optional: true } });
+    expect(manifest.peerDependenciesMeta).toBeUndefined();
     expect(await readFile(resolve(packageRoot, "dist/index.d.ts"), "utf8")).toContain("export");
     const sdk = await import(pathToFileURL(resolve(packageRoot, "dist/index.js")).href);
     expect(sdk.definePlugin).toBeTypeOf("function");
@@ -289,10 +291,13 @@ describe("simulated registry install", () => {
       }
       // A required peer must come from a package that shares its install root,
       // or the published package resolves it only where a client auto-installs
-      // peers. No client installs an optional one.
+      // peers.
       for (const [manifest, , installRoot] of installs) {
         for (const peer of Object.keys(manifest.peerDependencies ?? {})) {
-          if (manifest.peerDependenciesMeta?.[peer]?.optional === true) continue;
+          // The one exception: the SDK's `zod` peer is required (#240), but only
+          // `@hooknostic/sdk/schemas` needs it (ADR-0040). This project leaves
+          // it out on purpose, as a client that never installs peers would.
+          if (installRoot === project && manifest.name === "@hooknostic/sdk" && peer === "zod") continue;
           expect(declared.get(installRoot)!.has(peer), `${manifest.name}'s peer ${peer} in ${installRoot}`).toBe(true);
         }
       }
@@ -529,7 +534,7 @@ describe("simulated registry install", () => {
       expect(launcher.status, launcher.stderr).toBe(0);
       expect(launcher.stdout.trim()).toBe("standalone launcher");
 
-      // Installing the optional peer is all the schemas subpath needs.
+      // Installing the SDK's Zod peer is all the schemas subpath needs.
       await linkThirdParty("zod", sdkDir, project);
       const schemasWithZod = importFromProject("@hooknostic/sdk/schemas");
       expect(schemasWithZod.status, schemasWithZod.stderr).toBe(0);

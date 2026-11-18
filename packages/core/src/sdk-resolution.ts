@@ -498,15 +498,16 @@ function substitutionDiagnostic(substitution: ZodSubstitution): Diagnostic {
  * Let the SDK's schemas find a Zod inside the SDK's peer range.
  *
  * Every runtime artifact validates handler effects with `@hooknostic/sdk/schemas`,
- * which imports Zod, but Zod is only an optional peer of the SDK (ADR-0040): a
- * project that authors hooks without it installs none, and a strict package
- * manager then gives the project's SDK no Zod to resolve. The compiler always
+ * which imports Zod, but Zod is only a peer of the SDK, needed by that subpath
+ * alone (ADR-0040): a project that authors hooks without it may install none,
+ * as Yarn and pnpm without auto-installed peers do, and the project's SDK then
+ * has no Zod to resolve. The compiler always
  * has one -- the published CLI depends on Zod from the same range -- so a Zod
  * import made by the SDK that cannot use the project's Zod resolves from here
  * instead.
  *
- * An optional peer also means nothing stops a package manager from handing the
- * SDK an older Zod: npm with `legacy-peer-deps` hoists one that the project
+ * A peer also does not stop a package manager from handing the SDK an older
+ * Zod: npm with `legacy-peer-deps` hoists one that the project
  * inherited from an unrelated dependency beside it without a peer conflict,
  * and pnpm links a project's own Zod 3 as the peer with only a warning. The
  * SDK's import then resolves from here too, and `onSubstitution` receives an
