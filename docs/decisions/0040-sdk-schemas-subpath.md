@@ -2,7 +2,8 @@
 
 ## Status
 
-Accepted, 2026-11-14.
+Accepted, 2026-11-14. Amended 2026-11-17: the `zod` peer is required again
+([amendment](#amendments--2026-11-17)).
 
 ## Context
 
@@ -42,7 +43,8 @@ from the barrel alone.
    Asserting identity there would mean changing a public type.
 3. **`zod` stays a peer, now optional.** It still comes from the `zod-peer`
    catalog, with `peerDependenciesMeta.zod.optional`. It is needed only to
-   import `@hooknostic/sdk/schemas`.
+   import `@hooknostic/sdk/schemas`. *Superseded by the 2026-11-17
+   amendment: the peer is required again.*
 4. **Artifacts take the SDK's Zod from the project only when it satisfies the
    peer range, or else from Hooknostic.** A runtime shim validates effects
    through `@hooknostic/sdk/schemas`, resolved from the project's SDK (one SDK
@@ -113,8 +115,48 @@ from the barrel alone.
   against this for libraries whose schemas consumers compose.
 - **Keep the required peer.** That is the status quo, with every author
   installing a dependency only the schemas need and strict installs failing
-  without it, for no benefit to the authoring API.
+  without it, for no benefit to the authoring API. *Adopted after all by the
+  2026-11-17 amendment, because the optional peer made npm loop.*
 - **Publish the schemas as a separate package.** It would separate them as
   cleanly, but it adds a fourth lockstep package with its own first-publication
   bootstrap and trusted publisher (ADR-0014). A subpath gives the same boundary
   inside the package consumers already install.
+
+## Amendments — 2026-11-17
+
+**The SDK's `zod` peer is required again** (#240). Point 3 above made it
+optional; the manifest no longer sets `peerDependenciesMeta`, and the peer
+still comes from the `zod-peer` catalog. Points 1, 2, 4 and 5 stand: only
+`@hooknostic/sdk/schemas` imports Zod, the root still loads none, and
+artifacts still take the SDK's Zod from the CLI when the project's is missing
+or out of range.
+
+The optional peer sent npm's arborist into an endless loop. In a project with
+`hooknostic` and `@hooknostic/sdk` installed, `npm install --save-dev
+zod@3.23.8` printed "ERESOLVE overriding peer dependency" thousands of times
+and never finished, where the required peer of 0.12.0 fails with `ERESOLVE`
+in under a second. Three conditions together trigger it: an optional peer on
+a package, a non-root edge into that package (`hooknostic` depends on
+`@hooknostic/sdk`), and an explicit replacement of the peer's package already
+in the tree. Two tiny packages with no Hooknostic code reproduce it on every
+npm tested from 7.24.2 through 12.2.2; 7.24.1 and earlier fail cleanly.
+
+Measured on npm 10 and 11, pnpm 12 (default, without auto-installed peers,
+with strict peers, and both) and Yarn 4 (`node-modules` and Plug'n'Play), the
+documented one-command install of the CLI and SDK behaves the same with
+either peer. Zod arrives through the CLI's own dependency, and `init`,
+`check`, `build`, a config importing `/schemas`, `tsc` and runtime imports
+give the same results. What changes:
+
+- npm refuses a Zod outside the peer range with `ERESOLVE` again, instead of
+  looping. `--force` still loops, as it does with 0.12.0.
+- An install of the SDK alone gets Zod automatically on npm and on pnpm's
+  defaults.
+- pnpm with strict peers and auto-install off fails an SDK-only install until
+  `zod` is listed, as with 0.12.0.
+- Yarn reports YN0002, "doesn't provide zod", for a project that doesn't list
+  it.
+
+`scripts/check-sdk-zod-peers.mjs` now installs the packed CLI and SDK with
+npm, adds `zod@3.23.8`, and requires a clean `ERESOLVE` within a bounded time
+and output.

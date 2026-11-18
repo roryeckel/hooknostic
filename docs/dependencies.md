@@ -29,9 +29,11 @@ belong in subsequent reviewed PRs. Contribution scope remains in
 The default catalog holds shared external requirements. `zod4` serves core, the
 MCP example and the SDK's development dependency. The SDK exports native Zod 4
 Classic schemas from `zod/v4` at its `@hooknostic/sdk/schemas` subpath, with
-`zod` as an optional peer from the separate `zod-peer` catalog; the root entry
-loads no Zod, so only consumers of the subpath install it
-([ADR-0040](decisions/0040-sdk-schemas-subpath.md)). Renovate bumps `zod4` like
+`zod` as a required peer from the separate `zod-peer` catalog; the root entry
+loads no Zod, so only consumers of the subpath need it
+([ADR-0040](decisions/0040-sdk-schemas-subpath.md)). The peer stays required
+because an optional one sends npm into an endless loop when a project replaces
+its Zod (#240). Renovate bumps `zod4` like
 any other range but replaces `zod-peer` only when a release falls outside it:
 the published peer floor is a compatibility decision raised deliberately, such
 as for a security fix, not on every Zod release. The published CLI also takes
@@ -39,9 +41,12 @@ as for a security fix, not on every Zod release. The published CLI also takes
 and its Zod included, is inlined into its bundle, so that dependency exists for
 generated artifacts. A shim's SDK schemas take Zod from the CLI's install when
 the SDK reaches no Zod in the project, silently, or reaches one outside the
-SDK's peer range, including any Zod 3.24 or older, which has no `zod/v4`; that
-case reports HN109. Sharing the catalog keeps that dependency equal to the
-peer range, so the copy it supplies always satisfies it. When the project's
+SDK's peer range. A project that installs the CLI beside the SDK normally
+reaches the CLI's Zod; reaching none happens in an SDK-only project built by a
+global or `npx` CLI, or under Yarn Plug'n'Play. Reaching a Zod outside the
+range, including any Zod 3.24 or older, which has no `zod/v4`, reports HN109.
+Sharing the catalog keeps that dependency equal to the peer range, so the copy
+it supplies always satisfies it. When the project's
 Zod satisfies the range, the SDK and the project's own code share that one
 installed copy. This follows the [upstream peer dependency guidance](https://zod.dev/library-authors#how-to-configure-peer-dependencies)
 and lets schema types resolve against the consumer's instance. Zod 3 peers and
@@ -127,8 +132,10 @@ SDK and installs an isolated consumer at the V4 peer floor, then checks TypeScri
 composition and runtime error identity. It also packs the CLI and builds an npm
 project, installed with `legacy-peer-deps`, that inherits a hoisted `zod@3.25.76`
 from another dependency. The artifact must carry the CLI's in-range Zod, and
-`check` and `build` must warn HN109. It then installs a pnpm project that
-declares `zod@3.24.4`, which pnpm links as the SDK's optional peer although that
+`check` and `build` must warn HN109. Next it installs the packed CLI and SDK
+together with npm and adds `zod@3.23.8`, which npm must refuse with a clean
+`ERESOLVE` rather than loop (#240). It then installs a pnpm project that
+declares `zod@3.24.4`, which pnpm links as the SDK's peer although that
 release has no `zod/v4`, and requires the same of it, with HN109 naming the
 linked Zod's store path. Its pnpm consumers carry the repository's
 `packageManager`, so they install with the pinned pnpm rather than a global one.
