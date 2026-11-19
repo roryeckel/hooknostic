@@ -12,6 +12,8 @@ const GUIDE = "https://github.com/roryeckel/hooknostic/blob/master/docs/upgradin
 const NO_MATCHING_EXPORT = /^No matching export in ("(?:[^"\\]|\\.)*") for import ("(?:[^"\\]|\\.)*")$/;
 /** A path inside an installed SDK: npm, pnpm's store, and a Yarn zip that cannot be read without Yarn's runtime. */
 const INSTALLED_SDK = /(?:^|\/)node_modules\/@hooknostic\/sdk\//;
+/** The SDK's schemas entry, built (`schemas.js`) or source (`schemas.ts`), or a `/schemas` subpath with no extension. */
+const SCHEMAS_ENTRY = /(?:^|\/)schemas(?:\.[cm]?[jt]s)?$/;
 
 /** Internal (#247): a bundle failure that names schemas the SDK's root no longer exports. */
 export interface MovedSchemaImports {
@@ -29,7 +31,8 @@ export interface MovedSchemaImports {
  * `workingDirectory` is the build's `absWorkingDir`, which esbuild's paths are
  * relative to. A name counts only when the schemas subpath of this
  * Hooknostic's own SDK exports it, so a misspelt name is not said to have
- * moved, and the module lacking it must be the SDK's. Anything unexpected,
+ * moved, and the module lacking it must be the SDK's, but not its schemas
+ * entry: there the import already names the subpath. Anything unexpected,
  * including a throw, means no.
  */
 export function movedSchemaImports(failure: unknown, workingDirectory: string): MovedSchemaImports | undefined {
@@ -65,7 +68,11 @@ function movedSchemaName(error: unknown, workingDirectory: string): string | und
   const path = unquote(match[1]!);
   const name = unquote(match[2]!);
   if (path === undefined || name === undefined || !Object.hasOwn(sdkSchemas, name)) return undefined;
-  if (INSTALLED_SDK.test(path.replaceAll("\\", "/"))) return name;
+  const forward = path.replaceAll("\\", "/");
+  // The module lacking the name is the schemas entry itself: the import already
+  // names the subpath, and the project's SDK is older than this Hooknostic's.
+  if (SCHEMAS_ENTRY.test(forward)) return undefined;
+  if (INSTALLED_SDK.test(forward)) return name;
   return owningPackageName(resolve(workingDirectory, path)) === SDK ? name : undefined;
 }
 

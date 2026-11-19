@@ -54,14 +54,27 @@ describe("movedSchemaImports (#247)", () => {
     );
   });
 
+  it.each([
+    ["the installed subpath", "node_modules/@hooknostic/sdk/dist/schemas.js"],
+    ["the workspace's source", "node_modules/@hooknostic/sdk/src/schemas.ts"],
+    ["an extensionless subpath", "node_modules/@hooknostic/sdk/schemas"],
+  ])(
+    "gives no hint when the module lacking the name is the SDK's schemas entry: %s, an SDK older than the CLI's",
+    (_, path) => {
+      // The import already names the subpath; telling it to import from there would repeat it.
+      expect(movedSchemaImports(failure(noMatchingExport(path, "effectSchema")), NOWHERE)).toBeUndefined();
+    },
+  );
+
   it("does not take a package whose name only starts with the SDK's for the SDK", () => {
     const lookalike = "node_modules/@hooknostic/sdk-extras/dist/index.js";
     expect(movedSchemaImports(failure(noMatchingExport(lookalike, "effectSchema")), NOWHERE)).toBeUndefined();
   });
 
   describe("names every export of @hooknostic/sdk/schemas", () => {
-    it("which are exactly the schemas the upgrade guide lists", async () => {
+    it("which include every schema the upgrade guide lists", async () => {
       // A stale or partial SDK build would under-cover the cases below; fail loudly instead.
+      // A subset, not equality: a schema added later must not be written into the 0.13.0 guide.
       const guide = await readFile(
         resolve(import.meta.dirname, "../../../docs/upgrading/sdk-schemas-subpath.md"),
         "utf8",
@@ -69,7 +82,7 @@ describe("movedSchemaImports (#247)", () => {
       const listed = guide.slice(guide.indexOf("## Who is affected"), guide.indexOf("Nothing else moves"));
       const names = [...listed.matchAll(/`(\w+Schema)`/g)].map((match) => match[1]);
       expect(names).toHaveLength(22);
-      expect(Object.keys(sdkSchemas).sort()).toEqual([...names].sort());
+      expect(Object.keys(sdkSchemas)).toEqual(expect.arrayContaining(names));
     });
 
     it.each(Object.keys(sdkSchemas))("%s", (name) => {

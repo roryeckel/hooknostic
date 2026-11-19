@@ -446,6 +446,47 @@ describe("a root import of a schema that moved to @hooknostic/sdk/schemas (#247)
     );
     expect(result.diagnostics[0]!.remediation).toBe(hint("targetConfigSchema"));
   });
+
+  it("gives no hint when the SDK's own schemas subpath lacks the name, as an SDK older than the CLI's does", async () => {
+    const dir = await fixtureDir();
+    const sdk = join(dir, "node_modules/@hooknostic/sdk");
+    await mkdir(join(sdk, "dist"), { recursive: true });
+    await writeFile(
+      join(sdk, "package.json"),
+      JSON.stringify({
+        name: "@hooknostic/sdk",
+        type: "module",
+        exports: { ".": "./dist/index.js", "./schemas": "./dist/schemas.js" },
+      }),
+    );
+    await writeFile(
+      join(sdk, "dist/index.js"),
+      "export const defineConfig = (config) => config;\nexport const definePlugin = (plugin) => plugin;\n",
+    );
+    // This Hooknostic's own schemas subpath exports hookResultSchema; this SDK's does not.
+    await writeFile(join(sdk, "dist/schemas.js"), "export const effectSchema = {};\n");
+    const imports = `import { hookResultSchema } from "@hooknostic/sdk/schemas";\nconsole.log(hookResultSchema);\n`;
+    const message =
+      'No matching export in "node_modules/@hooknostic/sdk/dist/schemas.js" for import "hookResultSchema"';
+
+    const file = join(dir, "hooknostic.config.ts");
+    await writeFile(file, `import { defineConfig } from "@hooknostic/sdk";\n${imports}${CONFIG_BODY}`);
+    // No alias: esbuild resolves the installed package, as in a user's project.
+    const config = await loadConfig(file);
+    expect(config.diagnostics).toHaveLength(1);
+    expect(config.diagnostics[0]!.message).toContain(message);
+    expect(config.diagnostics[0]!.remediation).toBe(GENERIC);
+
+    const entryFile = join(dir, "hooks.ts");
+    await writeFile(
+      entryFile,
+      `import { definePlugin } from "@hooknostic/sdk";\n${imports}export default definePlugin({ name: "p", hooks: [] });`,
+    );
+    const entry = await loadPluginSource(entryFile);
+    expect(entry.diagnostics).toHaveLength(1);
+    expect(entry.diagnostics[0]!.message).toContain(message);
+    expect(entry.diagnostics[0]).not.toHaveProperty("remediation");
+  });
 });
 
 describe("evaluating user modules", () => {
