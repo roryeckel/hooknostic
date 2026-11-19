@@ -15,6 +15,14 @@ import { readFile } from "node:fs/promises";
  *   `mount -t drvfs C: /mnt/hn248 -o metadata`, which keeps them:
  *   C: /mnt/hn248 9p rw,dirsync,relatime,aname=drvfs;path=C:;metadata;symlinkroot=/mnt/,mmap,access=client,msize=65536,trans=fd,rfd=3,wfd=3 0 0
  *
+ *   `mount -t drvfs 'C:\hn 248' /mnt/hn248 -o metadata`, which keeps them:
+ *   C:\134hn\040248 /mnt/hn248 9p rw,dirsync,relatime,aname=drvfs;path=C:\hn 248;metadata;symlinkroot=/mnt/,mmap,access=client,msize=65536,trans=fd,rfd=3,wfd=3 0 0
+ *
+ * The kernel escapes the source and the mount point, but 9p prints the
+ * `path=` option raw, so a space in a Windows path splits the options field.
+ * Every line ends with the dump and pass numbers, so the options are whatever
+ * lies between the type and those two.
+ *
  * WSL2 reports DrvFs as `9p` and names it in the `aname=drvfs` option, whose
  * value continues `;`-separated, so options are split on both `,` and `;`. The
  * filesystem type alone does not identify it: `statfs` reports v9fs (magic
@@ -24,19 +32,20 @@ import { readFile } from "node:fs/promises";
  * captured and therefore not detected. Other filesystems that ignore `chmod`
  * (FAT, exFAT, SMB without Unix extensions) are out of scope and not detected.
  *
- * An empty or unreadable table answers `true`, which keeps modes compared.
+ * An empty table, or one naming no mount that holds `path`, answers `true`,
+ * which keeps modes compared.
  */
 export function keepsFileModes(mounts: string, path: string): boolean {
   let found: { point: string; type: string; options: string } | undefined;
   for (const line of mounts.split("\n")) {
     const fields = line.split(" ");
-    if (fields.length < 4) continue;
+    if (fields.length < 6) continue;
     const point = unescapeMountField(fields[1]!);
     if (!contains(point, path)) continue;
     // The deepest mount point wins; of equal ones the later line, which is the
     // mount on top.
     if (found === undefined || point.length >= found.point.length)
-      found = { point, type: fields[2]!, options: fields[3]! };
+      found = { point, type: fields[2]!, options: fields.slice(3, -2).join(" ") };
   }
   if (found === undefined) return true;
   const options = found.options.split(/[,;]/);
@@ -60,7 +69,8 @@ export interface FileModeHost {
 
 /**
  * Whether permission bits read at `path` mean anything. Windows keeps none;
- * on Linux the mount table decides; any other platform is assumed to keep
+ * on Linux the mount table decides, and a table that cannot be read answers
+ * `true`, which keeps modes compared; any other platform is assumed to keep
  * them.
  */
 export async function recordsFileModes(

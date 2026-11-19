@@ -30,6 +30,15 @@ describe("keepsFileModes", () => {
     expect(keepsFileModes(`${captured}\n${metadata.replace(";metadata;", ";metadata=1;")}`, "/mnt/hn248/p")).toBe(true);
   });
 
+  it("reads the options past a space the kernel leaves unescaped in a Windows path", () => {
+    // Captured the same day from a transient `mount -t drvfs 'C:\hn 248' /mnt/hn248 -o metadata`:
+    // the source escapes the space, the `path=` option does not.
+    const spaced = String.raw`C:\134hn\040248 /mnt/hn248 9p rw,dirsync,relatime,aname=drvfs;path=C:\hn 248;metadata;symlinkroot=/mnt/,mmap,access=client,msize=65536,trans=fd,rfd=3,wfd=3 0 0`;
+    expect(keepsFileModes(`${captured}\n${spaced}`, "/mnt/hn248/p")).toBe(true);
+    // The same line without `metadata` (derived, not captured).
+    expect(keepsFileModes(`${captured}\n${spaced.replace(";metadata;", ";")}`, "/mnt/hn248/p")).toBe(false);
+  });
+
   it("finds a WSL1 drvfs mount", () => {
     // WSL1's spelling, from Microsoft's documentation rather than a capture.
     const wsl1 = String.raw`C:\134 /mnt/c drvfs rw,noatime,uid=1000,gid=1000,case=off 0 0`;
