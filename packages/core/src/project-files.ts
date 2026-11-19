@@ -594,6 +594,9 @@ export async function reconcileProject(
     owned: owned.sort((a, b) => (identity(a) < identity(b) ? -1 : identity(a) > identity(b) ? 1 : 0)),
   };
   const afterManifest = Buffer.from(JSON.stringify(manifest, null, 2) + "\n");
+  // The `?? 0o644` fallback is what keeps an unobserved manifest mode (Windows,
+  // or DrvFs without `metadata`) from planning a rewrite on every run (#248);
+  // the platform test alone would not.
   if (
     !same(manifestBytes, afterManifest) ||
     (process.platform !== "win32" && manifestBytes !== null && !sameCommittedMode(manifestState.mode ?? 0o644, 0o644))
