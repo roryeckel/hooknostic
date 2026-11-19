@@ -200,8 +200,9 @@ recording what remains visible. See [ADR-0038](decisions/0038-per-target-compone
 
 Use `--config <path>` to select a configuration. `check` and `build` accept
 `--target <a,b>` to narrow the configured targets; project reconciliation commands
-process the whole integration and reject that flag. Most commands accept `--json`;
-`dispatch` always returns JSON Lines and accepts `--events <path>` or stdin.
+process the whole integration and reject that flag. Every command but `dispatch`
+accepts `--json`; `dispatch` always writes JSON Lines, rejects `--json` with exit 2,
+and reads `--events <path>` or stdin.
 
 ```sh
 hooknostic inspect codex --delivery package --component agent-plugin.mcp.stdio --config hooknostic.config.ts
