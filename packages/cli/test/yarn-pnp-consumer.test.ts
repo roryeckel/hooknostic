@@ -23,7 +23,8 @@ const PROJECTS = {
   "zod-3.24.4": { zod: "3.24.4" },
   "zod-3.25.76": { zod: "3.25.76" },
   "zod-4.6.7": { zod: "4.6.7" },
-  // HN110 wherever the project's SDK resolves, and a guard on #216 under yarn dlx.
+  // HN110 wherever the project's SDK resolves, naming Yarn's install rather
+  // than its cache path (#225), and a guard on #216 under yarn dlx.
   "skew-4.6.7": { zod: "4.6.7", skewedSdk: true },
 } as const satisfies Record<string, Consumer>;
 type Project = keyof typeof PROJECTS;
@@ -34,7 +35,11 @@ interface Outcome {
   exit: number | null;
   hn504: number;
   hn109: number;
-  hn110: number;
+  /**
+   * One entry per HN110: whether it names the SDK by Yarn's Plug'n'Play
+   * install, or by a path, which in Yarn's cache differs by machine (#225).
+   */
+  hn110: ("install" | "path")[];
   /**
    * Whose Zod the Claude runtime bundles, per zod archive: the project's
    * version, or another, the CLI's own. In one shared cache the project's
@@ -44,8 +49,14 @@ interface Outcome {
   zod: ("project" | "cli")[];
 }
 
-const ok = (hn109: number, zod: Outcome["zod"], hn110 = 0): Outcome => ({ exit: 0, hn504: 0, hn109, hn110, zod });
-const hn504: Outcome = { exit: 2, hn504: 1, hn109: 0, hn110: 0, zod: [] };
+const ok = (hn109: number, zod: Outcome["zod"], hn110: Outcome["hn110"] = []): Outcome => ({
+  exit: 0,
+  hn504: 0,
+  hn109,
+  hn110,
+  zod,
+});
+const hn504: Outcome = { exit: 2, hn504: 1, hn109: 0, hn110: [], zod: [] };
 
 /**
  * The network tokens a registry fetch or download failure leaves in Yarn's,
@@ -104,14 +115,14 @@ describe("the opt-in Yarn check's network classifier", () => {
 /**
  * Under the project's own Yarn runtime, the SDK takes the project's in-range
  * Zod and the CLI's otherwise, and the project's SDK resolves, so a skewed
- * one warns HN110.
+ * one warns HN110, naming Yarn's install rather than its cache path (#225).
  */
 const underYarnRuntime: Record<Project, Outcome> = {
   "no-zod": ok(0, ["cli"]),
   "zod-3.24.4": ok(1, ["cli"]),
   "zod-3.25.76": ok(1, ["cli"]),
   "zod-4.6.7": ok(0, ["project"]),
-  "skew-4.6.7": ok(0, ["project"], 1),
+  "skew-4.6.7": ok(0, ["project"], ["install"]),
 };
 
 const EXPECTED: Record<string, Record<Project, Outcome>> = {
@@ -296,7 +307,12 @@ it.skipIf(process.env["HOOKNOSTIC_YARN_PNP"] !== "1")(
             exit: result.code,
             hn504: (result.output.match(/^HN504 /gm) ?? []).length,
             hn109: (result.output.match(/^HN109 /gm) ?? []).length,
-            hn110: (result.output.match(/^HN110 /gm) ?? []).length,
+            // Each diagnostic is a heading line and its indented message
+            // below, so classify each HN110's whole block.
+            hn110: result.output
+              .split(/^(?=HN\d{3} )/m)
+              .filter((block) => block.startsWith("HN110 "))
+              .map((block) => (block.includes("from Yarn's Plug'n'Play install") ? "install" : "path")),
             zod: [...packages].map((path) => {
               // A Zod outside Yarn's cache, such as the npm-installed CLI's, is never the project's.
               const version = /\/zod-npm-(\d+\.\d+\.\d+)-/.exec(path)?.[1];

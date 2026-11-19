@@ -11,6 +11,7 @@ import { hooknosticConfigSchema } from "@hooknostic/sdk/schemas";
 
 import { createRequireBanner } from "./bundle-support.mjs";
 import type { Diagnostic } from "./diagnostics.js";
+import { type MovedSchemaImports, movedSchemaImports } from "./schema-imports.js";
 import { formatSchemaIssue } from "./schema-issues.js";
 import { withSdkSubpathAliases } from "./sdk-resolution.js";
 
@@ -56,6 +57,9 @@ export async function stageUserModule(file: string, options?: EvaluateOptions): 
     sourcemap: "inline",
     logLevel: "silent",
     ...(options?.alias ? { alias: withSdkSubpathAliases(options.alias) } : {}),
+  }).catch((failure: unknown) => {
+    // Every user module is bundled here, dispatch's entry included, so each failure carries the same hint (#247).
+    throw new ModuleBundleError(failure, movedSchemaImports(failure, dirname(absolute)));
   });
   const code = bundled.outputFiles[0]?.text;
   if (code === undefined) {
@@ -75,6 +79,25 @@ export async function stageUserModule(file: string, options?: EvaluateOptions): 
     throw error;
   }
   return { href: pathToFileURL(out).href, directory: dir, dispose };
+}
+
+/**
+ * Internal (#247): esbuild could not bundle a user module. The message is
+ * esbuild's own, unchanged; `movedSchemas` is set when the cause is a schema
+ * imported from the SDK's root.
+ */
+export class ModuleBundleError extends Error {
+  readonly movedSchemas: MovedSchemaImports | undefined;
+  constructor(failure: unknown, movedSchemas: MovedSchemaImports | undefined) {
+    super(errorMessage(failure), { cause: failure });
+    this.name = "ModuleBundleError";
+    this.movedSchemas = movedSchemas;
+  }
+}
+
+/** Internal (#247): the schemas a failed {@link stageUserModule} imported from the SDK's root, if that is why. */
+export function movedSchemasOf(error: unknown): MovedSchemaImports | undefined {
+  return isInstance(error, ModuleBundleError) ? error.movedSchemas : undefined;
 }
 
 /**
@@ -171,6 +194,8 @@ export interface LoadConfigPolicy {
   allowEmptyProjectTargets?: boolean;
 }
 
+const CONFIG_SHAPE = "the config must be a TypeScript module whose default export is defineConfig({...}).";
+
 export async function loadConfig(
   configPath: string,
   options?: EvaluateOptions,
@@ -181,12 +206,20 @@ export async function loadConfig(
   try {
     evaluated = await evaluateModule(configPath, "config", options);
   } catch (error) {
+    // A schema imported from the SDK's root is the fix to name; the module's
+    // shape matters only if the build failed for something else too.
+    const moved = movedSchemasOf(error);
     diagnostics.push({
       code: "HN501",
       severity: "error",
       message: `failed to load config ${configPath}: ${errorMessage(error)}`,
       location: { file: configPath },
-      remediation: "the config must be a TypeScript module whose default export is defineConfig({...}).",
+      remediation:
+        moved === undefined
+          ? CONFIG_SHAPE
+          : moved.only
+            ? moved.remediation
+            : `${moved.remediation} Beyond that, ${CONFIG_SHAPE}`,
     });
     return { diagnostics };
   }
@@ -202,7 +235,7 @@ export async function loadConfig(
       severity: "error",
       message: `failed to load config ${configPath}: reading its default export threw: ${errorMessage(error)}`,
       location: { file: configPath },
-      remediation: "the config must be a TypeScript module whose default export is defineConfig({...}).",
+      remediation: CONFIG_SHAPE,
     });
     return { diagnostics };
   }
@@ -261,11 +294,13 @@ export async function loadPluginSource(entryPath: string, options?: EvaluateOpti
     }
     return { plugin: evaluated as PluginSpec, diagnostics };
   } catch (error) {
+    const moved = movedSchemasOf(error);
     diagnostics.push({
       code: "HN501",
       severity: "error",
       message: `failed to load entry ${entryPath}: ${errorMessage(error)}`,
       location: { file: entryPath },
+      ...(moved === undefined ? {} : { remediation: moved.remediation }),
     });
     return { diagnostics };
   }

@@ -116,7 +116,7 @@ broad target range that includes them must narrow the target to enforce it.
 | `doctor` | Read installed versions, runtime availability, wiring, and activation guidance; skips configured materializers (config evaluation remains executable code). |
 | `recover` | Restore interrupted transaction preimages when preconditions still match |
 
-Commands accept `--config` and `--json`. Exit codes are 0 for success, 1 for
+These commands accept `--config` and `--json`. Exit codes are 0 for success, 1 for
 verification drift, and 2 for invalid configuration, conflicts, or operational
 failure. `doctor` has no exit 1: drifted wiring, a configuration error, and any
 harness it marks `MISS` or `WARN` (not installed, of unknown version, or outside
