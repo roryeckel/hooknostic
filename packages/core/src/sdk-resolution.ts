@@ -272,13 +272,17 @@ export function pnpRuntimeGuardPlugin(): Plugin {
   };
 }
 
-/** The part of Yarn's PnP API this module asks: which package a path belongs to. */
-interface PnpApi {
+/**
+ * The part of Yarn's PnP API Hooknostic asks: which package a path belongs
+ * to, and what a request from an issuer resolves to by this API's own data.
+ */
+export interface PnpApi {
   findPackageLocator(location: string): unknown;
+  resolveRequest(request: string, issuer: string | null): string | null;
 }
 
 /** What Yarn's runtime says about the PnP API that serves Hooknostic itself. */
-type OwnPnpApi =
+export type OwnPnpApi =
   /**
    * No API to ask: without Yarn's runtime there is none, and Yarn 2 sets
    * `process.versions.pnp` but has no `module.findPnpApi`.
@@ -296,7 +300,7 @@ type OwnPnpApi =
  * loaded. Never ask it about the project: for a path no loaded API lists, it
  * loads the nearest PnP manifest's API (#216).
  */
-function ownPnpApi(ownDirectory: string): OwnPnpApi {
+export function ownPnpApi(ownDirectory: string): OwnPnpApi {
   const findPnpApi =
     process.versions.pnp === undefined
       ? undefined

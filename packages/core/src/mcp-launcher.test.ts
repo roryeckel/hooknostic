@@ -1,8 +1,9 @@
 import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import Module from "node:module";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, sep } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -381,6 +382,152 @@ describe("generated MCP launcher", () => {
     const result = launch(tree, 0);
     expect(result.status).toBe(1);
     expect(result.stderr).toContain("declares no command");
+  });
+});
+
+/** Where {@link splitDependencies} put the stand-ins. */
+interface SplitDependencies {
+  dir: string;
+  crossSpawn: string;
+  which: string;
+}
+
+/**
+ * A stand-in for cross-spawn and one of its dependencies, each under its own
+ * root with no `node_modules` walk between them, as Yarn's global cache holds
+ * each package in its own archive, and each with the licence the notices
+ * plugin requires.
+ */
+async function splitDependencies(): Promise<SplitDependencies> {
+  const dir = await mkdtemp(join(tmpdir(), "hooknostic-launcher-deps-"));
+  dirs.push(dir);
+  const crossSpawn = join(dir, "a", "node_modules", "cross-spawn");
+  const which = join(dir, "b", "node_modules", "which");
+  await mkdir(join(crossSpawn, "lib", "util"), { recursive: true });
+  await mkdir(which, { recursive: true });
+  const manifest = (name: string) => JSON.stringify({ name, version: "1.0.0", main: "index.js" });
+  await writeFile(join(crossSpawn, "package.json"), manifest("cross-spawn"));
+  await writeFile(join(crossSpawn, "LICENSE"), "cross-spawn stand-in licence");
+  await writeFile(
+    join(crossSpawn, "index.js"),
+    'const which = require("which");\nmodule.exports = { _parse: (command) => ({ command: which(command) }) };\n',
+  );
+  await writeFile(
+    join(crossSpawn, "lib", "util", "escape.js"),
+    "module.exports = { command: (value) => value, argument: (value) => value };\n",
+  );
+  await writeFile(join(which, "package.json"), manifest("which"));
+  await writeFile(join(which, "LICENSE"), "which stand-in licence");
+  await writeFile(join(which, "index.js"), 'module.exports = (command) => "split-which-marker:" + command;\n');
+  return { dir, crossSpawn, which };
+}
+
+/**
+ * Where the runtime serving the CLI resolves a request: cross-spawn from
+ * anywhere, and `which` from inside cross-spawn when `linkWhich` is set;
+ * anything else is left to `fallback`.
+ */
+function standIn(
+  { crossSpawn, which }: SplitDependencies,
+  linkWhich: boolean,
+  request: string,
+  issuer: string | undefined,
+): string | undefined {
+  if (request === "cross-spawn") return join(crossSpawn, "index.js");
+  if (request.startsWith("cross-spawn/")) return join(crossSpawn, ...request.split("/").slice(1));
+  if (linkWhich && request === "which" && issuer?.startsWith(crossSpawn + sep)) return join(which, "index.js");
+  return undefined;
+}
+
+/**
+ * Node's resolver, patched to answer as the runtime that loaded the CLI would
+ * ({@link standIn}), and with a thrown "Cannot find module" carrying Node's
+ * require stack for `which` otherwise, so neither case depends on the ambient
+ * resolver (`pnpm exec`'s NODE_PATH reaches this workspace's `which`). No Yarn
+ * manifest is involved: this pins the mechanism, resolving the launcher's
+ * bare imports as the CLI's install does rather than by esbuild's own lookup;
+ * the opt-in Yarn suite pins the defect itself (#224).
+ */
+async function withSplitDependencies<T>(linkWhich: boolean, body: (crossSpawnEntry: string) => Promise<T>): Promise<T> {
+  const split = await splitDependencies();
+  const { crossSpawn } = split;
+
+  type Resolve = (request: string, parent: { filename?: string } | undefined, ...rest: unknown[]) => string;
+  const loader = Module as unknown as { _resolveFilename: Resolve };
+  const original = loader._resolveFilename;
+  loader._resolveFilename = function (request, parent, ...rest) {
+    const resolved = standIn(split, linkWhich, request, parent?.filename);
+    if (resolved !== undefined) return resolved;
+    if (request === "which" && parent?.filename?.startsWith(crossSpawn + sep)) {
+      throw Object.assign(new Error(`Cannot find module 'which'\nRequire stack:\n- ${parent.filename}`), {
+        code: "MODULE_NOT_FOUND",
+      });
+    }
+    return original.call(this, request, parent, ...rest);
+  };
+  try {
+    return await body(join(crossSpawn, "index.js"));
+  } finally {
+    loader._resolveFilename = original;
+  }
+}
+
+describe("bundleMcpLauncher's dependency resolution", () => {
+  it("bundles cross-spawn's dependencies from where the CLI's runtime resolves them (#224)", async () => {
+    const launcher = await withSplitDependencies(true, () => bundleMcpLauncher({ frontEnd: "client-expanded" }));
+    expect(launcher).toContain("split-which-marker:");
+    // Both stand-ins were found, so both carry their notices.
+    expect(launcher).toContain("cross-spawn stand-in licence");
+    expect(launcher).toContain("which stand-in licence");
+  });
+
+  it("names the specifier and its importer, on one line, when a dependency does not resolve", async () => {
+    const error = await withSplitDependencies(false, (crossSpawn) =>
+      bundleMcpLauncher({ frontEnd: "client-expanded" }).then(
+        () => undefined,
+        (thrown: unknown) => ({ thrown, crossSpawn }),
+      ),
+    );
+    expect(error).toBeDefined();
+    const message = String((error!.thrown as Error).message);
+    expect(message).toContain(`could not resolve "which" from ${error!.crossSpawn}: Cannot find module 'which'`);
+    expect(message).not.toContain("Require stack");
+  });
+
+  it("asks only the PnP API serving the CLI under Yarn's runtime, never the archive's (#224)", async () => {
+    // Under yarn dlx the project's API is loaded beside dlx's, both list
+    // cross-spawn's archive, and Yarn refuses to choose for a path inside it.
+    const split = await splitDependencies();
+    const asked: string[] = [];
+    const resolved: { request: string; issuer: string | null }[] = [];
+    const api = {
+      findPackageLocator: () => null,
+      resolveRequest: (request: string, issuer: string | null) => {
+        resolved.push({ request, issuer });
+        return standIn(split, true, request, issuer ?? undefined) ?? null;
+      },
+    };
+    const versions = process.versions as Record<string, string | undefined>;
+    const nodeModule = Module as { findPnpApi?: (location: string) => unknown };
+    try {
+      versions["pnp"] = "3";
+      nodeModule.findPnpApi = (location: string) => {
+        asked.push(location);
+        if (location.startsWith(split.dir))
+          throw new Error(
+            `Unable to locate pnpapi, the module '${location}' is controlled by multiple pnpapi instances.`,
+          );
+        return api;
+      };
+      const launcher = await bundleMcpLauncher({ frontEnd: "client-expanded" });
+      expect(launcher).toContain("split-which-marker:");
+      expect(launcher).toContain("which stand-in licence");
+      expect(asked.filter((location) => location.startsWith(split.dir))).toEqual([]);
+      expect(resolved).toContainEqual({ request: "which", issuer: join(split.crossSpawn, "index.js") });
+    } finally {
+      delete versions["pnp"];
+      delete nodeModule.findPnpApi;
+    }
   });
 });
 

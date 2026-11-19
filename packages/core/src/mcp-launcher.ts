@@ -1,12 +1,13 @@
-import { createRequire } from "node:module";
-import { dirname } from "node:path";
+import { createRequire, isBuiltin } from "node:module";
+import { dirname, isAbsolute } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { build } from "esbuild";
+import { build, type Plugin } from "esbuild";
 
 import { PLUGIN_DATA_PLACEHOLDER, PLUGIN_ROOT_PLACEHOLDER } from "@hooknostic/agent-plugin";
 
 import { createRequireBanner, licenseNoticesPlugin } from "./bundle-support.mjs";
+import { ownPnpApi } from "./sdk-resolution.js";
 
 export const MCP_LAUNCHER_FILE = "mcp-launcher.mjs";
 export const MCP_SERVERS_FILE = "mcp-servers.json";
@@ -266,12 +267,65 @@ run({ cwd, command, args, env });
 }
 
 /**
+ * Resolve every bare, non-builtin import of the launcher as the CLI's own
+ * install does: the template's from this module, and each dependency's from
+ * the file importing it.
+ *
+ * esbuild looks for a Yarn Plug'n'Play manifest only from `absWorkingDir`,
+ * which is cross-spawn's own directory. In Yarn's global cache that is inside
+ * an archive no project manifest sits above, so esbuild fell back to a
+ * `node_modules` walk that found cross-spawn in its own archive but none of
+ * its dependencies, each in an archive of its own, and every MCP launcher
+ * failed with HN301 (#224).
+ *
+ * Under Yarn's runtime the API that serves the CLI ({@link ownPnpApi}: the
+ * project's under `yarn hooknostic`, dlx's own under `yarn dlx`) resolves
+ * each request by its own data. Node's resolver would not do under `yarn dlx`:
+ * by the time the launcher is bundled the project's API is loaded beside
+ * dlx's, both list cross-spawn's archive in the shared cache, and Yarn refuses
+ * a request from inside it as "controlled by multiple pnpapi instances". The
+ * API serving the CLI is already loaded, so asking it loads no second one
+ * (#216). Where no API serves the CLI -- no Yarn runtime, or a CLI outside
+ * every Yarn install under `node -r .pnp.cjs` -- or Yarn cannot tell which
+ * does, Node's resolver is the CLI's: a `node_modules` walk.
+ *
+ * Both resolve with the `require` condition, where esbuild's ESM import would
+ * use `import`; cross-spawn's tree is CommonJS with no `exports` map, so both
+ * select the same files.
+ */
+function launcherDependencyPlugin(): Plugin {
+  const self = fileURLToPath(import.meta.url);
+  return {
+    name: "hooknostic-launcher-dependencies",
+    setup(build) {
+      const own = ownPnpApi(dirname(self));
+      const api = own.kind === "found" ? own.api : null;
+      build.onResolve({ filter: /^[^./]/ }, (args) => {
+        if (isBuiltin(args.path) || isAbsolute(args.path)) return undefined;
+        // The generated template's importer is `<stdin>`.
+        const issuer = isAbsolute(args.importer) ? args.importer : self;
+        try {
+          const path = api === null ? createRequire(issuer).resolve(args.path) : api.resolveRequest(args.path, issuer);
+          if (path === null) throw new Error(`Yarn's Plug'n'Play API resolved ${args.path} to no file`);
+          return { path };
+        } catch (error) {
+          // Node's message carries a multi-line require stack; its first line names the cause.
+          const cause = (error instanceof Error ? error.message : String(error)).split("\n")[0];
+          return { errors: [{ text: `could not resolve ${JSON.stringify(args.path)} from ${issuer}: ${cause}` }] };
+        }
+      });
+    },
+  };
+}
+
+/**
  * Bundle the generated launcher.
  *
- * `cross-spawn` is resolved from this package (or, once published, from the
- * installed CLI that inlines it) rather than from the plugin author's
- * dependencies, and OS selection stays in the generated runtime so a package
- * built on Linux still handles Windows PATH/PATHEXT and `.cmd` shims.
+ * `cross-spawn` and its dependencies are resolved from this package (or, once
+ * published, from the installed CLI that inlines them) rather than from the
+ * plugin author's dependencies; {@link launcherDependencyPlugin} says how.
+ * OS selection stays in the generated runtime so a package built on Linux
+ * still handles Windows PATH/PATHEXT and `.cmd` shims.
  */
 export async function bundleMcpLauncher(options: McpLauncherOptions): Promise<string> {
   const contents =
@@ -297,7 +351,10 @@ export async function bundleMcpLauncher(options: McpLauncherOptions): Promise<st
     minify: true,
     write: false,
     legalComments: "eof",
-    plugins: [licenseNoticesPlugin({ additionalSources: [fileURLToPath(import.meta.url)] })],
+    plugins: [
+      launcherDependencyPlugin(),
+      licenseNoticesPlugin({ additionalSources: [fileURLToPath(import.meta.url)] }),
+    ],
     banner: { js: createRequireBanner },
   });
   return result.outputFiles[0]!.text;
