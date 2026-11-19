@@ -134,8 +134,9 @@ describe("sdkReleaseSkew (HN110)", () => {
       "a zip in the project's cache",
       async () => ".yarn/cache/@hooknostic-sdk-npm-0.11.9-a1b2.zip/node_modules/@hooknostic/sdk",
     ],
-    // A virtual path through the project into the global cache, as Yarn 4.18.1
-    // resolved the opt-in Yarn check's file: SDK (yarn-pnp-consumer.test.ts).
+    // A virtual path through the project into the global cache, as observed in
+    // the opt-in Yarn check's (yarn-pnp-consumer.test.ts) Yarn 4.18.1 run on
+    // Windows on 2026-11-19, for its file: SDK; not a committed capture.
     [
       "__virtual__ into the global cache",
       async () =>

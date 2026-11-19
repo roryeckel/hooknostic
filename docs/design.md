@@ -699,10 +699,10 @@ when it is inside it, and says so:
 `at node_modules/@hooknostic/sdk (relative to the config's directory)`. A
 committed build report then names no machine's path. In a Plug'n'Play project,
 an SDK served from Yarn's install, inside a zip archive or behind a virtual
-folder (`__virtual__`, Yarn 2's `$$virtual`), is named by that install instead,
-because its path, usually through `__virtual__` into Yarn's global cache, has a
-hash and depth that differ by machine:
-`@hooknostic/sdk from Yarn's Plug'n'Play install is 0.11.9` (#225). It is a
+folder (`__virtual__`, Yarn 2's `$$virtual`), is named by that install instead:
+`@hooknostic/sdk from Yarn's Plug'n'Play install is 0.11.9` (#225). Its path is
+unreadable, and usually machine-specific: it runs through `__virtual__` into
+Yarn's global cache, whose hash, depth and folder differ by machine. It is a
 warning, reported at most once per run, even when the configuration fails to
 load, so `check`, `build`, `sync` and `verify` all report it beside a load
 failure that the skew may cause, and so does `recover`, which reports it only

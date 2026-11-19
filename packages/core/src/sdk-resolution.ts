@@ -207,10 +207,13 @@ export const PNP_PATH = /\.zip[\\/]|[\\/](?:__virtual__|\$\$virtual)[\\/]/;
  * Where HN110 says the project's SDK is, preposition included: `at <path>`
  * ({@link shownPath}), or, in a Plug'n'Play project whose SDK resolves inside
  * a zip archive or a virtual folder, `from Yarn's Plug'n'Play install`. That
- * path usually runs through `__virtual__` into Yarn's global cache, and its
- * hash, depth and cache folder differ by machine, while the message already
- * names the package and its version (#225). A real directory named `*.zip`
- * outside Plug'n'Play keeps its path.
+ * path is unreadable, and usually machine-specific: it runs through
+ * `__virtual__` into Yarn's global cache, whose hash, depth and cache folder
+ * differ by machine, while the message already names the package and its
+ * version (#225). A real directory named `*.zip` outside Plug'n'Play keeps its
+ * path. Inside a Plug'n'Play project, a real `*.zip` or `__virtual__`
+ * directory on the SDK's path is taken for Yarn's install, and gets the
+ * install wording: an accepted false positive, which changes only the wording.
  */
 function sdkLocation(directory: string, projectDirectory: string): string {
   if (PNP_PATH.test(directory) && pnpManifest(projectDirectory) !== undefined) return "from Yarn's Plug'n'Play install";
