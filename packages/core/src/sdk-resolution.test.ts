@@ -160,22 +160,38 @@ describe("projectSdkRelease", () => {
     expect(projectSdkRelease(root)).toEqual({ status: "found", version: "0.0.1-test" });
   });
 
-  it("reports a project where the SDK does not resolve as not found", async () => {
+  it("reports a project with no node_modules/@hooknostic/sdk as not found, whatever NODE_PATH reaches", async () => {
+    // vitest's bin shim puts pnpm's hoisted packages, this workspace's SDK
+    // among them, on NODE_PATH, as pnpm's shims do for a consumer's CLI; the
+    // build's esbuild never searches it. doctor.test.ts pins a NODE_PATH that
+    // does not depend on how vitest was started.
     const root = await mkdtemp(join(await realpath(tmpdir()), "hooknostic-skew-"));
     roots.push(root);
     await writeFile(join(root, "package.json"), "{}");
-    // Node's global folders as a plain `node` has them: vitest's bin shim
-    // puts pnpm's hoisted packages, this workspace's SDK among them, on NODE_PATH.
-    const nodePath = process.env["NODE_PATH"];
-    const initPaths = () => (Module as unknown as { _initPaths(): void })._initPaths();
-    delete process.env["NODE_PATH"];
-    initPaths();
-    try {
-      expect(projectSdkRelease(root)).toEqual({ status: "not-found" });
-    } finally {
-      if (nodePath !== undefined) process.env["NODE_PATH"] = nodePath;
-      initPaths();
-    }
+    expect(projectSdkRelease(root)).toEqual({ status: "not-found" });
+  });
+
+  it("finds an SDK installed in an ancestor's node_modules", async () => {
+    const { root } = await project(sdkManifest("0.0.1-test"));
+    const app = join(root, "packages/app");
+    await mkdir(app, { recursive: true });
+    expect(projectSdkRelease(app)).toEqual({ status: "found", version: "0.0.1-test" });
+  });
+
+  it("does not look the SDK up in a Plug'n'Play project outside Yarn's runtime (HN504's case)", async () => {
+    // Node's resolution cannot see a PnP install without Yarn's runtime, so
+    // "not found" would send a report the wrong way.
+    const root = await mkdtemp(join(await realpath(tmpdir()), "hooknostic-skew-"));
+    roots.push(root);
+    await writeFile(join(root, "package.json"), JSON.stringify({ dependencies: { "@hooknostic/sdk": "0.0.1" } }));
+    await writeFile(join(root, ".pnp.cjs"), "");
+    expect(projectSdkRelease(root)).toEqual({ status: "not-looked-up", reason: "outside-pnp-runtime" });
+  });
+
+  it("still finds a node_modules SDK below a Plug'n'Play manifest outside Yarn's runtime", async () => {
+    // A stray ancestor manifest above a node_modules project, as HN504 allows.
+    const { root } = await project(sdkManifest("0.0.1-test"), { pnp: true });
+    expect(projectSdkRelease(root)).toEqual({ status: "found", version: "0.0.1-test" });
   });
 
   it.each([
@@ -306,7 +322,7 @@ describe("projectSdkReleaseSkew (HN110)", () => {
       const { root } = await project(sdkManifest("0.11.9"), { pnp: true });
       expect(projectSdkRelease(root)).toEqual({ status: "found", version: "0.11.9" });
       simulateRuntime(join(tmpdir(), "elsewhere-dlx"));
-      expect(projectSdkRelease(root)).toEqual({ status: "not-looked-up" });
+      expect(projectSdkRelease(root)).toEqual({ status: "not-looked-up", reason: "another-pnp-runtime" });
       expect(issuers.filter((issuer) => issuer.startsWith(root))).toEqual([]);
       expect(asked.filter((location) => location.startsWith(root))).toEqual([]);
     });
@@ -315,6 +331,18 @@ describe("projectSdkReleaseSkew (HN110)", () => {
       const { root } = await project(sdkManifest("0.11.9"), { pnp: true });
       simulateRuntime(root);
       expect(projectSdkRelease(root)).toEqual({ status: "found", version: "0.11.9" });
+    });
+
+    it("projectSdkRelease resolves through the project's own runtime without node_modules (yarn hooknostic)", async () => {
+      // A Plug'n'Play install has no node_modules: Yarn's runtime resolves the SDK.
+      const root = await mkdtemp(join(await realpath(tmpdir()), "hooknostic-skew-"));
+      roots.push(root);
+      await writeFile(join(root, "package.json"), "{}");
+      await writeFile(join(root, ".pnp.cjs"), "");
+      simulateRuntime(root);
+      const release = projectSdkRelease(root);
+      expect(issuers.filter((issuer) => issuer.startsWith(root))).not.toEqual([]);
+      expect(release.status).not.toBe("not-looked-up");
     });
 
     it("still checks an absolute SDK alias under yarn dlx", async () => {

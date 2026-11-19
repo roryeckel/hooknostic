@@ -1,8 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { chmod, mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
-import Module from "node:module";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 
 import { describe, expect, it, vi } from "vitest";
 
@@ -14,6 +13,8 @@ import { makeFakeAdapter } from "@hooknostic/testkit";
 
 import { doctorVersionLine, resolveOnPath, runDoctor } from "./doctor.js";
 import { defaultAdapterRegistry } from "./registry.js";
+
+const REPO = resolve(import.meta.dirname, "../../..");
 
 function fakeIO() {
   const out: string[] = [];
@@ -273,24 +274,6 @@ describe("doctor versions", () => {
     return { root, configPath };
   }
 
-  /**
-   * Run `work` with Node's global folders as a plain `node` has them: vitest's
-   * bin shim puts pnpm's hoisted packages, this workspace's SDK among them, on
-   * NODE_PATH, where a project without an SDK would resolve it.
-   */
-  async function withoutNodePath<T>(work: () => Promise<T>): Promise<T> {
-    const nodePath = process.env["NODE_PATH"];
-    const initPaths = () => (Module as unknown as { _initPaths(): void })._initPaths();
-    delete process.env["NODE_PATH"];
-    initPaths();
-    try {
-      return await work();
-    } finally {
-      if (nodePath !== undefined) process.env["NODE_PATH"] = nodePath;
-      initPaths();
-    }
-  }
-
   it("reports this hooknostic and Node.js without a config, and no SDK", async () => {
     const machine = fakeIO();
     await runDoctor({ json: true, registry: { fake: adapterDetecting("1.3.0") }, io: machine.io });
@@ -311,9 +294,7 @@ describe("doctor versions", () => {
     const { root, configPath } = await projectWith(sdk);
     try {
       const machine = fakeIO();
-      expect(
-        await withoutNodePath(() => runDoctor({ config: configPath, json: true, registry: {}, io: machine.io })),
-      ).toBe(0);
+      expect(await runDoctor({ config: configPath, json: true, registry: {}, io: machine.io })).toBe(0);
       expect(JSON.parse(machine.out.join("")).runtime).toStrictEqual({
         node: process.version,
         hooknostic: HOOKNOSTIC_VERSION,
@@ -327,15 +308,62 @@ describe("doctor versions", () => {
   it.each([
     [{ status: "found", version: "0.0.1-test" } as const, "project @hooknostic/sdk 0.0.1-test"],
     [{ status: "not-found" } as const, "project @hooknostic/sdk not found"],
-    [{ status: "unidentified" } as const, "project @hooknostic/sdk version unknown"],
     [
-      { status: "not-looked-up" } as const,
+      { status: "unidentified" } as const,
+      "project @hooknostic/sdk version unknown: the resolved package's manifest isn't @hooknostic/sdk's or has no version",
+    ],
+    [
+      { status: "not-looked-up", reason: "another-pnp-runtime" } as const,
       "project @hooknostic/sdk not looked up under another install's Plug'n'Play runtime",
+    ],
+    [
+      { status: "not-looked-up", reason: "outside-pnp-runtime" } as const,
+      "project @hooknostic/sdk not looked up outside Yarn's Plug'n'Play runtime",
     ],
   ])("words the project's SDK in the version line (%j)", (sdk, text) => {
     expect(doctorVersionLine(sdk, "v0.0.0-test")).toBe(
       `hooknostic ${HOOKNOSTIC_VERSION}, ${text} (Node.js v0.0.0-test)`,
     );
+  });
+
+  it("does not report an SDK that only NODE_PATH reaches, as pnpm's bin shims set it", async () => {
+    // The build's esbuild never searches NODE_PATH, so such an SDK is not the
+    // project's. Spawned, so the child's NODE_PATH is the test's alone.
+    const global = await realpath(await mkdtemp(join(tmpdir(), "hooknostic-doctor-node-path-")));
+    const { root, configPath } = await projectWith(undefined);
+    try {
+      const sdk = join(global, "@hooknostic/sdk");
+      await mkdir(join(sdk, "dist"), { recursive: true });
+      await writeFile(
+        join(sdk, "package.json"),
+        JSON.stringify({ name: "@hooknostic/sdk", version: "0.0.2-global", exports: { ".": "./dist/index.js" } }),
+      );
+      await writeFile(join(sdk, "dist/index.js"), "export {};\n");
+      const env = { ...process.env, NODE_PATH: global };
+      // Precondition: Node's own lookup from the project does reach it.
+      const reached = spawnSync(
+        process.execPath,
+        [
+          "-e",
+          `console.log(require("node:module").createRequire(process.argv[1]).resolve("@hooknostic/sdk"))`,
+          join(root, "package.json"),
+        ],
+        { encoding: "utf8", env, timeout: 30_000 },
+      );
+      expect(reached.status, reached.stderr).toBe(0);
+      expect(reached.stdout.trim()).toBe(join(sdk, "dist/index.js"));
+
+      const doctor = spawnSync(
+        process.execPath,
+        [join(REPO, "packages/cli/bin/hooknostic.mjs"), "doctor", "--json", "--config", configPath],
+        { cwd: root, encoding: "utf8", env, timeout: 120_000 },
+      );
+      expect(doctor.status, doctor.stderr).toBe(0);
+      expect(JSON.parse(doctor.stdout).runtime.sdk).toStrictEqual({ status: "not-found" });
+    } finally {
+      await rm(root, { recursive: true, force: true });
+      await rm(global, { recursive: true, force: true });
+    }
   });
 
   it("prints its version line before the config loads, so a load that never finishes still shows it", async () => {

@@ -214,12 +214,25 @@ a dry run with conflicts fails. See `hooknostic --help` for the complete flag li
 
 `hooknostic --version` (or `-v`), in place of a command, prints the CLI's version
 alone and exits 0. After `inspect`, `--version <range>` is the
-harness version range instead. `doctor` reports the versions a bug report needs: its
-first line names the CLI, the project's `@hooknostic/sdk` when there is a config,
-and Node.js, and `doctor --json` carries them as `runtime.hooknostic`, `runtime.sdk`
-and `runtime.node`. `runtime.sdk.status` is `found` (with `version`), `not-found`,
-`unidentified` (it resolves, but its manifest gives no SDK version), or
-`not-looked-up` (under another install's Yarn Plug'n'Play runtime, as for HN110).
+harness version range instead.
+
+`doctor` reports the versions a bug report needs. Its text output starts with a
+line naming the CLI and Node.js, plus the project's `@hooknostic/sdk` when there is
+a config. `doctor --json` prints no such line; it carries the versions as
+`runtime.hooknostic` and `runtime.node`, plus `runtime.sdk` only when there is a
+config. `runtime.sdk.status` is one of:
+
+- `found`, with `version`, from the SDK's own manifest;
+- `not-found`: no `node_modules/@hooknostic/sdk` in the config's directory or an
+  ancestor, where a build looks. An SDK that only `NODE_PATH` (which pnpm's bin
+  shims set) or a global folder reaches does not count;
+- `unidentified`: it resolves, but the resolved package's manifest isn't
+  `@hooknostic/sdk`'s or has no version;
+- `not-looked-up`, with `reason` `another-pnp-runtime` (under another install's
+  Yarn Plug'n'Play runtime, such as `yarn dlx`, as for HN110) or
+  `outside-pnp-runtime` (a Plug'n'Play project run without Yarn's runtime, such as
+  through `npx`, where a build fails with HN504; run `yarn hooknostic doctor`).
+
 The versions are facts: HN110 alone warns when the CLI and the SDK differ.
 
 ## Build reports and troubleshooting

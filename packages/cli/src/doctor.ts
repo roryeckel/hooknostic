@@ -109,9 +109,11 @@ function sdkText(sdk: ProjectSdkRelease): string {
     case "not-found":
       return "not found";
     case "unidentified":
-      return "version unknown";
+      return "version unknown: the resolved package's manifest isn't @hooknostic/sdk's or has no version";
     case "not-looked-up":
-      return "not looked up under another install's Plug'n'Play runtime";
+      return sdk.reason === "another-pnp-runtime"
+        ? "not looked up under another install's Plug'n'Play runtime"
+        : "not looked up outside Yarn's Plug'n'Play runtime";
   }
 }
 
