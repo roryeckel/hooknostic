@@ -716,6 +716,41 @@ export default definePlugin({
     expect(!outcome.ok && outcome.errors.join("\n")).toContain("HN201");
   });
 
+  it("says where a schema imported from the SDK's root moved, as a remediation under the bundle error (#247)", async () => {
+    const bundleFailure = async (imports: string) => {
+      const dir = await project(
+        `import { definePlugin, ${imports} } from "@hooknostic/sdk";\nconsole.log(${imports});\nexport default definePlugin({ name: "p", hooks: [] });`,
+      );
+      const outcome = await dispatchEvents({
+        config: join(dir, "hooknostic.config.ts"),
+        target: "claude",
+        events: [{ event: "turn.stop" }],
+        registry: defaultAdapterRegistry(),
+        evaluate: EVALUATE,
+      });
+      expect(outcome.ok).toBe(false);
+      const errors = outcome.ok ? [] : outcome.errors;
+      expect(errors).toHaveLength(1);
+      expect(errors[0]).toMatch(/^failed to bundle entry \.\/hooks\.ts: Build failed with 1 error:\n/);
+      return errors[0]!;
+    };
+
+    const moved = await bundleFailure("effectSchema");
+    const [message, remediation] = moved.split("\n\n");
+    expect(message).toContain('for import "effectSchema"');
+    // As a diagnostic renders its remediation: after a blank line, indented.
+    expect(remediation).toBe(
+      "  Remediation: the SDK's schemas moved from @hooknostic/sdk to @hooknostic/sdk/schemas in 0.13.0: " +
+        'import { effectSchema } from "@hooknostic/sdk/schemas" instead. ' +
+        "See https://github.com/roryeckel/hooknostic/blob/master/docs/upgrading/sdk-schemas-subpath.md.",
+    );
+    expect(moved.split("\n\n")).toHaveLength(2);
+
+    const other = await bundleFailure("missingSchema");
+    expect(other).toContain('for import "missingSchema"');
+    expect(other).not.toContain("Remediation:");
+  });
+
   describe("names inherited from Object.prototype (#195)", () => {
     const claudeTarget = (adapter?: string) => `{ claude: {
       ${adapter === undefined ? "" : `adapter: ${JSON.stringify(adapter)},`}

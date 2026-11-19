@@ -331,6 +331,123 @@ describe("loadPluginSource → buildPluginIR", () => {
   });
 });
 
+describe("a root import of a schema that moved to @hooknostic/sdk/schemas (#247)", () => {
+  const GUIDE = "https://github.com/roryeckel/hooknostic/blob/master/docs/upgrading/sdk-schemas-subpath.md";
+  const hint = (names: string) =>
+    "the SDK's schemas moved from @hooknostic/sdk to @hooknostic/sdk/schemas in 0.13.0: " +
+    `import { ${names} } from "@hooknostic/sdk/schemas" instead. See ${GUIDE}.`;
+  const GENERIC = "the config must be a TypeScript module whose default export is defineConfig({...}).";
+  const CONFIG_BODY = `export default defineConfig({ entry: "./hooks.ts", targets: { claude: { version: ">=2.1 <3", delivery: "package", output: "./x" } } });`;
+
+  async function config(imports: string) {
+    const dir = await fixtureDir();
+    const file = join(dir, "hooknostic.config.ts");
+    await writeFile(file, `${imports}\nconsole.log(targetConfigSchema);\n${CONFIG_BODY}`);
+    const result = await loadConfig(file, OPTIONS);
+    expect(result.config).toBeUndefined();
+    expect(result.diagnostics).toHaveLength(1);
+    return result.diagnostics[0]!;
+  }
+
+  it("names the subpath and the guide for a config, through a multi-line import", async () => {
+    const diagnostic = await config(`import {\n  defineConfig,\n  targetConfigSchema,\n} from "@hooknostic/sdk";`);
+    expect(diagnostic.code).toBe("HN501");
+    expect(diagnostic.message).toContain('No matching export in "');
+    expect(diagnostic.message).toContain('for import "targetConfigSchema"');
+    expect(diagnostic.remediation).toBe(hint("targetConfigSchema"));
+  });
+
+  it("names every moved schema a hook source imports, once each", async () => {
+    const dir = await fixtureDir();
+    const file = join(dir, "hooks.ts");
+    await writeFile(
+      file,
+      `import { definePlugin, effectSchema, hookResultSchema, effectSchema as again } from "@hooknostic/sdk";
+      console.log(effectSchema, hookResultSchema, again);
+      export default definePlugin({ name: "p", hooks: [] });`,
+    );
+    const result = await loadPluginSource(file, OPTIONS);
+    expect(result.plugin).toBeUndefined();
+    expect(result.diagnostics).toEqual([
+      {
+        code: "HN501",
+        severity: "error",
+        message: expect.any(String),
+        location: { file },
+        remediation: hint("effectSchema, hookResultSchema"),
+      },
+    ]);
+    const prefix = `failed to load entry ${file}: `;
+    expect(result.diagnostics[0]!.message.slice(0, prefix.length)).toBe(prefix);
+  });
+
+  it("keeps the config's own remediation after the hint when the build has other errors", async () => {
+    const diagnostic = await config(
+      `import { defineConfig, targetConfigSchema, missingHelper } from "@hooknostic/sdk";\nconsole.log(missingHelper);`,
+    );
+    expect(diagnostic.message).toContain('for import "missingHelper"');
+    expect(diagnostic.remediation).toBe(`${hint("targetConfigSchema")} Beyond that, ${GENERIC}`);
+  });
+
+  it("gives no hint for a name the schemas subpath does not export", async () => {
+    const missing = await config(
+      `import { defineConfig, missingSchema as targetConfigSchema } from "@hooknostic/sdk";`,
+    );
+    expect(missing.message).toContain('for import "missingSchema"');
+    expect(missing.remediation).toBe(GENERIC);
+
+    const dir = await fixtureDir();
+    const file = join(dir, "hooks.ts");
+    await writeFile(
+      file,
+      `import { definePlugin, missingSchema } from "@hooknostic/sdk";\nconsole.log(missingSchema);\nexport default definePlugin({ name: "p", hooks: [] });`,
+    );
+    const entry = await loadPluginSource(file, OPTIONS);
+    expect(entry.diagnostics).toHaveLength(1);
+    expect(entry.diagnostics[0]!.message).toContain('for import "missingSchema"');
+    expect(entry.diagnostics[0]).not.toHaveProperty("remediation");
+  });
+
+  it("gives no hint for a schema name missing from a module outside the SDK", async () => {
+    const dir = await fixtureDir();
+    await writeFile(join(dir, "local.ts"), "export const other = 1;\n");
+    const file = join(dir, "hooknostic.config.ts");
+    await writeFile(
+      file,
+      `import { defineConfig } from "@hooknostic/sdk";\nimport { targetConfigSchema } from "./local.ts";\nconsole.log(targetConfigSchema);\n${CONFIG_BODY}`,
+    );
+    const result = await loadConfig(file, OPTIONS);
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0]!.message).toContain(
+      'No matching export in "local.ts" for import "targetConfigSchema"',
+    );
+    expect(result.diagnostics[0]!.remediation).toBe(GENERIC);
+  });
+
+  it("names the subpath for an SDK installed in node_modules", async () => {
+    const dir = await fixtureDir();
+    const sdk = join(dir, "node_modules/@hooknostic/sdk");
+    await mkdir(join(sdk, "dist"), { recursive: true });
+    await writeFile(
+      join(sdk, "package.json"),
+      JSON.stringify({ name: "@hooknostic/sdk", type: "module", exports: { ".": "./dist/index.js" } }),
+    );
+    await writeFile(join(sdk, "dist/index.js"), "export const defineConfig = (config) => config;\n");
+    const file = join(dir, "hooknostic.config.ts");
+    await writeFile(
+      file,
+      `import { defineConfig, targetConfigSchema } from "@hooknostic/sdk";\nconsole.log(targetConfigSchema);\n${CONFIG_BODY}`,
+    );
+    // No alias: esbuild resolves the installed package, as in a user's project.
+    const result = await loadConfig(file);
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0]!.message).toContain(
+      'No matching export in "node_modules/@hooknostic/sdk/dist/index.js" for import "targetConfigSchema"',
+    );
+    expect(result.diagnostics[0]!.remediation).toBe(hint("targetConfigSchema"));
+  });
+});
+
 describe("evaluating user modules", () => {
   const CONFIG = `{ entry: "./hooks.ts", targets: { claude: { version: ">=2.1 <3", delivery: "package", output: "./x" } } }`;
 

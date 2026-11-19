@@ -643,6 +643,40 @@ describe("hooknostic check", () => {
     ]);
   });
 
+  it.each([
+    ["config", "hooknostic.config.ts"],
+    ["hook source", "hooks.ts"],
+  ])("prints where a schema imported from the SDK's root moved, from the %s (#247)", async (_, file) => {
+    const dir = await fixtureProject();
+    await writeFile(join(dir, "hooks.ts"), `export default { name: "p", hooks: [] };`);
+    const path = join(dir, file);
+    const source =
+      file === "hooks.ts"
+        ? `export default { name: "p", hooks: [] };`
+        : `export default { entry: "./hooks.ts", targets: { alpha: { version: ">=1.0 <2", delivery: "package", output: "./dist" } } };`;
+    await writeFile(
+      path,
+      `import { targetConfigSchema } from "@hooknostic/sdk";\nconsole.log(targetConfigSchema);\n${source}`,
+    );
+    if (file === "hooks.ts")
+      await writeFile(
+        join(dir, "hooknostic.config.ts"),
+        `export default { entry: "./hooks.ts", targets: { alpha: { version: ">=1.0 <2", delivery: "package", output: "./dist" } } };`,
+      );
+    const { io, out, err } = captureIO();
+    expect(
+      await runCheck({ config: join(dir, "hooknostic.config.ts"), registry: registry(), io, evaluate: EVALUATE }),
+    ).toBe(2);
+    expect(out()).toBe("");
+    expect(err()).toMatch(/^HN501 invalid configuration \[error\]\n/);
+    expect(err()).toContain(`failed to load ${file === "hooks.ts" ? "entry" : "config"} ${path}: `);
+    expect(err()).toContain(
+      "\n\n  Remediation: the SDK's schemas moved from @hooknostic/sdk to @hooknostic/sdk/schemas in 0.13.0: " +
+        'import { targetConfigSchema } from "@hooknostic/sdk/schemas" instead. ' +
+        "See https://github.com/roryeckel/hooknostic/blob/master/docs/upgrading/sdk-schemas-subpath.md.",
+    );
+  });
+
   it("keeps empty project targets invalid for ordinary check and build", async () => {
     const dir = await mkdtemp(join(tmpdir(), "hooknostic-cli-empty-targets-"));
     tempDirs.push(dir);
