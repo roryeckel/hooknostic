@@ -51,7 +51,7 @@ Options:
   --version <range>   Harness version range for inspect
   --delivery <scope>  Project or package component support for inspect
   --unguarded         dispatch: let the hook source's process.exit and uncaught errors end the run
-  --json              Machine-readable output (not dispatch, which always writes JSON Lines)
+  --json              Machine-readable output (not accepted by dispatch, which always writes JSON Lines)
   -h, --help          Show this help
 `;
 
@@ -493,11 +493,13 @@ async function runCommand(argv: string[], options: RunCliOptions | undefined, ow
   };
 
   try {
-    // dispatch always writes JSON Lines and never reads --json; before #218
-    // the flag only switched an unexpected error to the catch-all's JSON
-    // line. Text on stderr like dispatch's other errors, plus the usage as a
-    // usage error: usage() would print a JSON line under the very flag being
-    // rejected. First, so it wins over every other mistake and no input is read.
+    // dispatch always writes JSON Lines and its own case never reads --json.
+    // Before #218 the flag only turned errors into a JSON line on stdout:
+    // usage()'s for a usage error such as --dry-run, and the catch-all's for
+    // an unexpected error. Text on stderr like dispatch's other errors, plus
+    // the usage as a usage error: usage() would print a JSON line under the
+    // very flag being rejected. First after parsing, so it wins over
+    // dispatch's other checks and no input is read.
     if (parsed.values["json"] && command === "dispatch") {
       io.stderr("--json is not supported by dispatch, which always writes JSON Lines");
       io.stderr(CLI_USAGE);
