@@ -7,6 +7,7 @@ import { applyEdits, modify, type Node as JsonNode, type ParseError, parseTree }
 
 import type { AgentPluginComponentId, AgentPluginDegradation, AgentPluginDeviation } from "@hooknostic/agent-plugin";
 
+import { recordsFileModes } from "./file-modes.js";
 import { editProjectToml, readProjectToml } from "./project-toml.js";
 
 export interface ProjectFile {
@@ -211,9 +212,11 @@ interface FileState {
   contents: Buffer | null;
   mode?: number;
 }
+// A filesystem that keeps no permission bits (Windows, or WSL's DrvFs without
+// `metadata`) reports no mode, so only content is compared there (#248).
 async function fileState(path: string): Promise<FileState> {
   const contents = await bytes(path);
-  if (contents === null || process.platform === "win32") return { contents };
+  if (contents === null || !(await recordsFileModes(path))) return { contents };
   return { contents, mode: (await lstat(path)).mode & 0o777 };
 }
 function sameState(left: FileState, right: FileState): boolean {
@@ -472,9 +475,9 @@ export async function reconcileProject(
         before &&
         (!oldWhole ||
           fileHash(before) !== oldWhole.hash ||
-          (process.platform !== "win32" &&
+          (observed.mode !== undefined &&
             oldWhole.mode !== undefined &&
-            !sameCommittedMode(observed.mode ?? 0o644, oldWhole.mode)))
+            !sameCommittedMode(observed.mode, oldWhole.mode)))
       )
         conflicts.push(path);
     }
@@ -582,7 +585,7 @@ export async function reconcileProject(
     }
     if (
       !same(before, after) ||
-      (process.platform !== "win32" && before !== null && (modeRequested || !sameCommittedMode(beforeMode, mode)))
+      (observed.mode !== undefined && (modeRequested || !sameCommittedMode(beforeMode, mode)))
     )
       changes.push({ path, before, after, mode, beforeMode });
   }
@@ -592,6 +595,9 @@ export async function reconcileProject(
     owned: owned.sort((a, b) => (identity(a) < identity(b) ? -1 : identity(a) > identity(b) ? 1 : 0)),
   };
   const afterManifest = Buffer.from(JSON.stringify(manifest, null, 2) + "\n");
+  // The `?? 0o644` fallback is what keeps an unobserved manifest mode (Windows,
+  // or DrvFs without `metadata`) from planning a rewrite on every run (#248);
+  // the platform test alone would not.
   if (
     !same(manifestBytes, afterManifest) ||
     (process.platform !== "win32" && manifestBytes !== null && !sameCommittedMode(manifestState.mode ?? 0o644, 0o644))
@@ -788,7 +794,7 @@ async function restore(root: string, config: string): Promise<void> {
         ? current.contents === null
         : current.contents !== null &&
           fileHash(current.contents) === entry.afterHash &&
-          (process.platform === "win32" || current.mode === entry.mode);
+          (current.mode === undefined || current.mode === entry.mode);
     if (!sameState(current, before) && !matchesAfter)
       throw new Error(
         `recovery conflict at ${entry.path}; preserve the journal and resolve the external edit manually`,
