@@ -315,11 +315,23 @@ it.skipIf(process.env["HOOKNOSTIC_YARN_PNP"] !== "1")(
         let stderr = "";
         child.stdout.setEncoding("utf8").on("data", (chunk: string) => (stdout += chunk));
         child.stderr.setEncoding("utf8").on("data", (chunk: string) => (stderr += chunk));
+        // A promise settles once: a late `close` or `error` after this is ignored.
         const timer = setTimeout(() => {
           stderr += "\n(timed out: killed with its process tree)";
           if (child.pid === undefined) child.kill();
           else if (process.platform === "win32") spawnSync("taskkill", ["/pid", String(child.pid), "/t", "/f"]);
-          else process.kill(-child.pid, "SIGKILL");
+          else
+            try {
+              process.kill(-child.pid, "SIGKILL");
+            } catch {
+              // The group is gone already, or never formed: kill the launcher alone.
+              child.kill("SIGKILL");
+            }
+          // Do not wait on pipes the kill may not have released.
+          child.stdin.destroy();
+          child.stdout.destroy();
+          child.stderr.destroy();
+          settle({ code: null, stdout, stderr });
         }, 60_000);
         child.on("error", (error) => {
           clearTimeout(timer);

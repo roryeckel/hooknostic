@@ -299,11 +299,13 @@ export type OwnPnpApi =
  * holds in a global cache too. When Hooknostic runs from a Yarn install
  * ({@link PNP_PATH}), the API that serves it is loaded: Yarn's runtime loaded
  * Hooknostic through it. For a path no loaded API lists, `findPnpApi` loads
- * the nearest PnP manifest's API (#216), so never ask it about the project;
- * and a caller that must not load one when Hooknostic runs from outside every
- * Yarn install (`node -r .pnp.cjs` with a CLI installed by npm) asks only for
- * an `ownDirectory` in a Yarn install, as {@link ownZodNeedsProjectInstall}
- * and the MCP launcher's bundling do.
+ * the nearest PnP manifest's API (#216), so never ask it about the project.
+ * For a Hooknostic outside every Yarn install (`node -r .pnp.cjs` with a CLI
+ * installed by npm) it may load the API of a manifest above the CLI, as
+ * Node's own resolution from the CLI's files would under Yarn's runtime;
+ * {@link anotherInstallsPnpRuntime} asks about the CLI's directory in every
+ * case, while {@link ownZodNeedsProjectInstall} and the MCP launcher's
+ * bundling ask only for a Hooknostic inside a Yarn install.
  */
 export function ownPnpApi(ownDirectory: string): OwnPnpApi {
   const findPnpApi =

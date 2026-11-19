@@ -281,24 +281,23 @@ const OWN_FILE = fileURLToPath(import.meta.url);
  * its dependencies, each in an archive of its own, and every MCP launcher
  * failed with HN301 (#224).
  *
- * A CLI that runs from a Yarn install ({@link PNP_PATH}) was loaded through
- * the API that serves it, so that API is already loaded, and asking
- * {@link ownPnpApi} for it loads no second one (#216): the project's under
- * `yarn hooknostic`, dlx's own under `yarn dlx`. It resolves each request by
- * its own data. Node's resolver would not do under `yarn dlx`: by the time
- * the launcher is bundled the project's API is loaded beside dlx's, both list
- * cross-spawn's archive in the shared cache, and Yarn refuses a request from
- * inside it as "controlled by multiple pnpapi instances".
+ * Only a CLI inside a Yarn install ({@link PNP_PATH}) is resolved through
+ * the PnP API serving it ({@link ownPnpApi}), the one that loaded it: the
+ * project's under `yarn hooknostic`, dlx's own under `yarn dlx`. It resolves
+ * each request by its own data. Node's resolver would not do under
+ * `yarn dlx`: by the time the launcher is bundled the project's API is loaded
+ * beside dlx's, both list cross-spawn's archive in the shared cache, and Yarn
+ * refuses a request from inside it as "controlled by multiple pnpapi
+ * instances".
  *
- * Any other CLI is never asked about. Outside every Yarn install, as under
- * `node -r .pnp.cjs` with a CLI installed by npm, no loaded API serves it, and
- * asking would load the nearest PnP manifest's. Node's resolver serves it,
- * through Yarn's runtime, which leaves a path no API lists to a `node_modules`
- * walk; an unplugged CLI's resolves through its install's API, as it would
- * for the CLI itself. Node's resolver, that is Yarn's runtime, also serves
- * where Yarn has no `findPnpApi` (Yarn 2), and where it cannot tell which
- * loaded API serves the CLI: then a request from an archive both list fails
- * as it would for the CLI itself.
+ * Any other CLI -- outside every Yarn install, as under `node -r .pnp.cjs`
+ * with a CLI installed by npm, or an unplugged one -- is left to Node's
+ * resolver, that is Yarn's runtime, exactly as the CLI's own imports are.
+ * That runtime finds the issuer's nearest PnP manifest as `findPnpApi`
+ * would, and for a path that manifest's API does not list, walks
+ * `node_modules`. So does Node's resolver where Yarn has no `findPnpApi`
+ * (Yarn 2), and where it cannot tell which loaded API serves the CLI: then a
+ * request from an archive both list fails as it would for the CLI itself.
  *
  * Without Yarn's runtime, esbuild resolves as it always has, so Node's
  * settings (`NODE_PATH`, `NODE_PRESERVE_SYMLINKS`, `--conditions`) cannot

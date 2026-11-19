@@ -573,10 +573,9 @@ describe("bundleMcpLauncher's dependency resolution", () => {
     expect(resolved).toContainEqual({ request: "which", issuer: join(split.crossSpawn, "index.js") });
   });
 
-  it("never asks Yarn for an API when the CLI is outside every Yarn install", async () => {
-    // `node -r .pnp.cjs` with a CLI installed by npm: asking about the CLI's
-    // directory would load the nearest PnP manifest's API beside the
-    // project's (#216). Node's resolver serves the CLI there.
+  it("uses Node's resolver, not a PnP API, for a CLI outside every Yarn install", async () => {
+    // `node -r .pnp.cjs` with a CLI installed by npm: its imports resolve as
+    // the CLI's own do, through Node's resolver, which is Yarn's runtime.
     const asked: string[] = [];
     const findPnpApi = (location: string) => {
       asked.push(location);
