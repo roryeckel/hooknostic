@@ -20,7 +20,7 @@ import {
 import { stageUserModule } from "@hooknostic/core";
 import type { PluginSpec } from "@hooknostic/sdk";
 
-import { runCli } from "./cli.js";
+import { CLI_USAGE, runCli } from "./cli.js";
 import type { DispatchCommandOptions, DispatchEventsOptions, DispatchResult } from "./dispatch.js";
 import { DISPATCH_NATIVE_EVENT, dispatchEvents } from "./dispatch.js";
 import * as api from "./index.js";
@@ -367,6 +367,34 @@ export default definePlugin({ name: "pi-validation", hooks: [
     expect(cli.err()).not.toContain("\n");
     expect(cli.err()).not.toContain("unexpected error");
     expect(cli.err()).not.toMatch(/^\s+at /m);
+  });
+
+  // dispatch always writes JSON Lines, so --json is a usage error: text on
+  // stderr, nothing on stdout, from the real binary, which owns the process
+  // (#218). It is reported before the events file is read, so it wins over
+  // an unreadable one.
+  it("rejects --json as a usage error before reading the events", async () => {
+    const dir = await project(HOOKS);
+    const child = spawnSync(
+      process.execPath,
+      [
+        CLI_BIN,
+        "dispatch",
+        "--config",
+        join(dir, "hooknostic.config.ts"),
+        "--target",
+        "claude",
+        "--events",
+        join(dir, "missing.jsonl"),
+        "--json",
+      ],
+      { encoding: "utf8", timeout: 60_000 },
+    );
+    expect(child.status, child.stderr).toBe(2);
+    expect(child.stdout).toBe("");
+    expect(child.stderr.replace(/\r\n/g, "\n")).toBe(
+      `--json is not supported by dispatch, which always writes JSON Lines\n${CLI_USAGE}\n`,
+    );
   });
 
   const DIALECT_HOOKS = `

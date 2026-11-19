@@ -192,7 +192,7 @@ somewhere that outlives a process, such as a file.
 | --- | --- |
 | `0` | Every event was dispatched. The effects and errors are in the output. |
 | `1` | Your hook source failed outside a handler, or ended the process before every result was written; some or all result lines may be missing. The reports are on stderr; see [When the hook source fails outside a handler](#when-the-hook-source-fails-outside-a-handler). |
-| `2` | Nothing was dispatched: an unreadable or invalid event, an unknown target, a configuration without an `entry`, a config or hook source that fails to load, including one that never settles, or hooks the target could not be built for. The reasons go to stderr, numbered by event. It takes precedence over `1`. |
+| `2` | Nothing was dispatched: a command-line mistake, such as an option the command does not support (`--json`), an unreadable or invalid event, an unknown target, a configuration without an `entry`, a config or hook source that fails to load, including one that never settles, or hooks the target could not be built for. The reasons go to stderr, numbered by event. It takes precedence over `1`. |
 
 ## What dispatch does not cover
 
