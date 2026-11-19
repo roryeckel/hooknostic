@@ -6,7 +6,7 @@ import { dirname, join } from "node:path";
 
 import { afterAll, afterEach, describe, expect, it } from "vitest";
 
-import { projectSdkReleaseSkew } from "./build.js";
+import { projectSdkRelease, projectSdkReleaseSkew } from "./build.js";
 import { sdkReleaseSkew } from "./sdk-resolution.js";
 
 const CLI = "0.12.0";
@@ -152,6 +152,45 @@ describe("sdkReleaseSkew (HN110)", () => {
   });
 });
 
+// The project SDK's release, as doctor reports it (#246); the runtime cases
+// are under "under Yarn's runtime" below, beside the runtime they simulate.
+describe("projectSdkRelease", () => {
+  it("reports the version from the SDK's own manifest", async () => {
+    const { root } = await project(sdkManifest("0.0.1-test"));
+    expect(projectSdkRelease(root)).toEqual({ status: "found", version: "0.0.1-test" });
+  });
+
+  it("reports a project where the SDK does not resolve as not found", async () => {
+    const root = await mkdtemp(join(await realpath(tmpdir()), "hooknostic-skew-"));
+    roots.push(root);
+    await writeFile(join(root, "package.json"), "{}");
+    // Node's global folders as a plain `node` has them: vitest's bin shim
+    // puts pnpm's hoisted packages, this workspace's SDK among them, on NODE_PATH.
+    const nodePath = process.env["NODE_PATH"];
+    const initPaths = () => (Module as unknown as { _initPaths(): void })._initPaths();
+    delete process.env["NODE_PATH"];
+    initPaths();
+    try {
+      expect(projectSdkRelease(root)).toEqual({ status: "not-found" });
+    } finally {
+      if (nodePath !== undefined) process.env["NODE_PATH"] = nodePath;
+      initPaths();
+    }
+  });
+
+  it.each([
+    ["has no version", sdkManifest(undefined)],
+    ["has a version that is not a string", sdkManifest(12)],
+    [
+      "names another package",
+      JSON.stringify({ name: "hooknostic-sdk-fork", version: "1.0.0", exports: { ".": "./dist/index.js" } }),
+    ],
+  ])("reports an SDK that resolves but whose manifest %s as unidentified", async (_, manifest) => {
+    const { root } = await project(manifest);
+    expect(projectSdkRelease(root)).toEqual({ status: "unidentified" });
+  });
+});
+
 describe("projectSdkReleaseSkew (HN110)", () => {
   it("checks an absolute SDK alias, and the project's own SDK for a bare package name alias", async () => {
     const { root } = await project(sdkManifest("0.11.9"));
@@ -260,6 +299,22 @@ describe("projectSdkReleaseSkew (HN110)", () => {
       const { root } = await project(sdkManifest("0.11.9"), { pnp: true });
       versions["pnp"] = "3";
       expect(projectSdkReleaseSkew(root)).toMatchObject({ code: "HN110" });
+    });
+
+    // Doctor's version line looks the SDK up as HN110 does (#246).
+    it("projectSdkRelease does not look the SDK up under another install's runtime (yarn dlx, #216)", async () => {
+      const { root } = await project(sdkManifest("0.11.9"), { pnp: true });
+      expect(projectSdkRelease(root)).toEqual({ status: "found", version: "0.11.9" });
+      simulateRuntime(join(tmpdir(), "elsewhere-dlx"));
+      expect(projectSdkRelease(root)).toEqual({ status: "not-looked-up" });
+      expect(issuers.filter((issuer) => issuer.startsWith(root))).toEqual([]);
+      expect(asked.filter((location) => location.startsWith(root))).toEqual([]);
+    });
+
+    it("projectSdkRelease still finds the SDK under the project's own runtime (yarn hooknostic)", async () => {
+      const { root } = await project(sdkManifest("0.11.9"), { pnp: true });
+      simulateRuntime(root);
+      expect(projectSdkRelease(root)).toEqual({ status: "found", version: "0.11.9" });
     });
 
     it("still checks an absolute SDK alias under yarn dlx", async () => {

@@ -72,7 +72,7 @@ import { isStrictDescendant, validateOutputLayout } from "./output-layout.js";
 import { dispatcherRuntimePolicy, effectiveCompatibility, effectiveRuntime } from "./policy.js";
 import type { ProjectIntegration } from "./project-files.js";
 import { projectPath } from "./project-files.js";
-import { anotherInstallsPnpRuntime, sdkReleaseSkew } from "./sdk-resolution.js";
+import { anotherInstallsPnpRuntime, sdkManifestVersion, sdkReleaseSkew } from "./sdk-resolution.js";
 import { type AuthoredProjectSkill, planProjectSkillPolicies } from "./skill-policy.js";
 
 export const HOOKNOSTIC_VERSION = "0.13.0";
@@ -429,6 +429,32 @@ export function projectSdkReleaseSkew(configDir: string, evaluate?: EvaluateOpti
   if (alias !== undefined && isAbsolute(alias)) return sdkReleaseSkew(alias, HOOKNOSTIC_VERSION, configDir);
   if (anotherInstallsPnpRuntime(configDir)) return undefined;
   return sdkReleaseSkew(resolveProjectSdk(configDir), HOOKNOSTIC_VERSION, configDir);
+}
+
+/** The release of a project's own `@hooknostic/sdk`, as `hooknostic doctor` reports it. */
+export type ProjectSdkRelease =
+  /** The SDK's own manifest gives its version. */
+  | { status: "found"; version: string }
+  /** `@hooknostic/sdk` does not resolve from the project. */
+  | { status: "not-found" }
+  /** It resolves, but the package's manifest is not the SDK's or has no version string. */
+  | { status: "unidentified" }
+  /** Under another install's Plug'n'Play runtime, as for HN110 (#216). */
+  | { status: "not-looked-up" };
+
+/**
+ * The release of the `@hooknostic/sdk` that the project whose config is in
+ * `configDir` resolves, found as HN110 finds it ({@link projectSdkReleaseSkew}):
+ * never under another install's Plug'n'Play runtime, where resolving from the
+ * project would load its PnP API beside that runtime (#216). A fact, not a
+ * judgement: HN110 alone compares it with this CLI's version (#246).
+ */
+export function projectSdkRelease(configDir: string): ProjectSdkRelease {
+  if (anotherInstallsPnpRuntime(configDir)) return { status: "not-looked-up" };
+  const entry = resolveProjectSdk(configDir);
+  if (entry === undefined) return { status: "not-found" };
+  const version = sdkManifestVersion(entry);
+  return version === undefined ? { status: "unidentified" } : { status: "found", version };
 }
 
 /**

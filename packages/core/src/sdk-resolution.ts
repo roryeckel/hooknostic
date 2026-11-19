@@ -173,6 +173,17 @@ export function sdkReleaseSkew(
 }
 
 /**
+ * The release of the `@hooknostic/sdk` whose entry is `sdkEntry`, from its
+ * package's own manifest, as {@link sdkReleaseSkew} reads it. Undefined when
+ * that manifest is not the SDK's, as for a vendored copy without one, or has
+ * no version string: nothing identifies the release.
+ */
+export function sdkManifestVersion(sdkEntry: string): string | undefined {
+  const sdk = owningManifest(sdkEntry, new Map());
+  return sdk?.name === SDK ? sdk.version : undefined;
+}
+
+/**
  * `directory` as HN110 names it: relative to the config's directory, with
  * forward slashes and saying so, when that directory contains it, because the
  * build report that carries the message may be committed, and an absolute path

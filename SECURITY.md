@@ -8,7 +8,8 @@ which is visible only to the maintainer. If you would rather not use GitHub, or
 do not have an account, email **hooknostic@2labz.com** instead.
 
 Include the Hooknostic version, the harness and its exact version (the output of
-`hooknostic doctor` covers both), and enough detail to reproduce. If you have a
+`hooknostic doctor` covers both; `hooknostic --version` prints Hooknostic's
+alone), and enough detail to reproduce. If you have a
 generated artifact or a hook payload that demonstrates the problem, attach it.
 
 This is a single-maintainer project, so please allow a reasonable window for a

@@ -194,7 +194,7 @@ recording what remains visible. See [ADR-0038](decisions/0038-per-target-compone
 | `sync` | Apply generated wiring and update ownership records |
 | `verify` | Compare generated integration with the project; report drift |
 | `recover` | Recover an interrupted project transaction when its preconditions still hold |
-| `doctor` | Inspect installed versions, runtime availability, wiring, and activation guidance |
+| `doctor` | Report the hooknostic, project `@hooknostic/sdk` and Node.js versions; inspect installed harness versions, runtime availability, wiring, and activation guidance |
 | `inspect <target>` | Explain hook capabilities or component support |
 | `dispatch --target <target>` | Run hooks against portable JSON Lines events for tests |
 
@@ -211,6 +211,16 @@ hooknostic dispatch --target claude --events events.jsonl
 Project commands return 0 on success, 1 for verification drift, and 2 for invalid
 configuration, conflicts, or operational failure. A dry run with changes succeeds;
 a dry run with conflicts fails. See `hooknostic --help` for the complete flag list.
+
+`hooknostic --version` (or `-v`), in place of a command, prints the CLI's version
+alone and exits 0. After `inspect`, `--version <range>` is the
+harness version range instead. `doctor` reports the versions a bug report needs: its
+first line names the CLI, the project's `@hooknostic/sdk` when there is a config,
+and Node.js, and `doctor --json` carries them as `runtime.hooknostic`, `runtime.sdk`
+and `runtime.node`. `runtime.sdk.status` is `found` (with `version`), `not-found`,
+`unidentified` (it resolves, but its manifest gives no SDK version), or
+`not-looked-up` (under another install's Yarn Plug'n'Play runtime, as for HN110).
+The versions are facts: HN110 alone warns when the CLI and the SDK differ.
 
 ## Build reports and troubleshooting
 

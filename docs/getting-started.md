@@ -219,7 +219,9 @@ npx hooknostic doctor            # are my *installed* harness versions inside th
 npx hooknostic inspect claude    # show the capability table: what can this target do, and why?
 ```
 
-`doctor` inspects installed versions, runtime availability, and project wiring; it warns when an installed
+`doctor` first prints the hooknostic, project `@hooknostic/sdk` and Node.js versions
+(`npx hooknostic --version` prints the CLI's alone), then inspects installed versions,
+runtime availability, and project wiring; it warns when an installed
 harness is newer than what the adapter has been validated against. It exits 2 when
 a configured harness isn't installed (`MISS`) or is outside its supported range
 (`WARN`), so with this config it exits 2 on a machine that lacks any of the three
