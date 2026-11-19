@@ -836,6 +836,12 @@ describe("runCli", () => {
     [["init", "--local", "--dry-run"], "--dry-run is only supported by sync"],
     [["inspect", "claude", "--dry-run"], "--dry-run is only supported by sync"],
     [["dispatch", "--target", "claude", "--dry-run"], "--dry-run is only supported by sync"],
+    [["dispatch", "--json"], "--json is not supported by dispatch, which always writes JSON Lines"],
+    // Text, not usage()'s JSON line, even with another usage error (#218).
+    [
+      ["dispatch", "--target", "claude", "--dry-run", "--json"],
+      "--json is not supported by dispatch, which always writes JSON Lines",
+    ],
     [["check", "--unguarded"], "--unguarded is only supported by dispatch"],
     [["sync", "--unguarded"], "--unguarded is only supported by dispatch"],
     [["inspect", "claude", "--unguarded"], "--unguarded is only supported by dispatch"],
