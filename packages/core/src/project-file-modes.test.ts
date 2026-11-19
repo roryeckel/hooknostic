@@ -32,7 +32,7 @@ afterEach(async () => {
   await rm(root, { recursive: true, force: true });
 });
 
-it.skipIf(process.platform === "win32")("plans nothing after a sync where modes are not kept", async () => {
+it("plans nothing after a sync where modes are not kept", async () => {
   await syncThenReadEverythingAs0777();
 
   const plan = await reconcileProject(root, owner, desired());
@@ -40,7 +40,7 @@ it.skipIf(process.platform === "win32")("plans nothing after a sync where modes 
   expect(plan.changes.map((change) => change.path)).toEqual([]);
 });
 
-it.skipIf(process.platform === "win32")("still detects a content change where modes are not kept", async () => {
+it("still detects a content change where modes are not kept", async () => {
   await syncThenReadEverythingAs0777();
   await writeFile(join(root, "a.txt"), "samf");
 
@@ -49,7 +49,7 @@ it.skipIf(process.platform === "win32")("still detects a content change where mo
   );
 });
 
-it.skipIf(process.platform === "win32")("recovers an interrupted sync where modes are not kept", async () => {
+it("recovers an interrupted sync where modes are not kept", async () => {
   await mkdir(join(root, ".hooknostic"));
   await writeFile(join(root, "a.txt"), "after");
   await chmod(join(root, "a.txt"), 0o777);
