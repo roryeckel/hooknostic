@@ -19,6 +19,11 @@ npx hooknostic check --config ./hooknostic.config.ts
 npx hooknostic build --config ./hooknostic.config.ts
 ```
 
+In a pnpm project, run these as `pnpm exec hooknostic`: `pnpm init` names pnpm
+in `devEngines`, so npm's `npx` refuses to run there. To install with pnpm,
+follow [Getting started](https://github.com/roryeckel/hooknostic/blob/master/docs/getting-started.md#1-install-the-authoring-and-cli-packages),
+which allows esbuild's install script.
+
 Under Yarn Plug'n'Play, run these as `yarn hooknostic`: outside Yarn's
 runtime the build fails with HN504.
 

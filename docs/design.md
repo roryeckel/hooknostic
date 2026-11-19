@@ -709,10 +709,12 @@ is also silent under another install's Plug'n'Play runtime, as under
 `yarn dlx` in a Plug'n'Play project: looking up the project's SDK there would
 load its runtime beside dlx's and break the build (#216). Add
 `hooknostic` to the project's devDependencies at the same version as its
-`@hooknostic/sdk`, and run that CLI: `npx hooknostic` from the project
-directory, or `yarn hooknostic` under Yarn Plug'n'Play. Without a local
-install, and always under Plug'n'Play, `npx` fetches the registry's latest
-instead.
+`@hooknostic/sdk`, and run that CLI from the project directory:
+`npx hooknostic`, or `pnpm exec hooknostic` in a pnpm project (a project made
+by pnpm 12's `pnpm init` names pnpm in `devEngines`, so `npx` refuses to run
+there), or `yarn hooknostic` under Yarn Plug'n'Play. Without a local install,
+and always under Plug'n'Play, `npx` fetches the registry's latest instead.
+Both `npx` and `pnpm exec` are named rather than detecting the package manager.
 **HN504** a build under a Yarn Plug'n'Play manifest needs a module from Yarn's
 install that this process cannot read, because Hooknostic is running without
 Yarn's PnP runtime: under plain `node`, `npx`, a global install or `pnpm dlx`.
