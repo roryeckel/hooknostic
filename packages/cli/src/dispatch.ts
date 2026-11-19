@@ -20,6 +20,7 @@ import {
   hookPluginRoot,
   levelsFromMatrix,
   loadConfig,
+  movedSchemasOf,
   registeredAdapter,
   resolveTargetAdapter,
   stageUserModule,
@@ -382,7 +383,10 @@ export async function dispatchEventsWith(
   try {
     staged = await stageUserModule(resolve(configDir, config.entry), options.evaluate);
   } catch (error) {
-    return { ok: false, errors: [`failed to bundle entry ${config.entry}: ${errorMessage(error)}`] };
+    const failure = `failed to bundle entry ${config.entry}: ${errorMessage(error)}`;
+    // Laid out as the diagnostics printer lays out a remediation, as in the config's HN501 above (#247).
+    const moved = movedSchemasOf(error);
+    return { ok: false, errors: [moved === undefined ? failure : `${failure}\n\n  Remediation: ${moved.remediation}`] };
   }
   hooks.onStaged?.(staged.directory);
   try {
