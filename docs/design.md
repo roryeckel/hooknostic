@@ -669,10 +669,13 @@ hook source that fails while it loads (§10.3), **HN502** bundled CLI entry poin
 A config or hook source that fails to bundle because it imports from
 `@hooknostic/sdk` a name that `@hooknostic/sdk/schemas` exports, a schema that
 moved there in 0.13.0, gets an HN501 remediation naming the subpath, the import
-to write instead, and the upgrade guide. For a config it replaces the generic
-remediation, which follows it only when the bundle failed for another reason
-too. `dispatch`, which bundles the hook source itself, prints the same text as an
-indented `Remediation:` line under its `failed to bundle entry` error (#247).
+to write instead, and the upgrade guide. A name missing from the SDK's schemas
+entry itself gets none: that import already names the subpath. For a config the
+hint replaces the generic remediation, which follows it only when the bundle
+failed for another reason too. `check`, `build` and `inspect --config` print it
+with the diagnostic. `dispatch`, which bundles the hook source itself, prints the
+same text as an indented `Remediation:` line under its `failed to bundle entry`
+error (#247).
 **HN103** an effect was truncated or dropped by a runtime budget.
 **HN104** a declared executable mode cannot apply to a skill the target discovers
 in place. **HN105** a declared MCP environment names a server that cannot receive
