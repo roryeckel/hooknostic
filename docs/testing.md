@@ -270,9 +270,11 @@ cell with HN501 "controlled by multiple pnpapi instances" (#190).
 The Zod 4.6.7 consumer also synchronizes a repository-local integration: in a
 `sync/` subdirectory, through `yarn hooknostic`, it runs `init --local`, which
 writes a config and hooks of its own there (the build cells keep building
-`examples/basic`'s), then `sync` twice and `verify`. Every step must exit 0
-and no `sync.lock` may remain: Yarn's patched `FileHandle` has no `sync()`,
-which once failed every `sync` and left its lock behind (#229).
+`examples/basic`'s), then `sync` twice and `verify`. Every step must exit 0,
+the integration's state must be under `sync/.hooknostic/`, and no `sync.lock`
+may remain there: Yarn's patched `FileHandle` has a `sync()` that throws
+"Method not implemented.", which once failed every `sync` and left its lock
+behind (#229).
 Yarn, corepack and npm keep their state in the test's temporary directory,
 where every install and `yarn dlx` run shares one Yarn global cache, and each
 consumer gets an empty `yarn.lock` so Yarn never adopts an ancestor project.

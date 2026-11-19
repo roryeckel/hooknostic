@@ -145,12 +145,17 @@ const EXPECTED: Record<string, Record<Project, Outcome>> = {
  */
 const SYNCED: Project = "zod-4.6.7";
 
-/** How `init --local`, `sync`, a second `sync` and `verify` exited, and whether the lock remained (#229). */
+/**
+ * How `init --local`, `sync`, a second `sync` and `verify` exited, whether
+ * the integration's state was written where the lock is looked for, and
+ * whether the lock remained (#229).
+ */
 interface Synced {
   init: number | null;
   sync: number | null;
   resync: number | null;
   verify: number | null;
+  state: boolean;
   lock: boolean;
 }
 
@@ -315,22 +320,25 @@ it.skipIf(process.env["HOOKNOSTIC_YARN_PNP"] !== "1")(
               console.log(`--- ${name} / ${label} (exit ${result.code})\n${result.output}`);
             return result.code;
           };
+          const present = (file: string) =>
+            stat(join(project, "sync", ".hooknostic", file)).then(
+              () => true,
+              () => false,
+            );
           synced = {
             init: await step("init", ["init", "--local"]),
             sync: await step("sync", ["sync"]),
             resync: await step("resync", ["sync"]),
             verify: await step("verify", ["verify"]),
-            lock: await stat(join(project, "sync", ".hooknostic", "sync.lock")).then(
-              () => true,
-              () => false,
-            ),
+            state: await present("integration.json"),
+            lock: await present("sync.lock"),
           };
         }
       }
       console.log(JSON.stringify({ builds: observed, sync: synced }, null, 2));
       expect({ builds: observed, sync: synced }).toEqual({
         builds: EXPECTED,
-        sync: { init: 0, sync: 0, resync: 0, verify: 0, lock: false } satisfies Synced,
+        sync: { init: 0, sync: 0, resync: 0, verify: 0, state: true, lock: false } satisfies Synced,
       });
     } finally {
       await rm(root, { recursive: true, force: true, maxRetries: 20, retryDelay: 100 });
