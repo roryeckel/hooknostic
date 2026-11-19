@@ -1,18 +1,20 @@
 import { spawnSync } from "node:child_process";
 import { chmod, mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 
 import { describe, expect, it, vi } from "vitest";
 
 import { claudeHarness } from "@hooknostic/adapter-claude";
 import { codexAdapter, codexHarness } from "@hooknostic/adapter-codex";
 import { opencodeAdapter, opencodeHarness, opencodeV2Harness } from "@hooknostic/adapter-opencode";
-import { type HarnessAdapter, runProject } from "@hooknostic/core";
+import { type HarnessAdapter, HOOKNOSTIC_VERSION, runProject } from "@hooknostic/core";
 import { makeFakeAdapter } from "@hooknostic/testkit";
 
-import { resolveOnPath, runDoctor } from "./doctor.js";
+import { doctorVersionLine, resolveOnPath, runDoctor } from "./doctor.js";
 import { defaultAdapterRegistry } from "./registry.js";
+
+const REPO = resolve(import.meta.dirname, "../../..");
 
 function fakeIO() {
   const out: string[] = [];
@@ -242,6 +244,183 @@ describe("doctor version comparison", () => {
       ]);
     } finally {
       await rm(scratch, { recursive: true, force: true });
+    }
+  });
+});
+
+// The versions a bug report needs, from doctor (#246).
+describe("doctor versions", () => {
+  const EMPTY_PROJECT = `{ project: { root: "." }, entry: "./hooks.ts", targets: {} }`;
+
+  /**
+   * A synced project with an empty-target config, which `config` then
+   * replaces; `sdk` is the manifest of its node_modules/@hooknostic/sdk.
+   */
+  async function projectWith(sdk: Record<string, unknown> | undefined, config?: string) {
+    const root = await realpath(await mkdtemp(join(tmpdir(), "hooknostic-doctor-versions-")));
+    const configPath = join(root, "hooknostic.config.ts");
+    await writeFile(join(root, "package.json"), "{}");
+    await writeFile(join(root, "hooks.ts"), `export default { name: "doctor-versions", hooks: [] };`);
+    await writeFile(configPath, `export default ${EMPTY_PROJECT};`);
+    if (sdk !== undefined) {
+      const directory = join(root, "node_modules/@hooknostic/sdk");
+      await mkdir(join(directory, "dist"), { recursive: true });
+      await writeFile(join(directory, "package.json"), JSON.stringify({ exports: { ".": "./dist/index.js" }, ...sdk }));
+      await writeFile(join(directory, "dist/index.js"), "export {};\n");
+    }
+    // Synced, so doctor's exit code is the project's: current, 0.
+    expect((await runProject({ command: "sync", configPath, registry: {} })).ok).toBe(true);
+    if (config !== undefined) await writeFile(configPath, config);
+    return { root, configPath };
+  }
+
+  it("reports this hooknostic and Node.js without a config, and no SDK", async () => {
+    const machine = fakeIO();
+    await runDoctor({ json: true, registry: { fake: adapterDetecting("1.3.0") }, io: machine.io });
+    const payload = JSON.parse(machine.out.join(""));
+    expect(payload.schemaVersion).toBe(2);
+    expect(payload.runtime).toStrictEqual({ node: process.version, hooknostic: HOOKNOSTIC_VERSION });
+
+    const human = fakeIO();
+    await runDoctor({ registry: { fake: adapterDetecting("1.3.0") }, io: human.io });
+    expect(human.out[0]).toBe(`hooknostic ${HOOKNOSTIC_VERSION} (Node.js ${process.version})`);
+  });
+
+  it.each([
+    ["found", { name: "@hooknostic/sdk", version: "0.0.1-test" }, { status: "found", version: "0.0.1-test" }],
+    ["not-found", undefined, { status: "not-found" }],
+    ["unidentified", { name: "@hooknostic/sdk" }, { status: "unidentified" }],
+  ])("reports the project's SDK as %s, without changing the exit code", async (_, sdk, release) => {
+    const { root, configPath } = await projectWith(sdk);
+    try {
+      const machine = fakeIO();
+      expect(await runDoctor({ config: configPath, json: true, registry: {}, io: machine.io })).toBe(0);
+      expect(JSON.parse(machine.out.join("")).runtime).toStrictEqual({
+        node: process.version,
+        hooknostic: HOOKNOSTIC_VERSION,
+        sdk: release,
+      });
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it.each([
+    [{ status: "found", version: "0.0.1-test" } as const, "project @hooknostic/sdk 0.0.1-test"],
+    [{ status: "not-found" } as const, "project @hooknostic/sdk not found"],
+    [
+      { status: "unidentified" } as const,
+      "project @hooknostic/sdk version unknown: the resolved package's manifest isn't @hooknostic/sdk's or has no version",
+    ],
+    [
+      { status: "not-looked-up", reason: "another-pnp-runtime" } as const,
+      "project @hooknostic/sdk not looked up under another install's Plug'n'Play runtime",
+    ],
+    [
+      {
+        status: "not-looked-up",
+        reason: "outside-pnp-runtime",
+        manifest: join(process.cwd(), "app", ".pnp.cjs"),
+      } as const,
+      `project @hooknostic/sdk not looked up: ${join("app", ".pnp.cjs")} is a Yarn Plug'n'Play manifest, and this process isn't running under Yarn's runtime`,
+    ],
+    [
+      {
+        status: "not-looked-up",
+        reason: "outside-pnp-runtime",
+        manifest: resolve(process.cwd(), "..", "elsewhere", ".pnp.cjs"),
+      } as const,
+      `project @hooknostic/sdk not looked up: ${resolve(process.cwd(), "..", "elsewhere", ".pnp.cjs")} is a Yarn Plug'n'Play manifest, and this process isn't running under Yarn's runtime`,
+    ],
+  ])("words the project's SDK in the version line (%j)", (sdk, text) => {
+    expect(doctorVersionLine(sdk, "v0.0.0-test")).toBe(
+      `hooknostic ${HOOKNOSTIC_VERSION}, ${text} (Node.js v0.0.0-test)`,
+    );
+  });
+
+  it.each([
+    ["has no node_modules/@hooknostic/sdk", false],
+    // Node's lookup walks past a folder without a manifest, on to NODE_PATH.
+    ["has an empty node_modules/@hooknostic/sdk folder", true],
+  ])("does not report an SDK that only NODE_PATH reaches when the project %s", async (_, emptyFolder) => {
+    // The build's esbuild never searches NODE_PATH, which pnpm's bin shims
+    // set, so such an SDK is not the project's. Spawned, so the child's
+    // NODE_PATH is the test's alone.
+    const global = await realpath(await mkdtemp(join(tmpdir(), "hooknostic-doctor-node-path-")));
+    const { root, configPath } = await projectWith(undefined);
+    try {
+      if (emptyFolder) await mkdir(join(root, "node_modules/@hooknostic/sdk/dist"), { recursive: true });
+      const sdk = join(global, "@hooknostic/sdk");
+      await mkdir(join(sdk, "dist"), { recursive: true });
+      await writeFile(
+        join(sdk, "package.json"),
+        JSON.stringify({ name: "@hooknostic/sdk", version: "0.0.2-global", exports: { ".": "./dist/index.js" } }),
+      );
+      await writeFile(join(sdk, "dist/index.js"), "export {};\n");
+      const env = { ...process.env, NODE_PATH: global };
+      // Precondition: Node's own lookup from the project does reach it.
+      const reached = spawnSync(
+        process.execPath,
+        [
+          "-e",
+          `console.log(require("node:module").createRequire(process.argv[1]).resolve("@hooknostic/sdk"))`,
+          join(root, "package.json"),
+        ],
+        { encoding: "utf8", env, timeout: 30_000 },
+      );
+      expect(reached.status, reached.stderr).toBe(0);
+      expect(reached.stdout.trim()).toBe(join(sdk, "dist/index.js"));
+
+      const doctor = spawnSync(
+        process.execPath,
+        [join(REPO, "packages/cli/bin/hooknostic.mjs"), "doctor", "--json", "--config", configPath],
+        { cwd: root, encoding: "utf8", env, timeout: 120_000 },
+      );
+      expect(doctor.status, doctor.stderr).toBe(0);
+      expect(JSON.parse(doctor.stdout).runtime.sdk).toStrictEqual({ status: "not-found" });
+    } finally {
+      await rm(root, { recursive: true, force: true });
+      await rm(global, { recursive: true, force: true });
+    }
+  });
+
+  it("prints its version line before the config loads, so a load that never finishes still shows it", async () => {
+    // The config's load waits for the test: until then, nothing after it has run.
+    const release = "__hooknosticDoctorVersionsRelease";
+    const scope = globalThis as Record<string, unknown>;
+    const { root, configPath } = await projectWith(
+      { name: "@hooknostic/sdk", version: "0.0.1-test" },
+      `export default new Promise((resolve) => { (globalThis as Record<string, unknown>)[${JSON.stringify(release)}] = () => resolve(${EMPTY_PROJECT}); });`,
+    );
+    try {
+      const human = fakeIO();
+      const running = runDoctor({ config: configPath, registry: {}, io: human.io });
+      await vi.waitFor(() => expect(scope[release]).toBeTypeOf("function"), { timeout: 30_000, interval: 20 });
+      expect(human.out).toEqual([
+        `hooknostic ${HOOKNOSTIC_VERSION}, project @hooknostic/sdk 0.0.1-test (Node.js ${process.version})`,
+      ]);
+      (scope[release] as () => void)();
+      expect(await running).toBe(0);
+    } finally {
+      delete scope[release];
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("prints its version line when the config fails to load", async () => {
+    const { root, configPath } = await projectWith(
+      { name: "@hooknostic/sdk", version: "0.0.1-test" },
+      "export default {;\n",
+    );
+    try {
+      const human = fakeIO();
+      expect(await runDoctor({ config: configPath, registry: {}, io: human.io })).toBe(2);
+      expect(human.out[0]).toBe(
+        `hooknostic ${HOOKNOSTIC_VERSION}, project @hooknostic/sdk 0.0.1-test (Node.js ${process.version})`,
+      );
+      expect(human.err.join("\n")).toContain("failed to load config");
+    } finally {
+      await rm(root, { recursive: true, force: true });
     }
   });
 });

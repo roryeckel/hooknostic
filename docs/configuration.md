@@ -194,7 +194,7 @@ recording what remains visible. See [ADR-0038](decisions/0038-per-target-compone
 | `sync` | Apply generated wiring and update ownership records |
 | `verify` | Compare generated integration with the project; report drift |
 | `recover` | Recover an interrupted project transaction when its preconditions still hold |
-| `doctor` | Inspect installed versions, runtime availability, wiring, and activation guidance |
+| `doctor` | Report the hooknostic, project `@hooknostic/sdk` and Node.js versions; inspect installed harness versions, runtime availability, wiring, and activation guidance |
 | `inspect <target>` | Explain hook capabilities or component support |
 | `dispatch --target <target>` | Run hooks against portable JSON Lines events for tests |
 
@@ -212,6 +212,42 @@ hooknostic dispatch --target claude --events events.jsonl
 Project commands return 0 on success, 1 for verification drift, and 2 for invalid
 configuration, conflicts, or operational failure. A dry run with changes succeeds;
 a dry run with conflicts fails. See `hooknostic --help` for the complete flag list.
+
+`hooknostic --version` (or `-v`), in place of a command, prints the CLI's version
+alone and exits 0. After `inspect`, `--version <range>` is the
+harness version range instead.
+
+`doctor` reports the versions a bug report needs. Its text output starts with a
+line naming the CLI and Node.js, plus the project's `@hooknostic/sdk` when there is
+a config. `doctor --json` prints no such line; it carries the versions as
+`runtime.hooknostic` and `runtime.node`, plus `runtime.sdk` only when there is a
+config. `runtime.sdk.status` is one of:
+
+- `found`, with `version`, from the SDK's own manifest;
+- `not-found`: the SDK does not resolve from the config's directory. Outside
+  Plug'n'Play, that means no `node_modules/@hooknostic/sdk` with a `package.json`
+  in the config's directory or an ancestor; an SDK that only `NODE_PATH` (which
+  pnpm's bin shims set) or a global folder reaches does not count. Under Yarn's
+  runtime, it means the project's Plug'n'Play install does not provide the SDK.
+  An installed SDK that Node fails to resolve, such as one whose `exports` target
+  is missing, is `not-found` too;
+- `unidentified`: it resolves, but the resolved package's manifest isn't
+  `@hooknostic/sdk`'s or has no version;
+- `not-looked-up`, with a `reason`:
+  - `another-pnp-runtime`: under another install's Yarn Plug'n'Play runtime, such
+    as `yarn dlx`, as for HN110;
+  - `outside-pnp-runtime`: `manifest`, a Yarn Plug'n'Play manifest, is in the
+    config's directory or an ancestor, this process isn't running under Yarn's
+    runtime, and no `node_modules/@hooknostic/sdk` is reachable. In a Yarn
+    Plug'n'Play project, run `yarn hooknostic doctor`; there, a build run any
+    other way fails with HN504. A stray manifest above a `node_modules` project
+    gives this reason too.
+
+`doctor` looks the SDK up from the config's directory, as HN110 does. A build
+resolves it from each file that imports it instead, so an SDK that only a nested
+entry's directory reaches, such as one installed only in a workspace package below
+a root config, reads `not-found` though the build bundles it. The versions are
+facts: HN110 alone warns when the CLI and the SDK differ.
 
 ## Build reports and troubleshooting
 

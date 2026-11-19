@@ -113,7 +113,7 @@ broad target range that includes them must narrow the target to enforce it.
 | `sync --dry-run` | Show planned changes and conflicts; no writes |
 | `sync` | Generate, reconcile, and remove obsolete owned integration |
 | `verify` | Regenerate in isolated compiler storage and compare without project writes |
-| `doctor` | Read installed versions, runtime availability, wiring, and activation guidance; skips configured materializers (config evaluation remains executable code). |
+| `doctor` | Report the hooknostic, project `@hooknostic/sdk` and Node.js versions; read installed harness versions, runtime availability, wiring, and activation guidance; skips configured materializers (config evaluation remains executable code). |
 | `recover` | Restore interrupted transaction preimages when preconditions still match |
 
 These commands accept `--config` and `--json`. Exit codes are 0 for success, 1 for
@@ -241,6 +241,21 @@ Shared JSON/JSONC and TOML settings retain unrelated values and comments. TOML
 ownership covers individual server subtrees, including quoted/dotted keys and
 inline or nested tables. Array ownership
 uses content and recorded context; ambiguous matches are conflicts.
+
+File modes are compared only where the filesystem keeps them. Generated files
+are written 0755 when declared executable and 0644 otherwise, and a changed
+execute bit is reported as a modified generated file. On Windows, and in WSL on
+a DrvFs mount of a Windows drive such as `/mnt/c` mounted without `metadata`,
+the filesystem keeps no permission bits. There only content is compared,
+generated files keep the mode the mount reports (0777 with WSL's default mount
+options), and `sync` and `verify` print nothing extra about it. To have the
+modes applied and checked in WSL, work on the Linux filesystem, or mount the
+drive with `metadata` (for example `options = "metadata"` under `[automount]`
+in `/etc/wsl.conf`). Other filesystems that ignore `chmod`, such as FAT, exFAT
+or SMB without Unix extensions, are not detected: where one reports an execute
+bit on every file, `verify` and `sync` report each generated file written 0644
+as an unowned or modified generated file. Work on a filesystem that keeps
+permissions instead.
 
 Never edit generated files. Update portable sources and run sync. For an existing
 unowned collision, move that content aside or remove it deliberately before sync;

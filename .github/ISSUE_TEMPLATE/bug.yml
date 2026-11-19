@@ -17,6 +17,7 @@ body:
     id: hooknostic-version
     attributes:
       label: Hooknostic version
+      description: The output of `hooknostic --version`. The first line of `hooknostic doctor` also gives it, with your project's `@hooknostic/sdk` version.
       placeholder: "0.1.0"
     validations:
       required: true

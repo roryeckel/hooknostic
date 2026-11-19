@@ -13,6 +13,7 @@ command in this README as `pnpm exec hooknostic`: `pnpm init` names pnpm in
 ```sh
 npm install --save-dev hooknostic @hooknostic/sdk
 npx hooknostic --help
+npx hooknostic --version
 npx hooknostic doctor
 npx hooknostic inspect claude
 ```

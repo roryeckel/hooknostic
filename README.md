@@ -158,6 +158,7 @@ hooknostic sync --dry-run       # preview repository changes
 hooknostic sync                 # reconcile owned project wiring
 hooknostic verify               # detect integration drift
 hooknostic doctor               # diagnose installed versions and activation
+hooknostic --version            # print the CLI's version
 hooknostic inspect codex --delivery package --component agent-plugin.mcp.stdio --config hooknostic.config.ts
 hooknostic dispatch --target claude --events events.jsonl
 ```

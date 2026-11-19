@@ -795,7 +795,7 @@ parser is available to the published CLI to make the check structural.
 | --- | --- |
 | `hooknostic check` | Would `build` succeed? Runs analysis, bundling, projection, and artifact validation in memory; writes no target artifacts. Trusted materializers still run and may use network or persistent caches. |
 | `hooknostic build` | Check + stage + atomically commit target artifacts. |
-| `hooknostic doctor` | Are installed harness versions detected and within validated ranges? |
+| `hooknostic doctor` | Are installed harness versions detected and within validated ranges? Which hooknostic, project `@hooknostic/sdk` and Node.js versions are these? |
 | `hooknostic inspect <target>` | Why does this adapter map a capability/event the way it does? |
 | `hooknostic dispatch --target <id>` | What do these hooks decide for this portable event on this target, and what native reply follows? Runs the source in process (ADR-0023). |
 
@@ -1334,6 +1334,13 @@ harness release normally means a profile/fixture update, not a canonical schema 
 `doctor` warns when a detected harness is newer than the validated range; `build` uses
 configured ranges (reproducibility), never the locally installed version. Avoid `latest`
 in reproducible configs.
+
+The package version has one carrier in the CLI, `HOOKNOSTIC_VERSION`, which
+`set-versions.mjs` rewrites and `versions.test.ts` pins to the CLI's manifest. It is
+what `hooknostic --version` prints, alone, what HN110 calls "this hooknostic", and the
+build report's `hooknosticVersion`. `doctor` reports it beside the project's
+`@hooknostic/sdk` version, looked up from the config's directory, as HN110 does (and,
+like HN110, never under another install's Plug'n'Play runtime), and Node.js's (#246).
 
 ## 17. Operational and trust considerations
 
