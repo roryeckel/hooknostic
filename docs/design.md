@@ -697,10 +697,16 @@ lockstep; build metadata (`+local.1`) is ignored, as semver orders it. The
 message names the SDK's directory relative to the configuration's directory
 when it is inside it, and says so:
 `at node_modules/@hooknostic/sdk (relative to the config's directory)`. A
-committed build report then names no machine's path. It is a warning, reported
-at most once per run, even when the configuration fails to load, so `check`,
-`build`, `sync` and `verify` all report it beside a load failure that the skew
-may cause, and so does `recover`, which reports it only beside a load failure.
+committed build report then names no machine's path. In a Plug'n'Play project,
+an SDK served from Yarn's install, inside a zip archive or behind a virtual
+folder (`__virtual__`, Yarn 2's `$$virtual`), is named by that install instead,
+because its path, usually through `__virtual__` into Yarn's global cache, has a
+hash and depth that differ by machine:
+`@hooknostic/sdk from Yarn's Plug'n'Play install is 0.11.9` (#225). It is a
+warning, reported at most once per run, even when the configuration fails to
+load, so `check`, `build`, `sync` and `verify` all report it beside a load
+failure that the skew may cause, and so does `recover`, which reports it only
+beside a load failure.
 It never changes an exit code: `check` and `build` print it, and `sync` and
 `verify` list it with their other build diagnostics. It is silent when no SDK
 resolves, when either version is not valid semver, and in this repository's

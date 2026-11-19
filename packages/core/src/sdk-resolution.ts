@@ -169,7 +169,7 @@ export function sdkReleaseSkew(
     code: "HN110",
     severity: "warn",
     message:
-      `this hooknostic is ${cliVersion}, but the project's ${SDK} at ${shownPath(sdk.directory, projectDirectory)} ` +
+      `this hooknostic is ${cliVersion}, but the project's ${SDK} ${sdkLocation(sdk.directory, projectDirectory)} ` +
       `is ${sdk.version}, so the build mixes one release's SDK with another release's compiler and shims; ` +
       "run the project's own hooknostic, or install both at one version.",
     remediation,
@@ -182,7 +182,8 @@ export function sdkReleaseSkew(
  * build report that carries the message may be committed, and an absolute path
  * differs by machine and can name a home directory. Otherwise absolute. The
  * SDK's path is real (Node resolves symlinks), so the project's real path is
- * tried too.
+ * tried too. A Plug'n'Play SDK is named by its install instead
+ * ({@link sdkLocation}).
  */
 function shownPath(directory: string, projectDirectory: string): string {
   let real = projectDirectory;
@@ -201,6 +202,20 @@ function shownPath(directory: string, projectDirectory: string): string {
 
 /** A path inside a Yarn zip archive or virtual folder (Yarn 2's `$$virtual`, Yarn 3+'s `__virtual__`). */
 export const PNP_PATH = /\.zip[\\/]|[\\/](?:__virtual__|\$\$virtual)[\\/]/;
+
+/**
+ * Where HN110 says the project's SDK is, preposition included: `at <path>`
+ * ({@link shownPath}), or, in a Plug'n'Play project whose SDK resolves inside
+ * a zip archive or a virtual folder, `from Yarn's Plug'n'Play install`. That
+ * path usually runs through `__virtual__` into Yarn's global cache, and its
+ * hash, depth and cache folder differ by machine, while the message already
+ * names the package and its version (#225). A real directory named `*.zip`
+ * outside Plug'n'Play keeps its path.
+ */
+function sdkLocation(directory: string, projectDirectory: string): string {
+  if (PNP_PATH.test(directory) && pnpManifest(projectDirectory) !== undefined) return "from Yarn's Plug'n'Play install";
+  return `at ${shownPath(directory, projectDirectory)}`;
+}
 
 /**
  * The `detail` of an esbuild error meaning that Yarn Plug'n'Play serves a
