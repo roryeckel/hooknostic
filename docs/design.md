@@ -666,6 +666,16 @@ at runtime, **HN501** invalid configuration or hook source, including a config o
 hook source that fails while it loads (§10.3), **HN502** bundled CLI entry point,
 **HN503** invalid Agent Plugin input, unsafe path, or unmergeable overlay,
 **HN504** Yarn Plug'n'Play install outside Yarn's runtime.
+A config or hook source that fails to bundle because it imports from
+`@hooknostic/sdk` a name that `@hooknostic/sdk/schemas` exports, a schema that
+moved there in 0.13.0, gets an HN501 remediation naming the subpath, the import
+to write instead, and the upgrade guide. A name missing from the SDK's schemas
+entry itself gets none: that import already names the subpath. For a config the
+hint replaces the generic remediation, which follows it only when the bundle
+failed for another reason too. `check`, `build` and `inspect --config` print it
+with the diagnostic. `dispatch`, which bundles the hook source itself, prints the
+same text as an indented `Remediation:` line under its `failed to bundle entry`
+error (#247).
 **HN103** an effect was truncated or dropped by a runtime budget.
 **HN104** a declared executable mode cannot apply to a skill the target discovers
 in place. **HN105** a declared MCP environment names a server that cannot receive
@@ -697,10 +707,16 @@ lockstep; build metadata (`+local.1`) is ignored, as semver orders it. The
 message names the SDK's directory relative to the configuration's directory
 when it is inside it, and says so:
 `at node_modules/@hooknostic/sdk (relative to the config's directory)`. A
-committed build report then names no machine's path. It is a warning, reported
-at most once per run, even when the configuration fails to load, so `check`,
-`build`, `sync` and `verify` all report it beside a load failure that the skew
-may cause, and so does `recover`, which reports it only beside a load failure.
+committed build report then names no machine's path. In a Plug'n'Play project,
+an SDK served from Yarn's install, inside a zip archive or behind a virtual
+folder (`__virtual__`, Yarn 2's `$$virtual`), is named by that install instead:
+`@hooknostic/sdk from Yarn's Plug'n'Play install is 0.11.9` (#225). Its path is
+unreadable, and usually machine-specific: it runs through `__virtual__` into
+Yarn's global cache, whose hash, depth and folder differ by machine. It is a
+warning, reported at most once per run, even when the configuration fails to
+load, so `check`, `build`, `sync` and `verify` all report it beside a load
+failure that the skew may cause, and so does `recover`, which reports it only
+beside a load failure.
 It never changes an exit code: `check` and `build` print it, and `sync` and
 `verify` list it with their other build diagnostics. It is silent when no SDK
 resolves, when either version is not valid semver, and in this repository's
@@ -709,10 +725,13 @@ is also silent under another install's Plug'n'Play runtime, as under
 `yarn dlx` in a Plug'n'Play project: looking up the project's SDK there would
 load its runtime beside dlx's and break the build (#216). Add
 `hooknostic` to the project's devDependencies at the same version as its
-`@hooknostic/sdk`, and run that CLI: `npx hooknostic` from the project
-directory, or `yarn hooknostic` under Yarn Plug'n'Play. Without a local
-install, and always under Plug'n'Play, `npx` fetches the registry's latest
-instead.
+`@hooknostic/sdk`, and run that CLI from the project directory:
+`npx hooknostic`, or `pnpm exec hooknostic` in a pnpm project (a project made
+by pnpm 12's `pnpm init` names pnpm in `devEngines`, so `npx` refuses to run
+there), or `yarn hooknostic` under Yarn Plug'n'Play. Without a local install,
+and always under Plug'n'Play, `npx` fetches the registry's latest instead.
+Outside Plug'n'Play, `npx` and `pnpm exec` are both named rather than
+detecting the package manager.
 **HN504** a build under a Yarn Plug'n'Play manifest needs a module from Yarn's
 install that this process cannot read, because Hooknostic is running without
 Yarn's PnP runtime: under plain `node`, `npx`, a global install or `pnpm dlx`.
@@ -776,7 +795,7 @@ parser is available to the published CLI to make the check structural.
 | --- | --- |
 | `hooknostic check` | Would `build` succeed? Runs analysis, bundling, projection, and artifact validation in memory; writes no target artifacts. Trusted materializers still run and may use network or persistent caches. |
 | `hooknostic build` | Check + stage + atomically commit target artifacts. |
-| `hooknostic doctor` | Are installed harness versions detected and within validated ranges? |
+| `hooknostic doctor` | Are installed harness versions detected and within validated ranges? Which hooknostic, project `@hooknostic/sdk` and Node.js versions are these? |
 | `hooknostic inspect <target>` | Why does this adapter map a capability/event the way it does? |
 | `hooknostic dispatch --target <id>` | What do these hooks decide for this portable event on this target, and what native reply follows? Runs the source in process (ADR-0023). |
 
@@ -1315,6 +1334,13 @@ harness release normally means a profile/fixture update, not a canonical schema 
 `doctor` warns when a detected harness is newer than the validated range; `build` uses
 configured ranges (reproducibility), never the locally installed version. Avoid `latest`
 in reproducible configs.
+
+The package version has one carrier in the CLI, `HOOKNOSTIC_VERSION`, which
+`set-versions.mjs` rewrites and `versions.test.ts` pins to the CLI's manifest. It is
+what `hooknostic --version` prints, alone, what HN110 calls "this hooknostic", and the
+build report's `hooknosticVersion`. `doctor` reports it beside the project's
+`@hooknostic/sdk` version, looked up from the config's directory, as HN110 does (and,
+like HN110, never under another install's Plug'n'Play runtime), and Node.js's (#246).
 
 ## 17. Operational and trust considerations
 

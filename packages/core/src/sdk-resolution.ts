@@ -116,7 +116,7 @@ export type ReachableZod =
 const PNP_MANIFESTS = [".pnp.data.json", ".pnp.cjs", ".pnp.js"];
 
 /** The nearest PnP manifest in `directory` or one of its ancestors, as esbuild finds it. */
-function pnpManifest(directory: string): string | undefined {
+export function pnpManifest(directory: string): string | undefined {
   for (let current = directory; ;) {
     const manifest = PNP_MANIFESTS.find((name) => existsSync(join(current, name)));
     if (manifest !== undefined) return join(current, manifest);
@@ -153,23 +153,38 @@ export function sdkReleaseSkew(
   if (semver.eq(sdk.version, cliVersion)) return undefined;
   // npx runs the project's CLI only when the project installs one; without it,
   // and always under Plug'n'Play, where npx does not see the project's install
-  // (as HN504 explains), it fetches the registry's latest instead.
+  // (as HN504 explains), it fetches the registry's latest instead. npx also
+  // refuses a project made by pnpm 12's `pnpm init`, which names pnpm in
+  // `devEngines`. Outside Plug'n'Play, npx and `pnpm exec` are both named
+  // rather than detecting the package manager (#245).
   const remediation =
     pnpManifest(projectDirectory) !== undefined
       ? `add hooknostic to the project's devDependencies at the same version as its ${SDK}, ` +
         "and run `yarn hooknostic`, which runs that CLI (under Plug'n'Play, npx fetches the registry's latest)."
       : `add hooknostic to the project's devDependencies at the same version as its ${SDK}, ` +
-        "and run `npx hooknostic` from the project directory, which then runs that CLI " +
-        "(without a local install, npx fetches the registry's latest).";
+        "and run that CLI from the project directory with `npx hooknostic` " +
+        "(without a local install, npx fetches the registry's latest), " +
+        "or `pnpm exec hooknostic` in a pnpm project.";
   return {
     code: "HN110",
     severity: "warn",
     message:
-      `this hooknostic is ${cliVersion}, but the project's ${SDK} at ${shownPath(sdk.directory, projectDirectory)} ` +
+      `this hooknostic is ${cliVersion}, but the project's ${SDK} ${sdkLocation(sdk.directory, projectDirectory)} ` +
       `is ${sdk.version}, so the build mixes one release's SDK with another release's compiler and shims; ` +
       "run the project's own hooknostic, or install both at one version.",
     remediation,
   };
+}
+
+/**
+ * The release of the `@hooknostic/sdk` whose entry is `sdkEntry`, from its
+ * package's own manifest, as {@link sdkReleaseSkew} reads it. Undefined when
+ * that manifest is not the SDK's, as for a vendored copy without one, or has
+ * no version string: nothing identifies the release.
+ */
+export function sdkManifestVersion(sdkEntry: string): string | undefined {
+  const sdk = owningManifest(sdkEntry, new Map());
+  return sdk?.name === SDK ? sdk.version : undefined;
 }
 
 /**
@@ -178,7 +193,8 @@ export function sdkReleaseSkew(
  * build report that carries the message may be committed, and an absolute path
  * differs by machine and can name a home directory. Otherwise absolute. The
  * SDK's path is real (Node resolves symlinks), so the project's real path is
- * tried too.
+ * tried too. A Plug'n'Play SDK is named by its install instead
+ * ({@link sdkLocation}).
  */
 function shownPath(directory: string, projectDirectory: string): string {
   let real = projectDirectory;
@@ -197,6 +213,23 @@ function shownPath(directory: string, projectDirectory: string): string {
 
 /** A path inside a Yarn zip archive or virtual folder (Yarn 2's `$$virtual`, Yarn 3+'s `__virtual__`). */
 export const PNP_PATH = /\.zip[\\/]|[\\/](?:__virtual__|\$\$virtual)[\\/]/;
+
+/**
+ * Where HN110 says the project's SDK is, preposition included: `at <path>`
+ * ({@link shownPath}), or, in a Plug'n'Play project whose SDK resolves inside
+ * a zip archive or a virtual folder, `from Yarn's Plug'n'Play install`. That
+ * path is unreadable, and usually machine-specific: it runs through
+ * `__virtual__` into Yarn's global cache, whose hash, depth and cache folder
+ * differ by machine, while the message already names the package and its
+ * version (#225). A real directory named `*.zip` outside Plug'n'Play keeps its
+ * path. Inside a Plug'n'Play project, a real `*.zip` or `__virtual__`
+ * directory on the SDK's path is taken for Yarn's install, and gets the
+ * install wording: an accepted false positive, which changes only the wording.
+ */
+function sdkLocation(directory: string, projectDirectory: string): string {
+  if (PNP_PATH.test(directory) && pnpManifest(projectDirectory) !== undefined) return "from Yarn's Plug'n'Play install";
+  return `at ${shownPath(directory, projectDirectory)}`;
+}
 
 /**
  * The `detail` of an esbuild error meaning that Yarn Plug'n'Play serves a
@@ -372,6 +405,25 @@ export function reachableZod(directory: string): ReachableZod {
     }
     const parent = dirname(current);
     if (parent === current) return { kind: "none" };
+    current = parent;
+  }
+}
+
+/**
+ * Whether `directory` or one of its ancestors has `node_modules/<name>` with a
+ * manifest, walked as esbuild walks for a bare specifier, skipping ancestors
+ * that are themselves named `node_modules` (see {@link reachableZod}). Node's
+ * CommonJS lookup also searches `NODE_PATH`, which pnpm's bin shims set, and
+ * the global folders; esbuild searches neither, so a package only they reach
+ * is not one a build would bundle. The manifest, not just the folder: Node
+ * walks past a folder without one (an interrupted install) on to `NODE_PATH`.
+ */
+export function nodeModulesHas(directory: string, name: string): boolean {
+  for (let current = directory; ;) {
+    if (basename(current) !== "node_modules" && existsSync(join(current, "node_modules", name, "package.json")))
+      return true;
+    const parent = dirname(current);
+    if (parent === current) return false;
     current = parent;
   }
 }

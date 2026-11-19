@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
+import { fsync } from "node:fs";
 import { lstat, mkdir, open, readFile, realpath, rename, rm } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, sep } from "node:path";
 
@@ -655,29 +656,54 @@ async function replace(
     await rm(temp, { force: true });
   }
 }
+/**
+ * Creates `path` exclusively, writes `value`, flushes it to disk and closes
+ * it. If anything after the create fails, the file is removed again, so a
+ * failed lock or staged file never outlives the error. A failed create
+ * removes nothing: the file belongs to whoever created it, such as a
+ * concurrent synchronization holding the lock.
+ *
+ * The flush is `fs.fsync` on the handle's descriptor rather than
+ * `FileHandle.sync()`, the same system call on Node. Yarn Plug'n'Play's
+ * patched `FileHandle` throws "Method not implemented." from `sync()` and
+ * `datasync()`, but leaves `fs.fsync` unpatched and gives a file outside a
+ * mounted archive its real descriptor (#229). A project inside a Yarn-mounted
+ * archive would get a remapped descriptor instead; project files never live
+ * there.
+ *
+ * `chmod` applies `mode` exactly, past a restrictive umask, as a staged file
+ * needs; the lock keeps the mode its open gives it, as it always has. Windows
+ * has no such bits.
+ */
+async function createFlushed(path: string, value: Buffer | string, mode: number, chmod: boolean): Promise<void> {
+  const handle = await open(path, "wx", mode);
+  try {
+    try {
+      if (chmod && process.platform !== "win32") await handle.chmod(mode);
+      await handle.writeFile(value);
+      await new Promise<void>((resolve, reject) => fsync(handle.fd, (error) => (error ? reject(error) : resolve())));
+    } catch (error) {
+      // Never mask the first error with a failed close.
+      await handle.close().catch(() => undefined);
+      throw error;
+    }
+    await handle.close();
+  } catch (error) {
+    // Nor with a failed cleanup.
+    await rm(path, { force: true }).catch(() => undefined);
+    throw error;
+  }
+}
 async function stage(root: string, value: Buffer, mode: number): Promise<string> {
   const temp = await projectPath(root, `.hooknostic/staging/${randomUUID()}`);
   await mkdir(dirname(temp), { recursive: true });
-  const handle = await open(temp, "wx", mode);
-  try {
-    if (process.platform !== "win32") await handle.chmod(mode);
-    await handle.writeFile(value);
-    await handle.sync();
-  } finally {
-    await handle.close();
-  }
+  await createFlushed(temp, value, mode, true);
   return temp;
 }
 async function acquire(root: string, name = LOCK): Promise<() => Promise<void>> {
   const lock = await projectPath(root, name);
   await mkdir(dirname(lock), { recursive: true });
-  const handle = await open(lock, "wx", 0o600);
-  try {
-    await handle.writeFile(String(process.pid));
-    await handle.sync();
-  } finally {
-    await handle.close();
-  }
+  await createFlushed(lock, String(process.pid), 0o600, false);
   return () => rm(lock, { force: true });
 }
 async function verifyPreconditions(root: string, preconditions: readonly ProjectFilePrecondition[]): Promise<void> {

@@ -1,14 +1,16 @@
 import { accessSync, constants, existsSync, statSync } from "node:fs";
-import { delimiter, resolve } from "node:path";
+import { delimiter, dirname, isAbsolute, relative, resolve, sep } from "node:path";
 
 import semver from "semver";
 
-import type { AdapterRegistry, McpServerCommand } from "@hooknostic/core";
+import type { AdapterRegistry, McpServerCommand, ProjectSdkRelease } from "@hooknostic/core";
 import {
   buildProject,
+  HOOKNOSTIC_VERSION,
   loadConfig,
   mcpAmbientCommands,
   type ProjectCommandResult,
+  projectSdkRelease,
   registeredAdapter,
   resolveTargetAdapter,
   runProject,
@@ -99,6 +101,37 @@ interface DoctorEntry {
   detail?: string;
 }
 
+/** `path` relative to the current directory when it is inside it, else absolute. */
+function shownPath(path: string): string {
+  const shown = relative(process.cwd(), path);
+  return shown === "" || shown === ".." || shown.startsWith(`..${sep}`) || isAbsolute(shown) ? path : shown;
+}
+
+/** What the project's SDK lookup found, as doctor's version line says it. */
+function sdkText(sdk: ProjectSdkRelease): string {
+  switch (sdk.status) {
+    case "found":
+      return sdk.version;
+    case "not-found":
+      return "not found";
+    case "unidentified":
+      return "version unknown: the resolved package's manifest isn't @hooknostic/sdk's or has no version";
+    case "not-looked-up":
+      return sdk.reason === "another-pnp-runtime"
+        ? "not looked up under another install's Plug'n'Play runtime"
+        : `not looked up: ${shownPath(sdk.manifest)} is a Yarn Plug'n'Play manifest, and this process isn't running under Yarn's runtime`;
+  }
+}
+
+/**
+ * Doctor's first line of text: this hooknostic's version, the project's
+ * `@hooknostic/sdk` when there is a config, and Node.js's (#246).
+ */
+export function doctorVersionLine(sdk: ProjectSdkRelease | undefined, node: string = process.version): string {
+  const project = sdk === undefined ? "" : `, project @hooknostic/sdk ${sdkText(sdk)}`;
+  return `hooknostic ${HOOKNOSTIC_VERSION}${project} (Node.js ${node})`;
+}
+
 /**
  * `hooknostic doctor` — detect locally installed harnesses and compare them
  * with each adapter's validated capability ranges. Unknown/newer versions
@@ -108,6 +141,11 @@ interface DoctorEntry {
 export async function runDoctor(options: DoctorCommandOptions): Promise<number> {
   if (options.config === undefined && existsSync(resolve("hooknostic.config.ts")))
     options = { ...options, config: "hooknostic.config.ts" };
+  // The versions a bug report asks for. Facts only: HN110 alone judges a
+  // mismatch. Printed before the config loads, so they are out even when the
+  // load never finishes or doctor fails before its report.
+  const sdk = options.config === undefined ? undefined : projectSdkRelease(dirname(resolve(options.config)));
+  if (!options.json) options.io.stdout(doctorVersionLine(sdk));
   const entries: DoctorEntry[] = [];
 
   let adapters = Object.values(options.registry);
@@ -293,7 +331,8 @@ export async function runDoctor(options: DoctorCommandOptions): Promise<number> 
           harnesses: entries,
           configurationErrors,
           mcpCommands,
-          runtime: { node: process.version },
+          // Additive, so schemaVersion stays 2 (#246).
+          runtime: { node: process.version, hooknostic: HOOKNOSTIC_VERSION, ...(sdk === undefined ? {} : { sdk }) },
           ...(projectReport === undefined
             ? {}
             : { project: { ...projectReport, execution: "not-observed", trust: "not-inspected" } }),

@@ -2,12 +2,12 @@ import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import Module from "node:module";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 
 import { afterAll, afterEach, describe, expect, it } from "vitest";
 
-import { projectSdkReleaseSkew } from "./build.js";
-import { sdkReleaseSkew } from "./sdk-resolution.js";
+import { projectSdkRelease, projectSdkReleaseSkew } from "./build.js";
+import { nodeModulesHas, sdkReleaseSkew } from "./sdk-resolution.js";
 
 const CLI = "0.12.0";
 const roots: string[] = [];
@@ -24,15 +24,19 @@ function strayPnpManifest(directory: string): string | undefined {
   }
 }
 
-/** A project whose `node_modules/@hooknostic/sdk` has `manifest`; returns the project and the SDK's entry. */
-async function project(manifest: string, options: { pnp?: boolean } = {}) {
+/**
+ * A project whose SDK, at `location` (relative to the project or absolute;
+ * `node_modules/@hooknostic/sdk` by default), has `manifest`; returns the
+ * project and the SDK's entry.
+ */
+async function project(manifest: string, options: { pnp?: boolean; location?: string } = {}) {
   const root = await mkdtemp(join(await realpath(tmpdir()), "hooknostic-skew-"));
   roots.push(root);
   const stray = strayPnpManifest(root);
   if (stray !== undefined) throw new Error(`precondition: no PnP manifest may be above ${tmpdir()}, but ${stray} is`);
   await writeFile(join(root, "package.json"), "{}");
   if (options.pnp) await writeFile(join(root, ".pnp.cjs"), "");
-  const sdk = join(root, "node_modules/@hooknostic/sdk");
+  const sdk = resolve(root, options.location ?? "node_modules/@hooknostic/sdk");
   await mkdir(join(sdk, "dist"), { recursive: true });
   await writeFile(join(sdk, "package.json"), manifest);
   await writeFile(join(sdk, "dist/index.js"), "export {};\n");
@@ -115,6 +119,88 @@ describe("sdkReleaseSkew (HN110)", () => {
     expect(sdkReleaseSkew(entry, CLI, app)?.message).toContain(`@hooknostic/sdk at ${sdk} is 0.11.9,`);
   });
 
+  /** A directory standing in for Yarn's global cache, outside every project. */
+  async function globalCache() {
+    const cache = await mkdtemp(join(await realpath(tmpdir()), "hooknostic-global-"));
+    roots.push(cache);
+    return cache;
+  }
+
+  // Real directories named as Yarn names them: without Yarn's runtime nothing
+  // can read inside a real zip archive, and HN110 would stay silent.
+  it.each<[string, () => Promise<string>]>([
+    // The project cache, as the testkit's synthetic PnP project lays it out.
+    [
+      "a zip in the project's cache",
+      async () => ".yarn/cache/@hooknostic-sdk-npm-0.11.9-a1b2.zip/node_modules/@hooknostic/sdk",
+    ],
+    // A virtual path through the project into the global cache, as observed in
+    // the opt-in Yarn check's (yarn-pnp-consumer.test.ts) Yarn 4.18.1 run on
+    // Windows on 2026-11-19, for its file: SDK; not a committed capture.
+    [
+      "__virtual__ into the global cache",
+      async () =>
+        ".yarn/__virtual__/@hooknostic-sdk-virtual-323d0e602f/2/yarn-global/cache/@hooknostic-sdk-file-530e797bc7-10c0.zip/node_modules/@hooknostic/sdk",
+    ],
+    // Derived from Yarn's documented layout, not captured: an unplugged package behind a virtual path, no zip.
+    [
+      "an unplugged package behind __virtual__",
+      async () =>
+        ".yarn/__virtual__/@hooknostic-sdk-virtual-a1b2/0/unplugged/@hooknostic-sdk-npm-0.11.9-a1b2/node_modules/@hooknostic/sdk",
+    ],
+    // Derived from Yarn's documented layout, not captured: Yarn 2's virtual folder, no zip.
+    [
+      "Yarn 2's $$virtual",
+      async () =>
+        ".yarn/$$virtual/@hooknostic-sdk-virtual-a1b2/0/unplugged/@hooknostic-sdk-npm-0.11.9-a1b2/node_modules/@hooknostic/sdk",
+    ],
+    [
+      "a zip in a global cache outside the project",
+      async () => join(await globalCache(), "cache/@hooknostic-sdk-npm-0.11.9-a1b2.zip/node_modules/@hooknostic/sdk"),
+    ],
+  ])("names a Plug'n'Play SDK by its install, not its path (%s, #225)", async (_, location) => {
+    // The path differs by machine (the virtual hash and depth, the global
+    // cache's folder), and the build report that carries it may be committed.
+    const { root, sdk, entry } = await project(sdkManifest("0.11.9"), { pnp: true, location: await location() });
+    const message = sdkReleaseSkew(entry, CLI, root)?.message;
+    expect(message).toContain("the project's @hooknostic/sdk from Yarn's Plug'n'Play install is 0.11.9,");
+    expect(message).not.toMatch(/\.yarn|\.zip|virtual|relative to the config's directory/);
+    expect(message).not.toContain(sdk);
+  });
+
+  it("names a Plug'n'Play SDK by its install from a workspace below the manifest (#225)", async () => {
+    // A Yarn workspace: `.pnp.cjs` and `.yarn` are at the root, the config in
+    // packages/app, so the SDK's virtual path is outside the config's directory.
+    // The registry's archive, at the depth the issue shows.
+    const { root, sdk, entry } = await project(sdkManifest("0.11.9"), {
+      pnp: true,
+      location:
+        ".yarn/__virtual__/@hooknostic-sdk-virtual-a1b2/3/yarn-global/cache/@hooknostic-sdk-npm-0.11.9-a1b2.zip/node_modules/@hooknostic/sdk",
+    });
+    const app = join(root, "packages/app");
+    await mkdir(app, { recursive: true });
+    const message = sdkReleaseSkew(entry, CLI, app)?.message;
+    expect(message).toContain("the project's @hooknostic/sdk from Yarn's Plug'n'Play install is 0.11.9,");
+    expect(message).not.toContain(sdk);
+  });
+
+  it("keeps the path of a node_modules SDK in a Plug'n'Play project (#225)", async () => {
+    // A PnP manifest alone says nothing about where this SDK is.
+    const { root, entry } = await project(sdkManifest("0.11.9"), { pnp: true });
+    expect(sdkReleaseSkew(entry, CLI, root)?.message).toContain(
+      "@hooknostic/sdk at node_modules/@hooknostic/sdk (relative to the config's directory) is 0.11.9,",
+    );
+  });
+
+  it("keeps the path of a directory named *.zip outside Plug'n'Play (#225)", async () => {
+    const { root, entry } = await project(sdkManifest("0.11.9"), {
+      location: "vendor.zip/node_modules/@hooknostic/sdk",
+    });
+    expect(sdkReleaseSkew(entry, CLI, root)?.message).toContain(
+      "@hooknostic/sdk at vendor.zip/node_modules/@hooknostic/sdk (relative to the config's directory) is 0.11.9,",
+    );
+  });
+
   it("names an SDK relatively when the config's directory is reached through a link", async () => {
     // Node resolves the SDK to its real path, so a project reached through a
     // junction or symlink (macOS's tmpdir is one) is compared by its real path too.
@@ -133,22 +219,116 @@ describe("sdkReleaseSkew (HN110)", () => {
     }
   });
 
-  it("points a node_modules project at npx, and a Plug'n'Play project at yarn", async () => {
+  it("points a node_modules project at npx or pnpm exec, and a Plug'n'Play project at yarn (#245)", async () => {
     const plain = await project(sdkManifest("0.11.9"));
     const npm = sdkReleaseSkew(plain.entry, CLI, plain.root)?.remediation;
-    expect(npm).toContain("`npx hooknostic`");
-    // npx runs the project's CLI only once the project installs one.
-    expect(npm).toContain("without a local install, npx fetches the registry's latest");
-    expect(npm).not.toContain("yarn hooknostic");
+    // The whole text: npx runs the project's CLI only once the project installs
+    // one, and pnpm exec is offered only "in a pnpm project", since an npm user
+    // may have no pnpm. npx refuses a project made by `pnpm init` (#245).
+    expect(npm).toBe(
+      "add hooknostic to the project's devDependencies at the same version as its @hooknostic/sdk, " +
+        "and run that CLI from the project directory with `npx hooknostic` " +
+        "(without a local install, npx fetches the registry's latest), " +
+        "or `pnpm exec hooknostic` in a pnpm project.",
+    );
 
     const pnp = await project(sdkManifest("0.11.9"), { pnp: true });
     const yarn = sdkReleaseSkew(pnp.entry, CLI, pnp.root)?.remediation;
     expect(yarn).toContain("`yarn hooknostic`");
     expect(yarn).not.toContain("`npx hooknostic`");
+    // pnpm exec would run the CLI outside Yarn's runtime, where the build fails with HN504.
+    expect(yarn).not.toContain("pnpm exec");
     for (const remediation of [npm, yarn])
       expect(remediation).toContain(
         "add hooknostic to the project's devDependencies at the same version as its @hooknostic/sdk",
       );
+  });
+});
+
+// The walk doctor's SDK lookup gates on (#246), as esbuild walks a bare specifier.
+describe("nodeModulesHas", () => {
+  it("needs the package's manifest, not just its folder", async () => {
+    // Node's lookup walks past a folder without a package.json, on to
+    // NODE_PATH, which esbuild never searches.
+    const root = await mkdtemp(join(await realpath(tmpdir()), "hooknostic-skew-"));
+    roots.push(root);
+    await mkdir(join(root, "node_modules/@hooknostic/sdk/dist"), { recursive: true });
+    expect(nodeModulesHas(root, "@hooknostic/sdk")).toBe(false);
+    await writeFile(join(root, "node_modules/@hooknostic/sdk/package.json"), sdkManifest("0.0.1-test"));
+    expect(nodeModulesHas(root, "@hooknostic/sdk")).toBe(true);
+  });
+
+  it("skips a directory that is itself named node_modules, as esbuild and Node do", async () => {
+    const root = await mkdtemp(join(await realpath(tmpdir()), "hooknostic-skew-"));
+    roots.push(root);
+    const named = join(root, "node_modules");
+    await mkdir(join(named, "node_modules/@hooknostic/sdk"), { recursive: true });
+    await writeFile(join(named, "node_modules/@hooknostic/sdk/package.json"), sdkManifest("0.0.1-test"));
+    expect(nodeModulesHas(named, "@hooknostic/sdk")).toBe(false);
+    // The same layout under an ordinary name is found.
+    const plain = join(root, "app");
+    await mkdir(join(plain, "node_modules/@hooknostic/sdk"), { recursive: true });
+    await writeFile(join(plain, "node_modules/@hooknostic/sdk/package.json"), sdkManifest("0.0.1-test"));
+    expect(nodeModulesHas(plain, "@hooknostic/sdk")).toBe(true);
+  });
+});
+
+// The project SDK's release, as doctor reports it (#246); the runtime cases
+// are under "under Yarn's runtime" below, beside the runtime they simulate.
+describe("projectSdkRelease", () => {
+  it("reports the version from the SDK's own manifest", async () => {
+    const { root } = await project(sdkManifest("0.0.1-test"));
+    expect(projectSdkRelease(root)).toEqual({ status: "found", version: "0.0.1-test" });
+  });
+
+  it("reports a project with no node_modules/@hooknostic/sdk as not found, whatever NODE_PATH reaches", async () => {
+    // vitest's bin shim puts pnpm's hoisted packages, this workspace's SDK
+    // among them, on NODE_PATH, as pnpm's shims do for a consumer's CLI; the
+    // build's esbuild never searches it. doctor.test.ts pins a NODE_PATH that
+    // does not depend on how vitest was started.
+    const root = await mkdtemp(join(await realpath(tmpdir()), "hooknostic-skew-"));
+    roots.push(root);
+    await writeFile(join(root, "package.json"), "{}");
+    expect(projectSdkRelease(root)).toEqual({ status: "not-found" });
+  });
+
+  it("finds an SDK installed in an ancestor's node_modules", async () => {
+    const { root } = await project(sdkManifest("0.0.1-test"));
+    const app = join(root, "packages/app");
+    await mkdir(app, { recursive: true });
+    expect(projectSdkRelease(app)).toEqual({ status: "found", version: "0.0.1-test" });
+  });
+
+  it("does not look the SDK up in a Plug'n'Play project outside Yarn's runtime (HN504's case)", async () => {
+    // Node's resolution cannot see a PnP install without Yarn's runtime, so
+    // "not found" would send a report the wrong way.
+    const root = await mkdtemp(join(await realpath(tmpdir()), "hooknostic-skew-"));
+    roots.push(root);
+    await writeFile(join(root, "package.json"), JSON.stringify({ dependencies: { "@hooknostic/sdk": "0.0.1" } }));
+    await writeFile(join(root, ".pnp.cjs"), "");
+    expect(projectSdkRelease(root)).toEqual({
+      status: "not-looked-up",
+      reason: "outside-pnp-runtime",
+      manifest: join(root, ".pnp.cjs"),
+    });
+  });
+
+  it("still finds a node_modules SDK below a Plug'n'Play manifest outside Yarn's runtime", async () => {
+    // A stray ancestor manifest above a node_modules project, as HN504 allows.
+    const { root } = await project(sdkManifest("0.0.1-test"), { pnp: true });
+    expect(projectSdkRelease(root)).toEqual({ status: "found", version: "0.0.1-test" });
+  });
+
+  it.each([
+    ["has no version", sdkManifest(undefined)],
+    ["has a version that is not a string", sdkManifest(12)],
+    [
+      "names another package",
+      JSON.stringify({ name: "hooknostic-sdk-fork", version: "1.0.0", exports: { ".": "./dist/index.js" } }),
+    ],
+  ])("reports an SDK that resolves but whose manifest %s as unidentified", async (_, manifest) => {
+    const { root } = await project(manifest);
+    expect(projectSdkRelease(root)).toEqual({ status: "unidentified" });
   });
 });
 
@@ -260,6 +440,45 @@ describe("projectSdkReleaseSkew (HN110)", () => {
       const { root } = await project(sdkManifest("0.11.9"), { pnp: true });
       versions["pnp"] = "3";
       expect(projectSdkReleaseSkew(root)).toMatchObject({ code: "HN110" });
+    });
+
+    // Doctor's version line looks the SDK up as HN110 does (#246).
+    it("projectSdkRelease does not look the SDK up under another install's runtime (yarn dlx, #216)", async () => {
+      const { root } = await project(sdkManifest("0.11.9"), { pnp: true });
+      expect(projectSdkRelease(root)).toEqual({ status: "found", version: "0.11.9" });
+      simulateRuntime(join(tmpdir(), "elsewhere-dlx"));
+      expect(projectSdkRelease(root)).toEqual({ status: "not-looked-up", reason: "another-pnp-runtime" });
+      expect(issuers.filter((issuer) => issuer.startsWith(root))).toEqual([]);
+      expect(asked.filter((location) => location.startsWith(root))).toEqual([]);
+    });
+
+    it("projectSdkRelease still finds the SDK under the project's own runtime (yarn hooknostic)", async () => {
+      const { root } = await project(sdkManifest("0.11.9"), { pnp: true });
+      simulateRuntime(root);
+      expect(projectSdkRelease(root)).toEqual({ status: "found", version: "0.11.9" });
+    });
+
+    it("projectSdkRelease resolves through the project's own runtime without node_modules (yarn hooknostic)", async () => {
+      // A Plug'n'Play install has no node_modules: Yarn's runtime resolves the SDK.
+      const root = await mkdtemp(join(await realpath(tmpdir()), "hooknostic-skew-"));
+      roots.push(root);
+      await writeFile(join(root, "package.json"), "{}");
+      await writeFile(join(root, ".pnp.cjs"), "");
+      simulateRuntime(root);
+      const release = projectSdkRelease(root);
+      expect(issuers.filter((issuer) => issuer.startsWith(root))).not.toEqual([]);
+      expect(release.status).not.toBe("not-looked-up");
+    });
+
+    it("projectSdkRelease keeps the node_modules walk under another runtime in a node_modules project (yarn dlx)", async () => {
+      // No project manifest: Yarn's runtime does not serve the project, so
+      // Node's resolution, NODE_PATH and all, must not be asked.
+      const root = await mkdtemp(join(await realpath(tmpdir()), "hooknostic-skew-"));
+      roots.push(root);
+      await writeFile(join(root, "package.json"), "{}");
+      simulateRuntime(join(tmpdir(), "elsewhere-dlx"));
+      expect(projectSdkRelease(root)).toEqual({ status: "not-found" });
+      expect(issuers.filter((issuer) => issuer.startsWith(root))).toEqual([]);
     });
 
     it("still checks an absolute SDK alias under yarn dlx", async () => {

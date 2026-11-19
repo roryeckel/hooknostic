@@ -1,4 +1,4 @@
-import { cp, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, join, resolve } from "node:path";
 
@@ -23,7 +23,8 @@ const PROJECTS = {
   "zod-3.24.4": { zod: "3.24.4" },
   "zod-3.25.76": { zod: "3.25.76" },
   "zod-4.6.7": { zod: "4.6.7" },
-  // HN110 wherever the project's SDK resolves, and a guard on #216 under yarn dlx.
+  // HN110 wherever the project's SDK resolves, naming Yarn's install rather
+  // than its cache path (#225), and a guard on #216 under yarn dlx.
   "skew-4.6.7": { zod: "4.6.7", skewedSdk: true },
 } as const satisfies Record<string, Consumer>;
 type Project = keyof typeof PROJECTS;
@@ -34,7 +35,11 @@ interface Outcome {
   exit: number | null;
   hn504: number;
   hn109: number;
-  hn110: number;
+  /**
+   * One entry per HN110: whether it names the SDK by Yarn's Plug'n'Play
+   * install, or by a path, which in Yarn's cache differs by machine (#225).
+   */
+  hn110: ("install" | "path")[];
   /**
    * Whose Zod the Claude runtime bundles, per zod archive: the project's
    * version, or another, the CLI's own. In one shared cache the project's
@@ -44,8 +49,14 @@ interface Outcome {
   zod: ("project" | "cli")[];
 }
 
-const ok = (hn109: number, zod: Outcome["zod"], hn110 = 0): Outcome => ({ exit: 0, hn504: 0, hn109, hn110, zod });
-const hn504: Outcome = { exit: 2, hn504: 1, hn109: 0, hn110: 0, zod: [] };
+const ok = (hn109: number, zod: Outcome["zod"], hn110: Outcome["hn110"] = []): Outcome => ({
+  exit: 0,
+  hn504: 0,
+  hn109,
+  hn110,
+  zod,
+});
+const hn504: Outcome = { exit: 2, hn504: 1, hn109: 0, hn110: [], zod: [] };
 
 /**
  * The network tokens a registry fetch or download failure leaves in Yarn's,
@@ -104,14 +115,14 @@ describe("the opt-in Yarn check's network classifier", () => {
 /**
  * Under the project's own Yarn runtime, the SDK takes the project's in-range
  * Zod and the CLI's otherwise, and the project's SDK resolves, so a skewed
- * one warns HN110.
+ * one warns HN110, naming Yarn's install rather than its cache path (#225).
  */
 const underYarnRuntime: Record<Project, Outcome> = {
   "no-zod": ok(0, ["cli"]),
   "zod-3.24.4": ok(1, ["cli"]),
   "zod-3.25.76": ok(1, ["cli"]),
   "zod-4.6.7": ok(0, ["project"]),
-  "skew-4.6.7": ok(0, ["project"], 1),
+  "skew-4.6.7": ok(0, ["project"], ["install"]),
 };
 
 const EXPECTED: Record<string, Record<Project, Outcome>> = {
@@ -138,6 +149,26 @@ const EXPECTED: Record<string, Record<Project, Outcome>> = {
     "skew-4.6.7": ok(0, ["project"]),
   },
 };
+
+/**
+ * The consumer that also synchronizes a repository-local integration through
+ * `yarn hooknostic`: in range, so its builds print no HN109 or HN110.
+ */
+const SYNCED: Project = "zod-4.6.7";
+
+/**
+ * How `init --local`, `sync`, a second `sync` and `verify` exited, whether
+ * the integration's state was written where the lock is looked for, and
+ * whether the lock remained (#229).
+ */
+interface Synced {
+  init: number | null;
+  sync: number | null;
+  resync: number | null;
+  verify: number | null;
+  state: boolean;
+  lock: boolean;
+}
 
 /** Every file under `directory`, recursively. */
 async function files(directory: string): Promise<string[]> {
@@ -230,6 +261,7 @@ it.skipIf(process.env["HOOKNOSTIC_YARN_PNP"] !== "1")(
       };
 
       const observed: Record<string, Partial<Record<Project, Outcome>>> = {};
+      let synced: Synced | undefined;
       for (const [name, consumer] of Object.entries(PROJECTS) as [Project, Consumer][]) {
         const { zod } = consumer;
         const projectSdk = consumer.skewedSdk ? skewedSdk : sdk;
@@ -275,7 +307,12 @@ it.skipIf(process.env["HOOKNOSTIC_YARN_PNP"] !== "1")(
             exit: result.code,
             hn504: (result.output.match(/^HN504 /gm) ?? []).length,
             hn109: (result.output.match(/^HN109 /gm) ?? []).length,
-            hn110: (result.output.match(/^HN110 /gm) ?? []).length,
+            // Each diagnostic is a heading line and its indented message
+            // below, so classify each HN110's whole block.
+            hn110: result.output
+              .split(/^(?=HN\d{3} )/m)
+              .filter((block) => block.startsWith("HN110 "))
+              .map((block) => (block.includes("from Yarn's Plug'n'Play install") ? "install" : "path")),
             zod: [...packages].map((path) => {
               // A Zod outside Yarn's cache, such as the npm-installed CLI's, is never the project's.
               const version = /\/zod-npm-(\d+\.\d+\.\d+)-/.exec(path)?.[1];
@@ -287,9 +324,38 @@ it.skipIf(process.env["HOOKNOSTIC_YARN_PNP"] !== "1")(
               `--- ${name} / ${mode} (exit ${result.code}), zod: ${[...packages].join(", ")}\n${result.output}`,
             );
         }
+
+        if (name === SYNCED) {
+          // A config of init's own in a subdirectory, so the integration is
+          // written there and the build cells' dist/ is left alone.
+          await mkdir(join(project, "sync"));
+          const config = ["--config", join("sync", "hooknostic.config.ts")];
+          const step = async (label: string, args: string[]) => {
+            const result = await run("corepack", ["yarn", "hooknostic", ...args, ...config], project);
+            if (result.code !== 0 || process.env["HOOKNOSTIC_YARN_PNP_VERBOSE"] === "1")
+              console.log(`--- ${name} / ${label} (exit ${result.code})\n${result.output}`);
+            return result.code;
+          };
+          const present = (file: string) =>
+            stat(join(project, "sync", ".hooknostic", file)).then(
+              () => true,
+              () => false,
+            );
+          synced = {
+            init: await step("init", ["init", "--local"]),
+            sync: await step("sync", ["sync"]),
+            resync: await step("resync", ["sync"]),
+            verify: await step("verify", ["verify"]),
+            state: await present("integration.json"),
+            lock: await present("sync.lock"),
+          };
+        }
       }
-      console.log(JSON.stringify(observed, null, 2));
-      expect(observed).toEqual(EXPECTED);
+      console.log(JSON.stringify({ builds: observed, sync: synced }, null, 2));
+      expect({ builds: observed, sync: synced }).toEqual({
+        builds: EXPECTED,
+        sync: { init: 0, sync: 0, resync: 0, verify: 0, state: true, lock: false } satisfies Synced,
+      });
     } finally {
       await rm(root, { recursive: true, force: true, maxRetries: 20, retryDelay: 100 });
     }

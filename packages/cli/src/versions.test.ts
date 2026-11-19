@@ -3,6 +3,8 @@ import { resolve } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
+import { HOOKNOSTIC_VERSION } from "@hooknostic/core";
+
 import { defaultAdapterRegistry } from "./registry.js";
 
 const REPO_ROOT = resolve(import.meta.dirname, "../../..");
@@ -34,6 +36,12 @@ describe("workspace version lockstep", () => {
         expect(selected.adapter?.adapterVersion, `${family.displayName} constant vs package.json`).toBe(pkg);
       }
     }
+  });
+
+  it("keeps HOOKNOSTIC_VERSION equal to the CLI's package.json and the root", () => {
+    // What `hooknostic --version`, HN110 and the build report print (#246).
+    expect(HOOKNOSTIC_VERSION, "HOOKNOSTIC_VERSION vs packages/cli/package.json").toBe(packageVersion("packages/cli"));
+    expect(HOOKNOSTIC_VERSION, "HOOKNOSTIC_VERSION vs root").toBe(packageVersion("."));
   });
 
   it("versions every workspace package in lockstep with the root", () => {

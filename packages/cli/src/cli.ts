@@ -5,7 +5,13 @@ import { setTimeout as delay } from "node:timers/promises";
 import { parseArgs } from "node:util";
 
 import type { AdapterRegistry, EvaluationGuard } from "@hooknostic/core";
-import { EvaluationStalledError, loadConfig, runProject, setEvaluationGuard } from "@hooknostic/core";
+import {
+  EvaluationStalledError,
+  HOOKNOSTIC_VERSION,
+  loadConfig,
+  runProject,
+  setEvaluationGuard,
+} from "@hooknostic/core";
 import type { CommandShimGuard } from "@hooknostic/runtime";
 import {
   claimProtocolStdout,
@@ -48,10 +54,11 @@ Options:
   --capability <id>   Inspect a single capability
   --component <id>    Inspect a single Agent Plugin component
   --field <id>        Inspect a single optional event field, e.g. turn.stop.lastMessage
+  -v, --version       Print this hooknostic's version (in place of a command)
   --version <range>   Harness version range for inspect
   --delivery <scope>  Project or package component support for inspect
   --unguarded         dispatch: let the hook source's process.exit and uncaught errors end the run
-  --json              Machine-readable output
+  --json              Machine-readable output (not accepted by dispatch, which always writes JSON Lines)
   -h, --help          Show this help
 `;
 
@@ -425,6 +432,14 @@ async function runCommand(argv: string[], options: RunCliOptions | undefined, ow
 
   const [command, ...rest] = argv;
 
+  // In place of a command only, as --help: after one, --version is inspect's
+  // range. The version alone, from the constant HN110 and the build report
+  // use, so it reads no file and cannot disagree with them (#246).
+  if (command === "--version" || command === "-v") {
+    io.stdout(HOOKNOSTIC_VERSION);
+    return 0;
+  }
+
   if (!command || command === "--help" || command === "-h" || command === "help") {
     io.stdout(CLI_USAGE);
     return command ? 0 : 2;
@@ -493,6 +508,18 @@ async function runCommand(argv: string[], options: RunCliOptions | undefined, ow
   };
 
   try {
+    // dispatch always writes JSON Lines and its own case never reads --json.
+    // Before #218 the flag only turned errors into a JSON line on stdout:
+    // usage()'s for a usage error such as --dry-run, and the catch-all's for
+    // an unexpected error. Text on stderr like dispatch's other errors, plus
+    // the usage as a usage error: usage() would print a JSON line under the
+    // very flag being rejected. First after parsing, so it wins over
+    // dispatch's other checks and no input is read.
+    if (parsed.values["json"] && command === "dispatch") {
+      io.stderr("--json is not supported by dispatch, which always writes JSON Lines");
+      io.stderr(CLI_USAGE);
+      return 2;
+    }
     if (parsed.values["dry-run"] && command !== "sync") return usage("--dry-run is only supported by sync");
     if (parsed.values["unguarded"] && command !== "dispatch") return usage("--unguarded is only supported by dispatch");
     switch (command) {

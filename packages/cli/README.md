@@ -5,9 +5,15 @@ integrations for Claude Code, Codex, GitHub Copilot CLI, OpenCode, and Pi. Agent
 packages can be projected for Claude, Codex, and Copilot marketplace distribution.
 Requires Node.js `^22.22.2 || ^24.15.0 || >=26.0.0`.
 
+In a pnpm project, install with pnpm as [Getting started](https://github.com/roryeckel/hooknostic/blob/master/docs/getting-started.md#1-install-the-authoring-and-cli-packages)
+shows (it allows esbuild's install script), and run every `npx hooknostic`
+command in this README as `pnpm exec hooknostic`: `pnpm init` names pnpm in
+`devEngines`, so npm refuses both `npm install` and `npx` there.
+
 ```sh
 npm install --save-dev hooknostic @hooknostic/sdk
 npx hooknostic --help
+npx hooknostic --version
 npx hooknostic doctor
 npx hooknostic inspect claude
 ```
