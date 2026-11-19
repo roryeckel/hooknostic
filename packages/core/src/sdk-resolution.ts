@@ -116,7 +116,7 @@ export type ReachableZod =
 const PNP_MANIFESTS = [".pnp.data.json", ".pnp.cjs", ".pnp.js"];
 
 /** The nearest PnP manifest in `directory` or one of its ancestors, as esbuild finds it. */
-function pnpManifest(directory: string): string | undefined {
+export function pnpManifest(directory: string): string | undefined {
   for (let current = directory; ;) {
     const manifest = PNP_MANIFESTS.find((name) => existsSync(join(current, name)));
     if (manifest !== undefined) return join(current, manifest);
@@ -174,6 +174,17 @@ export function sdkReleaseSkew(
       "run the project's own hooknostic, or install both at one version.",
     remediation,
   };
+}
+
+/**
+ * The release of the `@hooknostic/sdk` whose entry is `sdkEntry`, from its
+ * package's own manifest, as {@link sdkReleaseSkew} reads it. Undefined when
+ * that manifest is not the SDK's, as for a vendored copy without one, or has
+ * no version string: nothing identifies the release.
+ */
+export function sdkManifestVersion(sdkEntry: string): string | undefined {
+  const sdk = owningManifest(sdkEntry, new Map());
+  return sdk?.name === SDK ? sdk.version : undefined;
 }
 
 /**
@@ -394,6 +405,25 @@ export function reachableZod(directory: string): ReachableZod {
     }
     const parent = dirname(current);
     if (parent === current) return { kind: "none" };
+    current = parent;
+  }
+}
+
+/**
+ * Whether `directory` or one of its ancestors has `node_modules/<name>` with a
+ * manifest, walked as esbuild walks for a bare specifier, skipping ancestors
+ * that are themselves named `node_modules` (see {@link reachableZod}). Node's
+ * CommonJS lookup also searches `NODE_PATH`, which pnpm's bin shims set, and
+ * the global folders; esbuild searches neither, so a package only they reach
+ * is not one a build would bundle. The manifest, not just the folder: Node
+ * walks past a folder without one (an interrupted install) on to `NODE_PATH`.
+ */
+export function nodeModulesHas(directory: string, name: string): boolean {
+  for (let current = directory; ;) {
+    if (basename(current) !== "node_modules" && existsSync(join(current, "node_modules", name, "package.json")))
+      return true;
+    const parent = dirname(current);
+    if (parent === current) return false;
     current = parent;
   }
 }

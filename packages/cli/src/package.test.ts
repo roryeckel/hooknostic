@@ -197,6 +197,19 @@ describe("public package outputs", () => {
     expect(cli).not.toHaveProperty("main");
   });
 
+  it.each(["--version", "-v"])("prints the CLI manifest's version from the bundled binary (%s)", async (flag) => {
+    const { version } = JSON.parse(await readFile(resolve(REPO, "packages/cli/package.json"), "utf8")) as {
+      version: string;
+    };
+    const result = spawnSync(process.execPath, [resolve(REPO, "packages/cli/bin/hooknostic.mjs"), flag], {
+      encoding: "utf8",
+      timeout: 30_000,
+    });
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toBe(`${version}\n`);
+    expect(result.stderr).toBe("");
+  });
+
   it("ships prebundled adapter shims whose only external import is the SDK", async () => {
     for (const id of SHIPPED_ADAPTERS) {
       const code = await readFile(resolve(REPO, `packages/cli/dist/shims/${id}.mjs`), "utf8");
