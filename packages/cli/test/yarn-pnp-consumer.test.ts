@@ -1,4 +1,4 @@
-import { cp, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, join, resolve } from "node:path";
 
@@ -139,6 +139,21 @@ const EXPECTED: Record<string, Record<Project, Outcome>> = {
   },
 };
 
+/**
+ * The consumer that also synchronizes a repository-local integration through
+ * `yarn hooknostic`: in range, so its builds print no HN109 or HN110.
+ */
+const SYNCED: Project = "zod-4.6.7";
+
+/** How `init --local`, `sync`, a second `sync` and `verify` exited, and whether the lock remained (#229). */
+interface Synced {
+  init: number | null;
+  sync: number | null;
+  resync: number | null;
+  verify: number | null;
+  lock: boolean;
+}
+
 /** Every file under `directory`, recursively. */
 async function files(directory: string): Promise<string[]> {
   const entries = await readdir(directory, { withFileTypes: true, recursive: true }).catch(() => []);
@@ -230,6 +245,7 @@ it.skipIf(process.env["HOOKNOSTIC_YARN_PNP"] !== "1")(
       };
 
       const observed: Record<string, Partial<Record<Project, Outcome>>> = {};
+      let synced: Synced | undefined;
       for (const [name, consumer] of Object.entries(PROJECTS) as [Project, Consumer][]) {
         const { zod } = consumer;
         const projectSdk = consumer.skewedSdk ? skewedSdk : sdk;
@@ -287,9 +303,35 @@ it.skipIf(process.env["HOOKNOSTIC_YARN_PNP"] !== "1")(
               `--- ${name} / ${mode} (exit ${result.code}), zod: ${[...packages].join(", ")}\n${result.output}`,
             );
         }
+
+        if (name === SYNCED) {
+          // A config of init's own in a subdirectory, so the integration is
+          // written there and the build cells' dist/ is left alone.
+          await mkdir(join(project, "sync"));
+          const config = ["--config", join("sync", "hooknostic.config.ts")];
+          const step = async (label: string, args: string[]) => {
+            const result = await run("corepack", ["yarn", "hooknostic", ...args, ...config], project);
+            if (result.code !== 0 || process.env["HOOKNOSTIC_YARN_PNP_VERBOSE"] === "1")
+              console.log(`--- ${name} / ${label} (exit ${result.code})\n${result.output}`);
+            return result.code;
+          };
+          synced = {
+            init: await step("init", ["init", "--local"]),
+            sync: await step("sync", ["sync"]),
+            resync: await step("resync", ["sync"]),
+            verify: await step("verify", ["verify"]),
+            lock: await stat(join(project, "sync", ".hooknostic", "sync.lock")).then(
+              () => true,
+              () => false,
+            ),
+          };
+        }
       }
-      console.log(JSON.stringify(observed, null, 2));
-      expect(observed).toEqual(EXPECTED);
+      console.log(JSON.stringify({ builds: observed, sync: synced }, null, 2));
+      expect({ builds: observed, sync: synced }).toEqual({
+        builds: EXPECTED,
+        sync: { init: 0, sync: 0, resync: 0, verify: 0, lock: false } satisfies Synced,
+      });
     } finally {
       await rm(root, { recursive: true, force: true, maxRetries: 20, retryDelay: 100 });
     }
