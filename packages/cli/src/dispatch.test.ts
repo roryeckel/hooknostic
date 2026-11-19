@@ -20,7 +20,7 @@ import {
 import { stageUserModule } from "@hooknostic/core";
 import type { PluginSpec } from "@hooknostic/sdk";
 
-import { runCli } from "./cli.js";
+import { CLI_USAGE, runCli } from "./cli.js";
 import type { DispatchCommandOptions, DispatchEventsOptions, DispatchResult } from "./dispatch.js";
 import { DISPATCH_NATIVE_EVENT, dispatchEvents } from "./dispatch.js";
 import * as api from "./index.js";
@@ -369,6 +369,34 @@ export default definePlugin({ name: "pi-validation", hooks: [
     expect(cli.err()).not.toMatch(/^\s+at /m);
   });
 
+  // dispatch always writes JSON Lines, so --json is a usage error: text on
+  // stderr, nothing on stdout, from the real binary, which owns the process
+  // (#218). It is reported before the events file is read, so it wins over
+  // an unreadable one.
+  it("rejects --json as a usage error before reading the events", async () => {
+    const dir = await project(HOOKS);
+    const child = spawnSync(
+      process.execPath,
+      [
+        CLI_BIN,
+        "dispatch",
+        "--config",
+        join(dir, "hooknostic.config.ts"),
+        "--target",
+        "claude",
+        "--events",
+        join(dir, "missing.jsonl"),
+        "--json",
+      ],
+      { encoding: "utf8", timeout: 60_000 },
+    );
+    expect(child.status, child.stderr).toBe(2);
+    expect(child.stdout).toBe("");
+    expect(child.stderr.replace(/\r\n/g, "\n")).toBe(
+      `--json is not supported by dispatch, which always writes JSON Lines\n${CLI_USAGE}\n`,
+    );
+  });
+
   const DIALECT_HOOKS = `
 import { block, definePlugin, hook, replaceInput } from "@hooknostic/sdk";
 
@@ -714,6 +742,41 @@ export default definePlugin({
     });
     expect(outcome.ok).toBe(false);
     expect(!outcome.ok && outcome.errors.join("\n")).toContain("HN201");
+  });
+
+  it("says where a schema imported from the SDK's root moved, as a remediation under the bundle error (#247)", async () => {
+    const bundleFailure = async (imports: string) => {
+      const dir = await project(
+        `import { definePlugin, ${imports} } from "@hooknostic/sdk";\nconsole.log(${imports});\nexport default definePlugin({ name: "p", hooks: [] });`,
+      );
+      const outcome = await dispatchEvents({
+        config: join(dir, "hooknostic.config.ts"),
+        target: "claude",
+        events: [{ event: "turn.stop" }],
+        registry: defaultAdapterRegistry(),
+        evaluate: EVALUATE,
+      });
+      expect(outcome.ok).toBe(false);
+      const errors = outcome.ok ? [] : outcome.errors;
+      expect(errors).toHaveLength(1);
+      expect(errors[0]).toMatch(/^failed to bundle entry \.\/hooks\.ts: Build failed with 1 error:\n/);
+      return errors[0]!;
+    };
+
+    const moved = await bundleFailure("effectSchema");
+    const [message, remediation] = moved.split("\n\n");
+    expect(message).toContain('for import "effectSchema"');
+    // As a diagnostic renders its remediation: after a blank line, indented.
+    expect(remediation).toBe(
+      "  Remediation: the SDK's schemas moved from @hooknostic/sdk to @hooknostic/sdk/schemas in 0.13.0: " +
+        'import { effectSchema } from "@hooknostic/sdk/schemas" instead. ' +
+        "See https://github.com/roryeckel/hooknostic/blob/master/docs/upgrading/sdk-schemas-subpath.md.",
+    );
+    expect(moved.split("\n\n")).toHaveLength(2);
+
+    const other = await bundleFailure("missingSchema");
+    expect(other).toContain('for import "missingSchema"');
+    expect(other).not.toContain("Remediation:");
   });
 
   describe("names inherited from Object.prototype (#195)", () => {

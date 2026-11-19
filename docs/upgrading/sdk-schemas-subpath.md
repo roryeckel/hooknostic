@@ -46,10 +46,20 @@ resolution (`node16`, `nodenext` or `bundler`) that the root entry already
 requires.
 
 A hook or configuration that still imports a schema from the root fails to
-load, with HN501 and esbuild's error:
+load with HN501. Its remediation names the imports to write instead. For hooks
+that start with the "Before" lines above, `hooknostic check` prints (the
+project's path shortened to `my-project`):
 
 ```text
-ERROR: No matching export in "node_modules/@hooknostic/sdk/dist/index.js" for import "effectSchema"
+HN501 invalid configuration [error]
+
+  my-project/hooks.ts
+
+  failed to load entry my-project/hooks.ts: Build failed with 2 errors:
+hooks.ts:2:9: ERROR: No matching export in "node_modules/@hooknostic/sdk/dist/index.js" for import "effectSchema"
+hooks.ts:2:23: ERROR: No matching export in "node_modules/@hooknostic/sdk/dist/index.js" for import "toolInvocationSchema"
+
+  Remediation: the SDK's schemas moved from @hooknostic/sdk to @hooknostic/sdk/schemas in 0.13.0: import { effectSchema, toolInvocationSchema } from "@hooknostic/sdk/schemas" instead. See https://github.com/roryeckel/hooknostic/blob/master/docs/upgrading/sdk-schemas-subpath.md.
 ```
 
 One change ships in the same release, 0.13.0. Zod 4 used to drop a
