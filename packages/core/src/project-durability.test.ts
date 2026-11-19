@@ -14,6 +14,8 @@ const io = vi.hoisted(() => ({
   notImplemented: false,
   /** Fail the flush of a file with EIO, chosen by its path and what was written to it. */
   failFlush: undefined as ((path: string, written: string) => boolean) | undefined,
+  /** Close the file chosen by its path, then fail that close once with EIO. */
+  failClose: undefined as ((path: string) => boolean) | undefined,
   /** The path each open descriptor belongs to. */
   paths: new Map<number, string>(),
   /** What each handle wrote, by path. */
@@ -35,6 +37,15 @@ vi.mock("node:fs/promises", async (importOriginal) => {
       handle.writeFile = async (data: Parameters<typeof handle.writeFile>[0], ...rest) => {
         io.written.set(path, io.written.get(path) + String(data));
         return await writeFile(data, ...rest);
+      };
+      const close = handle.close.bind(handle);
+      handle.close = async () => {
+        // The descriptor really is closed first, so nothing holds the file open afterwards.
+        await close();
+        if (io.failClose?.(path)) {
+          io.failClose = undefined;
+          throw Object.assign(new Error("EIO: i/o error, close"), { code: "EIO", syscall: "close" });
+        }
       };
       if (io.notImplemented) {
         // Not async: Yarn's methods throw before any promise exists.
@@ -93,6 +104,7 @@ beforeEach(async () => {
 afterEach(async () => {
   io.notImplemented = false;
   io.failFlush = undefined;
+  io.failClose = undefined;
   io.paths.clear();
   io.written.clear();
   io.flushes.length = 0;
@@ -172,4 +184,17 @@ describe("a failed flush aborts and leaves nothing behind", () => {
     expect(await exists(".hooknostic/recovery.lock")).toBe(false);
     expect(await exists(".hooknostic/sync.lock")).toBe(false);
   });
+});
+
+it("removes the lock when closing it fails after a successful flush", async () => {
+  await sync("before");
+  io.failClose = isLock("sync.lock");
+
+  await expect(sync("after")).rejects.toMatchObject({ code: "EIO", syscall: "close" });
+  expect(io.failClose).toBeUndefined();
+  expect(await exists(".hooknostic/sync.lock")).toBe(false);
+  expect(await readFile(join(root, "a.txt"), "utf8")).toBe("before");
+
+  await sync("after");
+  expect(await readFile(join(root, "a.txt"), "utf8")).toBe("after");
 });
