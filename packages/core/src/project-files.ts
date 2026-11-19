@@ -676,11 +676,14 @@ async function createFlushed(path: string, value: Buffer | string, mode: number,
       if (chmod && process.platform !== "win32") await handle.chmod(mode);
       await handle.writeFile(value);
       await new Promise<void>((resolve, reject) => fsync(handle.fd, (error) => (error ? reject(error) : resolve())));
-    } finally {
-      await handle.close();
+    } catch (error) {
+      // Never mask the first error with a failed close.
+      await handle.close().catch(() => undefined);
+      throw error;
     }
+    await handle.close();
   } catch (error) {
-    // Never mask the original error with a failed cleanup.
+    // Nor with a failed cleanup.
     await rm(path, { force: true }).catch(() => undefined);
     throw error;
   }

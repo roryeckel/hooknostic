@@ -198,3 +198,12 @@ it("removes the lock when closing it fails after a successful flush", async () =
   await sync("after");
   expect(await readFile(join(root, "a.txt"), "utf8")).toBe("after");
 });
+
+it("reports a failed flush, not the failed close after it", async () => {
+  io.failFlush = isLock("sync.lock");
+  io.failClose = isLock("sync.lock");
+
+  await expect(sync("one")).rejects.toMatchObject({ code: "EIO", syscall: "fsync" });
+  expect(io.failClose).toBeUndefined();
+  expect(await exists(".hooknostic/sync.lock")).toBe(false);
+});
