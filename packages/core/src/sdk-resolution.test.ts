@@ -133,18 +133,25 @@ describe("sdkReleaseSkew (HN110)", () => {
     }
   });
 
-  it("points a node_modules project at npx, and a Plug'n'Play project at yarn", async () => {
+  it("points a node_modules project at npx or pnpm exec, and a Plug'n'Play project at yarn (#245)", async () => {
     const plain = await project(sdkManifest("0.11.9"));
     const npm = sdkReleaseSkew(plain.entry, CLI, plain.root)?.remediation;
-    expect(npm).toContain("`npx hooknostic`");
-    // npx runs the project's CLI only once the project installs one.
-    expect(npm).toContain("without a local install, npx fetches the registry's latest");
-    expect(npm).not.toContain("yarn hooknostic");
+    // The whole text: npx runs the project's CLI only once the project installs
+    // one, and pnpm exec is offered only "in a pnpm project", since an npm user
+    // may have no pnpm. npx refuses a project made by `pnpm init` (#245).
+    expect(npm).toBe(
+      "add hooknostic to the project's devDependencies at the same version as its @hooknostic/sdk, " +
+        "and run that CLI from the project directory with `npx hooknostic` " +
+        "(without a local install, npx fetches the registry's latest), " +
+        "or `pnpm exec hooknostic` in a pnpm project.",
+    );
 
     const pnp = await project(sdkManifest("0.11.9"), { pnp: true });
     const yarn = sdkReleaseSkew(pnp.entry, CLI, pnp.root)?.remediation;
     expect(yarn).toContain("`yarn hooknostic`");
     expect(yarn).not.toContain("`npx hooknostic`");
+    // pnpm exec would run the CLI outside Yarn's runtime, where the build fails with HN504.
+    expect(yarn).not.toContain("pnpm exec");
     for (const remediation of [npm, yarn])
       expect(remediation).toContain(
         "add hooknostic to the project's devDependencies at the same version as its @hooknostic/sdk",

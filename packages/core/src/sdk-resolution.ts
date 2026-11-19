@@ -153,14 +153,18 @@ export function sdkReleaseSkew(
   if (semver.eq(sdk.version, cliVersion)) return undefined;
   // npx runs the project's CLI only when the project installs one; without it,
   // and always under Plug'n'Play, where npx does not see the project's install
-  // (as HN504 explains), it fetches the registry's latest instead.
+  // (as HN504 explains), it fetches the registry's latest instead. npx also
+  // refuses a project made by pnpm 12's `pnpm init`, which names pnpm in
+  // `devEngines`. Outside Plug'n'Play, npx and `pnpm exec` are both named
+  // rather than detecting the package manager (#245).
   const remediation =
     pnpManifest(projectDirectory) !== undefined
       ? `add hooknostic to the project's devDependencies at the same version as its ${SDK}, ` +
         "and run `yarn hooknostic`, which runs that CLI (under Plug'n'Play, npx fetches the registry's latest)."
       : `add hooknostic to the project's devDependencies at the same version as its ${SDK}, ` +
-        "and run `npx hooknostic` from the project directory, which then runs that CLI " +
-        "(without a local install, npx fetches the registry's latest).";
+        "and run that CLI from the project directory with `npx hooknostic` " +
+        "(without a local install, npx fetches the registry's latest), " +
+        "or `pnpm exec hooknostic` in a pnpm project.";
   return {
     code: "HN110",
     severity: "warn",
