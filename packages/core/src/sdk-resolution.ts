@@ -283,13 +283,17 @@ export function pnpRuntimeGuardPlugin(): Plugin {
   };
 }
 
-/** The part of Yarn's PnP API this module asks: which package a path belongs to. */
-interface PnpApi {
+/**
+ * The part of Yarn's PnP API Hooknostic asks: which package a path belongs
+ * to, and what a request from an issuer resolves to by this API's own data.
+ */
+export interface PnpApi {
   findPackageLocator(location: string): unknown;
+  resolveRequest(request: string, issuer: string | null): string | null;
 }
 
 /** What Yarn's runtime says about the PnP API that serves Hooknostic itself. */
-type OwnPnpApi =
+export type OwnPnpApi =
   /**
    * No API to ask: without Yarn's runtime there is none, and Yarn 2 sets
    * `process.versions.pnp` but has no `module.findPnpApi`.
@@ -303,11 +307,18 @@ type OwnPnpApi =
 /**
  * Ask Yarn's runtime which PnP API serves `ownDirectory`, where Hooknostic
  * runs from. `module.findPnpApi` asks the APIs already loaded first, so this
- * holds in a global cache too, and the API that serves Hooknostic is always
- * loaded. Never ask it about the project: for a path no loaded API lists, it
- * loads the nearest PnP manifest's API (#216).
+ * holds in a global cache too. When Hooknostic runs from a Yarn install
+ * ({@link PNP_PATH}), the API that serves it is loaded: Yarn's runtime loaded
+ * Hooknostic through it. For a path no loaded API lists, `findPnpApi` loads
+ * the nearest PnP manifest's API (#216), so never ask it about the project.
+ * For a Hooknostic outside every Yarn install (`node -r .pnp.cjs` with a CLI
+ * installed by npm) it may load the API of a manifest above the CLI, as
+ * Node's own resolution from the CLI's files would under Yarn's runtime;
+ * {@link anotherInstallsPnpRuntime} asks about the CLI's directory in every
+ * case, while {@link ownZodNeedsProjectInstall} and the MCP launcher's
+ * bundling ask only for a Hooknostic inside a Yarn install.
  */
-function ownPnpApi(ownDirectory: string): OwnPnpApi {
+export function ownPnpApi(ownDirectory: string): OwnPnpApi {
   const findPnpApi =
     process.versions.pnp === undefined
       ? undefined

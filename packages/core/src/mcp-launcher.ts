@@ -1,12 +1,13 @@
-import { createRequire } from "node:module";
-import { dirname } from "node:path";
+import { createRequire, isBuiltin } from "node:module";
+import { dirname, isAbsolute } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { build } from "esbuild";
+import { build, type Plugin } from "esbuild";
 
 import { PLUGIN_DATA_PLACEHOLDER, PLUGIN_ROOT_PLACEHOLDER } from "@hooknostic/agent-plugin";
 
 import { createRequireBanner, licenseNoticesPlugin } from "./bundle-support.mjs";
+import { ownPnpApi, PNP_PATH } from "./sdk-resolution.js";
 
 export const MCP_LAUNCHER_FILE = "mcp-launcher.mjs";
 export const MCP_SERVERS_FILE = "mcp-servers.json";
@@ -265,15 +266,84 @@ run({ cwd, command, args, env });
 `;
 }
 
+/** This module: where the launcher's template resolves its imports from. */
+const OWN_FILE = fileURLToPath(import.meta.url);
+
+/**
+ * Under Yarn's Plug'n'Play runtime, resolve every bare, non-builtin import of
+ * the launcher as the CLI's own install does: the template's from the CLI
+ * (`ownFile`), and each dependency's from the file importing it.
+ *
+ * esbuild looks for a Yarn Plug'n'Play manifest only from `absWorkingDir`,
+ * which is cross-spawn's own directory. In Yarn's global cache that is inside
+ * an archive no project manifest sits above, so esbuild fell back to a
+ * `node_modules` walk that found cross-spawn in its own archive but none of
+ * its dependencies, each in an archive of its own, and every MCP launcher
+ * failed with HN301 (#224).
+ *
+ * Only a CLI inside a Yarn install ({@link PNP_PATH}) is resolved through
+ * the PnP API serving it ({@link ownPnpApi}), the one that loaded it: the
+ * project's under `yarn hooknostic`, dlx's own under `yarn dlx`. It resolves
+ * each request by its own data. Node's resolver would not do under
+ * `yarn dlx`: by the time the launcher is bundled the project's API is loaded
+ * beside dlx's, both list cross-spawn's archive in the shared cache, and Yarn
+ * refuses a request from inside it as "controlled by multiple pnpapi
+ * instances".
+ *
+ * Any other CLI -- outside every Yarn install, as under `node -r .pnp.cjs`
+ * with a CLI installed by npm, or an unplugged one -- is left to Node's
+ * resolver, that is Yarn's runtime, exactly as the CLI's own imports are.
+ * That runtime finds the issuer's nearest PnP manifest as `findPnpApi`
+ * would, and for a path that manifest's API does not list, walks
+ * `node_modules`. So does Node's resolver where Yarn has no `findPnpApi`
+ * (Yarn 2), and where it cannot tell which loaded API serves the CLI: then a
+ * request from an archive both list fails as it would for the CLI itself.
+ *
+ * Without Yarn's runtime, esbuild resolves as it always has, so Node's
+ * settings (`NODE_PATH`, `NODE_PRESERVE_SYMLINKS`, `--conditions`) cannot
+ * change the launcher's bytes.
+ *
+ * Yarn's API and Node both resolve with the `require` condition, where
+ * esbuild's ESM import would use `import`; cross-spawn's tree is CommonJS
+ * with no `exports` map, so all of them select the same files.
+ */
+function launcherDependencyPlugin(ownFile: string): Plugin {
+  return {
+    name: "hooknostic-launcher-dependencies",
+    setup(build) {
+      if (process.versions.pnp === undefined) return;
+      const own = PNP_PATH.test(dirname(ownFile)) ? ownPnpApi(dirname(ownFile)) : undefined;
+      const api = own?.kind === "found" ? own.api : null;
+      build.onResolve({ filter: /^[^./]/ }, (args) => {
+        if (isBuiltin(args.path)) return undefined;
+        // The generated template's importer is `<stdin>`.
+        const issuer = isAbsolute(args.importer) ? args.importer : ownFile;
+        try {
+          const path = api === null ? createRequire(issuer).resolve(args.path) : api.resolveRequest(args.path, issuer);
+          if (path === null) throw new Error(`Yarn's Plug'n'Play API resolved ${args.path} to no file`);
+          return { path };
+        } catch (error) {
+          // Node's message carries a multi-line require stack; its first line names the cause.
+          const cause = (error instanceof Error ? error.message : String(error)).split("\n")[0];
+          return { errors: [{ text: `could not resolve ${JSON.stringify(args.path)} from ${issuer}: ${cause}` }] };
+        }
+      });
+    },
+  };
+}
+
 /**
  * Bundle the generated launcher.
  *
- * `cross-spawn` is resolved from this package (or, once published, from the
- * installed CLI that inlines it) rather than from the plugin author's
- * dependencies, and OS selection stays in the generated runtime so a package
- * built on Linux still handles Windows PATH/PATHEXT and `.cmd` shims.
+ * `cross-spawn` and its dependencies are resolved from this package (or, once
+ * published, from the installed CLI that inlines them) rather than from the
+ * plugin author's dependencies; {@link launcherDependencyPlugin} says how.
+ * OS selection stays in the generated runtime so a package built on Linux
+ * still handles Windows PATH/PATHEXT and `.cmd` shims.
+ *
+ * `ownFile` stands for the CLI's own module, for tests only.
  */
-export async function bundleMcpLauncher(options: McpLauncherOptions): Promise<string> {
+export async function bundleMcpLauncher(options: McpLauncherOptions, ownFile: string = OWN_FILE): Promise<string> {
   const contents =
     LAUNCHER_CORE +
     (options.frontEnd === "client-expanded"
@@ -297,7 +367,7 @@ export async function bundleMcpLauncher(options: McpLauncherOptions): Promise<st
     minify: true,
     write: false,
     legalComments: "eof",
-    plugins: [licenseNoticesPlugin({ additionalSources: [fileURLToPath(import.meta.url)] })],
+    plugins: [launcherDependencyPlugin(ownFile), licenseNoticesPlugin({ additionalSources: [OWN_FILE] })],
     banner: { js: createRequireBanner },
   });
   return result.outputFiles[0]!.text;

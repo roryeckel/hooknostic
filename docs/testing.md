@@ -253,12 +253,13 @@ After `pnpm run bundle`, set `HOOKNOSTIC_YARN_PNP=1` and run
 It needs corepack and network access, and Yarn is not in CI, so run it
 locally for any change to how builds resolve or read packages, or to how
 `sync` writes project files. It packs the
-SDK and CLI, installs five Yarn 4.18.1 `nodeLinker: pnp` consumers (no Zod,
-Zod 3.24.4, 3.25.76 and 4.6.7, and Zod 4.6.7 with the SDK repacked as
-0.11.9), and builds `examples/basic` in each through `yarn hooknostic`,
+SDK and CLI, installs six Yarn 4.18.1 `nodeLinker: pnp` consumers (no Zod,
+Zod 3.24.4, 3.25.76 and 4.6.7, Zod 4.6.7 with the SDK repacked as 0.11.9,
+and Zod 4.6.7 with an MCP component), and builds each through `yarn hooknostic`,
 `node -r .pnp.cjs`, plain `node` against a CLI installed outside the project,
-and `yarn dlx`. It compares the whole table of outcomes, counting HN504 and
-HN109 and recording each HN110's wording (Yarn's install or a path) in each:
+and `yarn dlx`. The first five build `examples/basic`. It compares the whole
+table of outcomes, counting HN504, HN301 and HN109 and recording each HN110's
+wording (Yarn's install or a path) in each:
 through Yarn's runtime the build uses the project's in-range Zod or the CLI's
 own (with HN109 when the project's is out of range), and the repacked SDK
 warns one HN110, which names Yarn's Plug'n'Play install rather than a path
@@ -269,6 +270,17 @@ HN110's lookup of the project's SDK loaded the project's runtime beside dlx's
 and failed every `yarn dlx` build. That row passes on Windows (Node 22 and 24)
 and on Linux with Node 24; on Linux with Node 22 it is known to fail, every
 cell with HN501 "controlled by multiple pnpapi instances" (#190).
+The MCP consumer builds `examples/local-project`'s stdio server for one Claude
+project target, so its build bundles the MCP launcher, whose `cross-spawn` and
+each of its dependencies sit in archives of their own in Yarn's global cache.
+After each build the test starts the launcher, with the project as its working
+directory, and records whether it answers an MCP `initialize` through the
+server. Its cells match the Zod 4.6.7 consumer's, with no HN301, and the
+launcher answers wherever the build succeeds; under plain `node` there is no
+launcher, and since every cell starts from an empty `dist/`, none can answer
+with a previous mode's. Before #224 its `yarn hooknostic` and `yarn dlx` cells
+failed with one HN301 each: esbuild could not resolve `which`, `path-key` and
+`shebang-command` from `cross-spawn`'s archive.
 The Zod 4.6.7 consumer also synchronizes a repository-local integration: in a
 `sync/` subdirectory, through `yarn hooknostic`, it runs `init --local`, which
 writes a config and hooks of its own there (the build cells keep building
@@ -287,7 +299,8 @@ error and the like; not Yarn's own codes, since `YN0013` is the fetch step of
 every install and `YN0001` any exception) stops the test at once with an
 `ENVIRONMENT/NETWORK FAILURE` error and that step's output: rerun it, it is
 not a missing HN504. Set `HOOKNOSTIC_YARN_PNP_VERBOSE=1` to print every
-build's output and the Zod it bundled.
+build's output and the Zod it bundled, and each MCP launcher's output; a
+launcher that does not answer prints its output regardless.
 
 The normal suite covers HN504 without Yarn, through a synthetic layout: a
 hand-written `.pnp.data.json` and stored zip archives that esbuild resolves

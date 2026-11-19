@@ -1,3 +1,4 @@
+import { spawn, spawnSync } from "node:child_process";
 import { cp, mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, join, resolve } from "node:path";
@@ -12,10 +13,15 @@ const YARN = "yarn@4.18.1";
 /** The release the skewed consumer's SDK is repacked as: not the CLI's, so HN110 applies. */
 const SKEWED_SDK = "0.11.9";
 
-/** A consumer: its own `zod`, if any, and whether its SDK is repacked as {@link SKEWED_SDK}. */
+/**
+ * A consumer: its own `zod`, if any, whether its SDK is repacked as
+ * {@link SKEWED_SDK}, and whether it builds {@link MCP_CONFIG} instead of
+ * `examples/basic`'s config.
+ */
 interface Consumer {
   zod?: string;
   skewedSdk?: true;
+  mcp?: true;
 }
 
 const PROJECTS = {
@@ -26,14 +32,45 @@ const PROJECTS = {
   // HN110 wherever the project's SDK resolves, naming Yarn's install rather
   // than its cache path (#225), and a guard on #216 under yarn dlx.
   "skew-4.6.7": { zod: "4.6.7", skewedSdk: true },
+  // An MCP component, whose launcher bundles cross-spawn and its
+  // dependencies, each in its own archive in Yarn's global cache (#224).
+  "mcp-4.6.7": { zod: "4.6.7", mcp: true },
 } as const satisfies Record<string, Consumer>;
 type Project = keyof typeof PROJECTS;
+
+/**
+ * The smallest config that projects an MCP component through the launcher:
+ * `examples/local-project`'s stdio server, delivered to one Claude project
+ * target. Its output stays under `dist/claude`, so every cell's cleanup and
+ * Zod scan cover it as they do the other consumers'.
+ */
+const MCP_CONFIG = `import { defineConfig } from "@hooknostic/sdk";
+
+export default defineConfig({
+  project: { root: "." },
+  entry: "./src/hooks.ts",
+  components: { mcp: "./mcp.json" },
+  compatibility: {
+    minimum: "emulated",
+    onBelowMinimum: "error",
+    optionalUnavailable: "info",
+  },
+  targets: {
+    claude: { version: ">=2.1 <3", delivery: "project", output: "./dist/claude" },
+  },
+});
+`;
+
+/** Where {@link MCP_CONFIG}'s launcher is written, relative to the project. */
+const MCP_LAUNCHER = ["dist", "claude", "mcp-launcher.mjs"];
 
 /** How a run turned out, compared as a whole so a failure shows every cell. */
 interface Outcome {
   /** The process's exit code: Hooknostic exits 2 for a build with errors. */
   exit: number | null;
   hn504: number;
+  /** An artifact that failed to build, such as an MCP launcher esbuild could not bundle (#224). */
+  hn301: number;
   hn109: number;
   /**
    * One entry per HN110: whether it names the SDK by Yarn's Plug'n'Play
@@ -47,16 +84,47 @@ interface Outcome {
    * range) are the same archive, so that cell asserts one copy, in range.
    */
   zod: ("project" | "cli")[];
+  /**
+   * The MCP consumer only: whether the built launcher, started with its
+   * server's index from the project directory, answered an MCP `initialize`
+   * through the sample server
+   * (`responds`), was not built (`missing`), or was built and gave no answer
+   * (`silent`).
+   */
+  mcp?: "responds" | "missing" | "silent";
 }
 
 const ok = (hn109: number, zod: Outcome["zod"], hn110: Outcome["hn110"] = []): Outcome => ({
   exit: 0,
   hn504: 0,
+  hn301: 0,
   hn109,
   hn110,
   zod,
 });
-const hn504: Outcome = { exit: 2, hn504: 1, hn109: 0, hn110: [], zod: [] };
+const hn504: Outcome = { exit: 2, hn504: 1, hn301: 0, hn109: 0, hn110: [], zod: [] };
+
+/** The MCP launcher's `initialize`, as a client sends it. */
+const INITIALIZE = {
+  jsonrpc: "2.0",
+  id: 1,
+  method: "initialize",
+  params: {
+    protocolVersion: "2025-06-18",
+    capabilities: {},
+    clientInfo: { name: "hooknostic-yarn-pnp-check", version: "0.0.0" },
+  },
+};
+
+/** Whether one line of the launcher's output is the sample server's reply to {@link INITIALIZE}. */
+function isInitializeReply(line: string): boolean {
+  try {
+    const reply = JSON.parse(line) as { id?: unknown; result?: { serverInfo?: { name?: unknown } } };
+    return reply.id === INITIALIZE.id && reply.result?.serverInfo?.name === "sample";
+  } catch {
+    return false;
+  }
+}
 
 /**
  * The network tokens a registry fetch or download failure leaves in Yarn's,
@@ -123,6 +191,9 @@ const underYarnRuntime: Record<Project, Outcome> = {
   "zod-3.25.76": ok(1, ["cli"]),
   "zod-4.6.7": ok(0, ["project"]),
   "skew-4.6.7": ok(0, ["project"], ["install"]),
+  // The launcher's dependencies resolve through the runtime that loaded the
+  // CLI, not esbuild's manifest lookup from cross-spawn's archive (#224).
+  "mcp-4.6.7": { ...ok(0, ["project"]), mcp: "responds" },
 };
 
 const EXPECTED: Record<string, Record<Project, Outcome>> = {
@@ -136,6 +207,9 @@ const EXPECTED: Record<string, Record<Project, Outcome>> = {
     "zod-3.25.76": hn504,
     "zod-4.6.7": hn504,
     "skew-4.6.7": hn504,
+    // A build with HN504 commits no artifacts, and the cell's cleanup leaves
+    // no launcher from the previous mode to answer.
+    "mcp-4.6.7": { ...hn504, mcp: "missing" },
   },
   // Yarn's runtime, but the dlx install, which holds the CLI's own Zod, is not
   // in the project's manifest. HN110 stays silent there: looking up the
@@ -147,6 +221,7 @@ const EXPECTED: Record<string, Record<Project, Outcome>> = {
     "zod-3.25.76": hn504,
     "zod-4.6.7": ok(0, ["project"]),
     "skew-4.6.7": ok(0, ["project"]),
+    "mcp-4.6.7": { ...ok(0, ["project"]), mcp: "responds" },
   },
 };
 
@@ -168,6 +243,14 @@ interface Synced {
   verify: number | null;
   state: boolean;
   lock: boolean;
+}
+
+/** Whether anything is at `path`. */
+async function exists(path: string): Promise<boolean> {
+  return stat(path).then(
+    () => true,
+    () => false,
+  );
 }
 
 /** Every file under `directory`, recursively. */
@@ -212,6 +295,59 @@ it.skipIf(process.env["HOOKNOSTIC_YARN_PNP"] !== "1")(
     const must = async (command: string, args: string[], cwd: string) => {
       const result = await run(command, args, cwd);
       expect(result.code, `${command} ${args.join(" ")}\n${result.output}`).toBe(0);
+    };
+    // Start the built launcher for server 0 from the project directory, send
+    // one `initialize` and close its input, so the sample server answers and exits.
+    // A launcher that hangs is killed with the server it started, which would
+    // otherwise hold the project directory open, and reads as silent.
+    const launch = async (project: string): Promise<NonNullable<Outcome["mcp"]>> => {
+      const launcher = join(project, ...MCP_LAUNCHER);
+      if (!(await exists(launcher))) return "missing";
+      const result = await new Promise<{ code: number | null; stdout: string; stderr: string }>((settle) => {
+        const child = spawn(process.execPath, [launcher, "0"], {
+          cwd: project,
+          env,
+          // Its own process group, so a timeout can kill the server with it.
+          detached: process.platform !== "win32",
+          stdio: ["pipe", "pipe", "pipe"],
+        });
+        let stdout = "";
+        let stderr = "";
+        child.stdout.setEncoding("utf8").on("data", (chunk: string) => (stdout += chunk));
+        child.stderr.setEncoding("utf8").on("data", (chunk: string) => (stderr += chunk));
+        // A promise settles once: a late `close` or `error` after this is ignored.
+        const timer = setTimeout(() => {
+          stderr += "\n(timed out: killed with its process tree)";
+          if (child.pid === undefined) child.kill();
+          else if (process.platform === "win32") spawnSync("taskkill", ["/pid", String(child.pid), "/t", "/f"]);
+          else
+            try {
+              process.kill(-child.pid, "SIGKILL");
+            } catch {
+              // The group is gone already, or never formed: kill the launcher alone.
+              child.kill("SIGKILL");
+            }
+          // Do not wait on pipes the kill may not have released.
+          child.stdin.destroy();
+          child.stdout.destroy();
+          child.stderr.destroy();
+          settle({ code: null, stdout, stderr });
+        }, 60_000);
+        child.on("error", (error) => {
+          clearTimeout(timer);
+          settle({ code: null, stdout, stderr: `${stderr}\n${error.message}` });
+        });
+        child.on("close", (code) => {
+          clearTimeout(timer);
+          settle({ code, stdout, stderr });
+        });
+        child.stdin.on("error", () => {});
+        child.stdin.end(JSON.stringify(INITIALIZE) + "\n");
+      });
+      const responds = result.stdout.split(/\r?\n/).some(isInitializeReply);
+      if (!responds || process.env["HOOKNOSTIC_YARN_PNP_VERBOSE"] === "1")
+        console.log(`--- launcher in ${project} (exit ${result.code})\n${result.stdout}${result.stderr}`);
+      return responds ? "responds" : "silent";
     };
     try {
       const packs = join(root, "packs");
@@ -288,12 +424,18 @@ it.skipIf(process.env["HOOKNOSTIC_YARN_PNP"] !== "1")(
         );
         // Without a lockfile of its own, Yarn adopts an ancestor project, such as one in the user's home.
         await writeFile(join(project, "yarn.lock"), "");
-        await cp(join(repo, "examples", "basic", "hooknostic.config.ts"), join(project, "hooknostic.config.ts"));
+        if (consumer.mcp) {
+          await writeFile(join(project, "hooknostic.config.ts"), MCP_CONFIG);
+          for (const file of ["mcp.json", "sample-server.mjs"])
+            await cp(join(repo, "examples", "local-project", file), join(project, file));
+        } else await cp(join(repo, "examples", "basic", "hooknostic.config.ts"), join(project, "hooknostic.config.ts"));
         await cp(join(repo, "examples", "basic", "src", "hooks.ts"), join(project, "src", "hooks.ts"));
         await must("corepack", ["yarn", "install"], project);
 
         for (const [mode, invoke] of Object.entries(modes)) {
           await rm(join(project, "dist"), { recursive: true, force: true });
+          // No cell may observe a previous mode's output, a launcher above all.
+          expect(await files(join(project, "dist")), `${name} / ${mode}: dist/ before the build`).toEqual([]);
           const result = await invoke(project);
           const runtime = (
             await Promise.all((await files(join(project, "dist", "claude"))).map((file) => readFile(file, "utf8")))
@@ -306,6 +448,8 @@ it.skipIf(process.env["HOOKNOSTIC_YARN_PNP"] !== "1")(
           (observed[mode] ??= {})[name] = {
             exit: result.code,
             hn504: (result.output.match(/^HN504 /gm) ?? []).length,
+            // Counted by heading line: esbuild's text below it may span lines.
+            hn301: (result.output.match(/^HN301 /gm) ?? []).length,
             hn109: (result.output.match(/^HN109 /gm) ?? []).length,
             // Each diagnostic is a heading line and its indented message
             // below, so classify each HN110's whole block.
@@ -318,10 +462,12 @@ it.skipIf(process.env["HOOKNOSTIC_YARN_PNP"] !== "1")(
               const version = /\/zod-npm-(\d+\.\d+\.\d+)-/.exec(path)?.[1];
               return version !== undefined && version === zod ? "project" : "cli";
             }),
+            ...(consumer.mcp ? { mcp: await launch(project) } : {}),
           };
           if (process.env["HOOKNOSTIC_YARN_PNP_VERBOSE"] === "1")
             console.log(
-              `--- ${name} / ${mode} (exit ${result.code}), zod: ${[...packages].join(", ")}\n${result.output}`,
+              `--- ${name} / ${mode} (exit ${result.code}), zod: ${[...packages].join(", ")}` +
+                `${consumer.mcp ? `, mcp: ${observed[mode][name]!.mcp}` : ""}\n${result.output}`,
             );
         }
 
