@@ -441,36 +441,43 @@ export function projectSdkReleaseSkew(configDir: string, evaluate?: EvaluateOpti
 export type ProjectSdkRelease =
   /** The SDK's own manifest gives its version. */
   | { status: "found"; version: string }
-  /** `@hooknostic/sdk` does not resolve from the project as a build would resolve it. */
+  /** `@hooknostic/sdk` does not resolve from the config's directory, as HN110 resolves it. */
   | { status: "not-found" }
   /** It resolves, but the resolved package's manifest isn't `@hooknostic/sdk`'s or has no version string. */
   | { status: "unidentified" }
+  /** Not looked up under another install's Plug'n'Play runtime, as for HN110 (#216). */
+  | { status: "not-looked-up"; reason: "another-pnp-runtime" }
   /**
-   * Not looked up: under another install's Plug'n'Play runtime, as for HN110
-   * (#216), or in a Plug'n'Play project outside Yarn's runtime, where Node's
-   * resolution cannot see the install and a build fails with HN504.
+   * Not looked up: `manifest`, a Yarn Plug'n'Play manifest, is in the config's
+   * directory or an ancestor, this process runs without Yarn's runtime, and no
+   * `node_modules/@hooknostic/sdk` is reachable. Node's resolution cannot see
+   * a Plug'n'Play install, and a build in such a project fails with HN504.
    */
-  | { status: "not-looked-up"; reason: "another-pnp-runtime" | "outside-pnp-runtime" };
+  | { status: "not-looked-up"; reason: "outside-pnp-runtime"; manifest: string };
 
 /**
- * The release of the `@hooknostic/sdk` that the project whose config is in
- * `configDir` resolves, as a build would bundle it (#246). A fact, not a
- * judgement: HN110 alone compares it with this CLI's version.
+ * The release of the `@hooknostic/sdk` that resolves from the directory of
+ * the config, `configDir`, as HN110 resolves it (#246). A fact, not a
+ * judgement: HN110 alone compares it with this CLI's version. A build
+ * resolves the SDK from each importing file instead, so an SDK that only a
+ * nested entry's directory reaches is not reported here.
  *
  * Never under another install's Plug'n'Play runtime, where resolving from the
  * project would load its PnP API beside that runtime (#216). Unless Yarn's
  * runtime serves a Plug'n'Play project, Node's resolution counts only when a
  * `node_modules/@hooknostic/sdk` is in the config's directory or an ancestor,
- * as esbuild looks: `NODE_PATH`, which pnpm's bin shims set, and the global
- * folders would otherwise report the CLI's own SDK for a project that has
- * none. Without one, a Plug'n'Play project outside Yarn's runtime is not
+ * walked as esbuild walks: `NODE_PATH`, which pnpm's bin shims set, and the
+ * global folders would otherwise report the CLI's own SDK for a project that
+ * has none. Without one, a Plug'n'Play project outside Yarn's runtime is not
  * looked up, since its install is invisible here.
  */
 export function projectSdkRelease(configDir: string): ProjectSdkRelease {
   if (anotherInstallsPnpRuntime(configDir)) return { status: "not-looked-up", reason: "another-pnp-runtime" };
-  const pnp = pnpManifest(configDir) !== undefined;
-  if (!(pnp && process.versions.pnp !== undefined) && !nodeModulesHas(configDir, "@hooknostic/sdk"))
-    return pnp ? { status: "not-looked-up", reason: "outside-pnp-runtime" } : { status: "not-found" };
+  const manifest = pnpManifest(configDir);
+  if (!(manifest !== undefined && process.versions.pnp !== undefined) && !nodeModulesHas(configDir, "@hooknostic/sdk"))
+    return manifest === undefined
+      ? { status: "not-found" }
+      : { status: "not-looked-up", reason: "outside-pnp-runtime", manifest };
   const entry = resolveProjectSdk(configDir);
   if (entry === undefined) return { status: "not-found" };
   const version = sdkManifestVersion(entry);

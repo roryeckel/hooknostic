@@ -317,8 +317,20 @@ describe("doctor versions", () => {
       "project @hooknostic/sdk not looked up under another install's Plug'n'Play runtime",
     ],
     [
-      { status: "not-looked-up", reason: "outside-pnp-runtime" } as const,
-      "project @hooknostic/sdk not looked up outside Yarn's Plug'n'Play runtime",
+      {
+        status: "not-looked-up",
+        reason: "outside-pnp-runtime",
+        manifest: join(process.cwd(), "app", ".pnp.cjs"),
+      } as const,
+      `project @hooknostic/sdk not looked up: ${join("app", ".pnp.cjs")} is a Yarn Plug'n'Play manifest, and this process isn't running under Yarn's runtime`,
+    ],
+    [
+      {
+        status: "not-looked-up",
+        reason: "outside-pnp-runtime",
+        manifest: resolve(process.cwd(), "..", "elsewhere", ".pnp.cjs"),
+      } as const,
+      `project @hooknostic/sdk not looked up: ${resolve(process.cwd(), "..", "elsewhere", ".pnp.cjs")} is a Yarn Plug'n'Play manifest, and this process isn't running under Yarn's runtime`,
     ],
   ])("words the project's SDK in the version line (%j)", (sdk, text) => {
     expect(doctorVersionLine(sdk, "v0.0.0-test")).toBe(
@@ -326,12 +338,18 @@ describe("doctor versions", () => {
     );
   });
 
-  it("does not report an SDK that only NODE_PATH reaches, as pnpm's bin shims set it", async () => {
-    // The build's esbuild never searches NODE_PATH, so such an SDK is not the
-    // project's. Spawned, so the child's NODE_PATH is the test's alone.
+  it.each([
+    ["has no node_modules/@hooknostic/sdk", false],
+    // Node's lookup walks past a folder without a manifest, on to NODE_PATH.
+    ["has an empty node_modules/@hooknostic/sdk folder", true],
+  ])("does not report an SDK that only NODE_PATH reaches when the project %s", async (_, emptyFolder) => {
+    // The build's esbuild never searches NODE_PATH, which pnpm's bin shims
+    // set, so such an SDK is not the project's. Spawned, so the child's
+    // NODE_PATH is the test's alone.
     const global = await realpath(await mkdtemp(join(tmpdir(), "hooknostic-doctor-node-path-")));
     const { root, configPath } = await projectWith(undefined);
     try {
+      if (emptyFolder) await mkdir(join(root, "node_modules/@hooknostic/sdk/dist"), { recursive: true });
       const sdk = join(global, "@hooknostic/sdk");
       await mkdir(join(sdk, "dist"), { recursive: true });
       await writeFile(

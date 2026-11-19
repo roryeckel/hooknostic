@@ -1,5 +1,5 @@
 import { accessSync, constants, existsSync, statSync } from "node:fs";
-import { delimiter, dirname, resolve } from "node:path";
+import { delimiter, dirname, isAbsolute, relative, resolve, sep } from "node:path";
 
 import semver from "semver";
 
@@ -101,6 +101,12 @@ interface DoctorEntry {
   detail?: string;
 }
 
+/** `path` relative to the current directory when it is inside it, else absolute. */
+function shownPath(path: string): string {
+  const shown = relative(process.cwd(), path);
+  return shown === "" || shown === ".." || shown.startsWith(`..${sep}`) || isAbsolute(shown) ? path : shown;
+}
+
 /** What the project's SDK lookup found, as doctor's version line says it. */
 function sdkText(sdk: ProjectSdkRelease): string {
   switch (sdk.status) {
@@ -113,7 +119,7 @@ function sdkText(sdk: ProjectSdkRelease): string {
     case "not-looked-up":
       return sdk.reason === "another-pnp-runtime"
         ? "not looked up under another install's Plug'n'Play runtime"
-        : "not looked up outside Yarn's Plug'n'Play runtime";
+        : `not looked up: ${shownPath(sdk.manifest)} is a Yarn Plug'n'Play manifest, and this process isn't running under Yarn's runtime`;
   }
 }
 

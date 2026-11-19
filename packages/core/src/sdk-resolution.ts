@@ -388,16 +388,18 @@ export function reachableZod(directory: string): ReachableZod {
 }
 
 /**
- * Whether `directory` or one of its ancestors has `node_modules/<name>`,
- * walked as esbuild walks for a bare specifier, skipping ancestors that are
- * themselves named `node_modules` (see {@link reachableZod}). Node's CommonJS
- * lookup also searches `NODE_PATH`, which pnpm's bin shims set, and the global
- * folders; esbuild searches neither, so a package only they reach is not one a
- * build would bundle.
+ * Whether `directory` or one of its ancestors has `node_modules/<name>` with a
+ * manifest, walked as esbuild walks for a bare specifier, skipping ancestors
+ * that are themselves named `node_modules` (see {@link reachableZod}). Node's
+ * CommonJS lookup also searches `NODE_PATH`, which pnpm's bin shims set, and
+ * the global folders; esbuild searches neither, so a package only they reach
+ * is not one a build would bundle. The manifest, not just the folder: Node
+ * walks past a folder without one (an interrupted install) on to `NODE_PATH`.
  */
 export function nodeModulesHas(directory: string, name: string): boolean {
   for (let current = directory; ;) {
-    if (basename(current) !== "node_modules" && existsSync(join(current, "node_modules", name))) return true;
+    if (basename(current) !== "node_modules" && existsSync(join(current, "node_modules", name, "package.json")))
+      return true;
     const parent = dirname(current);
     if (parent === current) return false;
     current = parent;
