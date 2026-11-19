@@ -793,6 +793,7 @@ describe("runCli", () => {
   it("documents -v, --version beside inspect's --version <range>", () => {
     const lines = CLI_USAGE.split("\n");
     const own = lines.findIndex((line) => line.trimStart().startsWith("-v, --version "));
+    expect(own, "a -v, --version line in CLI_USAGE").toBeGreaterThanOrEqual(0);
     expect(lines[own]).toContain("in place of a command");
     expect(lines[own + 1]?.trimStart()).toMatch(/^--version <range> +Harness version range for inspect$/);
   });
