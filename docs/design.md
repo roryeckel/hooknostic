@@ -1320,8 +1320,8 @@ The package version has one carrier in the CLI, `HOOKNOSTIC_VERSION`, which
 `set-versions.mjs` rewrites and `versions.test.ts` pins to the CLI's manifest. It is
 what `hooknostic --version` prints, alone, what HN110 calls "this hooknostic", and the
 build report's `hooknosticVersion`. `doctor` reports it beside the project's
-`@hooknostic/sdk` version, looked up where a build resolves it and, like HN110, never
-under another install's Plug'n'Play runtime, and Node.js's (#246).
+`@hooknostic/sdk` version, looked up from the config's directory, as HN110 does (and,
+like HN110, never under another install's Plug'n'Play runtime), and Node.js's (#246).
 
 ## 17. Operational and trust considerations
 
