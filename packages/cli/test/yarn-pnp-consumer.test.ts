@@ -1,3 +1,4 @@
+import { spawn, spawnSync } from "node:child_process";
 import { cp, mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, join, resolve } from "node:path";
@@ -297,16 +298,40 @@ it.skipIf(process.env["HOOKNOSTIC_YARN_PNP"] !== "1")(
     };
     // Start the built launcher for server 0 from the project directory, send
     // one `initialize` and close its input, so the sample server answers and exits.
-    // A launcher that hangs is killed and reads as silent.
+    // A launcher that hangs is killed with the server it started, which would
+    // otherwise hold the project directory open, and reads as silent.
     const launch = async (project: string): Promise<NonNullable<Outcome["mcp"]>> => {
       const launcher = join(project, ...MCP_LAUNCHER);
       if (!(await exists(launcher))) return "missing";
-      const result = await runProcess(process.execPath, [launcher, "0"], {
-        cwd: project,
-        env,
-        input: JSON.stringify(INITIALIZE) + "\n",
-        timeoutMs: 60_000,
-      }).catch((error: unknown) => ({ code: null, stdout: "", stderr: String(error) }));
+      const result = await new Promise<{ code: number | null; stdout: string; stderr: string }>((settle) => {
+        const child = spawn(process.execPath, [launcher, "0"], {
+          cwd: project,
+          env,
+          // Its own process group, so a timeout can kill the server with it.
+          detached: process.platform !== "win32",
+          stdio: ["pipe", "pipe", "pipe"],
+        });
+        let stdout = "";
+        let stderr = "";
+        child.stdout.setEncoding("utf8").on("data", (chunk: string) => (stdout += chunk));
+        child.stderr.setEncoding("utf8").on("data", (chunk: string) => (stderr += chunk));
+        const timer = setTimeout(() => {
+          stderr += "\n(timed out: killed with its process tree)";
+          if (child.pid === undefined) child.kill();
+          else if (process.platform === "win32") spawnSync("taskkill", ["/pid", String(child.pid), "/t", "/f"]);
+          else process.kill(-child.pid, "SIGKILL");
+        }, 60_000);
+        child.on("error", (error) => {
+          clearTimeout(timer);
+          settle({ code: null, stdout, stderr: `${stderr}\n${error.message}` });
+        });
+        child.on("close", (code) => {
+          clearTimeout(timer);
+          settle({ code, stdout, stderr });
+        });
+        child.stdin.on("error", () => {});
+        child.stdin.end(JSON.stringify(INITIALIZE) + "\n");
+      });
       const responds = result.stdout.split(/\r?\n/).some(isInitializeReply);
       if (!responds || process.env["HOOKNOSTIC_YARN_PNP_VERBOSE"] === "1")
         console.log(`--- launcher in ${project} (exit ${result.code})\n${result.stdout}${result.stderr}`);
