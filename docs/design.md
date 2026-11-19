@@ -714,7 +714,8 @@ load its runtime beside dlx's and break the build (#216). Add
 by pnpm 12's `pnpm init` names pnpm in `devEngines`, so `npx` refuses to run
 there), or `yarn hooknostic` under Yarn Plug'n'Play. Without a local install,
 and always under Plug'n'Play, `npx` fetches the registry's latest instead.
-Both `npx` and `pnpm exec` are named rather than detecting the package manager.
+Outside Plug'n'Play, `npx` and `pnpm exec` are both named rather than
+detecting the package manager.
 **HN504** a build under a Yarn Plug'n'Play manifest needs a module from Yarn's
 install that this process cannot read, because Hooknostic is running without
 Yarn's PnP runtime: under plain `node`, `npx`, a global install or `pnpm dlx`.
