@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { access, appendFile, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
+import { access, appendFile, mkdir, mkdtemp, readdir, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { isAbsolute, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -12,6 +12,8 @@ import { resolveTargetAdapter } from "@hooknostic/core";
 
 // @ts-expect-error The capture event reader is plain JavaScript.
 import { readEventRecords } from "../../../.capture/opencode-v2/lifecycle.mjs";
+// @ts-expect-error The ripgrep pre-seed is plain JavaScript.
+import { checkRipgrepLog, ensureRipgrep, ripgrepAsset } from "../../../.capture/opencode-v2/ripgrep.mjs";
 // @ts-expect-error The constructed loopback model is plain JavaScript.
 import { startToolModel } from "../../../.capture/opencode-v2/tool-model.mjs";
 import {
@@ -115,6 +117,77 @@ describe("OpenCode playback tool outcomes", () => {
     // The deliberately blocked call is another tool's outcome, counted but not quoted.
     expect(message).not.toContain("hooknostic-boundary-only");
     expect(message).toContain("1 other session.tool.failed");
+  });
+});
+
+describe("OpenCode ripgrep pre-seed", () => {
+  // Log lines in the shapes 2.0.17 and 2.3.2 wrote (.capture/opencode-v2/README.md,
+  // "ripgrep pre-seed"), home directories redacted: Windows quotes and escapes
+  // a spawned command, Linux and macOS leave it bare.
+  const download =
+    'timestamp=2026-11-19T01:13:24.721Z level=INFO run=496ad607 message="downloading ripgrep" url=https://github.com/BurntSushi/ripgrep/releases/download/15.1.0/ripgrep-15.1.0-x86_64-pc-windows-msvc.zip role=server';
+  const windowsSpawn =
+    'timestamp=2026-11-19T01:13:27.785Z level=INFO run=496ad607 message="spawning process" command="C:\\\\Users\\\\user\\\\AppData\\\\Local\\\\Temp\\\\hooknostic-v2-x\\\\cache\\\\opencode\\\\bin\\\\rg.exe" args="[\\"--no-config\\",\\"--files\\"]" cwd=C:\\Users\\user role=server';
+  const posixSpawn =
+    'timestamp=2026-11-19T01:17:29.917Z level=INFO run=e035fcb5 message="spawning process" command=/home/user/hooknostic-v2-x/cache/opencode/bin/rg args="[\\"--no-config\\",\\"--files\\"]" cwd=/home/user role=server';
+  const shellSpawn =
+    'timestamp=2026-11-19T01:13:28.989Z level=INFO run=496ad607 message="spawning process" command="C:\\\\WINDOWS\\\\System32\\\\WindowsPowerShell\\\\v1.0\\\\powershell.EXE" args="[]" role=server';
+  const cliStarting =
+    'timestamp=2026-11-19T01:42:42.086Z level=INFO run=732faad1 message="cli starting" version=2.3.2 channel=latest local=false args="[\\"--version\\"]" role=cli';
+
+  it("pins the asset OpenCode's own bootstrap fetches on each platform", () => {
+    expect(ripgrepAsset("win32", "x64")).toMatchObject({
+      executable: "rg.exe",
+      file: "ripgrep-15.1.0-x86_64-pc-windows-msvc.zip",
+      sha256: "124510b94b6baa3380d051fdf4650eaa80a302c876d611e9dba0b2e18d87493a",
+    });
+    expect(ripgrepAsset("linux", "x64")).toMatchObject({
+      executable: "rg",
+      file: "ripgrep-15.1.0-x86_64-unknown-linux-musl.tar.gz",
+      sha256: "1c9297be4a084eea7ecaedf93eb03d058d6faae29bbc57ecdaf5063921491599",
+    });
+    expect(ripgrepAsset("darwin", "arm64")).toMatchObject({
+      executable: "rg",
+      file: "ripgrep-15.1.0-aarch64-apple-darwin.tar.gz",
+      sha256: "378e973289176ca0c6054054ee7f631a065874a352bf43f0fa60ef079b6ba715",
+    });
+    expect(() => ripgrepAsset("freebsd", "x64")).toThrow(/ripgrep pre-seed failed: no pinned ripgrep for x64-freebsd/);
+  });
+  it("rejects a download whose SHA-256 is not the pin, after every attempt, leaving nothing behind", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "hooknostic-ripgrep-test-"));
+    let calls = 0;
+    const fetch = async () => {
+      calls += 1;
+      return new Response("a truncated archive");
+    };
+    try {
+      await expect(ensureRipgrep({ dir, fetch, retryDelayMs: 0 })).rejects.toThrow(
+        /ripgrep pre-seed failed: .*after 3 attempts: SHA-256 mismatch/,
+      );
+      expect(calls).toBe(3);
+      expect(await readdir(dir)).toEqual([]);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+  it("fails when the harness downloaded ripgrep itself", () => {
+    expect(() => checkRipgrepLog([download, windowsSpawn].join("\n"))).toThrow(
+      /OpenCode downloaded ripgrep despite the pre-seed/,
+    );
+  });
+  it("accepts a log that ran ripgrep without downloading it, recording which ripgrep ran", () => {
+    expect(checkRipgrepLog([shellSpawn, windowsSpawn, windowsSpawn].join("\r\n")).spawned).toEqual([
+      "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-v2-x\\cache\\opencode\\bin\\rg.exe",
+    ]);
+    expect(checkRipgrepLog(posixSpawn).spawned).toEqual(["/home/user/hooknostic-v2-x/cache/opencode/bin/rg"]);
+    // 2.3.2 logs no process spawns; its INFO lines still show the log is live.
+    expect(checkRipgrepLog(cliStarting).spawned).toEqual([]);
+  });
+  it("refuses a log without INFO lines, which could not show a download either", () => {
+    expect(() => checkRipgrepLog("")).toThrow(/no INFO-level harness log lines/);
+    expect(() => checkRipgrepLog(cliStarting.replace("level=INFO", "level=WARN"))).toThrow(
+      /no INFO-level harness log lines/,
+    );
   });
 });
 
@@ -970,6 +1043,10 @@ describe.skipIf(!enabled)("OpenCode v2 offline playback", () => {
     }
   }, 140000);
   it("classifies captured tools and preserves Code Mode's outer boundary", async () => {
+    // The drive seeds this pinned ripgrep for glob/grep and fails if the
+    // harness downloaded its own (#264). Fetch it here, before the drive's
+    // own timeout starts: up to three 20 s attempts on a cold machine.
+    await ensureRipgrep();
     const driver = fileURLToPath(new URL("../../../.capture/opencode-v2/drive.mjs", import.meta.url));
     const result = await runProcess(process.execPath, ["--experimental-strip-types", driver, "tools"], {
       cwd: fileURLToPath(new URL("../../..", import.meta.url)),
@@ -1036,7 +1113,7 @@ describe.skipIf(!enabled)("OpenCode v2 offline playback", () => {
     const inner = completed.find((row) => row.event.tool === "hooknostic_hooknostic_echo");
     expect(inner.event.input).toEqual({});
     expect(inner.event.result.content).toEqual([{ type: "text", text: "hooknostic-mcp-tool-output" }]);
-  }, 70000);
+  }, 140000);
   it("gives a captured shell call the dialect of the shell this build said it runs", (context) => {
     if (toolsShellDialects === undefined) return context.skip("the tools drive did not run");
     const expectation = openCodeShellDialectExpectation();

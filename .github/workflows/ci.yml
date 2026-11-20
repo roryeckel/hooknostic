@@ -314,9 +314,11 @@ jobs:
             ${{ runner.temp }}/opencode-v2-playback/**/captured/**
             ${{ runner.temp }}/opencode-v2-playback/**/project/opencode.json
             ${{ runner.temp }}/opencode-v2-playback/**/package-source/**
-            # The harness log (ripgrep download and process spawns) and any
-            # archive or extraction directory its ripgrep bootstrap left (#264).
+            # The harness log (ripgrep download and process spawns), the drive's
+            # ripgrep seed record, and any archive or extraction directory the
+            # harness's own ripgrep bootstrap left (#264).
             ${{ runner.temp }}/opencode-v2-playback/**/data/opencode/log/**
+            ${{ runner.temp }}/opencode-v2-playback/**/ripgrep.json
             ${{ runner.temp }}/opencode-v2-playback/**/cache/opencode/bin/ripgrep-*
             !${{ runner.temp }}/opencode-v2-playback/**/node_modules/**
 

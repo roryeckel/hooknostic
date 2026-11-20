@@ -302,6 +302,15 @@ if (twoServers) {
     },
   });
 }
+// glob and grep run ripgrep, which the harness otherwise downloads into this
+// run's fresh cache every time; that bootstrap flaked on Windows (#264). Seed a
+// pinned, verified copy where it looks before downloading, and prove after the
+// run that it did not download (README, "ripgrep pre-seed").
+const ripgrep =
+  effect === "tools"
+    ? await diagnostics.run("seed-ripgrep", async () => (await import("./ripgrep.mjs")).seedRipgrep(env.XDG_CACHE_HOME))
+    : undefined;
+if (ripgrep) diagnostics.snapshot("ripgrep.json", ripgrep);
 diagnostics.complete("prepare-native-config");
 // Save loopback observations while the harness runs, before an outer timeout can kill this process.
 function snapshotRequests() {
@@ -430,6 +439,12 @@ try {
     }),
   );
   diagnostics.complete("write-results");
+  if (ripgrep) {
+    const used = await diagnostics.run("verify-ripgrep-seed", async () =>
+      (await import("./ripgrep.mjs")).verifyRipgrepSeed(env.XDG_DATA_HOME),
+    );
+    diagnostics.snapshot("ripgrep.json", { ...ripgrep, ...used });
+  }
 } catch (error) {
   diagnostics.fail(error);
   throw error;
