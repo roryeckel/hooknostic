@@ -251,17 +251,25 @@ describe("an SDK installed without its Zod peer", () => {
     return { root, sdkEntry: join(root, "node_modules/@hooknostic/sdk/dist/index.js") };
   }
 
+  /** How HN109 shows a path inside the config's directory, given relative to it with forward slashes. */
+  const inside = (path: string) => `${path} (relative to the config's directory)`;
+
+  /** How HN109 names a Zod that Yarn's Plug'n'Play install serves (#256). */
+  const PNP_INSTALL = "from Yarn's Plug'n'Play install";
+
   /**
-   * HN109 for an SDK that reached `found` at `at`, bundling Hooknostic's own
-   * Zod from `own` (its real path, unless the build preserves symlinks).
+   * HN109 for an SDK that reached `found` where `at` says (`at <path>`, or
+   * Yarn's install), bundling Hooknostic's own Zod from where `own` says: by
+   * default `from` its real path in the workspace, outside every test's
+   * project, so absolute.
    */
-  function substitution(found: string, at: string, own = dirname(ownZodManifest)): Diagnostic {
+  function substitution(found: string, at: string, own = `from ${dirname(ownZodManifest)}`): Diagnostic {
     return {
       code: "HN109",
       severity: "warn",
       message:
-        `the SDK's zod import reached ${found} at ${at}, outside the SDK's zod peer range ${PEER}; the runtime ` +
-        `bundles Hooknostic's own zod@${ownZodVersion} from ${own} instead, while user code ` +
+        `the SDK's zod import reached ${found} ${at}, outside the SDK's zod peer range ${PEER}; the runtime ` +
+        `bundles Hooknostic's own zod@${ownZodVersion} ${own} instead, while user code ` +
         "that imports zod still bundles the project's copy.",
       remediation: `install a zod that satisfies ${PEER} in the project, so the SDK and user code share one copy.`,
     };
@@ -296,6 +304,7 @@ describe("an SDK installed without its Zod peer", () => {
     sdkEntry: string,
     extra: ResolutionOptions = {},
     source = SOURCE,
+    fallback: { ownDirectory?: string } = {},
   ): Promise<{ code: string; diagnostics: Diagnostic[]; nested: string[] }> {
     const nested: string[] = [];
     const diagnostics: Diagnostic[] = [];
@@ -318,7 +327,7 @@ describe("an SDK installed without its Zod peer", () => {
       logLevel: "silent",
       ...extra,
       alias: withSdkSubpathAliases({ "@hooknostic/sdk": sdkEntry, ...extra.alias }),
-      plugins: [recorder, sdkZodFallbackPlugin((diagnostic) => diagnostics.push(diagnostic))],
+      plugins: [recorder, sdkZodFallbackPlugin((diagnostic) => diagnostics.push(diagnostic), fallback)],
     });
     return { code: result.outputFiles[0]!.text, diagnostics, nested };
   }
@@ -374,7 +383,9 @@ describe("an SDK installed without its Zod peer", () => {
         expect(await run(root, result.code)).toBe("ok");
         expect(result.code).toContain(`zod@${ownZodVersion}`);
         expect(result.code).not.toContain("Project zod license.");
-        const projectZod = join(root, "node_modules", "zod");
+        // Relative to the config's directory, as HN110 names the SDK: a
+        // committed build report then names no machine's path (#256).
+        const projectZod = inside("node_modules/zod");
         expect(result.diagnostics).toEqual([
           {
             code: "HN109",
@@ -436,11 +447,8 @@ describe("an SDK installed without its Zod peer", () => {
         expect(await run(root, result.code)).toBe("ok");
         expect(result.code).toContain(`zod@${ownZodVersion}`);
         // The package's real path: pnpm's virtual-store directory, not the project's link.
-        const reached =
-          layout === "pnpm"
-            ? join(root, "node_modules", ".pnpm", "zod@3.24.4", "node_modules", "zod")
-            : join(root, "node_modules", "zod");
-        expect(result.diagnostics).toEqual([substitution("zod@3.24.4", reached)]);
+        const reached = layout === "pnpm" ? "node_modules/.pnpm/zod@3.24.4/node_modules/zod" : "node_modules/zod";
+        expect(result.diagnostics).toEqual([substitution("zod@3.24.4", `at ${inside(reached)}`)]);
       } finally {
         await rm(root, { recursive: true, force: true });
       }
@@ -521,9 +529,32 @@ describe("an SDK installed without its Zod peer", () => {
           alias: { "@hooknostic/sdk": sdkEntry },
         });
         expect(result.diagnostics, `build ${round}`).toEqual([
-          substitution("zod@3.25.76", join(root, "node_modules", "zod")),
+          substitution("zod@3.25.76", `at ${inside("node_modules/zod")}`),
         ]);
       }
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("names Hooknostic's own Zod relative to the config's directory when the project installs Hooknostic", async () => {
+    // The CLI as a devDependency, its in-range Zod nested beside it: HN109
+    // names neither Zod by a path that names the machine (#256).
+    const { root, sdkEntry } = await project({ zod: "3.24.4", v4: false });
+    try {
+      const hooknostic = join(root, "node_modules", "hooknostic");
+      const ownDirectory = join(hooknostic, "dist");
+      await mkdir(ownDirectory, { recursive: true });
+      await writeZod(join(hooknostic, "node_modules", "zod"), ownZodVersion);
+      const result = await bundleRecorded(root, sdkEntry, {}, SOURCE, { ownDirectory });
+      expect(await run(root, result.code)).toBe(`project zod ${ownZodVersion}: ok`);
+      expect(result.diagnostics).toEqual([
+        substitution(
+          "zod@3.24.4",
+          `at ${inside("node_modules/zod")}`,
+          `from ${inside("node_modules/hooknostic/node_modules/zod")}`,
+        ),
+      ]);
     } finally {
       await rm(root, { recursive: true, force: true });
     }
@@ -553,7 +584,7 @@ describe("an SDK installed without its Zod peer", () => {
     try {
       const result = await bundleRuntime({ source: SOURCE, resolveDir: root, alias: { "@hooknostic/sdk": sdkEntry } });
       expect(await run(root, result.code)).toBe("ok");
-      expect(result.diagnostics).toEqual([substitution("zod@3.8.2", join(root, "node_modules", "zod"))]);
+      expect(result.diagnostics).toEqual([substitution("zod@3.8.2", `at ${inside("node_modules/zod")}`)]);
     } finally {
       await rm(root, { recursive: true, force: true });
     }
@@ -607,7 +638,7 @@ describe("an SDK installed without its Zod peer", () => {
         await writeZod(join(root, "vendor", "zod"), "3.24.4", { v4: false });
         const result = await bundleRecorded(root, sdkEntry, { nodePaths: [join(root, "vendor")] });
         expect(await run(root, result.code)).toBe("ok");
-        expect(result.diagnostics).toEqual([substitution("zod@3.24.4", join(root, "vendor", "zod"))]);
+        expect(result.diagnostics).toEqual([substitution("zod@3.24.4", `at ${inside("vendor/zod")}`)]);
       } finally {
         await rm(root, { recursive: true, force: true });
       }
@@ -624,7 +655,7 @@ describe("an SDK installed without its Zod peer", () => {
         });
         const result = await bundleRecorded(root, sdkEntry, { nodePaths: [join(root, "vendor")] });
         expect(await run(root, result.code)).toBe("ok");
-        expect(result.diagnostics).toEqual([substitution("zod@3.8.2", join(root, "vendor", "zod"))]);
+        expect(result.diagnostics).toEqual([substitution("zod@3.8.2", `at ${inside("vendor/zod")}`)]);
       } finally {
         await rm(root, { recursive: true, force: true });
       }
@@ -644,7 +675,9 @@ describe("an SDK installed without its Zod peer", () => {
         await writeFile(join(aliased, "index.js"), "export const notZod = true;");
         const result = await bundleRecorded(root, sdkEntry, { nodePaths: [join(root, "vendor")] });
         expect(await run(root, result.code)).toBe("ok");
-        expect(result.diagnostics).toEqual([substitution("a zod package with no readable version", aliased)]);
+        expect(result.diagnostics).toEqual([
+          substitution("a zod package with no readable version", `at ${inside("vendor/zod")}`),
+        ]);
       } finally {
         await rm(root, { recursive: true, force: true });
       }
@@ -660,8 +693,8 @@ describe("an SDK installed without its Zod peer", () => {
         expect(result.diagnostics).toEqual([
           substitution(
             "zod@3.24.4",
-            join(root, "node_modules", "zod"),
-            resolve(import.meta.dirname, "..", "node_modules", "zod"),
+            `at ${inside("node_modules/zod")}`,
+            `from ${resolve(import.meta.dirname, "..", "node_modules", "zod")}`,
           ),
         ]);
       } finally {
@@ -671,7 +704,8 @@ describe("an SDK installed without its Zod peer", () => {
 
     it("names the reached Zod when an alias leaves Hooknostic's own unresolvable", async () => {
       // esbuild applies an alias to every resolve, Hooknostic's own included, so
-      // nothing can supply zod/v4: the build fails, and says why.
+      // nothing can supply zod/v4: the build fails, and says why. The note,
+      // which no report carries, keeps the reached Zod's absolute path.
       const { root, sdkEntry } = await project();
       try {
         const vendored = join(root, "vendor", "zod");
@@ -700,6 +734,34 @@ describe("an SDK installed without its Zod peer", () => {
         await rm(root, { recursive: true, force: true });
       }
     });
+
+    it("keeps the reached Zod's path in that note in a Plug'n'Play project", async () => {
+      // HN109 would name this Zod by Yarn's install (#256); the note keeps its path.
+      const { root, sdkEntry } = await project();
+      try {
+        await writeFile(join(root, ".pnp.cjs"), "");
+        const vendored = join(root, "vendor", "zod-npm-3.24.4-0123456789-10c0.zip", "node_modules", "zod");
+        await writeZod(vendored, "3.24.4", { v4: false });
+        const failure: unknown = await bundleRecorded(root, sdkEntry, { alias: { zod: vendored } }).then(
+          () => undefined,
+          (error: unknown) => error,
+        );
+        expect(failure).toMatchObject({
+          errors: [
+            {
+              text: 'Could not resolve "zod/v4"',
+              notes: expect.arrayContaining([
+                expect.objectContaining({
+                  text: expect.stringContaining(`the SDK's zod import reached zod@3.24.4 at ${vendored}, outside`),
+                }),
+              ]),
+            },
+          ],
+        });
+      } finally {
+        await rm(root, { recursive: true, force: true });
+      }
+    });
   });
 
   it("resolves first when the build's working directory is in a Plug'n'Play project", async () => {
@@ -719,6 +781,90 @@ describe("an SDK installed without its Zod peer", () => {
     } finally {
       await rm(root, { recursive: true, force: true });
     }
+  });
+
+  describe("names a Plug'n'Play-installed Zod by its install, each Zod apart (#256)", () => {
+    // The wording rule, not Yarn's archive. Under Yarn's runtime the opt-in
+    // Yarn check captured HN109 naming the reached Zod at
+    // `<YARN_GLOBAL_FOLDER>\cache\zod-npm-3.24.4-f67b364e5d-10c0.zip\node_modules\zod`
+    // and, under `yarn hooknostic`, Hooknostic's own at
+    // `<YARN_GLOBAL_FOLDER>\cache\zod-npm-4.6.7-93f9f3c3ad-10c0.zip\node_modules\zod`
+    // (Yarn 4.18.1, Windows; `packages/cli/test/yarn-pnp-consumer.test.ts`
+    // proves the real paths). Here a real directory named like Yarn's archive
+    // (or its virtual folder) stands in: the accepted false positive of
+    // PNP_PATH, inside a project whose empty `.pnp.cjs` esbuild loads while
+    // still resolving through node_modules.
+    const ARCHIVE = join(".yarn", "cache", "zod-npm-3.24.4-0123456789-10c0.zip", "node_modules", "zod");
+
+    /** A project with no Zod of its own whose `node_modules/zod` links one at `at`, below its root. */
+    async function linkedZod(at: string, version: string | null): Promise<{ root: string; sdkEntry: string }> {
+      const created = await project();
+      await writeZod(join(created.root, at), version, { v4: false });
+      await link(join(created.root, at), join(created.root, "node_modules", "zod"));
+      return created;
+    }
+
+    for (const [form, at, version, found] of [
+      ["a zip archive", ARCHIVE, "3.24.4", "zod@3.24.4"],
+      [
+        "a virtual folder, with no readable version",
+        join(".yarn", "__virtual__", "zod-virtual-0123456789", "0", "node_modules", "zod"),
+        null,
+        "a zod package with no readable version",
+      ],
+    ] as const) {
+      it(`names the reached Zod in ${form} by Yarn's install, and keeps the path of Hooknostic's own`, async () => {
+        const { root, sdkEntry } = await linkedZod(at, version);
+        try {
+          await writeFile(join(root, ".pnp.cjs"), "");
+          const result = await bundleRecorded(root, sdkEntry);
+          expect(await run(root, result.code)).toBe("ok");
+          expect(result.diagnostics).toEqual([substitution(found, PNP_INSTALL)]);
+        } finally {
+          await rm(root, { recursive: true, force: true });
+        }
+      });
+    }
+
+    it("names Hooknostic's own Zod by Yarn's install when Hooknostic runs from one, as under yarn hooknostic", async () => {
+      const { root, sdkEntry } = await linkedZod(ARCHIVE, "3.24.4");
+      try {
+        await writeFile(join(root, ".pnp.cjs"), "");
+        const install = join(root, ".yarn", "cache", "hooknostic-npm-0.0.0-0123456789-10c0.zip", "node_modules");
+        const ownDirectory = join(install, "hooknostic", "dist");
+        await mkdir(ownDirectory, { recursive: true });
+        await writeZod(join(install, "zod"), ownZodVersion);
+        const result = await bundleRecorded(root, sdkEntry, {}, SOURCE, { ownDirectory });
+        expect(await run(root, result.code)).toBe(`project zod ${ownZodVersion}: ok`);
+        expect(result.diagnostics).toEqual([substitution("zod@3.24.4", PNP_INSTALL, PNP_INSTALL)]);
+      } finally {
+        await rm(root, { recursive: true, force: true });
+      }
+    });
+
+    it("keeps the path of a node_modules Zod in a Plug'n'Play project", async () => {
+      const { root, sdkEntry } = await project({ zod: "3.24.4", v4: false });
+      try {
+        await writeFile(join(root, ".pnp.cjs"), "");
+        const result = await bundleRecorded(root, sdkEntry);
+        expect(result.diagnostics).toEqual([substitution("zod@3.24.4", `at ${inside("node_modules/zod")}`)]);
+      } finally {
+        await rm(root, { recursive: true, force: true });
+      }
+    });
+
+    it("keeps the path of a Zod in a directory named like an archive outside Plug'n'Play", async () => {
+      const { root, sdkEntry } = await linkedZod(ARCHIVE, "3.24.4");
+      try {
+        const result = await bundleRecorded(root, sdkEntry);
+        // The walk's real path, through the link into the archive-named directory.
+        expect(result.diagnostics).toEqual([
+          substitution("zod@3.24.4", `at ${inside(".yarn/cache/zod-npm-3.24.4-0123456789-10c0.zip/node_modules/zod")}`),
+        ]);
+      } finally {
+        await rm(root, { recursive: true, force: true });
+      }
+    });
   });
 
   const uncachedOptions: [string, (root: string) => ResolutionOptions][] = [

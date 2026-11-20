@@ -695,7 +695,16 @@ import reaches (the first on its `node_modules` path, whether or not it provides
 `zod/v4`) is outside the SDK's `zod` peer range, or has no readable version, so
 the runtime bundles Hooknostic's own Zod instead. It is a warning, reported once
 per build, and it names the version and path found, the range, and the copy
-bundled. A project with no reachable Zod gets Hooknostic's copy without one.
+bundled. It names each Zod's path as HN110 names the SDK's: relative to the
+configuration's directory when inside it, and saying so, and absolute
+otherwise, as for a CLI installed outside the project, whose own Zod's path
+may name a home directory. In a Plug'n'Play project, a Zod served from Yarn's
+install, inside a zip archive or behind a virtual folder, is named
+`from Yarn's Plug'n'Play install` instead of by its machine-specific cache
+path: the project's Zod under Yarn's runtime, and Hooknostic's own under
+`yarn hooknostic` (#256). Every other Zod is named by its path, relative or
+absolute as above. A project with no reachable Zod gets Hooknostic's copy
+without one.
 User code that imports Zod still bundles the project's copy (ADR-0040).
 **HN110** the CLI running a build and the project's `@hooknostic/sdk` are on
 different releases, so the build would mix one release's SDK with another
@@ -713,12 +722,24 @@ folder (`__virtual__`, Yarn 2's `$$virtual`), is named by that install instead:
 `@hooknostic/sdk from Yarn's Plug'n'Play install is 0.11.9` (#225). Its path is
 unreadable, and usually machine-specific: it runs through `__virtual__` into
 Yarn's global cache, whose hash, depth and folder differ by machine. It is a
-warning, reported at most once per run, even when the configuration fails to
-load, so `check`, `build`, `sync` and `verify` all report it beside a load
-failure that the skew may cause, and so does `recover`, which reports it only
-beside a load failure.
-It never changes an exit code: `check` and `build` print it, and `sync` and
-`verify` list it with their other build diagnostics. It is silent when no SDK
+warning, reported at most once per run (`doctor --json` aside, below), even when
+the configuration fails to load, so `check`, `build`, `sync` and `verify` all
+report it beside a load failure that the skew may cause, and so does `recover`,
+which reports it only beside a load failure. `doctor` makes its own check for
+any configuration it is given, whatever its targets deliver and even when it
+fails to load, after its version line and before the load, but only for an SDK
+its own lookup finds (#257): where that line reads `not found`, as for an SDK
+only `NODE_PATH` reaches, or `not looked up`, as in a Plug'n'Play project
+outside Yarn's runtime, doctor's own check is silent. With project-delivery
+targets, doctor also lists the report of the `verify` it runs, whose HN110 comes
+from the build's lookup: until that lookup walks `node_modules` as the version
+line's does (#258), it follows `NODE_PATH`, so that report may still warn about
+an SDK the version line reads as `not found`.
+It never changes an exit code: `check` and `build` print it, `sync` and
+`verify` list it with their other build diagnostics, and `doctor --json` lists
+its own check's under a top-level `diagnostics`. That is the exception to once
+per run: in a project run, the JSON's `project.diagnostics`, the `verify`
+report, may repeat it. It is silent when no SDK
 resolves, when either version is not valid semver, and in this repository's
 workspace, whose examples resolve `packages/sdk` at the CLI's own version. It
 is also silent under another install's Plug'n'Play runtime, as under
@@ -1342,7 +1363,8 @@ The package version has one carrier in the CLI, `HOOKNOSTIC_VERSION`, which
 what `hooknostic --version` prints, alone, what HN110 calls "this hooknostic", and the
 build report's `hooknosticVersion`. `doctor` reports it beside the project's
 `@hooknostic/sdk` version, looked up from the config's directory, as HN110 does (and,
-like HN110, never under another install's Plug'n'Play runtime), and Node.js's (#246).
+like HN110, never under another install's Plug'n'Play runtime), and Node.js's (#246);
+HN110 beside them judges an SDK that lookup found (#257).
 
 ## 17. Operational and trust considerations
 

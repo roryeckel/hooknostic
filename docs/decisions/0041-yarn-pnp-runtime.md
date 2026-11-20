@@ -33,8 +33,8 @@ component -- and builds each four ways:
 
 | Invocation | Outcome |
 |---|---|
-| `yarn hooknostic` | Builds. With no Zod in the project, it uses the CLI's own Zod, with no HN109. With the project's Zod out of range (3.24.4, 3.25.76), it uses the CLI's own, with HN109. With it in range (4.6.7), it uses the project's. HN110 warns for the repacked SDK. The MCP launcher answers. |
-| `node -r ./.pnp.cjs <npm install>/hooknostic/bin/hooknostic.mjs`, from the project directory, with the CLI installed by npm in a directory outside any Yarn Plug'n'Play project | The same as `yarn hooknostic`. |
+| `yarn hooknostic` | Builds. With no Zod in the project, it uses the CLI's own Zod, with no HN109. With the project's Zod out of range (3.24.4, 3.25.76), it uses the CLI's own, with HN109, which names both Zods `from Yarn's Plug'n'Play install` (#256). With it in range (4.6.7), it uses the project's. HN110 warns for the repacked SDK, naming it `from Yarn's Plug'n'Play install` (#225). The MCP launcher answers. |
+| `node -r ./.pnp.cjs <npm install>/hooknostic/bin/hooknostic.mjs`, from the project directory, with the CLI installed by npm in a directory outside any Yarn Plug'n'Play project | The same as `yarn hooknostic`, except that HN109 names the CLI's own Zod by its path, outside Yarn's install (#256). |
 | Plain `node` with that npm-installed CLI | HN504 in every consumer, with no HN110. |
 | `yarn dlx -p hooknostic@file:<the CLI tarball>`, the same tarball, at the same version, that every consumer depends on | HN504 unless the project's Zod is in range; then it builds and the MCP launcher answers. HN110 never warns. |
 

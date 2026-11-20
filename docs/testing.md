@@ -273,12 +273,13 @@ Zod 3.24.4, 3.25.76 and 4.6.7, Zod 4.6.7 with the SDK repacked as 0.11.9,
 and Zod 4.6.7 with an MCP component), and builds each through `yarn hooknostic`,
 `node -r ./.pnp.cjs` from the project directory and plain `node`, both against
 a CLI installed outside the project, and `yarn dlx`. The first five build
-`examples/basic`. It compares the whole table of outcomes, counting HN504,
-HN301 and HN109 and recording each HN110's wording (Yarn's install or a path)
-in each:
+`examples/basic`. It compares the whole table of outcomes, counting HN504 and
+HN301 and recording each HN109's and HN110's wording (Yarn's install or a
+path) in each:
 through Yarn's runtime the build uses the project's in-range Zod or the CLI's
-own (with HN109 when the project's is out of range), and the repacked SDK
-warns one HN110, which names Yarn's Plug'n'Play install rather than a path
+own (with HN109 when the project's is out of range, which names the project's
+Zod by Yarn's install, and the CLI's own too under `yarn hooknostic`, #256),
+and the repacked SDK warns one HN110, which names Yarn's Plug'n'Play install rather than a path
 (#225); plain `node` fails with one HN504
 (#183), with no HN110; `yarn dlx` fails with HN504 unless the project's Zod is
 in range, and never warns HN110. The `yarn dlx` row also guards #216, where
@@ -322,8 +323,12 @@ error and the like; not Yarn's own codes, since `YN0013` is the fetch step of
 every install and `YN0001` any exception) stops the test at once with an
 `ENVIRONMENT/NETWORK FAILURE` error and that step's output: rerun it, it is
 not a missing HN504. Set `HOOKNOSTIC_YARN_PNP_VERBOSE=1` to print every
-build's output and the Zod it bundled, and each MCP launcher's output; a
-launcher that does not answer prints its output regardless.
+build's output and the Zod it bundled, each `sync` step's output, and each MCP
+launcher's output; a launcher that does not answer, or a `sync` step that
+fails, prints its output regardless. This output and the table of observed
+outcomes go straight to stderr (#263): they show on a passing run, `--silent`
+does not hide them, a `junit` report does not record them, and capturing them
+in a file needs `2>&1`.
 
 The normal suite covers HN504 without Yarn, through a synthetic layout: a
 hand-written `.pnp.data.json` and stored zip archives that esbuild resolves
