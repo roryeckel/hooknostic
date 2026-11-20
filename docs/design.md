@@ -1342,11 +1342,11 @@ in reproducible configs.
 The package version has one carrier in the CLI, `HOOKNOSTIC_VERSION`, which
 `set-versions.mjs` rewrites and `versions.test.ts` pins to the CLI's manifest. It is
 what `hooknostic --version` prints, alone, what HN110 calls "this hooknostic", and the
-build report's `hooknosticVersion`. `doctor` reports it beside the project's
-`@hooknostic/sdk` version, looked up from the config's directory through its
-`node_modules` folders (or Yarn's runtime in a Plug'n'Play project), never through
-`NODE_PATH`, as HN110 does (and, like HN110, never under another install's
-Plug'n'Play runtime), and Node.js's (#246, #258).
+build report's `hooknosticVersion`. `doctor` reports it beside Node.js's version and
+the project's `@hooknostic/sdk` version, which it looks up as HN110 does (#246, #258):
+from the `node_modules` folders of the config's directory and its ancestors, never
+through `NODE_PATH`, outside Plug'n'Play; through Yarn's runtime in a Plug'n'Play
+project; and, like HN110, never under another install's Plug'n'Play runtime.
 
 ## 17. Operational and trust considerations
 
