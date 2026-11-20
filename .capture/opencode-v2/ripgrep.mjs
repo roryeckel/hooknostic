@@ -5,52 +5,68 @@
 // Evidence and procedure: README.md, "ripgrep pre-seed".
 import { execFile, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
-import { chmod, copyFile, mkdir, mkdtemp, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { chmod, copyFile, mkdir, mkdtemp, readdir, readFile, rename, rm, stat, utimes, writeFile } from "node:fs/promises";
+import { homedir } from "node:os";
+import { basename, delimiter, join, resolve } from "node:path";
 
 export const RIPGREP_VERSION = "15.1.0";
 
-// OpenCode's own platform table (identical in 2.0.17 and 2.3.2). The SHA-256
-// pins are the ones 2.3.2 checks; each matches ripgrep's published .sha256 file.
-// 2.0.17 checks none, which is one reason the drive verifies its own copy.
+// OpenCode's own platform table (identical in 2.0.17 and 2.3.2). `sha256` pins
+// the archive: the values 2.3.2 checks, each matching ripgrep's published
+// .sha256 file (2.0.17 checks none). `binarySha256` pins the executable inside,
+// hashed from a verified extraction of each archive; the x64-win32 and
+// arm64-darwin values also equal the rg the harness itself downloaded in the
+// unseeded captures (README, "ripgrep pre-seed").
 const ASSETS = {
   "arm64-darwin": {
     platform: "aarch64-apple-darwin",
     extension: "tar.gz",
     sha256: "378e973289176ca0c6054054ee7f631a065874a352bf43f0fa60ef079b6ba715",
+    binarySha256: "4fdf1d8365af224bc70e3c1490d8461d859c37cc70e739a11e987af0215f3e94",
   },
   "arm64-linux": {
     platform: "aarch64-unknown-linux-gnu",
     extension: "tar.gz",
     sha256: "2b661c6ef508e902f388e9098d9c4c5aca72c87b55922d94abdba830b4dc885e",
+    binarySha256: "968cabe8efed72fd8fd482cb76b6084fcb695fc5293af7fb62296b02f487fb69",
   },
   "x64-darwin": {
     platform: "x86_64-apple-darwin",
     extension: "tar.gz",
     sha256: "64811cb24e77cac3057d6c40b63ac9becf9082eedd54ca411b475b755d334882",
+    binarySha256: "3bafa7e6ee51ba3ac4ed065883484a309be09b26ea6dad561ae4049bfe049c50",
   },
   "x64-linux": {
     platform: "x86_64-unknown-linux-musl",
     extension: "tar.gz",
     sha256: "1c9297be4a084eea7ecaedf93eb03d058d6faae29bbc57ecdaf5063921491599",
+    binarySha256: "ebeaf56f8a25e102e9419933423738b3a2a613a444fd749d695e15eba53f71f2",
   },
   "arm64-win32": {
     platform: "aarch64-pc-windows-msvc",
     extension: "zip",
     sha256: "00d931fb5237c9696ca49308818edb76d8eb6fc132761cb2a1bd616b2df02f8e",
+    binarySha256: "f7799d737b520e00b10dfa72def23904fe66fb03315636a7b78549845ee9609c",
   },
   "ia32-win32": {
     platform: "i686-pc-windows-msvc",
     extension: "zip",
     sha256: "725be85a1e8f92878a548f40ee4f6df64bc93b809586462b3c6d884e1de1e83a",
+    binarySha256: "7773ca1c74315c188a84937adbfa3af5b2fa8ef12be0249d66a6ce372f67e82e",
   },
   "x64-win32": {
     platform: "x86_64-pc-windows-msvc",
     extension: "zip",
     sha256: "124510b94b6baa3380d051fdf4650eaa80a302c876d611e9dba0b2e18d87493a",
+    binarySha256: "decdd4992f3f1b9a5ef9898f1b40ab16886d579d6516b4efd3d5eaa19364e408",
   },
 };
+
+/**
+ * The seeded copy's modification time. A harness that fetched its own ripgrep
+ * into the same place would replace the file and its time with it.
+ */
+export const SEED_MTIME = new Date("2001-01-01T00:00:00Z");
 
 function fail(message) {
   return new Error(`ripgrep pre-seed failed: ${message}`);
@@ -72,8 +88,30 @@ export function ripgrepAsset(platform = process.platform, arch = process.arch) {
   };
 }
 
+/** A per-user cache directory: never a shared temporary directory another account could write. */
+export function defaultRipgrepDir(asset = ripgrepAsset()) {
+  const base =
+    process.platform === "win32"
+      ? (process.env.LOCALAPPDATA ?? join(homedir(), "AppData", "Local"))
+      : process.platform === "darwin"
+        ? join(homedir(), "Library", "Caches")
+        : process.env.XDG_CACHE_HOME || join(homedir(), ".cache");
+  return join(base, "hooknostic", "ripgrep", RIPGREP_VERSION, asset.platform);
+}
+
 async function isFile(path) {
   return (await stat(path).catch(() => undefined))?.isFile() ?? false;
+}
+
+async function sha256File(path) {
+  return createHash("sha256")
+    .update(await readFile(path))
+    .digest("hex");
+}
+
+/** Only the pinned executable, byte for byte, is ever reused or seeded. */
+async function pinned(path, asset) {
+  return (await isFile(path)) && (await sha256File(path)) === asset.binarySha256;
 }
 
 function versionOf(executable) {
@@ -82,10 +120,6 @@ function versionOf(executable) {
       resolve(error ? undefined : String(stdout).split(/\r?\n/)[0]),
     );
   });
-}
-
-async function usable(executable) {
-  return (await isFile(executable)) && (await versionOf(executable))?.startsWith(`ripgrep ${RIPGREP_VERSION}`);
 }
 
 async function download(asset, { fetch = globalThis.fetch, attempts = 3, timeoutMs = 20000, retryDelayMs = 1000 }) {
@@ -119,19 +153,18 @@ function run(command, args, cwd) {
 }
 
 /**
- * A verified ripgrep in a directory shared across runs: `HKN_RIPGREP_DIR`, or a
- * per-version directory under the OS temp directory. Downloads (SHA-256 pinned,
- * retried) and extracts only when no usable copy is there yet, so a developer
- * machine fetches once; a fresh CI runner still fetches once per job.
+ * The pinned ripgrep in a per-user directory shared across runs:
+ * `HKN_RIPGREP_DIR`, or `defaultRipgrepDir()`. A copy there is reused only if
+ * its SHA-256 is the pinned executable's. Otherwise the archive is downloaded
+ * (SHA-256 pinned, retried) and extracted, and the executable must hash to its
+ * pin and report the version. A developer machine fetches once; a fresh CI
+ * runner fetches once per job unless the directory is cached.
  */
 export async function ensureRipgrep(options = {}) {
   const asset = options.asset ?? ripgrepAsset();
-  const dir =
-    options.dir ??
-    process.env.HKN_RIPGREP_DIR ??
-    join(tmpdir(), "hooknostic-ripgrep", RIPGREP_VERSION, asset.platform);
+  const dir = options.dir ?? process.env.HKN_RIPGREP_DIR ?? defaultRipgrepDir(asset);
   const target = join(dir, asset.executable);
-  if (await usable(target)) return target;
+  if (await pinned(target, asset)) return target;
   await mkdir(dir, { recursive: true });
   const work = await mkdtemp(join(dir, ".fetch-"));
   try {
@@ -143,29 +176,51 @@ export async function ensureRipgrep(options = {}) {
     else await run("tar", ["-xzf", archive, "-C", work], work);
     const extracted = join(work, asset.name, asset.executable);
     if (!(await isFile(extracted))) throw fail(`${asset.file} did not contain ${asset.name}/${asset.executable}`);
+    const actual = await sha256File(extracted);
+    if (actual !== asset.binarySha256)
+      throw fail(`${asset.name}/${asset.executable} SHA-256 mismatch: expected ${asset.binarySha256}, got ${actual}`);
     if (process.platform !== "win32") await chmod(extracted, 0o755);
-    const version = await versionOf(extracted);
-    if (!version?.startsWith(`ripgrep ${RIPGREP_VERSION}`))
-      throw fail(`${extracted} reports ${JSON.stringify(version)}, expected ripgrep ${RIPGREP_VERSION}`);
-    // Only the tools drive seeds, so a concurrent writer means two test runs on
-    // one machine. POSIX rename replaces atomically; Windows refuses an existing
-    // target, which is then either the other run's verified copy (kept) or a
-    // stale file (replaced).
+    // Move it into place before it ever runs: on Windows a just-run (or
+    // just-written) executable can stay locked for a moment, and moving or
+    // deleting it then failed in 3 of 250 local runs (README). Only the tools
+    // drive seeds, so a concurrent writer means two test runs on one machine;
+    // its pinned copy is kept. A stale file is replaced.
+    if ((await isFile(target)) && !(await pinned(target, asset))) await unlocked(() => rm(target, { force: true }));
     try {
-      await rename(extracted, target);
+      await unlocked(() => rename(extracted, target));
     } catch (error) {
-      if (await usable(target)) return target;
-      if (!(await isFile(target))) throw error;
-      await rm(target, { force: true });
-      await rename(extracted, target);
+      if (await pinned(target, asset)) return target;
+      throw error;
+    }
+    const version = await versionOf(target);
+    if (!version?.startsWith(`ripgrep ${RIPGREP_VERSION}`)) {
+      await rm(target, { force: true }).catch(() => {});
+      throw fail(`${target} reports ${JSON.stringify(version)}, expected ripgrep ${RIPGREP_VERSION}`);
     }
     return target;
   } finally {
-    await rm(work, { recursive: true, force: true });
+    // A leftover temporary directory is harmless; failing to remove one is not a failed seed.
+    await rm(work, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }).catch(() => {});
   }
 }
 
-/** Copy the verified ripgrep to where the harness looks under `cacheHome` (its XDG_CACHE_HOME). */
+/** Retries the transient Windows lock errors on a freshly written executable (about 4.5 s at most). */
+async function unlocked(operation) {
+  for (let attempt = 1; ; attempt += 1) {
+    try {
+      return await operation();
+    } catch (error) {
+      if (attempt >= 10 || !["EBUSY", "EPERM", "EACCES"].includes(error?.code)) throw error;
+      await new Promise((resolve) => setTimeout(resolve, 100 * attempt));
+    }
+  }
+}
+
+/**
+ * Copy the pinned ripgrep to where the harness looks under `cacheHome` (its
+ * XDG_CACHE_HOME): `<cacheHome>/opencode/bin/rg`, `rg.exe` on Windows. The copy
+ * is checked against the pin and given `SEED_MTIME`.
+ */
 export async function seedRipgrep(cacheHome, options = {}) {
   const asset = options.asset ?? ripgrepAsset();
   const source = await ensureRipgrep({ ...options, asset });
@@ -174,6 +229,8 @@ export async function seedRipgrep(cacheHome, options = {}) {
   const seeded = join(bin, asset.executable);
   await copyFile(source, seeded);
   if (process.platform !== "win32") await chmod(seeded, 0o755);
+  if (!(await pinned(seeded, asset))) throw fail(`${seeded} is not the pinned executable after copying`);
+  await utimes(seeded, SEED_MTIME, SEED_MTIME);
   return { source, seeded };
 }
 
@@ -188,29 +245,69 @@ function spawnedCommand(line) {
   }
 }
 
+const isRipgrep = (command) => /^rg(\.exe)?$/i.test(command.split(/[\\/]/).at(-1));
+const samePath = (a, b) =>
+  process.platform === "win32" ? resolve(a).toLowerCase() === resolve(b).toLowerCase() : resolve(a) === resolve(b);
+
 /**
- * Proof by effect that the run did not fetch ripgrep: the harness logs
- * `downloading ripgrep` at INFO before every bootstrap, successful or not. A log
- * with no INFO line cannot show that either, so it fails rather than passing
- * vacuously. 2.0.17 also logs each process it spawns; the ripgrep ones are
- * returned for the record (2.3.2 logs none).
+ * Checks the harness log of one run for evidence that it fetched ripgrep:
+ *
+ * - any line naming the release download, by the harness's message
+ *   (`downloading ripgrep`), the release URL, or an archive name (the
+ *   extraction of 2.0.17 logs it), at any level;
+ * - no INFO line from the harness server (`role=server`), where the bootstrap
+ *   runs and logs: such a log could not show a download, however named. The
+ *   `--version` and `run` processes log as `role=cli` and do not count;
+ * - on a build that logs the processes it starts (2.0.17), no ripgrep among
+ *   them, or one other than `expected`.
+ *
+ * Text-based: a build that downloads without logging the URL, the archive or
+ * its processes is caught only by verifyRipgrepSeed's file check.
  */
-export function checkRipgrepLog(text, where = "the harness log") {
+export function checkRipgrepLog(text, { expected, where = "the harness log" } = {}) {
   const lines = text.split(/\r?\n/);
-  const downloaded = lines.find((line) => line.includes('message="downloading ripgrep"'));
-  if (downloaded) throw new Error(`OpenCode downloaded ripgrep despite the pre-seed (${where}): ${downloaded}`);
-  if (!lines.some((line) => / level=INFO .*message="/.test(line)))
-    throw new Error(`no INFO-level harness log lines in ${where}; cannot tell whether ripgrep was downloaded`);
-  const spawned = lines
-    .map(spawnedCommand)
-    .filter((command) => command && /^rg(\.exe)?$/i.test(command.split(/[\\/]/).at(-1)));
-  return { spawned: [...new Set(spawned)] };
+  const fetched = lines.find(
+    (line) =>
+      line.includes('message="downloading ripgrep"') ||
+      line.includes("github.com/BurntSushi/ripgrep") ||
+      /ripgrep-\d+\.\d+\.\d+-[\w.-]+\.(?:zip|tar\.gz)/.test(line),
+  );
+  if (fetched) throw new Error(`OpenCode downloaded ripgrep despite the pre-seed (${where}): ${fetched}`);
+  if (!lines.some((line) => / level=INFO /.test(line) && / role=server(?:\s|$)/.test(line)))
+    throw new Error(`no INFO line from the harness server in ${where}; cannot tell whether it downloaded ripgrep`);
+  const processes = lines.map(spawnedCommand).filter(Boolean);
+  const spawned = [...new Set(processes.filter(isRipgrep))];
+  if (processes.length && !spawned.length)
+    throw new Error(`the harness logged the processes it started but no ripgrep among them (${where})`);
+  const other = expected ? spawned.filter((command) => !samePath(command, expected)) : [];
+  if (other.length) throw new Error(`OpenCode ran ${other[0]}, not the expected ripgrep ${expected} (${where})`);
+  return { spawned };
 }
 
-/** checkRipgrepLog over the harness logs under `dataHome` (its XDG_DATA_HOME). */
-export async function verifyRipgrepSeed(dataHome) {
+/** Where the harness's PATH lookup finds `name` first, if anywhere. */
+export async function findOnPath(name, searchPath = "") {
+  for (const dir of searchPath.split(delimiter).filter(Boolean))
+    if (await isFile(join(dir, name))) return join(dir, name);
+  return undefined;
+}
+
+/**
+ * After a run: checkRipgrepLog over the harness logs under `dataHome` (its
+ * XDG_DATA_HOME), expecting the seeded ripgrep unless the harness's PATH holds
+ * one, which it looks up first; and the seeded file still carries SEED_MTIME,
+ * so nothing replaced it.
+ */
+export async function verifyRipgrepSeed(seed, dataHome, searchPath) {
   const dir = join(dataHome, "opencode", "log");
   const names = (await readdir(dir).catch(() => [])).filter((name) => name.endsWith(".log"));
   const text = (await Promise.all(names.map((name) => readFile(join(dir, name), "utf8")))).join("\n");
-  return checkRipgrepLog(text, dir);
+  const onPath = await findOnPath(basename(seed.seeded), searchPath);
+  const expected = onPath ?? seed.seeded;
+  const { spawned } = checkRipgrepLog(text, { expected, where: dir });
+  const info = await stat(seed.seeded).catch(() => undefined);
+  if (!info || Math.round(info.mtimeMs / 1000) !== SEED_MTIME.getTime() / 1000)
+    throw new Error(
+      `the seeded ${seed.seeded} was ${info ? `replaced (modified ${info.mtime.toISOString()})` : "removed"} during the run`,
+    );
+  return { expected, spawned };
 }

@@ -439,11 +439,15 @@ try {
     }),
   );
   diagnostics.complete("write-results");
-  if (ripgrep) {
+  // A harness that failed is reported as such (exit code, result.json), not as
+  // an unverifiable log: only a completed run is checked for a download.
+  if (ripgrep && code !== 0) diagnostics.snapshot("ripgrep.json", { ...ripgrep, verified: false, harnessExit: code });
+  else if (ripgrep) {
+    const searchPath = Object.entries(env).find(([name]) => name.toUpperCase() === "PATH")?.[1];
     const used = await diagnostics.run("verify-ripgrep-seed", async () =>
-      (await import("./ripgrep.mjs")).verifyRipgrepSeed(env.XDG_DATA_HOME),
+      (await import("./ripgrep.mjs")).verifyRipgrepSeed(ripgrep, env.XDG_DATA_HOME, searchPath),
     );
-    diagnostics.snapshot("ripgrep.json", { ...ripgrep, ...used });
+    diagnostics.snapshot("ripgrep.json", { ...ripgrep, ...used, verified: true });
   }
 } catch (error) {
   diagnostics.fail(error);

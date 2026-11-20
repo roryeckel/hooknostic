@@ -212,9 +212,10 @@ Every other tool completed. The test, the drive and the shim were not involved.
    `System32\tar.exe` and checks a SHA-256 pin per asset. Each of 2.3.2's
    seven pins matches ripgrep's published `.sha256` file.
 2. *Live probes* of the `tools` drive with an isolated `XDG_CACHE_HOME` and
-   `XDG_DATA_HOME`, no `rg` on `PATH`, unseeded and then seeded:
-   - Windows 11, 2.0.17 (2026-11-19).
-   - Linux (WSL Ubuntu, x86_64, ext4), 2.0.17 and 2.3.2 (2026-11-19).
+   `XDG_DATA_HOME`, no `rg` on `PATH`, unseeded and then seeded. Dates are
+   UTC:
+   - Windows 11, 2.0.17 (2026-11-20).
+   - Linux (WSL Ubuntu, x86_64, ext4), 2.0.17 and 2.3.2 (2026-11-20).
    - macOS: GitHub Actions run 44652663725 (2026-11-20 01:19 UTC), image
      `macos-26-arm64` 20261112.0504.1, macOS 26.7.2 (25G332), arm64, 2.0.17.
      It ran from a temporary workflow on a throwaway orphan branch, which was
@@ -237,12 +238,18 @@ Every other tool completed. The test, the drive and the shim were not involved.
   `opencode-pty` directory there.)
 - 2.0.17 also logs each process it spawns: `Expand-Archive` through
   `powershell.exe` on Windows, `tar -xzf` on Linux and macOS, then `<bin>/rg`
-  for `glob` and `grep`. 2.3.2 logs no process spawns.
+  for `glob` and `grep`. The extraction line names the archive. 2.3.2 logs no
+  process spawns.
+- Every line carries the role of the process that wrote it. The `serve`
+  process, where the bootstrap runs, writes `role=server`; the download line is
+  one of its lines. The `--version` check the drive runs first, and each
+  process's `cli starting` line, write `role=cli` to the same file. Observed on
+  2.0.17 (Windows, Linux) and 2.3.2 (Linux).
 - Seeded with the pinned build at that path, no probed build logged a download,
   and `glob` and `grep` completed. On 2.0.17 the spawned `rg` was the
   seeded file on all three platforms.
 
-**Reproduction attempts (Windows 11, 2.0.17, 2026-11-19).** The failure did
+**Reproduction attempts (Windows 11, 2.0.17, 2026-11-20).** The failure did
 not reproduce locally, so the CI artifacts above remain the evidence of record:
 
 - The unseeded `tools` drive (`HOOKNOSTIC_PLAYBACK=opencode-v2`, seed call
@@ -253,47 +260,105 @@ not reproduce locally, so the CI artifacts above remain the evidence of record:
 - The harness's own extraction command (`Expand-Archive -LiteralPath <zip>
   -DestinationPath <dir> -Force` under `powershell.exe -NoProfile
   -NonInteractive`) ran 200 times on the verified zip. It exited 0 and left
-  `rg.exe` every time.
+  `rg.exe` every time. This exercises 2.0.17's extractor, not the drive's.
 
 So the cause inside the bootstrap remains open. Because 2.0.17 does not check
 the download, a truncated archive is still a candidate. The CI failure upload
 now keeps the harness log and any archive left in `cache/opencode/bin`. The
 seed removes the dependency whatever the cause.
 
-**Consequences.** `ripgrep.mjs` holds the harness's platform table and 2.3.2's
-pins. For the `tools` effect only, the drive does the following:
+**The drive's own Windows extraction (2026-11-20).** `ensureRipgrep` ran end to
+end on Windows 11 x64, each time into a fresh directory, with the verified zip
+served from memory. Each run checks the archive pin, extracts with
+`System32\tar.exe -xf`, checks the executable pin and `rg --version`, and moves
+the result into place.
 
-1. *Seed.* It fetches the asset for this host, retrying up to three times with
-   20 s each, and checks its SHA-256. It extracts the asset (bsdtar for the
-   Windows zip, `tar -xzf` elsewhere) and checks that `rg --version` reports
-   15.1.0. The result is kept in `HKN_RIPGREP_DIR`, or by default in
-   `<os tmp>/hooknostic-ripgrep/15.1.0/<target>`. The drive copies that file
-   to `<XDG_CACHE_HOME>/opencode/bin` (phase `seed-ripgrep`). Any failure reads
-   `ripgrep pre-seed failed: …`.
-2. *Verify.* After the run, it reads the harness logs and fails if any line
-   logged `downloading ripgrep`. It also fails if no INFO-level line was
-   logged at all, because such a log could not have shown a download (phase
-   `verify-ripgrep-seed`). `ripgrep.json` records the seed and, on 2.0.17,
-   which `rg` ran.
+- In the first order, `rg --version` ran on the extracted file before it was
+  moved. 3 of 250 runs failed with `EBUSY` on moving or deleting the
+  just-run `rg.exe`, and one more failed in an earlier, aborted loop. A
+  freshly written or just-run executable can stay locked for a moment on
+  Windows: the same class of fault as a bootstrap that extracts and then
+  cannot find or use its `rg.exe`.
+- The executable is now moved into place before it ever runs. Moves and
+  deletes retry the transient lock errors (`EBUSY`, `EPERM`, `EACCES`; about
+  4.5 s at most), and a leftover temporary directory no longer fails the seed.
+  With these changes, 600 of 600 runs succeeded (two loops of 300).
+
+**Consequences.** `ripgrep.mjs` holds the harness's platform table with two
+SHA-256 pins per asset: the archive (2.3.2's pins) and the executable inside
+it. The executable pins were hashed from a verified extraction of each of the
+seven archives. The x64-win32 and arm64-darwin values also equal the `rg` the
+harness itself downloaded in the unseeded captures. For the `tools` effect
+only, the drive does the following:
+
+1. *Seed* (phase `seed-ripgrep`).
+   - The shared copy lives in `HKN_RIPGREP_DIR`, or by default in a per-user
+     cache: `%LOCALAPPDATA%`, `~/Library/Caches`, or `$XDG_CACHE_HOME`
+     (`~/.cache`), under `hooknostic/ripgrep/15.1.0/<target>`. It is never
+     in a shared temporary directory.
+   - A copy there is used only if it matches the executable pin byte for byte.
+   - Otherwise the drive fetches the asset (three attempts of 20 s each),
+     checks the archive pin, extracts, checks the executable pin, moves the
+     file into place, and checks `rg --version`.
+   - It then copies the file to `<XDG_CACHE_HOME>/opencode/bin/rg[.exe]`,
+     checks the copy against the pin, and sets its modification time to
+     2001-01-01T00:00:00Z.
+   - Any failure reads `ripgrep pre-seed failed: …`.
+2. *Verify* (phase `verify-ripgrep-seed`). This runs only after the harness
+   exits 0; a failed harness is reported by its exit code and `result.json`
+   instead. The check reads the run's harness logs and fails on any of the
+   following:
+   - A line names the download: the `downloading ripgrep` message, the
+     release URL, or an archive name (2.0.17's extraction line), at any level
+     and under any message name.
+   - No INFO line comes from the server process (`role=server`). The drive's
+     own `--version` call does not count.
+   - On a build that logs the processes it starts (2.0.17), no `rg` among
+     them, or an `rg` other than the expected one. The expected one is the
+     seeded file, unless the harness's `PATH` holds an `rg`, which the harness
+     looks up first.
+   - The seeded file no longer carries its modification time, meaning
+     something replaced it.
+
+   `ripgrep.json` records the seed, the expected `rg` and the `rg` processes
+   logged.
+
+What this guarantees: the checks are text-based plus one file check. Each of
+2.0.17 and 2.3.2 writes the download line from the server process, so a
+download by either build fails the run. A future build is caught if it logs
+the URL or an archive name, if it logs its processes (an `rg` that is not the
+seed, or an extraction), or if it writes its own copy over the seed. A build
+that downloads to another place while logging none of these would not be
+caught. harness-watch's latest-build lane runs this check against each new
+build.
 
 The playback test fetches the asset before starting the drive, so a slow first
 fetch is not charged to the drive's own timeout.
 
-The download has moved, not disappeared. A developer machine fetches once. A
-fresh CI runner fetches once per job, from the same GitHub release, and that
-fetch is checksum-verified and retried. If a host has `rg` on `PATH`, the
-harness uses that one first. The check still holds, because nothing is
-downloaded.
+The download has moved, not disappeared. A developer machine fetches once. CI
+caches the shared copy (`actions/cache`, keyed on the runner OS and
+architecture and on `ripgrep.mjs`, which holds the version and pins), so only a
+cache miss fetches. That fetch is checksum-verified and retried, and a
+restored copy is still checked against the executable pin before use.
 
-If a later build stops looking in `<cache>/opencode/bin`, or renames the
-download log line, the verify phase fails loudly; it does not quietly go back
-to the network. The pins move with ripgrep's version in the harness.
+Fail-first evidence:
 
-The verification was shown to fail against its defect. With the seed call
-replaced by a no-op and the verification kept, the tools test failed on
-Windows (2.0.17) and on Linux (2.0.17 and 2.3.2) with
-`OpenCode downloaded ripgrep despite the pre-seed`. This held even when the
-harness's own download succeeded and `glob` and `grep` completed.
+- *Seed removed, verification kept.* The tools test failed on Windows
+  (2.0.17) and on Linux (2.0.17 and 2.3.2) with `OpenCode downloaded ripgrep
+  despite the pre-seed`. This held even when the harness's own download
+  succeeded and `glob` and `grep` completed.
+- *Each new guarantee* has a unit test that failed under its mutant:
+  - the server-role guard (a log holding only the `--version` line);
+  - the URL and archive scan (a renamed download message, and a DEBUG line
+    with a changed prefix);
+  - the expected-`rg` comparison;
+  - a logged process list without `rg`;
+  - the seed's directory and file name;
+  - reuse of an unpinned cached file;
+  - the replaced-seed check;
+  - a temporary-directory default.
+
+The pins move with ripgrep's version in the harness.
 
 ## Remaining-capability audit
 

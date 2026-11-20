@@ -198,10 +198,10 @@ download from GitHub into each run's fresh cache. The `tools` drive instead
 places a pinned ripgrep, checked against its SHA-256, in the harness's cache,
 where it looks after `PATH` and before downloading. It fails the run if the
 harness log shows a download (#264). That copy
-is itself fetched from GitHub: once per machine on a developer machine, once
-per job on a fresh CI runner. Set `HKN_RIPGREP_DIR` to a directory that holds,
-or should receive, that build. See `.capture/opencode-v2/README.md`, "ripgrep
-pre-seed".
+is itself fetched from GitHub once per machine into a per-user cache, and CI
+caches it. A cached copy is used only if it matches the pinned executable's
+SHA-256. Set `HKN_RIPGREP_DIR` to a directory that holds, or should receive,
+that build. See `.capture/opencode-v2/README.md`, "ripgrep pre-seed".
 
 ## Marketplace release gates
 
