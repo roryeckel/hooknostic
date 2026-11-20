@@ -672,8 +672,9 @@ moved there in 0.13.0, gets an HN501 remediation naming the subpath, the import
 to write instead, and the upgrade guide. A name missing from the SDK's schemas
 entry itself gets none: that import already names the subpath. For a config the
 hint replaces the generic remediation, which follows it only when the bundle
-failed for another reason too. `check`, `build` and `inspect --config` print it
-with the diagnostic. `dispatch`, which bundles the hook source itself, prints the
+failed for another reason too. `check`, `build`, `inspect --config`, `sync`,
+`verify`, `recover` and `doctor` print it with the diagnostic, and their `--json`
+lists it under `diagnostics` (the last four since #260). `dispatch`, which bundles the hook source itself, prints the
 same text as an indented `Remediation:` line under its `failed to bundle entry`
 error (#247).
 **HN103** an effect was truncated or dropped by a runtime budget.
@@ -695,7 +696,16 @@ import reaches (the first on its `node_modules` path, whether or not it provides
 `zod/v4`) is outside the SDK's `zod` peer range, or has no readable version, so
 the runtime bundles Hooknostic's own Zod instead. It is a warning, reported once
 per build, and it names the version and path found, the range, and the copy
-bundled. A project with no reachable Zod gets Hooknostic's copy without one.
+bundled. It names each Zod's path as HN110 names the SDK's: relative to the
+configuration's directory when inside it, and saying so, and absolute
+otherwise, as for a CLI installed outside the project, whose own Zod's path
+may name a home directory. In a Plug'n'Play project, a Zod served from Yarn's
+install, inside a zip archive or behind a virtual folder, is named
+`from Yarn's Plug'n'Play install` instead of by its machine-specific cache
+path: the project's Zod under Yarn's runtime, and Hooknostic's own under
+`yarn hooknostic` (#256). Every other Zod is named by its path, relative or
+absolute as above. A project with no reachable Zod gets Hooknostic's copy
+without one.
 User code that imports Zod still bundles the project's copy (ADR-0040).
 **HN110** the CLI running a build and the project's `@hooknostic/sdk` are on
 different releases, so the build would mix one release's SDK with another
@@ -713,12 +723,23 @@ folder (`__virtual__`, Yarn 2's `$$virtual`), is named by that install instead:
 `@hooknostic/sdk from Yarn's Plug'n'Play install is 0.11.9` (#225). Its path is
 unreadable, and usually machine-specific: it runs through `__virtual__` into
 Yarn's global cache, whose hash, depth and folder differ by machine. It is a
-warning, reported at most once per run, even when the configuration fails to
-load, so `check`, `build`, `sync` and `verify` all report it beside a load
-failure that the skew may cause, and so does `recover`, which reports it only
-beside a load failure.
-It never changes an exit code: `check` and `build` print it, and `sync` and
-`verify` list it with their other build diagnostics. It is silent when no SDK
+warning, reported at most once per run (`doctor --json` aside, below), even when
+the configuration fails to load, so `check`, `build`, `sync` and `verify` all
+report it beside a load failure that the skew may cause, and so does `recover`,
+which reports it only beside a load failure. `doctor` makes its own check for
+any configuration it is given, whatever its targets deliver and even when it
+fails to load, after its version line and before the load, but only for an SDK
+its own lookup finds (#257): where that line reads `not found`, as for an SDK
+only `NODE_PATH` reaches, or `not looked up`, as in a Plug'n'Play project
+outside Yarn's runtime, doctor's own check is silent. With project-delivery
+targets, doctor also lists the report of the `verify` it runs, whose HN110 comes
+from the build's lookup; that lookup walks `node_modules` as the version line's
+does (#258), so neither warns about an SDK the version line reads as `not found`.
+It never changes an exit code: `check` and `build` print it, `sync` and
+`verify` list it with their other build diagnostics, and `doctor --json` lists
+its own check's under a top-level `diagnostics`. That is the exception to once
+per run: in a project run, the JSON's `project.diagnostics`, the `verify`
+report, may repeat it. It is silent when no SDK
 resolves, when either version is not valid semver, and in this repository's
 workspace, whose examples resolve `packages/sdk` at the CLI's own version. The
 SDK counts only when a `node_modules` folder in the config's directory or an
@@ -727,7 +748,8 @@ only `NODE_PATH` (which pnpm's bin shims set) or a global folder reaches is not
 the project's, as for `doctor`, and the build does not bundle it either (#246,
 #258). It is also silent under another install's Plug'n'Play runtime, as under
 `yarn dlx` in a Plug'n'Play project: looking up the project's SDK there would
-load its runtime beside dlx's and break the build (#216). Add
+load its runtime beside dlx's and break the build (#216); `yarn dlx` is
+unsupported (ADR-0041). Add
 `hooknostic` to the project's devDependencies at the same version as its
 `@hooknostic/sdk`, and run that CLI from the project directory:
 `npx hooknostic`, or `pnpm exec hooknostic` in a pnpm project (a project made
@@ -749,10 +771,11 @@ Under `yarn hooknostic` itself, where the CLI is in the project's install, a
 failure to resolve Hooknostic's own Zod keeps esbuild's error instead. On
 Linux with Node 22, `yarn dlx` sharing Yarn's global cache with the project
 fails with HN501 "controlled by multiple pnpapi instances", whatever the Zod
-(#190). Run
-Hooknostic through Yarn from the project, `yarn hooknostic`, with
-`hooknostic` as a devDependency (ADR-0040; supporting the other invocations
-is #190).
+version. Run Hooknostic through Yarn from the project, `yarn hooknostic`, with
+`hooknostic` as a devDependency, or start a CLI installed elsewhere under the
+project's runtime from the project directory with
+`node -r ./.pnp.cjs <dir>/hooknostic/bin/hooknostic.mjs`. Every other
+invocation, `yarn dlx` included, is unsupported (ADR-0040, ADR-0041).
 
 #### HN502 — bundled CLI entry point
 
@@ -1346,7 +1369,8 @@ build report's `hooknosticVersion`. `doctor` reports it beside Node.js's version
 the project's `@hooknostic/sdk` version, which it looks up as HN110 does (#246, #258):
 from the `node_modules` folders of the config's directory and its ancestors, never
 through `NODE_PATH`, outside Plug'n'Play; through Yarn's runtime in a Plug'n'Play
-project; and, like HN110, never under another install's Plug'n'Play runtime.
+project; and, like HN110, never under another install's Plug'n'Play runtime. HN110
+beside them judges an SDK that lookup found (#257).
 
 ## 17. Operational and trust considerations
 

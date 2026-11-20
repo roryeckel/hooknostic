@@ -1341,9 +1341,19 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
   const dryRun = options.dryRun === true;
   const runtimePolicy = effectiveRuntime(config);
   // The project's SDK, found as HN110 and doctor find it, so an SDK that only
-  // NODE_PATH reaches never stands in for it (#258). Unlike them, not skipped
-  // under another install's Plug'n'Play runtime (#216); whether it should be
-  // is #269's question.
+  // NODE_PATH reaches never stands in for it (#258).
+  //
+  // A latent hazard under another install's Plug'n'Play runtime -- `yarn dlx`,
+  // which ADR-0041 leaves unsupported. This Node resolution from the project is
+  // not gated by anotherInstallsPnpRuntime, as HN110's lookup is (#216), so it
+  // may load the project's PnP API beside that runtime; a later first-time Node
+  // resolution from an archive both list in Yarn's global cache would then fail
+  // with "controlled by multiple pnpapi instances". Whether this call is what
+  // leaves the project's API loaded under dlx is unconfirmed (#268); the MCP
+  // launcher avoids the failure by asking only the CLI's own API (#224). The
+  // call can't simply be skipped there: the CLI's shims keep @hooknostic/sdk
+  // external, and this alias points them at the project's SDK. A fix is a
+  // lookup through esbuild's resolver, with any future `yarn dlx` support.
   const projectSdk = config.entry === undefined ? undefined : projectSdkEntry(configDir);
   const outputFor = (target: string) => layout.outputs.find((entry) => entry.target === target);
   const staged: { key: string; target?: string; kind?: "directory" | "file"; stagingDir: string; outputDir: string }[] =

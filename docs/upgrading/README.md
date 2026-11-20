@@ -7,9 +7,10 @@ Changes that need more than a few lines get a guide here.
 When upgrading:
 
 - Keep `@hooknostic/sdk`, `@hooknostic/agent-plugin`, and the `hooknostic` CLI
-  on the same release. `check`, `build`, `sync` and `verify` warn HN110 when
-  the CLI and the project's SDK are on different releases, including beside
-  a configuration that fails to load. Upgrade them in one command, adding
+  on the same release. `check`, `build`, `sync`, `verify` and `doctor` warn
+  HN110 when the CLI and the project's SDK are on different releases,
+  including beside a configuration that fails to load. Upgrade them in one
+  command, adding
   `@hooknostic/agent-plugin@latest` if you depend on it:
 
   ```sh
