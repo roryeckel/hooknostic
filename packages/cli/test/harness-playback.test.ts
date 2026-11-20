@@ -25,6 +25,8 @@ import { adapterFixturesDir, SCENARIOS } from "@hooknostic/testkit";
 
 // @ts-expect-error The shared read-only npm registry fixture is plain JavaScript.
 import { startRegistry } from "../../../.capture/opencode-v2/registry.mjs";
+// @ts-expect-error Repository lane metadata is plain JavaScript.
+import { harnessLaneId, harnessLanes } from "../../../scripts/harness-lanes.mjs";
 // @ts-expect-error Repository release tooling is plain JavaScript.
 import { codeModeReferenceVersion } from "../../../scripts/verify-code-mode.mjs";
 // @ts-expect-error Repository release tooling is plain JavaScript.
@@ -3543,6 +3545,16 @@ export default definePlugin({ name: "pi-sync-playback", hooks: [
 // the registry must have an executable drive registered above. A placeholder
 // entry — or a deleted drive — fails here instead of reporting phantom
 // coverage. Runs even when no harness is selected, so CI always sees it.
+// Without network (scripts/without-network.sh), a run that selects no known
+// lane would skip every playback test and pass, as the first CI run of the
+// namespaced lanes did when its environment was lost. There, fail instead.
+it.runIf(process.env["HOOKNOSTIC_PLAYBACK_NETWORK"] === "none")(
+  "selects a known playback lane when run without network",
+  () => {
+    expect(Object.keys(harnessLanes), "HOOKNOSTIC_PLAYBACK names no known lane").toContain(harnessLaneId(selected));
+  },
+);
+
 it("every scenario in the registry has an executable drive", () => {
   const missing = SCENARIOS.filter((scenario) => !scenarioDrives.has(scenario.id)).map((scenario) => scenario.id);
   expect(missing, `scenarios without a drive: ${missing.join(", ")}`).toEqual([]);
