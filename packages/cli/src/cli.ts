@@ -8,6 +8,7 @@ import { parseArgs } from "node:util";
 import type { AdapterRegistry, EvaluationGuard } from "@hooknostic/core";
 import {
   EvaluationStalledError,
+  formatDiagnostics,
   HOOKNOSTIC_VERSION,
   loadConfig,
   runProject,
@@ -639,8 +640,11 @@ async function runCommand(argv: string[], options: RunCliOptions | undefined, ow
         });
         if (parsed.values["json"]) io.stdout(JSON.stringify({ schemaVersion: 1, command, ...result }, null, 2));
         else {
-          for (const diagnostic of result.diagnostics)
-            io.stdout(`${diagnostic.code} ${diagnostic.severity}: ${diagnostic.message}`);
+          // As `check` prints them, remediation included (#260).
+          if (result.diagnostics.length > 0) {
+            io.stdout(formatDiagnostics(result.diagnostics));
+            io.stdout("");
+          }
           for (const [id, target] of Object.entries(result.targets ?? {})) {
             const exclusions = target.project?.authorExclusions;
             if (exclusions)

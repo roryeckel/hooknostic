@@ -256,16 +256,27 @@ facts: HN110 alone warns when the CLI and the SDK differ.
 
 `doctor` judges an SDK it reports as `found`, whatever the config's targets
 deliver and even when the config fails to load. Its text output prints that HN110
-on the line after the versions, before the config loads. `doctor --json` lists
-doctor's own diagnostics, HN110 among them, under a top-level `diagnostics` array,
-empty without a config or a skew. They never change the exit code.
+after the versions, before the config loads. `doctor --json` lists doctor's own
+diagnostics under a top-level `diagnostics` array: HN110 first, then each error of
+doctor's own builds, with its remediation (#260). Doctor builds a config that fails
+to load, every target of a config without `project`, and the package-delivery
+targets of a `project` configuration, so these errors include a config that fails
+to load and such a target with no registered adapter. `configurationErrors` still
+lists those errors' messages, as strings. The array is empty without a config, or
+with a config that has neither a skew nor an error in those builds. HN110 never
+changes the exit code; a configuration error exits 2. The text output prints each
+diagnostic as `check` does, with its code and remediation: HN110 on stdout, the
+configuration errors on stderr.
 
 With a `project` configuration that has project-delivery targets,
 `project.diagnostics` keeps the report of the `verify` doctor runs, as `sync` and
 `verify` list it, so HN110 may appear in both. That report's HN110 comes from the
 build's own lookup, which also follows `NODE_PATH`, so it may warn about an SDK the
-version line reads as `not found`. The text output prints the report's diagnostics
-after the project wiring line, leaving out one identical to doctor's own. When the
+version line reads as `not found`. A project-delivery target's errors, such as one
+with no registered adapter, are listed only there, not in the top-level
+`diagnostics` or `configurationErrors`. The text output prints the report's
+diagnostics on stdout after the project wiring line, leaving out one identical to
+doctor's own. When the
 verify build fails, the errors printed after them repeat every build message,
 HN110's included.
 
