@@ -318,7 +318,7 @@ on), not by CI.
   network.
 - **Rollback.** Revert the `ci:` commit that wraps the lanes. Also revert the
   hunks that describe enforcement as current: this section, the "on Linux CI
-  no network" clause in AGENTS.md, and the matching bullet in the
+  no IP network" clause in AGENTS.md, and the matching bullet in the
   harness-integration skill. The switches, the npm `--offline` mode and the
   scripts stay harmless with network.
 
