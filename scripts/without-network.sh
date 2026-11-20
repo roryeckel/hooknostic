@@ -35,7 +35,9 @@
 #     or removes it.
 #   - The file is read and removed after the drop, as you. The script's own
 #     variables are named _hkn_* and readonly, and the file's _hkn_* names
-#     are skipped, so no name in it can replace the script's own.
+#     are skipped, so no name in it can replace the script's own. Bash's own
+#     readonly names are skipped too, and POSIXLY_CORRECT is applied last,
+#     so no name in it can end the load.
 #   - On the sudo path no environment value appears in argv or output.
 #
 # HKN_NO_NETWORK_REQUIRE_ENV (comma-separated names) is read before the sudo
@@ -83,18 +85,26 @@ case "${1:-}" in
     [ "$#" -gt 0 ] || usage
     # This script's own names (_hkn_*) are skipped, so no caller variable can
     # replace the required list or the canary's path; they are readonly too.
-    # The note names the variable, never its value. `set -e` is off for the
-    # load: under it, bash ends the run silently on any refused readonly
-    # assignment, ours or its own (EUID, SHELLOPTS, ...). Off, the assignment
-    # is refused and the load goes on.
+    # The note names the variable, never its value.
+    # A refused readonly assignment ends a bash run silently: always under
+    # `set -e`, and in any mode once POSIXLY_CORRECT has switched bash to
+    # POSIX mode. So:
+    #   - the names bash itself keeps readonly are skipped (a child process
+    #     gets its own);
+    #   - POSIXLY_CORRECT is exported only after the loop;
+    #   - `set -e` is off for the load, as a backstop.
     set +e
+    _hkn_posix=""
     while IFS= read -r -d '' _hkn_kv; do
       case "$_hkn_kv" in
         _hkn_*) echo "without-network: ignoring the caller's ${_hkn_kv%%=*}, a name this script reserves" >&2 ;;
+        BASHOPTS=* | BASH_VERSINFO=* | EUID=* | PPID=* | SHELLOPTS=* | UID=*) ;;
+        POSIXLY_CORRECT=*) _hkn_posix="$_hkn_kv" ;;
         *) export "$_hkn_kv" 2>/dev/null ;;
       esac
     done < "$_hkn_envfile"
     set -e
+    [ -n "$_hkn_posix" ] && export "$_hkn_posix"
     rm -f -- "$_hkn_envfile"
     [ -n "$_hkn_path" ] && export PATH="$_hkn_path"
     [ -n "$_hkn_home" ] && export HOME="$_hkn_home"
@@ -106,9 +116,11 @@ case "${1:-}" in
     # Root, in the new namespace, from an empty environment: loopback up, then
     # drop to the user with no groups, capabilities or way back.
     PATH="$_hkn_syspath"
-    uid="$2" gid="$3" envfile="$4" path="$5" home="$6" require="$7"
-    shift 7
+    uid="$2" gid="$3" envfile="$4" owner="$5" path="$6" home="$7" require="$8"
+    shift 8
     [ "${1:-}" = "--" ] && shift
+    # Only a file root made (root entry); a successful exec drops the trap.
+    [ "$owner" = root ] && trap 'rm -f -- "$envfile"' EXIT
     ip link set lo up
     exec setpriv --reuid="$uid" --regid="$gid" --clear-groups --inh-caps=-all --no-new-privs -- \
       env -i PATH="$_hkn_syspath" bash "$_hkn_self" --inside "$uid" "$envfile" "$path" "$home" "$require" -- "$@"
@@ -144,17 +156,21 @@ case "${1:-}" in
     fi
     # Everything above can be checked as a normal user; everything below is root's.
     [ "$(id -u)" = 0 ] || die "--as needs root"
+    owner=caller
     if [ -z "$envfile" ]; then
       # Root entry: root's own environment, handed to the user in the same kind
-      # of file. Removed here if the hops never reach --inside.
+      # of file. Root made it, so root removes it if a root hop fails: this
+      # trap until `unshare` starts, the --netns one until `setpriv` starts.
+      # The sudo caller's file is never root's to remove; their own trap does.
       [ -n "$path" ] && [ -n "$home" ] || usage
       envfile="$(umask 077 && mktemp /tmp/without-network-env.XXXXXX)"
+      owner=root
       trap 'rm -f -- "$envfile"' EXIT
       env -0 > "$envfile"
       chown "$uid:$gid" -- "$envfile"
     fi
     exec unshare --net -- env -i PATH="$_hkn_syspath" \
-      bash "$_hkn_self" --netns "$uid" "$gid" "$envfile" "$path" "$home" "$require" -- "$@"
+      bash "$_hkn_self" --netns "$uid" "$gid" "$envfile" "$owner" "$path" "$home" "$require" -- "$@"
     ;;
   "" | -*)
     usage
