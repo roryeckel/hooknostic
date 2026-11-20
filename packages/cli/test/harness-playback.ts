@@ -717,6 +717,26 @@ export function openCodePlaybackConfigHome(projectDir: string): string {
   return join(projectDir, ".opencode-config");
 }
 
+/**
+ * Settings that stop each harness's avoidable network calls during playback.
+ * Each one was captured removing its destination, and none changes what a
+ * drive asserts (.capture/network-egress). On Linux CI the lanes run without
+ * network (scripts/without-network.sh), where these calls would fail
+ * harmlessly; with the settings, they are never made.
+ */
+export const playbackQuiet = {
+  /**
+   * Codex's built-in metrics exporter (ab.chatgpt.com). Only `exec` made the
+   * call on the captured builds; the `plugin` subcommands pass it too, and
+   * only `--version` goes without.
+   */
+  codexArgs: ["-c", "analytics.enabled=false"],
+  /** OpenCode v1's model catalog fetch (models.opencode.ai). */
+  opencodeV1Env: { OPENCODE_DISABLE_MODELS_FETCH: "1" },
+  /** OpenCode v2's model catalog fetch, and the TUI's update check (opencode.ai). */
+  opencodeV2Env: { OPENCODE_DISABLE_MODELS_FETCH: "1", OPENCODE_DISABLE_AUTOUPDATE: "1" },
+} as const;
+
 export async function prepareOpenCodePluginDependency(projectDir: string, harnessVersion: string): Promise<void> {
   const dependencyDirs = [join(projectDir, ".opencode"), join(openCodePlaybackConfigHome(projectDir), "opencode")];
   for (const dependencyDir of dependencyDirs) {

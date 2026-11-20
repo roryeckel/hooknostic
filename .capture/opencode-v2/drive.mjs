@@ -15,7 +15,7 @@ console.log(JSON.stringify({ root, effect }));
 const { createPlaybackDiagnostics } = await import("../../packages/cli/test/playback-diagnostics.ts");
 const diagnostics = createPlaybackDiagnostics(root, effect);
 process.on("uncaughtExceptionMonitor", error => diagnostics.fail(error));
-const { startModelPlayback, buildPlaybackArtifact, runProcess, resolveNativeExecutable } = await diagnostics.run(
+const { startModelPlayback, buildPlaybackArtifact, runProcess, resolveNativeExecutable, playbackQuiet } = await diagnostics.run(
   "load-playback-helpers", () => import("../../packages/cli/test/harness-playback.ts"),
 );
 async function runCaptureProcess(phase, command, args, options) {
@@ -288,6 +288,11 @@ if (registry) {
 for (const name of Object.keys(env)) {
   if (/API_KEY|AUTH_TOKEN|SECRET|TOKEN|OPENCODE/.test(name) && name !== "HKN_PLAYBACK_KEY") delete env[name];
 }
+// The drive's own settings, after the strip that removes the host's: no model
+// catalog fetch and no update check (.capture/network-egress). Every harness
+// process below inherits this env: `run` here, `serve --stdio` in lifecycle.mjs
+// and nested.mjs, and the TUI in notification-drive.mjs.
+Object.assign(env, playbackQuiet.opencodeV2Env);
 // Applied after the strip, which removes every OPENCODE* name: a host layer that
 // switches one projected server off (or leaves it on at its own address).
 if (twoServers) {
