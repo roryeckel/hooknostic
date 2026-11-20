@@ -323,6 +323,20 @@ export const opencodeV2CapabilityProfiles: CapabilityProfile[] = [
           artifact: ".capture/opencode-v2-audit",
           what: "The steer drive's traces before the fix, read again (#236, second review): besides the child's stop without text or turn id, the parent's prevention continuation carried the steered parent prompt's id, in 2 of 2 runs; on 2.2.6 no stop carried a steered id in 2 runs. With every instance now tracking the executions it sees start, the steer drive passed 10 of 10 runs on 2.0.17, 2.2.6 and 2.3.0.",
         },
+        {
+          version: "2.0.17",
+          date: "2026-11-20",
+          method: "live-probe",
+          artifact: ".capture/opencode-v2",
+          what: "ripgrep pre-seed (#264), tools drive on Windows, Linux (WSL) and a macOS arm64 runner: unseeded, glob/grep logged downloading ripgrep at INFO and cached it as $XDG_CACHE_HOME/opencode/bin/rg (rg.exe on Windows); with the pinned build seeded there, nothing was downloaded, the seeded binary ran and both tools completed.",
+        },
+        {
+          version: "2.3.2",
+          date: "2026-11-20",
+          method: "live-probe",
+          artifact: ".capture/opencode-v2",
+          what: "ripgrep pre-seed (#264), tools drive on Linux (WSL): unseeded, the harness logged downloading ripgrep at INFO and cached it as $XDG_CACHE_HOME/opencode/bin/rg; seeded there, it logged no download and glob/grep completed. This build logs no process spawns, so which rg ran is not recorded.",
+        },
       ],
     },
     // Optional event fields (ADR-0027). The turn fields rest on the 2.0.18
