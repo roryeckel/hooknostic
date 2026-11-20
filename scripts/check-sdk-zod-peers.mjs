@@ -209,11 +209,13 @@ try {
 
   /**
    * `check` and `build` in `project` must warn HN109 once, naming
-   * `zod@<version>` at `foundPath`, and the artifacts must carry the CLI's Zod
-   * rather than that one. Returns the reported diagnostic.
+   * `zod@<version>` at `foundPath`, relative to the project, where the config
+   * is, with forward slashes, as HN109 names a path inside the config's
+   * directory (#256), and the artifacts must carry the CLI's Zod rather than
+   * that one. Returns the reported diagnostic.
    */
   async function assertSubstituted(project, version, foundPath) {
-    const named = `the SDK's zod import reached zod@${version} at ${foundPath}`;
+    const named = `the SDK's zod import reached zod@${version} at ${foundPath} (relative to the config's directory)`;
     let reported = "";
     for (const command of ["check", "build"]) {
       const output = (await run(process.execPath, [cli, command, "--config", "hooknostic.config.ts"], project)).stdout;
@@ -243,7 +245,7 @@ try {
     return reported;
   }
 
-  const reportedNpm = await assertSubstituted(npmProject, "3.25.76", join(npmProject, "node_modules", "zod"));
+  const reportedNpm = await assertSubstituted(npmProject, "3.25.76", "node_modules/zod");
   console.log(
     `npm consumer with a hoisted zod@3.25.76: bundled zod@${cliZod.version} and warned HN109\n\n${reportedNpm}`,
   );
@@ -324,7 +326,7 @@ try {
   const pnpmZodManifest = JSON.parse(readFileSync(join(pnpmZod, "package.json"), "utf8"));
   assert.equal(pnpmZodManifest.version, "3.24.4");
   assert.ok(!("./v4" in pnpmZodManifest.exports), "zod@3.24.4 must not export ./v4");
-  const reportedPnpm = await assertSubstituted(pnpmProject, "3.24.4", pnpmZod);
+  const reportedPnpm = await assertSubstituted(pnpmProject, "3.24.4", "node_modules/.pnpm/zod@3.24.4/node_modules/zod");
   console.log(`pnpm consumer with zod@3.24.4: bundled zod@${cliZod.version} and warned HN109\n\n${reportedPnpm}`);
 } finally {
   await rm(directory, { recursive: true, force: true });

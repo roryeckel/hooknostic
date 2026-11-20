@@ -19,6 +19,16 @@ const dirs: string[] = [];
 const registry = defaultAdapterRegistry();
 registry.opencode = opencodeV1Adapter();
 const evaluate = { alias: { "@hooknostic/sdk": fileURLToPath(new URL("../../sdk/src/index.ts", import.meta.url)) } };
+// Tests in the project-command blocks below run sync, verify and build. Each
+// command evaluates the configuration and builds every configured target (up
+// to five here), and several tests run four or five commands in a row (#262).
+// On CI windows-latest (run 44493595340, 2026-11-19) the slowest of them took
+// 3.3 s and this file 34.5 s, but on a Windows machine shared with other test
+// runs they have run past the 30 s default. The limit is raised for these
+// blocks rather than in vitest.config.ts, so the default still flags slow
+// tests elsewhere, and rather than by running files serially, which would not
+// remove load from outside the run and would lengthen every `pnpm test`.
+const PROJECT_CYCLES_TIMEOUT_MS = 120_000;
 afterEach(async () => {
   await Promise.all(dirs.splice(0).map((d) => rm(d, { recursive: true, force: true })));
 });
@@ -97,7 +107,7 @@ describe("Claude skill overlays (ADR-0028)", () => {
   }, 60_000);
 });
 
-describe("complete project integration", () => {
+describe("complete project integration", { timeout: PROJECT_CYCLES_TIMEOUT_MS }, () => {
   it("anchors a dot MCP override to its nested source directory for every target", async () => {
     // pi has no MCP channel: with an MCP component configured its target
     // fails loudly with HN205 (the documented unsupported-component behavior)
@@ -301,7 +311,7 @@ describe("complete project integration", () => {
         emitted: 1,
       });
     }
-  }, 60_000);
+  });
 
   it.each([
     { target: "claude", destination: ".claude/skills", replacement: "${CLAUDE_SKILL_DIR}" },
@@ -312,36 +322,30 @@ describe("complete project integration", () => {
     },
     { target: "opencode", destination: ".agents/skills", replacement: "." },
     { target: "pi", destination: ".pi/skills", replacement: "." },
-  ])(
-    "writes $target's skill directory into a skill's body",
-    async ({ target, destination, replacement }) => {
-      const { root, options } = await fixture({
-        components: {
-          skills: ["./skills"],
-          accept: target === "codex" ? ["codex:skill-directory-model-substitution"] : [],
+  ])("writes $target's skill directory into a skill's body", async ({ target, destination, replacement }) => {
+    const { root, options } = await fixture({
+      components: {
+        skills: ["./skills"],
+        accept: target === "codex" ? ["codex:skill-directory-model-substitution"] : [],
+      },
+      targets: {
+        [target]: {
+          version: registry[target]!.harness.recommendedRange,
+          delivery: "project",
+          output: `.hooknostic/artifacts/${target}`,
         },
-        targets: {
-          [target]: {
-            version: registry[target]!.harness.recommendedRange,
-            delivery: "project",
-            output: `.hooknostic/artifacts/${target}`,
-          },
-        },
-      });
-      await mkdir(join(root, "skills/sample/scripts"), { recursive: true });
-      const frontmatter = "---\nname: sample\ndescription: Runs its launcher\n---\n";
-      const body = (dir: string) => `Run \`node "${dir}/scripts/status.mjs"\`, then ${dir}/scripts/again.\r\n`;
-      await writeFile(join(root, "skills/sample/SKILL.md"), frontmatter + body("${SKILL_DIR}"));
-      await writeFile(join(root, "skills/sample/scripts/status.mjs"), "");
+      },
+    });
+    await mkdir(join(root, "skills/sample/scripts"), { recursive: true });
+    const frontmatter = "---\nname: sample\ndescription: Runs its launcher\n---\n";
+    const body = (dir: string) => `Run \`node "${dir}/scripts/status.mjs"\`, then ${dir}/scripts/again.\r\n`;
+    await writeFile(join(root, "skills/sample/SKILL.md"), frontmatter + body("${SKILL_DIR}"));
+    await writeFile(join(root, "skills/sample/scripts/status.mjs"), "");
 
-      const synced = await runProject({ ...options, command: "sync" });
-      expect(synced.errors).toEqual([]);
-      expect(await readFile(join(root, `${destination}/sample/SKILL.md`), "utf8")).toBe(
-        frontmatter + body(replacement),
-      );
-    },
-    60_000,
-  );
+    const synced = await runProject({ ...options, command: "sync" });
+    expect(synced.errors).toEqual([]);
+    expect(await readFile(join(root, `${destination}/sample/SKILL.md`), "utf8")).toBe(frontmatter + body(replacement));
+  });
 
   it("rejects conflicting Codex and OpenCode skill text at their shared project destination", async () => {
     const { root, options } = await fixture({
@@ -360,7 +364,7 @@ describe("complete project integration", () => {
     expect(synced.ok).toBe(false);
     expect(synced.errors).toEqual(["duplicate integration destination: .agents/skills/sample/SKILL.md"]);
     await expect(readFile(join(root, ".agents/skills/sample/SKILL.md"))).rejects.toMatchObject({ code: "ENOENT" });
-  }, 60_000);
+  });
 
   it("fails a target whose skill text keeps a reference that target shows as written", async () => {
     const { root, options } = await fixture({
@@ -394,7 +398,7 @@ describe("complete project integration", () => {
     ]);
     expect(built.report.targets["claude"]?.status).toBe("failed");
     expect(built.ok).toBe(false);
-  }, 60_000);
+  });
 
   it("fails every target on a frontmatter reference, which no harness expands", async () => {
     const { root, options } = await fixture({ components: { skills: ["./skills"] } });
@@ -414,7 +418,7 @@ describe("complete project integration", () => {
       "pi",
     ]);
     expect(reported[0]?.message).toContain("No harness expands a reference in the frontmatter");
-  }, 60_000);
+  });
 
   it("reports a skill directory it cannot rewrite in a skill discovered in place", async () => {
     const { root, options } = await fixture({ components: { skills: ["./.claude/skills"] } });
@@ -444,7 +448,7 @@ describe("complete project integration", () => {
     ]);
     // The author's own file is left alone.
     expect(await readFile(join(root, ".claude/skills/review/SKILL.md"), "utf8")).toBe(text);
-  }, 60_000);
+  });
 
   it("carries a skill file's declared mode into the projection", () => {
     // The middle link of the chain the loader and the writer already pin: the
@@ -1220,7 +1224,6 @@ describe("complete project integration", () => {
       );
       expect((await runProject({ ...options, command: "verify" })).ok).toBe(true);
     },
-    60_000,
   );
   it("rejects a target-wide startup timeout when the only server is named __proto__", async () => {
     const { root, options } = await fixture({
@@ -1716,7 +1719,7 @@ describe("complete project integration", () => {
   });
 });
 
-describe("project command failures (#199)", () => {
+describe("project command failures (#199)", { timeout: PROJECT_CYCLES_TIMEOUT_MS }, () => {
   const revoked = () => {
     const revocable = Proxy.revocable({}, {});
     revocable.revoke();
