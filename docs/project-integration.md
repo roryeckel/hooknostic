@@ -290,7 +290,8 @@ An interrupted transaction blocks new sync. Run `recover` with the same config.
 Sync and recover hold `.hooknostic/sync.lock` while they run, so a sync that
 finds one reports that another sync or recover may be running and names
 `recover`, to be run with the same config. Recover removes
-that lock only when it was left by a process that has exited (see below).
+that lock only when its recorded PID names a process that has exited (see
+below).
 Recovery checks each file against the preimage or planned hash before restoring
 anything. Unexpected external edits preserve the journal and require manual
 resolution. Journal and staging files are ignored and can contain preimages of
@@ -304,11 +305,12 @@ or trust actions may still be required.
 Recovery itself uses an exclusive `recovery.lock`. If recovery is interrupted,
 retain the transaction journal and rerun recover. Recover clears a
 `recovery.lock` or `sync.lock` whose recorded PID names a process that has
-exited, and an empty one (left by a kill before the PID was written) once it is
-ten seconds old. When the PID belongs to a running process, possibly an
-unrelated one that reused the number, it refuses and names the PID and the
-lock's path; delete the file only after confirming no hooknostic sync or
-recover is running. It also refuses a lock that holds no valid PID. Run sync
-and recover from one environment at a time: a process in WSL, a container or
-another host that shares the checkout cannot be seen, and its lock looks
+exited. When the PID belongs to a running process, possibly an unrelated one
+that reused the number, it refuses and names the PID and the lock's path. It
+also refuses a lock that holds no valid PID, naming its path. That includes an
+empty lock, which a process killed while creating it leaves, but which a live
+process paused at that moment also has. In each case, delete the file only after
+confirming no hooknostic sync or recover is running, then rerun recover. Run
+sync and recover from one environment at a time: a process in WSL, a container
+or another host that shares the checkout cannot be seen, and its lock looks
 abandoned.

@@ -1,6 +1,18 @@
 import { spawnSync } from "node:child_process";
 import type * as fs from "node:fs/promises";
-import { chmod, mkdir, mkdtemp, readdir, readFile, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
+import {
+  chmod,
+  mkdir,
+  mkdtemp,
+  readdir,
+  readFile,
+  realpath,
+  rename,
+  rm,
+  stat,
+  utimes,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -9,7 +21,7 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { applyProject, fileHash, reconcileProject, recoverProject } from "./project-files.js";
 vi.mock("node:fs/promises", async (importOriginal) => {
   const actual = await importOriginal<typeof fs>();
-  return { ...actual, rename: vi.fn(actual.rename) };
+  return { ...actual, rename: vi.fn(actual.rename), readFile: vi.fn(actual.readFile) };
 });
 let root: string;
 const owner = "config.ts";
@@ -27,6 +39,8 @@ beforeEach(async () => {
 afterEach(async () => {
   vi.mocked(rename).mockReset();
   vi.mocked(rename).mockImplementation((await vi.importActual<typeof fs>("node:fs/promises")).rename);
+  vi.mocked(readFile).mockReset();
+  vi.mocked(readFile).mockImplementation((await vi.importActual<typeof fs>("node:fs/promises")).readFile);
   await rm(root, { recursive: true, force: true });
 });
 it("rolls back an ordinary replacement failure", async () => {
@@ -74,10 +88,15 @@ it("rechecks external edits immediately before a replacement", async () => {
   expect(await readFile(join(root, "z.txt"), "utf8")).toBe("external");
   expect(await readFile(join(root, ".hooknostic/transaction.json"), "utf8")).toContain('"schemaVersion":1');
 });
-it.each([
+const locks = [
   { name: ".hooknostic/recovery.lock", holder: "recover" },
   { name: ".hooknostic/sync.lock", holder: "sync or recover" },
-])("leaves a live lock that replaced a dead $name while recover checked it (#267)", async ({ name, holder }) => {
+];
+/**
+ * An interrupted transaction of a.txt from "before" to "after", and the lock
+ * `name` left by a process that has exited, its mtime an hour in the past.
+ */
+async function deadLockAndJournal(name: string) {
   const { pid: dead } = spawnSync(process.execPath, ["-e", ""]);
   expect(dead, "spawn a child to get a dead pid").toBeTypeOf("number");
   await mkdir(join(root, ".hooknostic"));
@@ -90,25 +109,103 @@ it.each([
     ],
   });
   await writeFile(join(root, ".hooknostic/transaction.json"), journal);
-  await writeFile(join(root, name), String(dead));
   const lock = join(await realpath(root), name);
-  const actual = (await vi.importActual<typeof fs>("node:fs/promises")).rename;
+  await writeFile(lock, String(dead));
+  const old = new Date(Date.now() - 3_600_000);
+  await utimes(lock, old, old);
+  /** Recover changed nothing: the transaction is still unfinished and staging holds no claim. */
+  const untouched = async () => {
+    expect(await readFile(join(root, "a.txt"), "utf8")).toBe("after");
+    expect(await readFile(join(root, ".hooknostic/transaction.json"), "utf8")).toBe(journal);
+    expect(await readdir(join(root, ".hooknostic/staging"))).toEqual([]);
+  };
+  return { lock, dead: String(dead), untouched };
+}
+const actualFs = () => vi.importActual<typeof fs>("node:fs/promises");
+it.each(locks)(
+  "leaves a live lock that replaced a dead $name while recover checked it (#267)",
+  async ({ name, holder }) => {
+    const { lock, untouched } = await deadLockAndJournal(name);
+    const actual = (await actualFs()).rename;
+    vi.mocked(rename).mockImplementation(async (from, to) => {
+      // After recover found the lock dead and before it claimed it, a peer
+      // removed the dead lock and created its own.
+      if (String(from) === lock) {
+        await rm(lock);
+        await writeFile(lock, String(process.pid));
+      }
+      return actual(from, to);
+    });
+    await expect(recoverProject(root, owner)).rejects.toThrow(
+      `another hooknostic ${holder} is running: it took ${lock} while recover was checking it; rerun hooknostic recover after it finishes`,
+    );
+    expect(await readFile(lock, "utf8")).toBe(String(process.pid));
+    await untouched();
+  },
+);
+it.each(locks)(
+  "tells a replacement $name with the same bytes from the one it judged dead (#267)",
+  async ({ name, holder }) => {
+    const { lock, dead, untouched } = await deadLockAndJournal(name);
+    const actual = (await actualFs()).rename;
+    vi.mocked(rename).mockImplementation(async (from, to) => {
+      // A peer replaced the lock with a new file holding the same bytes, so
+      // only its inode and mtime set it apart. The new file is written beside
+      // the old one and renamed over it, so the two never share an inode.
+      if (String(from) === lock) {
+        await writeFile(`${lock}.peer`, dead);
+        await actual(`${lock}.peer`, lock);
+      }
+      return actual(from, to);
+    });
+    await expect(recoverProject(root, owner)).rejects.toThrow(
+      `another hooknostic ${holder} is running: it took ${lock} while recover was checking it`,
+    );
+    expect(await readFile(lock, "utf8")).toBe(dead);
+    await untouched();
+  },
+);
+it.each([
+  {
+    name: ".hooknostic/recovery.lock",
+    message: (lock: string) =>
+      `another hooknostic recover may be running: ${lock} exists; rerun hooknostic recover, which removes a lock left by a process that has exited`,
+  },
+  {
+    name: ".hooknostic/sync.lock",
+    message: (lock: string) =>
+      `another hooknostic sync or recover may be running: ${lock} exists; if neither is, run hooknostic recover with the same configuration, which removes a lock left by a process that has exited`,
+  },
+])("leaves $name to a peer that claimed it first, and names the peer (#267)", async ({ name, message }) => {
+  const { lock, untouched } = await deadLockAndJournal(name);
+  const actual = (await actualFs()).rename;
   vi.mocked(rename).mockImplementation(async (from, to) => {
-    // After recover found the lock dead and before it claimed it, a peer
-    // removed the dead lock and created its own.
-    if (String(from) === lock) {
-      await rm(lock);
+    // A peer claimed the dead lock first, so this claim finds nothing, and
+    // the peer then created its own.
+    if (String(from) !== lock) return actual(from, to);
+    await rm(lock);
+    try {
+      return await actual(from, to);
+    } finally {
       await writeFile(lock, String(process.pid));
     }
-    return actual(from, to);
   });
-  await expect(recoverProject(root, owner)).rejects.toThrow(
-    `another hooknostic ${holder} is running: it took ${lock} while recover was checking it; rerun hooknostic recover after it finishes`,
-  );
+  await expect(recoverProject(root, owner)).rejects.toMatchObject({ message: message(lock), code: "EEXIST" });
   expect(await readFile(lock, "utf8")).toBe(String(process.pid));
-  expect(await readFile(join(root, "a.txt"), "utf8")).toBe("after");
-  expect(await readFile(join(root, ".hooknostic/transaction.json"), "utf8")).toBe(journal);
-  expect(await readdir(join(root, ".hooknostic/staging")).catch(() => [])).toEqual([]);
+  await untouched();
+});
+it.each(locks)("puts a claimed $name back when checking the claim fails (#267)", async ({ name }) => {
+  const { lock, dead, untouched } = await deadLockAndJournal(name);
+  const actual = (await actualFs()).readFile;
+  vi.mocked(readFile).mockImplementation(async (...args: Parameters<typeof actual>) => {
+    if (String(args[0]).includes(join(".hooknostic", "staging")))
+      throw Object.assign(new Error("EIO: i/o error, read"), { code: "EIO", syscall: "read" });
+    return actual(...args);
+  });
+  await expect(recoverProject(root, owner)).rejects.toMatchObject({ code: "EIO" });
+  vi.mocked(readFile).mockImplementation(actual);
+  expect(await readFile(lock, "utf8")).toBe(dead);
+  await untouched();
 });
 it.skipIf(process.platform === "win32")("applies the requested mode despite a restrictive umask", async () => {
   const previousUmask = process.umask(0o077);

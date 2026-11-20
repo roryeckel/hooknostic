@@ -374,6 +374,18 @@ describe("project reconciliation", () => {
     await expect(readFile(join(root, ".hooknostic/sync.lock"))).rejects.toMatchObject({ code: "ENOENT" });
     await sync();
   });
+  it("lets recover remove a dead sync lock and finish the interrupted transaction (#267)", async () => {
+    await mkdir(join(root, ".hooknostic"));
+    await writeFile(join(root, "settings.json"), "after");
+    await writeFile(join(root, ".hooknostic/transaction.json"), journal("before", "after"));
+    await writeFile(join(root, ".hooknostic/sync.lock"), String(deadPid()));
+    await recoverProject(root, config);
+    expect(await readFile(join(root, "settings.json"), "utf8")).toBe("before");
+    await expect(readFile(join(root, ".hooknostic/transaction.json"))).rejects.toMatchObject({ code: "ENOENT" });
+    await expect(readFile(join(root, ".hooknostic/sync.lock"))).rejects.toMatchObject({ code: "ENOENT" });
+    // The lock was claimed into staging and the claim then removed.
+    expect(await readdir(join(root, ".hooknostic/staging"))).toEqual([]);
+  });
   it("lets recover take over a recovery lock from a process that has exited, with nothing staged (#267)", async () => {
     // The common case: a recover killed after taking its lock, in a project
     // that has no journal and has never staged a file.
@@ -382,8 +394,12 @@ describe("project reconciliation", () => {
     await recoverProject(root, config);
     await expect(readFile(join(root, ".hooknostic/recovery.lock"))).rejects.toMatchObject({ code: "ENOENT" });
     await expect(readFile(join(root, ".hooknostic/sync.lock"))).rejects.toMatchObject({ code: "ENOENT" });
-    // Nothing it claimed the lock with is left behind.
-    expect(await readdir(join(root, ".hooknostic/staging")).catch(() => [])).toEqual([]);
+    // The lock was claimed into staging and the claim then removed.
+    expect(await readdir(join(root, ".hooknostic/staging"))).toEqual([]);
+  });
+  it("validates the configuration path before touching any lock", async () => {
+    await expect(recoverProject(root, "../outside.ts")).rejects.toThrow("unsafe project path: ../outside.ts");
+    await expect(readdir(join(root, ".hooknostic"))).rejects.toMatchObject({ code: "ENOENT" });
   });
   it("lets recover take over a dead recovery lock and finish the interrupted transaction (#267)", async () => {
     await mkdir(join(root, ".hooknostic"));
@@ -404,38 +420,32 @@ describe("project reconciliation", () => {
     );
     expect(await readFile(lock, "utf8")).toBe(String(process.pid));
   });
+  it.each([
+    // process.kill accepts no pid above 2^31-1, though it is a safe integer.
+    ...[".hooknostic/recovery.lock", ".hooknostic/sync.lock"].flatMap((name) =>
+      ["garbage", "0", "2147483648"].map((contents) => ({ name, contents })),
+    ),
+  ])("refuses $name holding $contents, naming its path, and keeps it", async ({ name, contents }) => {
+    await mkdir(join(root, ".hooknostic"));
+    await writeFile(join(root, name), contents);
+    const lock = join(await realpath(root), name);
+    await expect(recoverProject(root, config)).rejects.toThrow(
+      `invalid lock: ${lock} holds no valid process ID; inspect it, and if no hooknostic sync or recover is running, delete it and rerun hooknostic recover`,
+    );
+    expect(await readFile(lock, "utf8")).toBe(contents);
+  });
   it.each([".hooknostic/recovery.lock", ".hooknostic/sync.lock"])(
-    "refuses an invalid %s, naming its path, and keeps it",
+    "refuses an empty %s, however old, and says how to remove it",
     async (name) => {
-      await mkdir(join(root, ".hooknostic"));
-      await writeFile(join(root, name), "garbage");
-      const lock = join(await realpath(root), name);
-      await expect(recoverProject(root, config)).rejects.toThrow(
-        `invalid lock: ${lock} holds no process ID; inspect it, and if no hooknostic sync or recover is running, delete it and rerun hooknostic recover`,
-      );
-      expect(await readFile(lock, "utf8")).toBe("garbage");
-    },
-  );
-  it.each([".hooknostic/recovery.lock", ".hooknostic/sync.lock"])(
-    "treats an empty %s older than ten seconds as left by a hard kill",
-    async (name) => {
-      // A process killed between creating the lock and writing its PID leaves it empty.
+      // A process killed between creating the lock and writing its PID leaves
+      // it empty, but so does a live one stalled there: recover cannot tell.
       await mkdir(join(root, ".hooknostic"));
       await writeFile(join(root, name), "");
-      const old = new Date(Date.now() - 11_000);
+      const old = new Date(Date.now() - 3_600_000);
       await utimes(join(root, name), old, old);
-      await recoverProject(root, config);
-      await expect(readFile(join(root, name))).rejects.toMatchObject({ code: "ENOENT" });
-    },
-  );
-  it.each([".hooknostic/recovery.lock", ".hooknostic/sync.lock"])(
-    "refuses an empty %s younger than ten seconds, whose creator may not have written its PID yet",
-    async (name) => {
-      await mkdir(join(root, ".hooknostic"));
-      await writeFile(join(root, name), "");
       const lock = join(await realpath(root), name);
       await expect(recoverProject(root, config)).rejects.toThrow(
-        `${lock} is empty and less than ten seconds old, so the hooknostic process creating it may not have written its PID yet; rerun hooknostic recover in a few seconds`,
+        `invalid lock: ${lock} is empty and holds no process ID, perhaps because a process was killed while creating it; if no hooknostic sync or recover is running, delete it and rerun hooknostic recover`,
       );
       expect(await readFile(lock, "utf8")).toBe("");
     },
