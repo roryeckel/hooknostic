@@ -6,6 +6,7 @@ import semver from "semver";
 import type { AdapterRegistry, Diagnostic, McpServerCommand, ProjectSdkRelease } from "@hooknostic/core";
 import {
   buildProject,
+  formatDiagnostics,
   HOOKNOSTIC_VERSION,
   loadConfig,
   mcpAmbientCommands,
@@ -149,9 +150,14 @@ function doctorDiagnostics(configDir: string | undefined, sdk: ProjectSdkRelease
   return skew === undefined ? [] : [skew];
 }
 
-/** A diagnostic as doctor's text output prints it, as `sync` does. */
-function diagnosticLine(diagnostic: Diagnostic): string {
-  return `${diagnostic.code} ${diagnostic.severity}: ${diagnostic.message}`;
+/**
+ * Prints `diagnostics` on stdout as doctor's text output does: as `check` and
+ * `sync` print them, remediation included, then a blank line (#260).
+ */
+function printDiagnostics(write: (text: string) => void, diagnostics: readonly Diagnostic[]): void {
+  if (diagnostics.length === 0) return;
+  write(formatDiagnostics(diagnostics));
+  write("");
 }
 
 /**
@@ -173,7 +179,7 @@ export async function runDoctor(options: DoctorCommandOptions): Promise<number> 
   const diagnostics = doctorDiagnostics(configDir, sdk);
   if (!options.json) {
     options.io.stdout(doctorVersionLine(sdk));
-    for (const diagnostic of diagnostics) options.io.stdout(diagnosticLine(diagnostic));
+    printDiagnostics(options.io.stdout, diagnostics);
   }
   const entries: DoctorEntry[] = [];
 
@@ -278,7 +284,9 @@ export async function runDoctor(options: DoctorCommandOptions): Promise<number> 
   }
 
   let project: ProjectCommandResult | undefined;
-  let configurationErrors: string[] = [];
+  // The errors of doctor's own builds of the config, kept whole so their
+  // remediation reaches the output (#260).
+  const configuration: Diagnostic[] = [];
   let commands: readonly McpServerCommand[] = [];
   if (options.config) {
     if (loaded?.config?.project) {
@@ -302,9 +310,7 @@ export async function runDoctor(options: DoctorCommandOptions): Promise<number> 
           executeMaterializers: false,
           configResult: loaded,
         });
-        configurationErrors.push(
-          ...checked.report.diagnostics.filter((d) => d.severity === "error").map((d) => d.message),
-        );
+        configuration.push(...checked.report.diagnostics.filter((d) => d.severity === "error"));
         commands = mergeMcpCommands(commands, checked.report.mcpServers ?? []);
       }
     } else {
@@ -315,10 +321,12 @@ export async function runDoctor(options: DoctorCommandOptions): Promise<number> 
         executeMaterializers: false,
         ...(loaded === undefined ? {} : { configResult: loaded }),
       });
-      configurationErrors = checked.report.diagnostics.filter((d) => d.severity === "error").map((d) => d.message);
+      configuration.push(...checked.report.diagnostics.filter((d) => d.severity === "error"));
       commands = mergeMcpCommands(checked.report.mcpServers ?? []);
     }
   }
+  // The JSON contract since before #260: the same errors, as messages.
+  const configurationErrors = configuration.map((d) => d.message);
   // Probed, but deliberately not folded into `ok`: the command belongs to
   // the machine the plugin is finally installed on, not the one building it.
   // A builder without an optional runner still produces a valid artifact, and
@@ -361,8 +369,10 @@ export async function runDoctor(options: DoctorCommandOptions): Promise<number> 
           configurationErrors,
           mcpCommands,
           // Doctor's own; `project.diagnostics` keeps verify's, which may
-          // repeat HN110. Additive, so schemaVersion stays 2 (#257).
-          diagnostics,
+          // repeat HN110. Additive, so schemaVersion stays 2 (#257). Then
+          // each configuration error, whole (#260): errors only, so never
+          // a second HN110.
+          diagnostics: [...diagnostics, ...configuration],
           // Additive, so schemaVersion stays 2 (#246).
           runtime: { node: process.version, hooknostic: HOOKNOSTIC_VERSION, ...(sdk === undefined ? {} : { sdk }) },
           ...(projectReport === undefined
@@ -421,7 +431,8 @@ export async function runDoctor(options: DoctorCommandOptions): Promise<number> 
       }
     }
   }
-  for (const message of configurationErrors) options.io.stderr(message);
+  // Nothing follows them on stderr, so no blank line, as `check` prints its failure.
+  if (configuration.length > 0) options.io.stderr(formatDiagnostics(configuration));
   if (project) {
     options.io.stdout(
       `Project wiring: ${project.ok ? "current" : project.errors.length ? "conflict or invalid" : "drifted"}; hook execution has not been observed.`,
@@ -434,10 +445,12 @@ export async function runDoctor(options: DoctorCommandOptions): Promise<number> 
     // config directory, so the two match unless they judged different SDKs,
     // and then both are printed. A change to HN110's wording or remediation
     // (#256, #259) changes both copies alike.
-    for (const diagnostic of project.diagnostics) {
-      if (diagnostics.some((own) => own.code === diagnostic.code && own.message === diagnostic.message)) continue;
-      options.io.stdout(diagnosticLine(diagnostic));
-    }
+    printDiagnostics(
+      options.io.stdout,
+      project.diagnostics.filter(
+        (diagnostic) => !diagnostics.some((own) => own.code === diagnostic.code && own.message === diagnostic.message),
+      ),
+    );
     for (const message of [...project.guidance, ...project.errors]) options.io.stdout(message);
   }
   return ok ? 0 : 2;

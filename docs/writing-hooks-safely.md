@@ -87,10 +87,12 @@ own process too, under the same guard; `recover` and `inspect --config` load onl
 config. A failure while either one loads, whether a top-level throw, a `process.exit`, a
 rejection or a timer that throws, or a top-level `await` that never settles, is reported
 as **HN501** (`failed to load config <path>: ...` or `failed to load entry <path>: ...`),
-and the command exits 2. `sync`, `verify`, `recover` and `doctor` print a config that
-fails to load as that message alone, without the code, and their `--json` lists it
-under `errors` (`configurationErrors` for `doctor`) rather than as a diagnostic;
-`doctor` does the same for a hook source when the config has no `project`. One that
+and the command exits 2. `sync`, `verify` and `recover` print a config that fails to
+load as that diagnostic, with its code and remediation, on stdout, and its message
+alone on stderr; their `--json` lists the message under `errors` and the diagnostic
+under `diagnostics`. `doctor` prints the diagnostic on stderr, and its `--json` lists
+the message under `configurationErrors` and the diagnostic under `diagnostics`; it
+does the same for a hook source when the config has no `project`. One that
 comes after it loaded is a `hooknostic internal` line, and the command still exits 2,
 though `build` or `sync` may already have written its output. A timer or socket your
 source leaves open no longer keeps the command running once it is done. This is the

@@ -1742,4 +1742,25 @@ describe("project command failures (#199)", { timeout: PROJECT_CYCLES_TIMEOUT_MS
       expect(result.ok).toBe(false);
     }
   });
+
+  it("lists the moved-schema hint of a config that fails to load, and keeps its error a message (#247, #260)", async () => {
+    const { options } = await fixture();
+    await writeFile(
+      options.configPath,
+      `import { targetConfigSchema } from "@hooknostic/sdk";\nconsole.log(targetConfigSchema);\nexport default {};\n`,
+    );
+    for (const command of ["sync", "verify", "recover"] as const) {
+      const result = await runProject({ ...options, command });
+      expect(result.ok).toBe(false);
+      expect(result.diagnostics).toContainEqual(
+        expect.objectContaining({
+          code: "HN501",
+          severity: "error",
+          remediation: expect.stringContaining('import { targetConfigSchema } from "@hooknostic/sdk/schemas" instead.'),
+        }),
+      );
+      expect(result.errors).toEqual([expect.stringMatching(/^failed to load config /)]);
+      expect(result.errors[0]).not.toContain("@hooknostic/sdk/schemas");
+    }
+  });
 });
