@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
   access,
@@ -226,6 +227,47 @@ describe("OpenCode ripgrep pre-seed", () => {
       );
     } finally {
       await rm(dir, { recursive: true, force: true });
+    }
+  });
+  it("fetches and extracts into a relative HKN_RIPGREP_DIR (cold cache)", async () => {
+    // A local archive in this host's asset format, checksummed into a fake pin:
+    // the real extraction runs, no network is used.
+    const real = ripgrepAsset();
+    const build = await mkdtemp(join(tmpdir(), "hooknostic-ripgrep-archive-"));
+    // Under the repository's ignored node_modules, so the override is relative to the cwd.
+    const scratch = await mkdtemp(join(process.cwd(), "node_modules", ".hooknostic-ripgrep-test-"));
+    const previous = process.env["HKN_RIPGREP_DIR"];
+    try {
+      await mkdir(join(build, real.name));
+      await writeFile(join(build, real.name, real.executable), bytes);
+      const archive = join(build, real.file);
+      if (real.extension === "zip")
+        execFileSync(
+          join(process.env["SystemRoot"] ?? "C:\\Windows", "System32", "tar.exe"),
+          ["-a", "-cf", archive, real.name],
+          {
+            cwd: build,
+          },
+        );
+      else execFileSync("tar", ["-czf", archive, real.name], { cwd: build });
+      const zipped = await readFile(archive);
+      const asset = { ...fake, sha256: createHash("sha256").update(zipped).digest("hex") };
+      const dir = relative(process.cwd(), join(scratch, "shared"));
+      expect(isAbsolute(dir)).toBe(false);
+      process.env["HKN_RIPGREP_DIR"] = dir;
+      const target = await ensureRipgrep({
+        asset,
+        fetch: async () => new Response(zipped),
+        attempts: 1,
+        versionOf: async () => `ripgrep ${real.name.split("-")[1]} (fake)`,
+      });
+      expect(target).toBe(join(scratch, "shared", real.executable));
+      expect(await readFile(target)).toEqual(bytes);
+    } finally {
+      if (previous === undefined) delete process.env["HKN_RIPGREP_DIR"];
+      else process.env["HKN_RIPGREP_DIR"] = previous;
+      await rm(build, { recursive: true, force: true });
+      await rm(scratch, { recursive: true, force: true });
     }
   });
   it("seeds the pinned executable where the harness looks, and notices it being replaced", async () => {

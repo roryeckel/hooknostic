@@ -162,11 +162,14 @@ function run(command, args, cwd) {
  * its SHA-256 is the pinned executable's. Otherwise the archive is downloaded
  * (SHA-256 pinned, retried) and extracted, and the executable must hash to its
  * pin and report the version. A developer machine fetches once; a fresh CI
- * runner fetches once per job unless the directory is cached.
+ * runner fetches once per job unless the directory is cached. A relative
+ * directory is resolved against the cwd. Tests may replace `fetch` and
+ * `versionOf`.
  */
 export async function ensureRipgrep(options = {}) {
   const asset = options.asset ?? ripgrepAsset();
-  const dir = options.dir ?? process.env.HKN_RIPGREP_DIR ?? defaultRipgrepDir(asset);
+  // Absolute before any path is built: extraction runs with the work directory as its cwd.
+  const dir = resolve(options.dir ?? process.env.HKN_RIPGREP_DIR ?? defaultRipgrepDir(asset));
   const target = join(dir, asset.executable);
   if (await pinned(target, asset)) return target;
   await mkdir(dir, { recursive: true });
@@ -196,7 +199,7 @@ export async function ensureRipgrep(options = {}) {
       if (await pinned(target, asset)) return target;
       throw error;
     }
-    const version = await versionOf(target);
+    const version = await (options.versionOf ?? versionOf)(target);
     if (!version?.startsWith(`ripgrep ${RIPGREP_VERSION}`)) {
       await rm(target, { force: true }).catch(() => {});
       throw fail(`${target} reports ${JSON.stringify(version)}, expected ripgrep ${RIPGREP_VERSION}`);
@@ -228,7 +231,7 @@ async function unlocked(operation) {
 export async function seedRipgrep(cacheHome, options = {}) {
   const asset = options.asset ?? ripgrepAsset();
   const source = await ensureRipgrep({ ...options, asset });
-  const bin = join(cacheHome, "opencode", "bin");
+  const bin = resolve(cacheHome, "opencode", "bin");
   await mkdir(bin, { recursive: true });
   const seeded = join(bin, asset.executable);
   await copyFile(source, seeded);
@@ -313,7 +316,7 @@ export async function findOnPath(name, searchPath = "") {
  * so nothing replaced it.
  */
 export async function verifyRipgrepSeed(seed, dataHome, searchPath) {
-  const dir = join(dataHome, "opencode", "log");
+  const dir = resolve(dataHome, "opencode", "log");
   const names = (await readdir(dir).catch(() => [])).filter((name) => name.endsWith(".log"));
   const text = (await Promise.all(names.map((name) => readFile(join(dir, name), "utf8")))).join("\n");
   const onPath = await findOnPath(basename(seed.seeded), searchPath);
