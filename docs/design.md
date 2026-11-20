@@ -720,8 +720,12 @@ beside a load failure.
 It never changes an exit code: `check` and `build` print it, and `sync` and
 `verify` list it with their other build diagnostics. It is silent when no SDK
 resolves, when either version is not valid semver, and in this repository's
-workspace, whose examples resolve `packages/sdk` at the CLI's own version. It
-is also silent under another install's Plug'n'Play runtime, as under
+workspace, whose examples resolve `packages/sdk` at the CLI's own version. The
+SDK counts only when a `node_modules` folder in the config's directory or an
+ancestor holds it, or Yarn's runtime serves a Plug'n'Play project: one that
+only `NODE_PATH` (which pnpm's bin shims set) or a global folder reaches is not
+the project's, as for `doctor`, and the build does not bundle it either (#246,
+#258). It is also silent under another install's Plug'n'Play runtime, as under
 `yarn dlx` in a Plug'n'Play project: looking up the project's SDK there would
 load its runtime beside dlx's and break the build (#216). Add
 `hooknostic` to the project's devDependencies at the same version as its
@@ -1339,8 +1343,10 @@ The package version has one carrier in the CLI, `HOOKNOSTIC_VERSION`, which
 `set-versions.mjs` rewrites and `versions.test.ts` pins to the CLI's manifest. It is
 what `hooknostic --version` prints, alone, what HN110 calls "this hooknostic", and the
 build report's `hooknosticVersion`. `doctor` reports it beside the project's
-`@hooknostic/sdk` version, looked up from the config's directory, as HN110 does (and,
-like HN110, never under another install's Plug'n'Play runtime), and Node.js's (#246).
+`@hooknostic/sdk` version, looked up from the config's directory through its
+`node_modules` folders (or Yarn's runtime in a Plug'n'Play project), never through
+`NODE_PATH`, as HN110 does (and, like HN110, never under another install's
+Plug'n'Play runtime), and Node.js's (#246, #258).
 
 ## 17. Operational and trust considerations
 

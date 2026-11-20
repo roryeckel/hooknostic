@@ -419,6 +419,24 @@ function resolveProjectSdk(configDir: string): string | undefined {
 }
 
 /**
+ * Whether Node's resolution of `@hooknostic/sdk` from `configDir` finds the
+ * project's SDK, the one esbuild reaches (#246, #258). Under Yarn's runtime in
+ * a Plug'n'Play project it does. Otherwise only when a
+ * `node_modules/@hooknostic/sdk` with a manifest is in `configDir` or an
+ * ancestor, walked as esbuild walks: Node would also search `NODE_PATH`,
+ * which pnpm's bin shims set, and the global folders, which esbuild never
+ * does. Not #216's another-install gate: callers that need it apply it first.
+ */
+function nodeResolutionCounts(configDir: string, manifest = pnpManifest(configDir)): boolean {
+  return (manifest !== undefined && process.versions.pnp !== undefined) || nodeModulesHas(configDir, "@hooknostic/sdk");
+}
+
+/** The project's `@hooknostic/sdk` entry when {@link nodeResolutionCounts} holds. */
+function projectSdkEntry(configDir: string): string | undefined {
+  return nodeResolutionCounts(configDir) ? resolveProjectSdk(configDir) : undefined;
+}
+
+/**
  * HN110 for a build or project command whose config is in `configDir`: this
  * CLI against the SDK it would bundle (#194). An `evaluate` alias names that
  * SDK when it is an absolute path; a bare package name has no manifest to walk
@@ -427,14 +445,16 @@ function resolveProjectSdk(configDir: string): string | undefined {
  * Under another install's Plug'n'Play runtime, as under `yarn dlx`, the
  * project's own SDK is not looked up, and HN110 is silent, as it was before
  * the check existed: resolving from the project would load its PnP API beside
- * that runtime and break the build that follows (#216).
+ * that runtime and break the build that follows (#216). Elsewhere, as for
+ * doctor, an SDK that only `NODE_PATH` or a global folder reaches is not the
+ * project's, and HN110 is silent (#258).
  */
 export function projectSdkReleaseSkew(configDir: string, evaluate?: EvaluateOptions): Diagnostic | undefined {
   const alias = evaluate?.alias?.["@hooknostic/sdk"];
   // An absolute alias is only read from disk, never resolved: no runtime to load.
   if (alias !== undefined && isAbsolute(alias)) return sdkReleaseSkew(alias, HOOKNOSTIC_VERSION, configDir);
   if (anotherInstallsPnpRuntime(configDir)) return undefined;
-  return sdkReleaseSkew(resolveProjectSdk(configDir), HOOKNOSTIC_VERSION, configDir);
+  return sdkReleaseSkew(projectSdkEntry(configDir), HOOKNOSTIC_VERSION, configDir);
 }
 
 /** The release of a project's own `@hooknostic/sdk`, as `hooknostic doctor` reports it. */
@@ -463,18 +483,17 @@ export type ProjectSdkRelease =
  * nested entry's directory reaches is not reported here.
  *
  * Never under another install's Plug'n'Play runtime, where resolving from the
- * project would load its PnP API beside that runtime (#216). Unless Yarn's
- * runtime serves a Plug'n'Play project, Node's resolution counts only when a
- * `node_modules/@hooknostic/sdk` is in the config's directory or an ancestor,
- * walked as esbuild walks: `NODE_PATH`, which pnpm's bin shims set, and the
- * global folders would otherwise report the CLI's own SDK for a project that
- * has none. Without one, a Plug'n'Play project outside Yarn's runtime is not
+ * project would load its PnP API beside that runtime (#216). Otherwise
+ * Node's resolution counts as HN110's does ({@link nodeResolutionCounts}):
+ * `NODE_PATH`, which pnpm's bin shims set, and the global folders would
+ * report the CLI's own SDK for a project that has none. Without a
+ * `node_modules` SDK, a Plug'n'Play project outside Yarn's runtime is not
  * looked up, since its install is invisible here.
  */
 export function projectSdkRelease(configDir: string): ProjectSdkRelease {
   if (anotherInstallsPnpRuntime(configDir)) return { status: "not-looked-up", reason: "another-pnp-runtime" };
   const manifest = pnpManifest(configDir);
-  if (!(manifest !== undefined && process.versions.pnp !== undefined) && !nodeModulesHas(configDir, "@hooknostic/sdk"))
+  if (!nodeResolutionCounts(configDir, manifest))
     return manifest === undefined
       ? { status: "not-found" }
       : { status: "not-looked-up", reason: "outside-pnp-runtime", manifest };
@@ -1321,7 +1340,11 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
   // only `build` can report.
   const dryRun = options.dryRun === true;
   const runtimePolicy = effectiveRuntime(config);
-  const projectSdk = config.entry === undefined ? undefined : resolveProjectSdk(configDir);
+  // The project's SDK, found as HN110 and doctor find it, so an SDK that only
+  // NODE_PATH reaches never stands in for it (#258). Unlike them, not skipped
+  // under another install's Plug'n'Play runtime (#216); whether it should be
+  // is #269's question.
+  const projectSdk = config.entry === undefined ? undefined : projectSdkEntry(configDir);
   const outputFor = (target: string) => layout.outputs.find((entry) => entry.target === target);
   const staged: { key: string; target?: string; kind?: "directory" | "file"; stagingDir: string; outputDir: string }[] =
     [];
@@ -1408,6 +1431,8 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
           const compatibility = effectiveCompatibility(config, id);
           // bundleRuntime adds the SDK's /schemas sibling to this entry-file
           // alias, and lets those schemas fall back to Hooknostic's own Zod.
+          // It also serves the runtime's own SDK imports, so it matters even
+          // for an entry that imports none (#258).
           const alias = {
             ...adapter.shimAliases?.(),
             ...(projectSdk === undefined ? {} : { "@hooknostic/sdk": projectSdk }),

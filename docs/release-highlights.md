@@ -245,10 +245,11 @@ breaking changes come first, each with its upgrade step.
 ## What is new
 
 - **HN110: the CLI and the SDK are on different releases.** `check`, `build`,
-  `sync` and `verify` compare the CLI's version with that of the
-  `@hooknostic/sdk` the build resolves. When they differ, they warn once per
-  run, even beside a configuration that fails to load. `doctor` with a project
-  configuration warns too, and `recover` warns beside a load failure.
+  `sync` and `verify` compare the CLI's version with that of the project's
+  `@hooknostic/sdk` (from its `node_modules`, or Yarn's Plug'n'Play install).
+  When they differ, they warn once per run, even beside a configuration that
+  fails to load. `doctor` with a project configuration warns too, and `recover`
+  warns beside a load failure.
   - Any difference counts, prereleases included. Build metadata is ignored.
   - Under `yarn dlx` in a Plug'n'Play project, HN110 stays silent: looking
     up the project's SDK there would load the project's PnP runtime beside

@@ -243,11 +243,11 @@ config. `runtime.sdk.status` is one of:
     other way fails with HN504. A stray manifest above a `node_modules` project
     gives this reason too.
 
-`doctor` looks the SDK up from the config's directory, as HN110 does. A build
-resolves it from each file that imports it instead, so an SDK that only a nested
-entry's directory reaches, such as one installed only in a workspace package below
-a root config, reads `not-found` though the build bundles it. The versions are
-facts: HN110 alone warns when the CLI and the SDK differ.
+`doctor` looks the SDK up from the config's directory by these rules, which HN110
+shares (#258). A build resolves it from each file that imports it instead, so an
+SDK that only a nested entry's directory reaches, such as one installed only in a
+workspace package below a root config, reads `not-found` though the build bundles
+it. The versions are facts: HN110 alone warns when the CLI and the SDK differ.
 
 ## Build reports and troubleshooting
 
