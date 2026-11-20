@@ -221,7 +221,8 @@ harness version range instead.
 line naming the CLI and Node.js, plus the project's `@hooknostic/sdk` when there is
 a config. `doctor --json` prints no such line; it carries the versions as
 `runtime.hooknostic` and `runtime.node`, plus `runtime.sdk` only when there is a
-config. `runtime.sdk.status` is one of:
+config, and its own diagnostics, such as HN110, under `diagnostics` (see below).
+`runtime.sdk.status` is one of:
 
 - `found`, with `version`, from the SDK's own manifest;
 - `not-found`: the SDK does not resolve from the config's directory. Outside
@@ -249,6 +250,21 @@ resolves it from each file that imports it instead, so an SDK that only a nested
 entry's directory reaches, such as one installed only in a workspace package below
 a root config, reads `not-found` though the build bundles it. The versions are
 facts: HN110 alone warns when the CLI and the SDK differ.
+
+`doctor` judges an SDK it reports as `found`, whatever the config's targets
+deliver and even when the config fails to load. Its text output prints that HN110
+on the line after the versions, before the config loads. `doctor --json` lists
+doctor's own diagnostics, HN110 among them, under a top-level `diagnostics` array,
+empty without a config or a skew. They never change the exit code.
+
+With a `project` configuration that has project-delivery targets,
+`project.diagnostics` keeps the report of the `verify` doctor runs, as `sync` and
+`verify` list it, so HN110 may appear in both. That report's HN110 comes from the
+build's own lookup, which also follows `NODE_PATH`, so it may warn about an SDK the
+version line reads as `not found`. The text output prints the report's diagnostics
+after the project wiring line, leaving out one identical to doctor's own. When the
+verify build fails, the errors printed after them repeat every build message,
+HN110's included.
 
 ## Build reports and troubleshooting
 

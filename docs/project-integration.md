@@ -113,7 +113,7 @@ broad target range that includes them must narrow the target to enforce it.
 | `sync --dry-run` | Show planned changes and conflicts; no writes |
 | `sync` | Generate, reconcile, and remove obsolete owned integration |
 | `verify` | Regenerate in isolated compiler storage and compare without project writes |
-| `doctor` | Report the hooknostic, project `@hooknostic/sdk` and Node.js versions; read installed harness versions, runtime availability, wiring, and activation guidance; skips configured materializers (config evaluation remains executable code). |
+| `doctor` | Report the hooknostic, project `@hooknostic/sdk` and Node.js versions, and HN110 when the CLI and the SDK it finds differ; read installed harness versions, runtime availability, wiring, and activation guidance; skips configured materializers (config evaluation remains executable code). |
 | `recover` | Restore interrupted transaction preimages when preconditions still match |
 
 These commands accept `--config` and `--json`. Exit codes are 0 for success, 1 for
