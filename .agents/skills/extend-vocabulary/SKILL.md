@@ -33,18 +33,18 @@ decision does not.
 - `packages/runtime/src/dispatch.ts`: an apply case in the effect switch. If
   the effect is portable-but-lowered (like `updateShell`), lower it in
   dispatch to an existing kind and mark the synthesized entry with
-  `loweredFrom`, so the three adapter `apply.ts` reducers stay untouched.
+  `loweredFrom`, so every adapter's `apply.ts` reducer stays untouched.
   They each independently resolve `kind === "replaceInput"` **and each
   suppresses a recorded rewrite on a terminal deny** (denial precedence) —
   a new effect kind slipping past those reducers, or a reducer missing the
   precedence rule, diverges per adapter; both have happened.
-- Docs: effect list in `docs/design.md` §7, table in `docs/concepts.md`,
+- Docs: effect list in `docs/design.md` §6.4, table in `docs/concepts.md`,
   composition rule 4 if terminality changed.
 
 ## New capability id
 
 - Append to `ALL_CAPABILITY_IDS` (`packages/sdk/src/capabilities.ts`).
-- Rate it in **all three** `packages/adapter-*/src/profile.ts` matrices;
+- Rate it in **every** `packages/adapter-*/src/profile.ts` matrix;
   non-exact levels need a rationale (testkit-enforced, and rendered to users
   by `inspect`).
 - Ask first whether the real gate is per-target at all: per-invocation

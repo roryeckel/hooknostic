@@ -17,7 +17,7 @@ guard that compiled clean and silently allowed a whole harness's shell calls.
 |---|---|---|
 | **captured** | Verbatim payload from a live harness session, with version and date | Full |
 | schema-derived | Built from wire schemas extracted from the harness binary | Shape only, not behavior |
-| doc-derived | From vendor docs | Weakest — docs drift; three adapters found doc drift only capture revealed |
+| doc-derived | From vendor docs | Weakest — docs drift; the first three adapters each found doc drift only capture revealed |
 | constructed | Assembled (e.g. log-derived args in a schema-derived envelope) | Say exactly what was observed and what was not |
 
 Upgrading a claim's provenance (doc-derived → captured) is always worth a
