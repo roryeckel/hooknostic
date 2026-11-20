@@ -22,12 +22,12 @@ async function snapshot(root: string): Promise<Record<string, string>> {
 }
 
 // Each case runs init and nine CLI commands, each building all five targets,
-// with whole-project snapshots after most steps (#262). A case takes about 4.6 s
-// on CI windows-latest but has run past 60 s on a Windows machine shared with
-// other test runs. Raised per test rather than in vitest.config.ts so the
-// default still flags other slow tests, and rather than running files
-// serially, which would not remove load from outside the run and would
-// lengthen every `pnpm test`.
+// with whole-project snapshots after most steps (#262). On CI windows-latest
+// (run 44493595340, 2026-11-19) the cases took 4.6 s each, but on a Windows
+// machine shared with other test runs they have run past 60 s. This file's
+// only test carries the limit, rather than vitest.config.ts, so the default
+// still flags slow tests elsewhere; running files serially would not remove
+// load from outside the run and would lengthen every `pnpm test`.
 const PROJECT_CYCLES_TIMEOUT_MS = 120_000;
 
 it.each([false, true])(
