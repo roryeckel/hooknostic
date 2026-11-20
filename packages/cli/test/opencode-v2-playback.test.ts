@@ -25,6 +25,7 @@ import {
   startModelPlayback,
   traceEvents,
 } from "./harness-playback.js";
+import { report } from "./report.js";
 
 const enabled = process.env["HOOKNOSTIC_PLAYBACK"] === "opencode-v2";
 const version = process.env["HOOKNOSTIC_PLAYBACK_VERSION"] ?? opencodeV2Harness.referenceVersion;
@@ -635,13 +636,13 @@ describe.skipIf(!enabled)("OpenCode v2 offline playback", () => {
       const ran = await runReload(mode);
       if (ran.code !== 0 && !redrives.has("transport") && (ran.stdout + ran.stderr).includes(TRANSPORT_BEFORE_RELOAD)) {
         redrives.add("transport");
-        console.log(`[#236 re-drive] ${mode}: transport timeout before the reload`);
+        report(`[#236 re-drive] ${mode}: transport timeout before the reload`);
         continue;
       }
       const drive = await driveReload(mode, ran);
       if (!drive.audit.overlap && !redrives.has("overlap")) {
         redrives.add("overlap");
-        console.log(`[#236 re-drive] ${mode}: no overlap`);
+        report(`[#236 re-drive] ${mode}: no overlap`);
         continue;
       }
       return drive;
@@ -726,7 +727,7 @@ describe.skipIf(!enabled)("OpenCode v2 offline playback", () => {
     const { audit, trace } = await driveRunning("subagent-reload-running-steer");
     expect(audit.overlap).toBe(true);
     const { parentID: parent, childID: child } = audit as { parentID: string; childID: string };
-    console.log(
+    report(
       `[#236 steer] ${JSON.stringify({ child: audit.child, parent: audit.parent, parentRunning: audit.parentRunning })}`,
     );
     const turnIds = (session: string) =>

@@ -151,9 +151,10 @@ fails the duplicate-branch guard.
   prepare — no conventional-commit inference.
 - Prerelease suffixes (`-rc.N`, `-beta.N`, …) set the GitHub prerelease flag
   and the npm `next` dist-tag automatically.
-- Carriers beyond the manifests (three inlined `adapterVersion` literals,
-  `HOOKNOSTIC_VERSION`) are rewritten by `set-versions.mjs` and pinned by
-  `packages/cli/src/versions.test.ts`.
+- Carriers beyond the manifests are the inlined source literals listed in
+  `sourceCarriers` in `scripts/set-versions.mjs`, the one authoritative list.
+  That script rewrites them, and `packages/cli/src/versions.test.ts` pins
+  them.
 
 ## The publish guard
 
