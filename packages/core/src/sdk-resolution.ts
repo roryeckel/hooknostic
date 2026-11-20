@@ -392,6 +392,29 @@ export function ownZodNeedsProjectInstall(
  * install, no API serves the CLI, and the runtime is the project's. Without
  * Yarn's runtime, or without a project manifest, Node's resolution loads no
  * API.
+ *
+ * Unlike {@link ownZodNeedsProjectInstall} and the MCP launcher, it asks
+ * about the CLI's directory wherever that is, not only in a zip archive or a
+ * virtual folder ({@link PNP_PATH}). The probe for #269 (Yarn 4.18.1,
+ * Node 24.20.0, Windows, 2026-11-19: 11 launch modes against real installs)
+ * found that such a gate drops #216's protection in two layouts, where
+ * resolving from the project loaded its manifest beside the running one:
+ *
+ * - a CLI that install A holds outside a zip (unplugged, a workspace, or
+ *   through `portal:`), run as `yarn hooknostic` in A against a config in
+ *   another Plug'n'Play project;
+ * - a CLI installed by npm inside another Yarn project's tree, started with
+ *   that tree's runtime (`node -r <tree>/.pnp.cjs`).
+ *
+ * The cost is the #269 layout: that same CLI started with the project's own
+ * `.pnp.cjs`. Asking loads nothing new there, because Node already loaded the
+ * tree's manifest when it resolved the CLI's entry point. But the tree's API
+ * lists the CLI and not the project, so this answers true although the
+ * runtime is the project's: HN110 stays silent, and `doctor` reports the SDK
+ * as `not-looked-up` with the reason `another-pnp-runtime`. That limitation
+ * is accepted. The only check the probe found right in all 11 modes reads the
+ * running API through an undocumented Node internal
+ * (`Module._load("pnpapi", null)`), and was declined.
  */
 export function anotherInstallsPnpRuntime(projectDirectory: string, ownDirectory: string = OWN_DIRECTORY): boolean {
   if (process.versions.pnp === undefined || pnpManifest(projectDirectory) === undefined) return false;
