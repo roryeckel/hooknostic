@@ -1,0 +1,164 @@
+# TEMPORARY: Windows egress measurement for .capture/network-egress (PR #288).
+# Removed by a revert commit once the runs are recorded. Not a gate.
+name: Egress measurement (Windows, temporary)
+
+on:
+  push:
+    branches: [ci/offline-playback]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: egress-measure-windows-${{ github.sha }}
+  cancel-in-progress: false
+
+jobs:
+  measure:
+    name: measure ${{ matrix.label }}
+    runs-on: windows-latest
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { label: copilot-reference, kind: playback, harness: copilot, latest: false }
+          - { label: copilot-latest, kind: playback, harness: copilot, latest: true }
+          - { label: pi-reference, kind: playback, harness: pi, latest: false }
+          - { label: pi-latest, kind: playback, harness: pi, latest: true }
+          - { label: opencode-v2-reference, kind: playback, harness: opencode-v2, latest: false }
+          - { label: opencode-v2-latest, kind: playback, harness: opencode-v2, latest: true }
+          - { label: code-mode-reference, kind: code-mode, harness: codex, latest: false }
+          - { label: code-mode-latest, kind: code-mode, harness: codex, latest: true }
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .github/node/playback/.node-version
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run bundle
+      - name: Resolve and install the harness (not measured)
+        id: harness
+        shell: bash
+        run: |
+          if [ '${{ matrix.kind }}' = code-mode ]; then
+            pkg=@openai/codex
+            version="$(node scripts/verify-code-mode.mjs --print-version)"
+          else
+            pkg="$(node --input-type=module -e 'import { harnessLanes } from "./scripts/harness-lanes.mjs"; console.log(harnessLanes[process.argv[1]].pkg)' '${{ matrix.harness }}')"
+            version="$(node --experimental-strip-types scripts/harness-playback-version.mjs '${{ matrix.harness }}')"
+          fi
+          pbv=""
+          if [ '${{ matrix.latest }}' = true ]; then version="$(npm view "$pkg" dist-tags.latest)"; pbv="$version"; fi
+          echo "pkg=$pkg version=$version"
+          echo "pbv=$pbv" >> "$GITHUB_OUTPUT"
+          npm install --global "$pkg@$version"
+      - name: Prepare offline prerequisites (not measured)
+        if: ${{ matrix.kind == 'playback' }}
+        shell: bash
+        run: node --experimental-strip-types scripts/prepare-offline-playback.mjs '${{ matrix.harness }}'
+        env:
+          HKN_RIPGREP_DIR: ${{ runner.temp }}/hooknostic-ripgrep
+      - name: Start the audit
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path "$env:RUNNER_TEMP\egress" | Out-Null
+          & .capture/network-egress/windows/start-audit.ps1
+      - name: Measured step
+        id: measured
+        continue-on-error: true
+        shell: pwsh
+        env:
+          HKN_KIND: ${{ matrix.kind }}
+          HKN_PBV: ${{ steps.harness.outputs.pbv }}
+          HOOKNOSTIC_PLAYBACK: ${{ matrix.harness }}
+          HKN_PLAYBACK_ARTIFACT_DIR: ${{ runner.temp }}/opencode-v2-playback
+          HKN_RIPGREP_DIR: ${{ runner.temp }}/hooknostic-ripgrep
+          ANTHROPIC_API_KEY: ""
+          ANTHROPIC_AUTH_TOKEN: ""
+          OPENAI_API_KEY: ""
+          OPENROUTER_API_KEY: ""
+        run: |
+          $d = Join-Path $env:RUNNER_TEMP 'egress'
+          Set-Content "$d\root.pid" $PID
+          Set-Content "$d\start.txt" ((Get-Date).ToUniversalTime().ToString('o'))
+          if ($env:HKN_PBV) { $env:HOOKNOSTIC_PLAYBACK_VERSION = $env:HKN_PBV }
+          # Positive control: this probe's connections must show up as lane egress.
+          node .capture/network-egress/windows/probe.mjs control-in-measured-step
+          if ($env:HKN_KIND -eq 'code-mode') {
+            node scripts/verify-code-mode.mjs
+          } else {
+            pnpm exec vitest run packages/cli/test/harness-playback.test.ts packages/cli/test/opencode-v2-playback.test.ts scripts/pi-drift-driver.test.mjs
+          }
+          $code = $LASTEXITCODE
+          Set-Content "$d\end.txt" ((Get-Date).ToUniversalTime().ToString('o'))
+          Set-Content "$d\exit.txt" $code
+          exit $code
+      - name: Export the audit
+        if: always()
+        shell: pwsh
+        run: |
+          $d = Join-Path $env:RUNNER_TEMP 'egress'
+          if (-not (Test-Path "$d\end.txt")) { Set-Content "$d\end.txt" ((Get-Date).ToUniversalTime().ToString('o')) }
+          & .capture/network-egress/windows/export-audit.ps1 -Dir $d -Label '${{ matrix.label }}'
+          "measured step exit: $(Get-Content -Raw "$d\exit.txt" -ErrorAction SilentlyContinue)"
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: egress-windows-${{ matrix.label }}
+          retention-days: 14
+          path: |
+            ${{ runner.temp }}/egress/summary.json
+            ${{ runner.temp }}/egress/outbound.csv
+            ${{ runner.temp }}/egress/exit.txt
+
+  firewall-trial:
+    name: firewall trials
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .github/node/playback/.node-version
+      - name: Inventory
+        shell: pwsh
+        run: '& .capture/network-egress/windows/firewall-trial.ps1 inventory -Dir "$env:RUNNER_TEMP\fw"'
+      - name: (a) block rule for node.exe
+        continue-on-error: true
+        shell: pwsh
+        run: '& .capture/network-egress/windows/firewall-trial.ps1 a -Dir "$env:RUNNER_TEMP\fw"'
+      - name: (c) block rule for a dedicated user's SID
+        continue-on-error: true
+        shell: pwsh
+        run: '& .capture/network-egress/windows/firewall-trial.ps1 c -Dir "$env:RUNNER_TEMP\fw"'
+      - name: Restore after (c)
+        if: always()
+        shell: pwsh
+        run: '& .capture/network-egress/windows/firewall-trial.ps1 restore -Dir "$env:RUNNER_TEMP\fw"'
+      - name: (b) default outbound Block, runner images allowed
+        continue-on-error: true
+        shell: pwsh
+        run: '& .capture/network-egress/windows/firewall-trial.ps1 b -Dir "$env:RUNNER_TEMP\fw"'
+      - name: (b) does the runner still work? A later step and an artifact upload
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          1..6 | ForEach-Object { "still logging under default-block: $_"; Start-Sleep -Seconds 5 }
+          Set-Content "$env:RUNNER_TEMP\fw\marker.txt" 'uploaded under default outbound Block'
+      - uses: actions/upload-artifact@v7
+        continue-on-error: true
+        with:
+          name: egress-windows-firewall-trial-b
+          retention-days: 14
+          path: ${{ runner.temp }}/fw/marker.txt
+      - name: Restore after (b)
+        if: always()
+        shell: pwsh
+        run: '& .capture/network-egress/windows/firewall-trial.ps1 restore -Dir "$env:RUNNER_TEMP\fw"'
