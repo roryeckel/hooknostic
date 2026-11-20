@@ -248,11 +248,11 @@ config, and its own diagnostics, such as HN110, under `diagnostics` (see below).
     Yarn's install ([ADR-0041](decisions/0041-yarn-pnp-runtime.md)). A stray
     manifest above a `node_modules` project gives this reason too.
 
-`doctor` looks the SDK up from the config's directory, as HN110 does. A build
-resolves it from each file that imports it instead, so an SDK that only a nested
-entry's directory reaches, such as one installed only in a workspace package below
-a root config, reads `not-found` though the build bundles it. The versions are
-facts: HN110 alone warns when the CLI and the SDK differ.
+`doctor` looks the SDK up from the config's directory by these rules, which HN110
+shares (#258). A build resolves it from each file that imports it instead, so an
+SDK that only a nested entry's directory reaches, such as one installed only in a
+workspace package below a root config, reads `not-found` though the build bundles
+it. The versions are facts: HN110 alone warns when the CLI and the SDK differ.
 
 `doctor` judges an SDK it reports as `found`, whatever the config's targets
 deliver and even when the config fails to load. Its text output prints that HN110
@@ -271,9 +271,9 @@ configuration errors on stderr.
 With a `project` configuration that has project-delivery targets,
 `project.diagnostics` keeps the report of the `verify` doctor runs, as `sync` and
 `verify` list it, so HN110 may appear in both. That report's HN110 comes from the
-build's own lookup, which also follows `NODE_PATH`, so it may warn about an SDK the
-version line reads as `not found`. A project-delivery target's errors, such as one
-with no registered adapter, are listed only there, not in the top-level
+build's own lookup, which follows the rules above (#258), so it never warns about an
+SDK the version line reads as `not found`. A project-delivery target's errors, such
+as one with no registered adapter, are listed only there, not in the top-level
 `diagnostics` or `configurationErrors`. The text output prints the report's
 diagnostics on stdout after the project wiring line, leaving out one identical to
 doctor's own. When the
