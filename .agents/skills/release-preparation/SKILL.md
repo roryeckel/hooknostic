@@ -20,6 +20,9 @@ procedure, commands, gates, and recovery paths.
 - Follow the runbook's single-PR preparation flow. Put highlights and related
   release documentation on the preparation branch at the current release
   version; let the workflow generate the bump and artifacts.
+- Before dispatching, apply the runbook's opt-in Yarn Plug'n'Play suite step:
+  when the release's changes meet its condition, run the suite on the
+  preparation branch and include its result in the validation results.
 - Apply the repository's verification and upstream-push rules. When pushing
   and dispatching are authorized, use the pushed preparation branch as the
   dispatch ref. Follow the run through completion and verify the resulting
