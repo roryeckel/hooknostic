@@ -199,9 +199,72 @@ places a pinned ripgrep, checked against its SHA-256, in the harness's cache,
 where it looks after `PATH` and before downloading. It fails the run if the
 harness log shows a download (#264). That copy
 is itself fetched from GitHub once per machine into a per-user cache, and CI
-caches it. A cached copy is used only if it matches the pinned executable's
+caches it. In CI the fetch happens in the prepare step, before the lane loses
+its network (see below), and the test's own `ensureRipgrep()` then finds the
+verified copy. A cached copy is used only if it matches the pinned executable's
 SHA-256. Set `HKN_RIPGREP_DIR` to a directory that holds, or should receive,
 that build. See `.capture/opencode-v2/README.md`, "ripgrep pre-seed".
+
+## Network isolation on Linux
+
+The six Linux playback lanes run in CI with no network but loopback, so a
+harness's update check, catalog fetch or download cannot slip into a lane
+unnoticed. `.capture/network-egress` is the inventory this rests on: what each
+harness reached before, which of those a lane needs (none), and what turns
+each off.
+
+- **The namespace.** `scripts/without-network.sh <command>` re-runs itself
+  under passwordless `sudo -n --preserve-env`, enters a new network namespace
+  (`unshare --net`, root, so no unprivileged user namespace and no AppArmor
+  userns restriction), brings `lo` up, and drops back to the calling user
+  with no capabilities and `no_new_privs`. Inside it sets
+  `HOOKNOSTIC_PLAYBACK_NETWORK=none`.
+- **The proof.** Before the command, `scripts/assert-no-network.mjs --offline`
+  fails the step unless: only `lo` exists; public IPv4 and IPv6 connects fail
+  with `ENETUNREACH`; DNS fails; the user, capabilities and `no_new_privs` are
+  as expected; and every name in `HKN_NO_NETWORK_REQUIRE_ENV` crossed `sudo`.
+  It prints one line per check and never prints values. Its positive
+  control, `--online`, runs in the prepare step outside the namespace: the
+  same IPv4 connect and lookup must succeed there (IPv6 is reported, not
+  required).
+- **What the lanes fetch beforehand.**
+  `node --experimental-strip-types scripts/prepare-offline-playback.mjs <lane>`
+  does it, with network:
+  - ripgrep for `opencode-v2`;
+  - for `opencode-v1`, the npm cache for `@opencode-ai/plugin@<version>`,
+    proven by a second, `--offline` install through the test's own helper.
+    Inside the namespace that helper installs with `--offline`, so a gap fails
+    at once with `ENOTCACHED`. Outside it, it resolves online as before.
+- **What the harnesses no longer try.** The `playbackQuiet` settings in
+  `packages/cli/test/harness-playback.ts`:
+  - Codex `analytics.enabled=false`;
+  - OpenCode's model-catalog fetch and v2's update check;
+  - Claude's `plugin validate` gets the drives' environment.
+
+  Two calls remain and fail harmlessly without network: Codex's curated plugin
+  sync (github.com, chatgpt.com, api.github.com) and Claude's official
+  marketplace fetch (downloads.claude.ai).
+- **Not isolated.** The Windows lanes, the Code Mode and marketplace jobs, and
+  harness-watch's scheduled verification of newer builds still run with
+  network.
+
+To reproduce a lane on Linux (or WSL), install its harness and bundle as
+above, then:
+
+```bash
+node --experimental-strip-types scripts/prepare-offline-playback.mjs codex --check-online
+HOOKNOSTIC_PLAYBACK=codex scripts/without-network.sh pnpm exec vitest run packages/cli/test/harness-playback.test.ts
+```
+
+That needs passwordless `sudo`. Where sudo prompts (WSL's default user), run
+the wrapper as root and name the user instead:
+
+```bash
+scripts/without-network.sh --as "$(id -u user):$(id -g user)" --path "$PATH" --home /home/user -- <command>
+```
+
+Here `user`'s `PATH` and the playback variables must already be in that root
+shell's environment.
 
 ## Marketplace release gates
 

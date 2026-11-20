@@ -419,6 +419,16 @@ Fail-first evidence:
 
 The pins move with ripgrep's version in the harness.
 
+**Without network on Linux (2026-11-20).** The Linux CI lane now runs in a
+loopback-only namespace (`docs/testing.md`, "Network isolation on Linux").
+`ensureRipgrep` therefore runs once more, earlier, in
+`scripts/prepare-offline-playback.mjs opencode-v2`, a step that still has
+network. That step restores from the CI cache or fetches the archive, and
+checks both pins. The test's own `ensureRipgrep()` call and the drive's seed
+and verify phases are unchanged. Inside the namespace they find the verified
+copy, and any fetch they attempted would fail as `ripgrep pre-seed failed: …`
+instead of downloading.
+
 ## Remaining-capability audit
 
 The later `results`, `notifications`, `provider-anthropic`, `provider-responses`,
