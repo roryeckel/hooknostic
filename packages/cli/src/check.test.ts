@@ -15,7 +15,7 @@ import { makeFakeAdapter } from "@hooknostic/testkit";
 
 import { runBuild } from "./build.js";
 import { runCheck } from "./check.js";
-import { CLI_USAGE, runCli } from "./cli.js";
+import { CLI_USAGE, COMMAND_FLAGS, COMMAND_POSITIONALS, PARSE_OPTIONS, runCli } from "./cli.js";
 import { defaultAdapterRegistry } from "./registry.js";
 
 // Synthetic profiles need a syntactically valid source; provenance is
@@ -840,17 +840,42 @@ describe("runCli", () => {
     expect(err()).toBe("");
   });
 
-  it("requires a target for inspect", async () => {
-    const { io, err } = captureIO();
-    expect(await runCli(["inspect"], { io })).toBe(2);
-    expect(err()).toContain("requires a target");
-  });
+  // Ahead of the options' checks, so a target given as --target, or a flag
+  // inspect does not take, still gets the message that names the mistake (#255).
+  it.each([[["inspect"]], [["inspect", "--json"]], [["inspect", "--target", "claude"]], [["inspect", "--local"]]])(
+    "requires a target for %j",
+    async (argv) => {
+      const { io, out, err } = captureIO();
+      expect(await runCli(argv, { io })).toBe(2);
+      expect(err()).toBe("inspect requires a target, e.g. `hooknostic inspect claude`.");
+      expect(out()).toBe("");
+    },
+  );
+
+  // The commands that load a config, or write, when they get past their
+  // checks: init scaffolds beside its config and sync reconciles a project.
+  const LOADS = new Set(["check", "build", "init", "sync", "verify", "recover", "doctor"]);
+
+  /**
+   * `argv` with a fresh temp --config right after such a command, so a check
+   * that regressed acts on an empty temp directory, never the checkout. Run
+   * with `registry: {}` and assert the directory still empty.
+   */
+  async function isolated(argv: string[]): Promise<{ argv: string[]; dir: string | undefined }> {
+    const [command, ...rest] = argv;
+    if (command === undefined || !LOADS.has(command)) return { argv, dir: undefined };
+    const dir = await mkdtemp(join(tmpdir(), "hooknostic-cli-usage-"));
+    tempDirs.push(dir);
+    return { argv: [command, "--config", join(dir, "hooknostic.config.ts"), ...rest], dir };
+  }
 
   it.each(["check", "build"])("rejects an empty --target for %s", async (command) => {
     for (const value of ["", ", ,"]) {
       const { io, err } = captureIO();
-      expect(await runCli([command, "--target", value], { io })).toBe(2);
+      const run = await isolated([command, "--target", value]);
+      expect(await runCli(run.argv, { io, registry: {} })).toBe(2);
       expect(err()).toContain("at least one non-empty target");
+      expect(await readdir(run.dir as string)).toEqual([]);
     }
   });
 
@@ -876,26 +901,323 @@ describe("runCli", () => {
     [["inspect", "claude", "--unguarded"], "--unguarded is only supported by dispatch"],
     [["init"], "init requires --local"],
     [["inspect", "claude", "--delivery", "foo"], "--delivery must be project or package"],
+    // Which option a command takes is one table (#255). dispatch's --json
+    // still comes first (#218); the other options in their declaration order,
+    // not the command line's.
+    [
+      ["dispatch", "--target", "claude", "--capability", "x", "--json"],
+      "--json is not supported by dispatch, which always writes JSON Lines",
+    ],
+    [["check", "--dry-run", "--local"], "--dry-run is only supported by sync"],
+    [["check", "--local", "--dry-run"], "--dry-run is only supported by sync"],
+    [
+      ["doctor", "--version", "1.0"],
+      `--version <range> is only supported by inspect; run "hooknostic --version" for this hooknostic's version`,
+    ],
+    // Present though empty; check and build keep their own message for it.
+    [["sync", "--target", ""], "--target is not supported by sync"],
+    // --dry-run and --unguarded are checked first, for any command, as they
+    // were before the table: each command line they rejected keeps its message.
+    [["check", "--local", "--unguarded"], "--unguarded is only supported by dispatch"],
+    [["inspect", "--dry-run"], "--dry-run is only supported by sync"],
+    [["inspect", "--unguarded"], "--unguarded is only supported by dispatch"],
+    [["frobnicate", "--dry-run"], "--dry-run is only supported by sync"],
+    // Otherwise an unknown command is that, whatever its options.
+    [["frobnicate", "--local"], 'unknown command "frobnicate"'],
+    [["frobnicate", "extra"], 'unknown command "frobnicate"'],
+    // Stray words: inspect takes its target, and no command anything else.
+    [["sync", "extra"], 'unexpected argument "extra": sync takes no positional arguments'],
+    [["sync", "--dry-run", "false"], 'unexpected argument "false": sync takes no positional arguments'],
+    [
+      ["dispatch", "--target", "claude", "extra"],
+      'unexpected argument "extra": dispatch takes no positional arguments',
+    ],
+    [["inspect", "claude", "extra"], 'unexpected argument "extra": inspect takes one target'],
+    [["inspect", "claude", "extra", "more"], 'unexpected argument "extra": inspect takes one target'],
+    [["check", "--", "--json"], 'unexpected argument "--json": check takes no positional arguments'],
+    // An option the command does not take, ahead of a word it does not either.
+    [["check", "--local", "extra"], "--local is only supported by init"],
   ])("reports %j as a usage error", async (argv, message) => {
     const { io, out, err } = captureIO();
-    expect(await runCli(argv, { io })).toBe(2);
+    const run = await isolated(argv);
+    expect(await runCli(run.argv, { io, registry: {} })).toBe(2);
     expect(err()).toBe(`${message}\n${CLI_USAGE}`);
     expect(err()).not.toContain("unexpected error");
     expect(err()).not.toMatch(/^\s+at /m);
     expect(out()).toBe("");
+    if (run.dir !== undefined) expect(await readdir(run.dir)).toEqual([]);
   });
 
-  it("keeps a usage error's JSON line under --json (#208)", async () => {
+  it.each([
+    [["build", "--dry-run", "--json"], "--dry-run is only supported by sync"],
+    [["inspect", "claude", "--events", "f", "--json"], "--events is only supported by dispatch"],
+    [["check", "extra", "--json"], 'unexpected argument "extra": check takes no positional arguments'],
+    // As before the table: the JSON line, ahead of inspect's missing target
+    // and of an unknown command.
+    [["inspect", "--dry-run", "--json"], "--dry-run is only supported by sync"],
+    [["inspect", "--unguarded", "--json"], "--unguarded is only supported by dispatch"],
+    [["frobnicate", "--unguarded", "--json"], "--unguarded is only supported by dispatch"],
+  ])("keeps a usage error's JSON line under --json for %j (#208, #255)", async (argv, message) => {
     const { io, out, err } = captureIO();
-    expect(await runCli(["build", "--dry-run", "--json"], { io })).toBe(2);
+    const run = await isolated(argv);
+    expect(await runCli(run.argv, { io, registry: {} })).toBe(2);
+    if (run.dir !== undefined) expect(await readdir(run.dir)).toEqual([]);
     expect(JSON.parse(out())).toStrictEqual({
       schemaVersion: 1,
-      command: "build",
+      command: argv[0],
       ok: false,
-      errors: ["--dry-run is only supported by sync"],
+      errors: [message],
     });
     expect(out()).not.toContain("\n");
     expect(err()).toBe("");
+  });
+
+  // inspect's selectors are one option group in the usage, and inspect itself
+  // refuses two of them: the table accepts each, and leaves that to inspect.
+  it("leaves inspect's mutually exclusive selectors to inspect", async () => {
+    const { io, out, err } = captureIO();
+    const argv = ["inspect", "claude", "--capability", "tool.before.observe", "--field", "turn.stop.lastMessage"];
+    expect(await runCli(argv, { io })).toBe(2);
+    expect(`${out()}\n${err()}`).toContain("--capability, --component and --field are mutually exclusive.");
+    expect(`${out()}\n${err()}`).not.toMatch(/is (only|not) supported by/);
+  });
+});
+
+// Which command takes which option and how many words (#255). The
+// expectations are written out here by hand, so a change to the CLI's table
+// cannot carry its own tests along; only the first test reads the table, and
+// only to hold it to the documented usage.
+describe("the options and words each command takes", () => {
+  const FLAGS = [
+    "dry-run",
+    "local",
+    "target",
+    "capability",
+    "component",
+    "field",
+    "delivery",
+    "events",
+    "version",
+    "unguarded",
+    "json",
+  ] as const;
+  type TestFlag = (typeof FLAGS)[number];
+
+  // --config is taken by every command, and given to every run below.
+  const ACCEPTED: Record<string, TestFlag[]> = {
+    check: ["target", "json"],
+    build: ["target", "json"],
+    init: ["local", "json"],
+    sync: ["dry-run", "json"],
+    verify: ["json"],
+    recover: ["json"],
+    doctor: ["json"],
+    inspect: ["capability", "component", "field", "version", "delivery", "json"],
+    dispatch: ["target", "events", "unguarded"],
+  };
+  const REJECTED: Record<string, TestFlag[]> = {
+    check: ["dry-run", "local", "capability", "component", "field", "delivery", "events", "version", "unguarded"],
+    build: ["dry-run", "local", "capability", "component", "field", "delivery", "events", "version", "unguarded"],
+    init: ["dry-run", "target", "capability", "component", "field", "delivery", "events", "version", "unguarded"],
+    sync: ["local", "target", "capability", "component", "field", "delivery", "events", "version", "unguarded"],
+    verify: [
+      "dry-run",
+      "local",
+      "target",
+      "capability",
+      "component",
+      "field",
+      "delivery",
+      "events",
+      "version",
+      "unguarded",
+    ],
+    recover: [
+      "dry-run",
+      "local",
+      "target",
+      "capability",
+      "component",
+      "field",
+      "delivery",
+      "events",
+      "version",
+      "unguarded",
+    ],
+    doctor: [
+      "dry-run",
+      "local",
+      "target",
+      "capability",
+      "component",
+      "field",
+      "delivery",
+      "events",
+      "version",
+      "unguarded",
+    ],
+    inspect: ["dry-run", "local", "target", "events", "unguarded"],
+    dispatch: ["dry-run", "local", "capability", "component", "field", "delivery", "version", "json"],
+  };
+  const COMMANDS = Object.keys(ACCEPTED);
+
+  // The flags only one command takes, in the words of #208 and #218.
+  const ONLY: Partial<Record<TestFlag, string>> = {
+    "dry-run": "--dry-run is only supported by sync",
+    local: "--local is only supported by init",
+    capability: "--capability is only supported by inspect",
+    component: "--component is only supported by inspect",
+    field: "--field is only supported by inspect",
+    delivery: "--delivery is only supported by inspect",
+    events: "--events is only supported by dispatch",
+    unguarded: "--unguarded is only supported by dispatch",
+    version: `--version <range> is only supported by inspect; run "hooknostic --version" for this hooknostic's version`,
+  };
+  function rejection(command: string, flag: TestFlag): string {
+    if (command === "dispatch" && flag === "json")
+      return "--json is not supported by dispatch, which always writes JSON Lines";
+    if (flag === "target") return `--target is not supported by ${command}`;
+    const message = ONLY[flag];
+    if (message === undefined) throw new Error(`no expected message for --${flag}`);
+    return message;
+  }
+
+  /**
+   * Run `command` against a missing config in a fresh temp directory, with
+   * what the command needs to get past its own first check, then `flag` (once:
+   * not again when those already give it), then `words`. Nothing reads stdin,
+   * spawns a harness, or writes outside the directory; init writes beside the
+   * config.
+   */
+  async function run(command: string, flag: TestFlag | undefined, words: string[] = []) {
+    const dir = await mkdtemp(join(tmpdir(), "hooknostic-cli-flags-"));
+    tempDirs.push(dir);
+    const events = join(dir, "missing.jsonl");
+    const required: Record<string, string[]> = {
+      init: ["--local"],
+      inspect: ["claude"],
+      dispatch: ["--target", "claude", "--events", events],
+    };
+    const values: Partial<Record<TestFlag, string>> = {
+      target: "claude",
+      capability: "x",
+      component: "x",
+      field: "x",
+      delivery: "project",
+      version: "*",
+      events,
+    };
+    const given = required[command] ?? [];
+    const option = flag === undefined || given.includes(`--${flag}`) ? [] : [`--${flag}`];
+    const value = option.length > 0 && flag !== undefined && values[flag] !== undefined ? [values[flag]] : [];
+    const argv = [command, ...given, ...option, ...value, ...words, "--config", join(dir, "hooknostic.config.ts")];
+    const { io, out, err } = captureIO();
+    const code = await runCli(argv, { io, registry: {} });
+    return { argv, code, out: out(), err: err(), dir };
+  }
+
+  it("partitions every option for every command, 29 taken and 79 refused", () => {
+    for (const command of COMMANDS) {
+      const accepted = ACCEPTED[command] ?? [];
+      const rejected = REJECTED[command] ?? [];
+      expect([...accepted, ...rejected].sort(), command).toEqual([...FLAGS].sort());
+    }
+    expect(COMMANDS.length * (FLAGS.length + 1)).toBe(108);
+    // --config, taken by all nine, plus the rest.
+    expect(COMMANDS.length + Object.values(ACCEPTED).flat().length).toBe(29);
+    expect(Object.values(REJECTED).flat().length).toBe(79);
+  });
+
+  it("holds the table to each command's usage line", () => {
+    const lines = CLI_USAGE.split("\n").filter((line) => /^ {2}hooknostic \w/.test(line));
+    const flags: Record<string, string[]> = {};
+    const words: Record<string, number> = {};
+    for (const line of lines) {
+      const [, command, rest] = /^ {2}hooknostic (\w+)(.*)$/.exec(line) ?? [];
+      if (command === undefined || rest === undefined) throw new Error(line);
+      flags[command] = [...rest.matchAll(/--([a-z-]+)/g)].map((match) => match[1] as string).sort();
+      // A <placeholder> that is not an option's value is a positional.
+      const tokens = rest
+        .replace(/[[\]|]/g, " ")
+        .split(/\s+/)
+        .filter(Boolean);
+      words[command] = tokens.filter((token, at) => token.startsWith("<") && !tokens[at - 1]?.startsWith("--")).length;
+    }
+    expect(Object.keys(flags).sort()).toEqual([...COMMANDS].sort());
+    expect(
+      Object.fromEntries(Object.entries(COMMAND_FLAGS).map(([command, set]) => [command, [...set].sort()])),
+    ).toEqual(flags);
+    expect(COMMAND_POSITIONALS).toEqual(words);
+    // The flat table cannot say inspect's selectors are alternatives; the
+    // usage does, and inspect enforces it (see the test above).
+    expect(CLI_USAGE).toContain("[--capability <id> | --component <id> | --field <id>]");
+  });
+
+  // An option parsed but in no command's set would be refused everywhere;
+  // one added beside --help would be checked nowhere.
+  it("parses no option the table does not cover", () => {
+    const parsed = Object.keys(PARSE_OPTIONS).filter((name) => name !== "help");
+    const tabled = new Set(Object.values(COMMAND_FLAGS).flatMap((set) => [...set]));
+    expect([...parsed].sort()).toEqual([...tabled].sort());
+    // And each is described under Options, not only on a usage line.
+    const options = CLI_USAGE.slice(CLI_USAGE.indexOf("\nOptions:\n"));
+    const described = new Set([...options.matchAll(/^ {2}(?:-\w, )?--([a-z-]+)/gm)].map((match) => match[1]));
+    expect(parsed.filter((name) => !described.has(name))).toEqual([]);
+  });
+
+  // The rows above cover every option the parser takes, so an option added
+  // to the CLI, even everywhere it belongs, needs rows here too. In the
+  // order they are checked in, which decides the message for two at once.
+  it("covers every option the parser takes, in its order", () => {
+    expect(Object.keys(PARSE_OPTIONS).filter((name) => name !== "help")).toEqual(["config", ...FLAGS]);
+  });
+
+  it.each(COMMANDS.flatMap((command) => (ACCEPTED[command] ?? []).map((flag) => [command, flag] as const)))(
+    "%s takes --%s",
+    async (command, flag) => {
+      const { argv, out, err } = await run(command, flag);
+      const output = `${out}\n${err}`;
+      // It may still fail, for the missing config or events file, but not
+      // over the command line.
+      expect(output, argv.join(" ")).not.toMatch(/is (only|not) supported by|unexpected argument/);
+      expect(output, argv.join(" ")).not.toContain(CLI_USAGE);
+      if (flag !== "json")
+        for (const line of out.split("\n")) {
+          let value: unknown;
+          try {
+            value = JSON.parse(line);
+          } catch {
+            continue;
+          }
+          expect(value, argv.join(" ")).not.toMatchObject({ schemaVersion: 1, ok: false });
+        }
+    },
+  );
+
+  it.each(COMMANDS.flatMap((command) => (REJECTED[command] ?? []).map((flag) => [command, flag] as const)))(
+    "%s refuses --%s as a usage error, before doing anything",
+    async (command, flag) => {
+      const { argv, code, out, err, dir } = await run(command, flag);
+      expect(code, argv.join(" ")).toBe(2);
+      expect(err, argv.join(" ")).toBe(`${rejection(command, flag)}\n${CLI_USAGE}`);
+      expect(err).not.toContain("unexpected error");
+      expect(err).not.toMatch(/^\s+at /m);
+      expect(out).toBe("");
+      // Nothing written: init in particular never ran.
+      expect(await readdir(dir)).toEqual([]);
+    },
+  );
+
+  it.each(COMMANDS)("%s refuses a stray word as a usage error, before doing anything", async (command) => {
+    const { argv, code, out, err, dir } = await run(command, undefined, ["extra"]);
+    const message =
+      command === "inspect"
+        ? 'unexpected argument "extra": inspect takes one target'
+        : `unexpected argument "extra": ${command} takes no positional arguments`;
+    expect(code, argv.join(" ")).toBe(2);
+    expect(err, argv.join(" ")).toBe(`${message}\n${CLI_USAGE}`);
+    expect(out).toBe("");
+    expect(await readdir(dir)).toEqual([]);
   });
 });
 

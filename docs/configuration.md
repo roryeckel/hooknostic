@@ -202,7 +202,10 @@ Use `--config <path>` to select a configuration. `check` and `build` accept
 `--target <a,b>` to narrow the configured targets; project reconciliation commands
 process the whole integration and reject that flag. Every command but `dispatch`
 accepts `--json`; `dispatch` always writes JSON Lines, rejects `--json` with exit 2,
-and reads `--events <path>` or stdin.
+and reads `--events <path>` or stdin. Each command accepts only the options its
+usage line in `hooknostic --help` shows, plus `-h`/`--help`, which every command
+accepts, and no extra words: only `inspect` takes one, its target. Anything else
+is a usage error with exit 2, reported before the command reads or writes anything.
 
 ```sh
 hooknostic inspect codex --delivery package --component agent-plugin.mcp.stdio --config hooknostic.config.ts

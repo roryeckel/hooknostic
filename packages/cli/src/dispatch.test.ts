@@ -397,6 +397,30 @@ export default definePlugin({ name: "pi-validation", hooks: [
     );
   });
 
+  // So is any option dispatch does not take, which it used to ignore (#255).
+  it("rejects an option it does not take as a usage error before reading the events", async () => {
+    const dir = await project(HOOKS);
+    const child = spawnSync(
+      process.execPath,
+      [
+        CLI_BIN,
+        "dispatch",
+        "--config",
+        join(dir, "hooknostic.config.ts"),
+        "--target",
+        "claude",
+        "--capability",
+        "x",
+        "--events",
+        join(dir, "missing.jsonl"),
+      ],
+      { encoding: "utf8", timeout: 60_000 },
+    );
+    expect(child.status, child.stderr).toBe(2);
+    expect(child.stdout).toBe("");
+    expect(child.stderr.replace(/\r\n/g, "\n")).toBe(`--capability is only supported by inspect\n${CLI_USAGE}\n`);
+  });
+
   const DIALECT_HOOKS = `
 import { block, definePlugin, hook, replaceInput } from "@hooknostic/sdk";
 
