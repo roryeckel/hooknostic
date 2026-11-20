@@ -1,4 +1,5 @@
-import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { spawnSync } from "node:child_process";
+import { mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -333,11 +334,34 @@ describe("project reconciliation", () => {
       await rm(outside, { recursive: true, force: true });
     }
   });
-  it("rejects a concurrent synchronization", async () => {
+  it("rejects a concurrent synchronization and names recover", async () => {
     await mkdir(join(root, ".hooknostic"));
     await writeFile(join(root, ".hooknostic/sync.lock"), String(process.pid));
-    await expect(sync()).rejects.toMatchObject({ code: "EEXIST" });
+    const lock = join(await realpath(root), ".hooknostic", "sync.lock");
+    await expect(sync()).rejects.toMatchObject({
+      message: `another hooknostic sync may be running: ${lock} exists; if no sync is running, run hooknostic recover, which removes a lock left by a process that has exited`,
+      code: "EEXIST",
+      path: lock,
+      cause: { code: "EEXIST", path: lock },
+    });
     await expect(recoverProject(root, config)).rejects.toThrow("still running");
+  });
+  it("lets recover remove a leftover sync lock from a process that has exited", async () => {
+    // spawnSync returns after the child exits, so its pid names no process.
+    const dead = spawnSync(process.execPath, ["-e", ""]).pid;
+    await mkdir(join(root, ".hooknostic"));
+    await writeFile(join(root, ".hooknostic/sync.lock"), String(dead));
+    await expect(sync()).rejects.toThrow("run hooknostic recover");
+    await recoverProject(root, config);
+    await expect(readFile(join(root, ".hooknostic/sync.lock"))).rejects.toMatchObject({ code: "ENOENT" });
+    await sync();
+  });
+  it("leaves a leftover recovery lock's error untranslated", async () => {
+    await mkdir(join(root, ".hooknostic"));
+    await writeFile(join(root, ".hooknostic/recovery.lock"), String(process.pid));
+    const error: unknown = await recoverProject(root, config).catch((caught: unknown) => caught);
+    expect(error).toMatchObject({ code: "EEXIST", syscall: "open" });
+    expect((error as Error).message).not.toContain("hooknostic sync may be running");
   });
   it("recovers interrupted replacements from preimages", async () => {
     await mkdir(join(root, ".hooknostic"));

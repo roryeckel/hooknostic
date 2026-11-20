@@ -700,10 +700,32 @@ async function stage(root: string, value: Buffer, mode: number): Promise<string>
   await createFlushed(temp, value, mode, true);
   return temp;
 }
+/**
+ * Takes the lock `name` by creating it with this process's pid. A sync lock
+ * that already exists becomes an error that names `hooknostic recover`; it
+ * keeps the raw error as `cause` and its `code` and `path`, so a caller that
+ * checks for EEXIST still sees it. The message hedges on purpose: recover
+ * removes the lock only when its pid names a process that has exited
+ * (`recoverProject`), and refuses one whose process is alive or that holds no
+ * valid pid, such as the empty lock a hard kill between create and write
+ * leaves. Other locks, such as the recovery lock, keep the raw error.
+ */
 async function acquire(root: string, name = LOCK): Promise<() => Promise<void>> {
   const lock = await projectPath(root, name);
   await mkdir(dirname(lock), { recursive: true });
-  await createFlushed(lock, String(process.pid), 0o600, false);
+  try {
+    await createFlushed(lock, String(process.pid), 0o600, false);
+  } catch (error) {
+    if (name === LOCK && (error as NodeJS.ErrnoException).code === "EEXIST")
+      throw Object.assign(
+        new Error(
+          `another hooknostic sync may be running: ${lock} exists; if no sync is running, run hooknostic recover, which removes a lock left by a process that has exited`,
+          { cause: error },
+        ),
+        { code: "EEXIST", path: lock },
+      );
+    throw error;
+  }
   return () => rm(lock, { force: true });
 }
 async function verifyPreconditions(root: string, preconditions: readonly ProjectFilePrecondition[]): Promise<void> {

@@ -287,6 +287,10 @@ including symlink aliases within the project. Codex output paths must also avoid
 shell expansion characters (`$` and backtick).
 
 An interrupted transaction blocks new sync. Run `recover` with the same config.
+Sync holds `.hooknostic/sync.lock` while it runs, so a sync that finds one
+reports that another sync may be running and names `recover`. Recover removes
+that lock only when its recorded PID names a process that has exited; it refuses
+a lock whose process is still running or that holds no valid PID.
 Recovery checks each file against the preimage or planned hash before restoring
 anything. Unexpected external edits preserve the journal and require manual
 resolution. Journal and staging files are ignored and can contain preimages of
