@@ -151,8 +151,8 @@ function doctorDiagnostics(configDir: string | undefined, sdk: ProjectSdkRelease
 }
 
 /**
- * Prints `diagnostics` as doctor's text output does: as `check` and `sync`
- * print them, remediation included, then a blank line (#260).
+ * Prints `diagnostics` on stdout as doctor's text output does: as `check` and
+ * `sync` print them, remediation included, then a blank line (#260).
  */
 function printDiagnostics(write: (text: string) => void, diagnostics: readonly Diagnostic[]): void {
   if (diagnostics.length === 0) return;
@@ -431,7 +431,8 @@ export async function runDoctor(options: DoctorCommandOptions): Promise<number> 
       }
     }
   }
-  printDiagnostics(options.io.stderr, configuration);
+  // Nothing follows them on stderr, so no blank line, as `check` prints its failure.
+  if (configuration.length > 0) options.io.stderr(formatDiagnostics(configuration));
   if (project) {
     options.io.stdout(
       `Project wiring: ${project.ok ? "current" : project.errors.length ? "conflict or invalid" : "drifted"}; hook execution has not been observed.`,

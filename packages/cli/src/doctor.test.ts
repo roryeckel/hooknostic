@@ -232,6 +232,8 @@ describe("doctor version comparison", () => {
 
       const human = fakeIO();
       expect(await runDoctor({ config: configPath, registry: {}, io: human.io })).toBe(2);
+      // One block, with no blank line after it: nothing follows on stderr.
+      expect(human.err).toEqual([expect.stringMatching(/^HN501 /)]);
       const err = human.err.join("\n");
       expect(err).toMatch(/^HN501 invalid configuration \[error\]$/m);
       expect(err).toContain(`\n  ${failure}\n`);

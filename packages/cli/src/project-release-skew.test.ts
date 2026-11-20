@@ -60,6 +60,9 @@ it("warns HN110 from sync and verify without failing either (#194)", { timeout: 
     // Once per run: buildProject reports it, and runProject does not repeat it.
     expect(hn110Lines(out + "\n" + err)).toEqual([HN110_HEADER]);
     expect(out).toContain(HN110_MESSAGE);
+    // A blank line, as `check` prints one, separates the last diagnostic's
+    // remediation from the command's own lines (#260).
+    expect(out).toMatch(/\n {2}Remediation: [^\n]*\n\n(?=\S)/);
   }
 });
 

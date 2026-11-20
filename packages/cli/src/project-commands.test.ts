@@ -45,6 +45,8 @@ it.each(["sync", "verify", "recover"])(
     expect(human.out).toContain(
       "\n  Remediation: the config must be a TypeScript module whose default export is defineConfig({...}).",
     );
+    // Then a blank line, as `check` separates the diagnostics from what follows.
+    expect(human.out).toMatch(/\n {2}Remediation: [^\n]*\n$/);
     // The one-line summary stays on stderr.
     expect(human.err).toBe(failure);
 
