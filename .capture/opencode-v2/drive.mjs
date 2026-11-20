@@ -310,6 +310,12 @@ const ripgrep =
   effect === "tools"
     ? await diagnostics.run("seed-ripgrep", async () => (await import("./ripgrep.mjs")).seedRipgrep(env.XDG_CACHE_HOME))
     : undefined;
+// Without a seed record the post-run check would be skipped and a harness
+// download could pass unnoticed: refuse to run the tools drive without one.
+if (effect === "tools" && !ripgrep?.seeded)
+  await diagnostics.run("seed-ripgrep", async () => {
+    throw new Error("ripgrep pre-seed failed: the tools drive produced no seed record");
+  });
 if (ripgrep) diagnostics.snapshot("ripgrep.json", ripgrep);
 diagnostics.complete("prepare-native-config");
 // Save loopback observations while the harness runs, before an outer timeout can kill this process.
@@ -444,9 +450,10 @@ try {
   if (ripgrep && code !== 0) diagnostics.snapshot("ripgrep.json", { ...ripgrep, verified: false, harnessExit: code });
   else if (ripgrep) {
     const searchPath = Object.entries(env).find(([name]) => name.toUpperCase() === "PATH")?.[1];
-    const used = await diagnostics.run("verify-ripgrep-seed", async () =>
-      (await import("./ripgrep.mjs")).verifyRipgrepSeed(ripgrep, env.XDG_DATA_HOME, searchPath),
-    );
+    const used = await diagnostics.run("verify-ripgrep-seed", async () => {
+      const { searchToolsCalledAt, verifyRipgrepSeed } = await import("./ripgrep.mjs");
+      return verifyRipgrepSeed(ripgrep, env.XDG_DATA_HOME, searchPath, searchToolsCalledAt(captured));
+    });
     diagnostics.snapshot("ripgrep.json", { ...ripgrep, ...used, verified: true });
   }
 } catch (error) {
