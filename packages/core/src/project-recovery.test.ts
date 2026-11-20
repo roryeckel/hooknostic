@@ -1,5 +1,6 @@
+import { spawnSync } from "node:child_process";
 import type * as fs from "node:fs/promises";
-import { chmod, mkdir, mkdtemp, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readdir, readFile, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -72,6 +73,42 @@ it("rechecks external edits immediately before a replacement", async () => {
   );
   expect(await readFile(join(root, "z.txt"), "utf8")).toBe("external");
   expect(await readFile(join(root, ".hooknostic/transaction.json"), "utf8")).toContain('"schemaVersion":1');
+});
+it.each([
+  { name: ".hooknostic/recovery.lock", holder: "recover" },
+  { name: ".hooknostic/sync.lock", holder: "sync or recover" },
+])("leaves a live lock that replaced a dead $name while recover checked it (#267)", async ({ name, holder }) => {
+  const { pid: dead } = spawnSync(process.execPath, ["-e", ""]);
+  expect(dead, "spawn a child to get a dead pid").toBeTypeOf("number");
+  await mkdir(join(root, ".hooknostic"));
+  await writeFile(join(root, "a.txt"), "after");
+  const journal = JSON.stringify({
+    schemaVersion: 1,
+    config: owner,
+    entries: [
+      { path: "a.txt", before: Buffer.from("before").toString("base64"), afterHash: fileHash("after"), mode: 0o644 },
+    ],
+  });
+  await writeFile(join(root, ".hooknostic/transaction.json"), journal);
+  await writeFile(join(root, name), String(dead));
+  const lock = join(await realpath(root), name);
+  const actual = (await vi.importActual<typeof fs>("node:fs/promises")).rename;
+  vi.mocked(rename).mockImplementation(async (from, to) => {
+    // After recover found the lock dead and before it claimed it, a peer
+    // removed the dead lock and created its own.
+    if (String(from) === lock) {
+      await rm(lock);
+      await writeFile(lock, String(process.pid));
+    }
+    return actual(from, to);
+  });
+  await expect(recoverProject(root, owner)).rejects.toThrow(
+    `another hooknostic ${holder} is running: it took ${lock} while recover was checking it; rerun hooknostic recover after it finishes`,
+  );
+  expect(await readFile(lock, "utf8")).toBe(String(process.pid));
+  expect(await readFile(join(root, "a.txt"), "utf8")).toBe("after");
+  expect(await readFile(join(root, ".hooknostic/transaction.json"), "utf8")).toBe(journal);
+  expect(await readdir(join(root, ".hooknostic/staging")).catch(() => [])).toEqual([]);
 });
 it.skipIf(process.platform === "win32")("applies the requested mode despite a restrictive umask", async () => {
   const previousUmask = process.umask(0o077);

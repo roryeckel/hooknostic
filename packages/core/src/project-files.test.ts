@@ -1,9 +1,9 @@
 import { spawnSync } from "node:child_process";
-import { mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, realpath, rm, symlink, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { applyProject, fileHash, type ProjectIntegration, reconcileProject, recoverProject } from "./project-files.js";
 let root: string;
@@ -31,6 +31,26 @@ async function sync(input = integration()) {
   await applyProject(root, config, plan);
   return plan;
 }
+/** A pid that names no process: spawnSync returns after the child has exited. */
+function deadPid(): number {
+  const { pid } = spawnSync(process.execPath, ["-e", ""]);
+  expect(pid, "spawn a child to get a dead pid").toBeTypeOf("number");
+  return pid;
+}
+/** The journal of an interrupted replacement of settings.json from `before` to `after`. */
+const journal = (before: string, after: string) =>
+  JSON.stringify({
+    schemaVersion: 1,
+    config,
+    entries: [
+      {
+        path: "settings.json",
+        before: Buffer.from(before).toString("base64"),
+        afterHash: fileHash(after),
+        mode: 0o644,
+      },
+    ],
+  });
 describe("project reconciliation", () => {
   it("plans without writing and becomes byte-idempotent", async () => {
     const plan = await reconcileProject(root, config, integration());
@@ -347,21 +367,98 @@ describe("project reconciliation", () => {
     await expect(recoverProject(root, config)).rejects.toThrow("still running");
   });
   it("lets recover remove a leftover sync lock from a process that has exited", async () => {
-    // spawnSync returns after the child exits, so its pid names no process.
-    const dead = spawnSync(process.execPath, ["-e", ""]).pid;
     await mkdir(join(root, ".hooknostic"));
-    await writeFile(join(root, ".hooknostic/sync.lock"), String(dead));
+    await writeFile(join(root, ".hooknostic/sync.lock"), String(deadPid()));
     await expect(sync()).rejects.toThrow("run hooknostic recover");
     await recoverProject(root, config);
     await expect(readFile(join(root, ".hooknostic/sync.lock"))).rejects.toMatchObject({ code: "ENOENT" });
     await sync();
   });
-  it("leaves a leftover recovery lock's error untranslated", async () => {
+  it("lets recover take over a recovery lock from a process that has exited, with nothing staged (#267)", async () => {
+    // The common case: a recover killed after taking its lock, in a project
+    // that has no journal and has never staged a file.
+    await mkdir(join(root, ".hooknostic"));
+    await writeFile(join(root, ".hooknostic/recovery.lock"), String(deadPid()));
+    await recoverProject(root, config);
+    await expect(readFile(join(root, ".hooknostic/recovery.lock"))).rejects.toMatchObject({ code: "ENOENT" });
+    await expect(readFile(join(root, ".hooknostic/sync.lock"))).rejects.toMatchObject({ code: "ENOENT" });
+    // Nothing it claimed the lock with is left behind.
+    expect(await readdir(join(root, ".hooknostic/staging")).catch(() => [])).toEqual([]);
+  });
+  it("lets recover take over a dead recovery lock and finish the interrupted transaction (#267)", async () => {
+    await mkdir(join(root, ".hooknostic"));
+    await writeFile(join(root, "settings.json"), "after");
+    await writeFile(join(root, ".hooknostic/transaction.json"), journal("before", "after"));
+    await writeFile(join(root, ".hooknostic/recovery.lock"), String(deadPid()));
+    await recoverProject(root, config);
+    expect(await readFile(join(root, "settings.json"), "utf8")).toBe("before");
+    await expect(readFile(join(root, ".hooknostic/transaction.json"))).rejects.toMatchObject({ code: "ENOENT" });
+    await expect(readFile(join(root, ".hooknostic/recovery.lock"))).rejects.toMatchObject({ code: "ENOENT" });
+  });
+  it("refuses a recovery lock whose process is running, naming its PID and path, and keeps it (#267)", async () => {
     await mkdir(join(root, ".hooknostic"));
     await writeFile(join(root, ".hooknostic/recovery.lock"), String(process.pid));
-    const error: unknown = await recoverProject(root, config).catch((caught: unknown) => caught);
-    expect(error).toMatchObject({ code: "EEXIST", syscall: "open" });
-    expect((error as Error).message).not.toContain("may be running");
+    const lock = join(await realpath(root), ".hooknostic", "recovery.lock");
+    await expect(recoverProject(root, config)).rejects.toThrow(
+      `a hooknostic recover is still running: PID ${process.pid} holds ${lock}; if no such process exists (its PID may have been reused), delete that file and rerun hooknostic recover`,
+    );
+    expect(await readFile(lock, "utf8")).toBe(String(process.pid));
+  });
+  it.each([".hooknostic/recovery.lock", ".hooknostic/sync.lock"])(
+    "refuses an invalid %s, naming its path, and keeps it",
+    async (name) => {
+      await mkdir(join(root, ".hooknostic"));
+      await writeFile(join(root, name), "garbage");
+      const lock = join(await realpath(root), name);
+      await expect(recoverProject(root, config)).rejects.toThrow(
+        `invalid lock: ${lock} holds no process ID; inspect it, and if no hooknostic sync or recover is running, delete it and rerun hooknostic recover`,
+      );
+      expect(await readFile(lock, "utf8")).toBe("garbage");
+    },
+  );
+  it.each([".hooknostic/recovery.lock", ".hooknostic/sync.lock"])(
+    "treats an empty %s older than ten seconds as left by a hard kill",
+    async (name) => {
+      // A process killed between creating the lock and writing its PID leaves it empty.
+      await mkdir(join(root, ".hooknostic"));
+      await writeFile(join(root, name), "");
+      const old = new Date(Date.now() - 11_000);
+      await utimes(join(root, name), old, old);
+      await recoverProject(root, config);
+      await expect(readFile(join(root, name))).rejects.toMatchObject({ code: "ENOENT" });
+    },
+  );
+  it.each([".hooknostic/recovery.lock", ".hooknostic/sync.lock"])(
+    "refuses an empty %s younger than ten seconds, whose creator may not have written its PID yet",
+    async (name) => {
+      await mkdir(join(root, ".hooknostic"));
+      await writeFile(join(root, name), "");
+      const lock = join(await realpath(root), name);
+      await expect(recoverProject(root, config)).rejects.toThrow(
+        `${lock} is empty and less than ten seconds old, so the hooknostic process creating it may not have written its PID yet; rerun hooknostic recover in a few seconds`,
+      );
+      expect(await readFile(lock, "utf8")).toBe("");
+    },
+  );
+  it.each([
+    { name: ".hooknostic/recovery.lock", holder: "recover" },
+    { name: ".hooknostic/sync.lock", holder: "sync or recover" },
+  ])("counts a process it may not signal (EPERM) as running, for $name", async ({ name, holder }) => {
+    await mkdir(join(root, ".hooknostic"));
+    await writeFile(join(root, name), "4242");
+    const lock = join(await realpath(root), name);
+    const kill = vi.spyOn(process, "kill").mockImplementation(() => {
+      throw Object.assign(new Error("kill EPERM"), { code: "EPERM", syscall: "kill" });
+    });
+    try {
+      await expect(recoverProject(root, config)).rejects.toThrow(
+        `a hooknostic ${holder} is still running: PID 4242 holds ${lock};`,
+      );
+      expect(kill).toHaveBeenCalledWith(4242, 0);
+    } finally {
+      kill.mockRestore();
+    }
+    expect(await readFile(lock, "utf8")).toBe("4242");
   });
   it("recovers interrupted replacements from preimages", async () => {
     await mkdir(join(root, ".hooknostic"));

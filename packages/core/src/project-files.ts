@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { fsync } from "node:fs";
+import { type BigIntStats, fsync } from "node:fs";
 import { lstat, mkdir, open, readFile, realpath, rename, rm } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, sep } from "node:path";
 
@@ -701,14 +701,14 @@ async function stage(root: string, value: Buffer, mode: number): Promise<string>
   return temp;
 }
 /**
- * Takes the lock `name` by creating it with this process's pid. A sync lock
- * that already exists becomes an error that names `hooknostic recover`; it
- * keeps the raw error as `cause` and its `code` and `path`, so a caller that
- * checks for EEXIST still sees it. The message hedges on purpose: recover
- * removes the lock only when its pid names a process that has exited
- * (`recoverProject`), and refuses one whose process is alive or that holds no
- * valid pid, such as the empty lock a hard kill between create and write
- * leaves. Other locks, such as the recovery lock, keep the raw error.
+ * Takes the lock `name` by creating it with this process's pid. A lock that
+ * already exists becomes an error that names `hooknostic recover`; it keeps
+ * the raw error as `cause` and its `code` and `path`, so a caller that checks
+ * for EEXIST still sees it. The messages hedge on purpose: recover removes a
+ * lock only when it was left by a process that has exited (`clearDeadLock`),
+ * and refuses one whose process may be alive or that holds no valid pid.
+ * Recover clears a dead recovery lock before taking its own, so it meets an
+ * existing one here only when another recover created it in between.
  */
 async function acquire(root: string, name = LOCK): Promise<() => Promise<void>> {
   const lock = await projectPath(root, name);
@@ -716,10 +716,12 @@ async function acquire(root: string, name = LOCK): Promise<() => Promise<void>> 
   try {
     await createFlushed(lock, String(process.pid), 0o600, false);
   } catch (error) {
-    if (name === LOCK && (error as NodeJS.ErrnoException).code === "EEXIST")
+    if ((error as NodeJS.ErrnoException).code === "EEXIST")
       throw Object.assign(
         new Error(
-          `another hooknostic sync or recover may be running: ${lock} exists; if neither is, run hooknostic recover with the same configuration, which removes a lock left by a process that has exited`,
+          name === LOCK
+            ? `another hooknostic sync or recover may be running: ${lock} exists; if neither is, run hooknostic recover with the same configuration, which removes a lock left by a process that has exited`
+            : `another hooknostic recover may be running: ${lock} exists; rerun hooknostic recover, which removes a lock left by a process that has exited`,
           { cause: error },
         ),
         { code: "EEXIST", path: lock },
@@ -831,23 +833,119 @@ async function restore(root: string, config: string): Promise<void> {
   }
   await rm(await projectPath(root, JOURNAL));
 }
+/** Who may hold each lock, as the messages about it name them. */
+const LOCK_HOLDERS: Readonly<Record<string, string>> = { [LOCK]: "sync or recover", [RECOVERY_LOCK]: "recover" };
+/**
+ * How old an empty lock must be before recover treats it as left by a hard
+ * kill between its creation and the write of its pid (`createFlushed`), a
+ * window of one write. A younger one may belong to a live process about to
+ * write its pid; an mtime in the future, from a skewed clock, counts as young.
+ */
+const EMPTY_LOCK_AGE_MS = 10_000;
+interface LockState {
+  stat: BigIntStats;
+  contents: Buffer;
+}
+function processRunning(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === "ESRCH") return false;
+    if (code === "EPERM") return true;
+    throw error;
+  }
+}
+async function lockState(path: string): Promise<LockState | null> {
+  try {
+    return { stat: await lstat(path, { bigint: true }), contents: await readFile(path) };
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+    throw error;
+  }
+}
+/**
+ * Removes the lock `name` when the process that created it has exited, so a
+ * hard kill during sync or recover does not block recover for good (#267).
+ *
+ * - The lock is judged by its pid: `process.kill(pid, 0)` failing with ESRCH
+ *   means no such process. Success or EPERM (a process this one may not
+ *   signal, such as another user's or an elevated one on Windows) counts as
+ *   alive. A pid reused by an unrelated process therefore makes recover
+ *   refuse, never take a live lock; the message names the pid and the path so
+ *   the user can check and delete the file.
+ * - An empty lock is what a kill between creating it and writing the pid
+ *   leaves; it counts as dead once it is `EMPTY_LOCK_AGE_MS` old.
+ * - The lock is claimed by renaming it into `.hooknostic/staging/` and then
+ *   checked to be the very file judged dead (same inode, mtime and bytes)
+ *   before it is removed. A plain check-then-remove could remove a lock that a
+ *   peer created in between: two recovers both judging the same dead recovery
+ *   lock, or a sync taking the sync lock after someone deleted a dead one. A
+ *   claimed file that turns out to be a peer's is renamed back and recover
+ *   stops. That rename replaces whatever is at the lock path, so a third
+ *   process that created the lock in that instant would lose it: concurrent
+ *   recovers are best-effort, not serialized.
+ * - The staging directory is created first, so an ENOENT from the rename can
+ *   only mean the lock itself is gone, taken by a peer; the lock is then
+ *   contended for normally by `acquire`. A claim left by a crash stays in
+ *   staging, which `.hooknostic/.gitignore` ignores wherever it exists and
+ *   nothing reads.
+ * - A process in another pid namespace (WSL and Windows sharing a checkout, a
+ *   container with a bind mount, two hosts on a network share) looks dead from
+ *   here. Recover cannot tell, so it must be run from one environment at a
+ *   time.
+ */
+async function clearDeadLock(root: string, name: string): Promise<void> {
+  const holder = LOCK_HOLDERS[name];
+  const path = await projectPath(root, name);
+  const seen = await lockState(path);
+  if (!seen) return;
+  if (seen.contents.length === 0) {
+    if (Date.now() - Number(seen.stat.mtimeMs) < EMPTY_LOCK_AGE_MS)
+      throw new Error(
+        `${path} is empty and less than ten seconds old, so the hooknostic process creating it may not have written its PID yet; rerun hooknostic recover in a few seconds`,
+      );
+  } else {
+    const pid = Number(seen.contents.toString());
+    if (!Number.isSafeInteger(pid) || pid <= 0)
+      throw new Error(
+        `invalid lock: ${path} holds no process ID; inspect it, and if no hooknostic sync or recover is running, delete it and rerun hooknostic recover`,
+      );
+    if (processRunning(pid))
+      throw new Error(
+        `a hooknostic ${holder} is still running: PID ${pid} holds ${path}; if no such process exists (its PID may have been reused), delete that file and rerun hooknostic recover`,
+      );
+  }
+  const claim = await projectPath(root, `.hooknostic/staging/${randomUUID()}`);
+  await mkdir(dirname(claim), { recursive: true });
+  try {
+    await rename(path, claim);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return;
+    throw error;
+  }
+  const claimed = await lockState(claim);
+  if (
+    claimed &&
+    claimed.stat.ino === seen.stat.ino &&
+    claimed.stat.mtimeNs === seen.stat.mtimeNs &&
+    claimed.contents.equals(seen.contents)
+  ) {
+    await rm(claim, { force: true });
+    return;
+  }
+  if (claimed) await rename(claim, path);
+  throw new Error(
+    `another hooknostic ${holder} is running: it took ${path} while recover was checking it; rerun hooknostic recover after it finishes`,
+  );
+}
 export async function recoverProject(root: string, config: string): Promise<void> {
   validatePath(config);
+  await clearDeadLock(root, RECOVERY_LOCK);
   const recoveryRelease = await acquire(root, RECOVERY_LOCK);
   try {
-    const lock = await projectPath(root, LOCK);
-    const existing = await bytes(lock);
-    if (existing) {
-      const pid = Number(existing.toString());
-      if (!Number.isSafeInteger(pid) || pid <= 0) throw new Error("invalid lock; inspect it before recovery");
-      try {
-        process.kill(pid, 0);
-        throw new Error("synchronization is still running");
-      } catch (error) {
-        if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error;
-      }
-      await rm(lock);
-    }
+    await clearDeadLock(root, LOCK);
     const release = await acquire(root);
     try {
       await restore(root, config);
