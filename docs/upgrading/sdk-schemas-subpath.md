@@ -176,7 +176,8 @@ start a CLI installed elsewhere under that runtime from the project directory
 with `node -r ./.pnp.cjs <dir>/hooknostic/bin/hooknostic.mjs`
 ([getting started](../getting-started.md) shows it for a global install).
 `npx`, a globally installed `hooknostic` run directly and `pnpm dlx` run
-without that runtime, and the build fails with HN504. `yarn dlx` is
+without that runtime, and a build that needs a package from Yarn's install
+fails with HN504. `yarn dlx` is
 unsupported: it fails with HN504 when the build needs Hooknostic's own Zod,
 because its install is not in the project's PnP manifest, and on Linux with
 Node 22, sharing Yarn's global cache with the project, it fails with HN501

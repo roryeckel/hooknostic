@@ -11,15 +11,19 @@ A Yarn Plug'n'Play project has no `node_modules`. Its packages sit in zip
 archives, and a file Yarn writes at the project's root, `.pnp.cjs`, tells
 Node where each one is. Yarn's runtime is that file loaded into the process:
 it teaches Node's resolver and `fs` to read the archives. `yarn <bin>` loads
-it before running a package's binary, and `node -r ./.pnp.cjs` does the same
-for any script.
+it before running a package's binary. `node -r ./.pnp.cjs` loads the same
+file into that one Node process before the script runs; the suite verifies
+that this is enough for `build`, and does not run other commands that way.
 
 esbuild reads Yarn's manifest and archives itself, so a bundle resolves
 either way. What Hooknostic reads beside a module -- the SDK's manifest for
 its Zod fallback, licence notices, the project's SDK for HN110 -- goes
 through Node's `fs` and comes back missing without Yarn's runtime. Since #183
 such a build fails with HN504 rather than come out silently wrong
-(`pnpRuntimeGuardPlugin`, ADR-0040 point 4).
+(`pnpRuntimeGuardPlugin`, ADR-0040 point 4). The guard is active when Yarn's
+runtime is missing (`process.versions.pnp` unset) in a project with a
+Plug'n'Play manifest, and fails a build only when the build needs a package
+served from Yarn's install, a path this process cannot read.
 
 The opt-in Yarn suite (`packages/cli/test/yarn-pnp-consumer.test.ts`,
 [testing](../testing.md#yarn-plugnplay-consumers)) installs six Yarn 4.18.1
@@ -29,16 +33,15 @@ component -- and builds each four ways:
 
 | Invocation | Outcome |
 |---|---|
-| `yarn hooknostic` | Builds with the project's in-range Zod, or the CLI's own with HN109. HN110 warns for the repacked SDK. The MCP launcher answers. |
-| `node -r ./.pnp.cjs <npm install>/hooknostic/bin/hooknostic.mjs`, from the project directory | The same as `yarn hooknostic`. |
+| `yarn hooknostic` | Builds. With no Zod in the project, it uses the CLI's own Zod, with no HN109. With the project's Zod out of range (3.24.4, 3.25.76), it uses the CLI's own, with HN109. With it in range (4.6.7), it uses the project's. HN110 warns for the repacked SDK. The MCP launcher answers. |
+| `node -r ./.pnp.cjs <npm install>/hooknostic/bin/hooknostic.mjs`, from the project directory, with the CLI installed by npm in a directory outside any Yarn Plug'n'Play project | The same as `yarn hooknostic`. |
 | Plain `node` with that npm-installed CLI | HN504 in every consumer, with no HN110. |
-| `yarn dlx` | HN504 unless the project's Zod is in range; then it builds and the MCP launcher answers. HN110 never warns. |
+| `yarn dlx -p hooknostic@file:<the CLI tarball>`, the same tarball, at the same version, that every consumer depends on | HN504 unless the project's Zod is in range; then it builds and the MCP launcher answers. HN110 never warns. |
 
 `init --local`, `sync` twice and `verify` run under `yarn hooknostic` only.
 `npx`, a global install and `pnpm dlx` are not run. Each is Hooknostic
-outside the project without Yarn's runtime, the plain `node` row: the guard
-fires whenever `process.versions.pnp` is unset and the project has a
-Plug'n'Play manifest.
+outside the project without Yarn's runtime, as in the plain `node` row, where
+every consumer's build needs the SDK from Yarn's install and fails with HN504.
 
 `yarn dlx` loads a runtime, but its own, not the project's:
 
@@ -52,10 +55,15 @@ Plug'n'Play manifest.
   `another-pnp-runtime`.
 - On Linux with Node 22, sharing Yarn's global cache with the project, it
   fails with HN501 "controlled by multiple pnpapi instances" whatever the Zod
-  version, already at `d2bd5967`, before HN110 existed.
-- `yarn dlx hooknostic@<v>` in a project that depends on `hooknostic@<v>`
-  fails inside Yarn at startup, before any Hooknostic code runs (reproduced
-  by hand with 0.12.0; not in the suite).
+  version, already at `d2bd5967`, before HN110 existed. The cause is
+  unconfirmed (#190): an in-process trace showed no second PnP API loaded in
+  the main thread, so Yarn's ESM loader thread is the likely place.
+- `yarn dlx hooknostic@0.12.0`, from the registry, in a project that also
+  depends on `hooknostic@0.12.0` failed at startup, before any Hooknostic
+  code ran. That was reproduced by hand, and only with the registry's
+  0.12.0. The suite's `yarn dlx` mode runs the same `file:`
+  tarball the consumers depend on, and some of its cells build, so the
+  failure does not follow from the versions matching alone.
 
 Only Yarn 4.18.1 is verified; Yarn 2 and 3 are untested. Yarn's
 `node-modules` linker is not Plug'n'Play and is unaffected.
@@ -65,21 +73,24 @@ Only Yarn 4.18.1 is verified; Yarn 2 and 3 are untested. Yarn's
 1. **Supported: commands run under the project's own Yarn runtime.**
    - `yarn hooknostic <command>`, with `hooknostic` as a devDependency.
    - `node -r ./.pnp.cjs <dir>/hooknostic/bin/hooknostic.mjs <command>`, run
-     from the project directory, for a CLI installed with npm elsewhere: in
-     another directory or globally. The command names the package's
+     from the project directory, for a CLI installed with npm globally or in
+     a directory outside any other Yarn Plug'n'Play project, the layout the
+     suite runs. A CLI installed inside another Yarn Plug'n'Play project's
+     tree is untested, pending #269. The command names the package's
      `bin/hooknostic.mjs`, because the `node_modules/.bin` entry is not always
      a Node script (a `.cmd` or shell wrapper on Windows and under pnpm).
 
    The opt-in suite runs `build` in both forms, `init --local`, `sync` and
    `verify` under `yarn hooknostic`, and MCP components. Other commands are
-   expected to work there but are not run.
+   expected to work but are not run, under `node -r` in particular.
 2. **Unsupported:**
    - Plain `node`, `npx`, a globally installed `hooknostic` run directly, and
-     `pnpm dlx`. A build that needs a module from Yarn's install fails with
-     HN504.
-   - `yarn dlx`, which stays best effort as it is: it builds when the
-     project's Zod is in range and otherwise fails with HN504. It never checks
-     HN110, and nothing warns that the run is unsupported.
+     `pnpm dlx`. A build that needs a package served from Yarn's install
+     fails with HN504.
+   - `yarn dlx`, which stays best effort as it is. At most it builds when the
+     project's Zod is in range; otherwise it fails with HN504, and it can fail
+     in the other ways above. It never checks HN110, and nothing warns that
+     the run is unsupported.
 3. **HN504 is the in-product statement.** Its note names the devDependency
    route and `yarn hooknostic`, and lists `npx`, a global install, `pnpm dlx`
    and `yarn dlx` as not loading the project's runtime. No new diagnostic.
@@ -118,8 +129,11 @@ Only Yarn 4.18.1 is verified; Yarn 2 and 3 are untested. Yarn's
   Yarn load the project's `.pnp.cjs` under dlx and changes the result.
 - **Known edge (#269).** `anotherInstallsPnpRuntime` asks Yarn about the CLI's
   own directory even when the CLI is outside every Yarn install, as under the
-  `node -r` form. Whether it should skip that, as the Zod fallback and the MCP
-  launcher do, is #269.
+  `node -r` form. For a CLI inside another Yarn Plug'n'Play project's tree,
+  that may load that tree's PnP API beside the project's, as Node's own
+  resolution from the CLI's files could. Whether the gate should skip the
+  question, as the Zod fallback and the MCP launcher do, is #269; until then
+  that layout is untested and not claimed.
 
 ## Alternatives considered
 
@@ -135,8 +149,8 @@ Only Yarn 4.18.1 is verified; Yarn 2 and 3 are untested. Yarn's
   preconditions are a CI lane for the Yarn suite, demand in Discussions, and
   proof of two assumptions: that the SDK subpath alias works with a zip path
   found that way, and that esbuild reads a zip from another install's
-  manifest. It would not fix the Linux with Node 22 failure or the same-version
-  startup failure, both inside Yarn.
+  manifest. It would not address the Linux with Node 22 failure or the
+  registry same-version startup failure, whose causes are unconfirmed.
 - **A Plug'n'Play-aware filesystem in core** (a zip reader and manifest
   parsing): duplicates Yarn's runtime inside core, with ongoing maintenance
   for zip formats and Yarn's layout.

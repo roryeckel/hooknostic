@@ -89,11 +89,16 @@ read packages, or how `sync` writes project files: read the changes since the
 previous release (`git log --oneline v<previous>..`). If it does, run the
 [opt-in Yarn Plug'n'Play suite](testing.md#yarn-plugnplay-consumers) on the
 preparation branch, which shows the command for POSIX shells and PowerShell,
-and report its result with the release PR. CI does not run it, and it is the
-only test against a real Yarn install. During 0.13.0's development, running it
-caught a regression under `yarn dlx` (#216) before release, and the work on
-that fix turned up two older Plug'n'Play failures that had already shipped:
-MCP components (#224) and `sync` (#229).
+and report its result with the release PR. On Linux with Node 22, its
+`yarn dlx` row is known to fail, every cell with HN501 "controlled by
+multiple pnpapi instances" ([testing](testing.md#yarn-plugnplay-consumers)),
+so the test fails there. `yarn dlx` is unsupported: run the suite on Windows
+or with Node 24 for a clean result, or check that the failure's diff is that
+row alone and report it as the known failure. CI does not run the suite, and
+it is the only test against a real Yarn install. During 0.13.0's development,
+running it caught a regression under `yarn dlx` (#216) before release, and the
+work on that fix turned up two older Plug'n'Play failures that had already
+shipped: MCP components (#224) and `sync` (#229).
 
 HN110 cannot flag a tree built before the bump. Until the workflow bumps the
 versions, a CLI built or packed from the tree still carries the previous

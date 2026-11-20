@@ -258,8 +258,11 @@ HOOKNOSTIC_YARN_PNP=1 pnpm exec vitest run packages/cli/test/yarn-pnp-consumer.t
 In PowerShell:
 
 ```powershell
-$env:HOOKNOSTIC_YARN_PNP='1'; pnpm exec vitest run packages/cli/test/yarn-pnp-consumer.test.ts
+$env:HOOKNOSTIC_YARN_PNP='1'; pnpm exec vitest run packages/cli/test/yarn-pnp-consumer.test.ts; Remove-Item Env:HOOKNOSTIC_YARN_PNP
 ```
+
+The PowerShell variable would otherwise stay set for the session, and a later
+`pnpm test` there would run this suite too.
 
 It needs corepack and network access, and Yarn is not in CI, so run it
 locally for any change to how builds resolve or read packages, or to how
@@ -270,8 +273,9 @@ Zod 3.24.4, 3.25.76 and 4.6.7, Zod 4.6.7 with the SDK repacked as 0.11.9,
 and Zod 4.6.7 with an MCP component), and builds each through `yarn hooknostic`,
 `node -r ./.pnp.cjs` from the project directory and plain `node`, both against
 a CLI installed outside the project, and `yarn dlx`. The first five build
-`examples/basic`. It compares the whole table of outcomes, counting HN504, HN301 and HN109 and recording each HN110's
-wording (Yarn's install or a path) in each:
+`examples/basic`. It compares the whole table of outcomes, counting HN504,
+HN301 and HN109 and recording each HN110's wording (Yarn's install or a path)
+in each:
 through Yarn's runtime the build uses the project's in-range Zod or the CLI's
 own (with HN109 when the project's is out of range), and the repacked SDK
 warns one HN110, which names Yarn's Plug'n'Play install rather than a path
@@ -282,11 +286,13 @@ HN110's lookup of the project's SDK loaded the project's runtime beside dlx's
 and failed every `yarn dlx` build. That row passes on Windows (Node 22 and 24)
 and on Linux with Node 24; on Linux with Node 22 it is known to fail, every
 cell with HN501 "controlled by multiple pnpapi instances".
+
 The rows record the supported surface under Plug'n'Play
 ([ADR-0041](decisions/0041-yarn-pnp-runtime.md)): `yarn hooknostic` and
 `node -r` are supported. The plain `node` row stands for `npx`, a globally
 installed `hooknostic` run directly and `pnpm dlx`, which the suite does not
 run. The `yarn dlx` row records best-effort behaviour, not a supported mode.
+
 The MCP consumer builds `examples/local-project`'s stdio server for one Claude
 project target, so its build bundles the MCP launcher, whose `cross-spawn` and
 each of its dependencies sit in archives of their own in Yarn's global cache.

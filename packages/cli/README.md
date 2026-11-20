@@ -27,10 +27,12 @@ npx hooknostic build --config ./hooknostic.config.ts
 
 Under Yarn Plug'n'Play, run these as `yarn hooknostic`, or start a CLI
 installed elsewhere under the project's runtime from the project directory:
-`node -r ./.pnp.cjs <dir>/hooknostic/bin/hooknostic.mjs`. With `npx`, a
-globally installed `hooknostic` run directly, or `pnpm dlx`, the build fails
-with HN504. `yarn dlx` is unsupported too, and best effort: it builds only
-when the project's Zod is in range, without the HN110 check
+`node -r ./.pnp.cjs <dir>/hooknostic/bin/hooknostic.mjs`, with that CLI
+installed outside any other Yarn Plug'n'Play project. With `npx`, a globally
+installed `hooknostic` run directly, or `pnpm dlx`, a build that needs a
+package from Yarn's install fails with HN504. `yarn dlx` is unsupported too,
+and best effort: at most it builds when the project's Zod is in range, it can
+fail in other ways, and it never runs the HN110 check
 ([ADR-0041](https://github.com/roryeckel/hooknostic/blob/master/docs/decisions/0041-yarn-pnp-runtime.md)).
 
 To test what the hooks decide on a target, pipe portable events (JSON Lines) to

@@ -48,8 +48,9 @@ fails until you do.
 Under Yarn Plug'n'Play, run each `npx hooknostic` command below as
 `yarn hooknostic`, which runs the project's own CLI under Yarn's runtime: the
 project's `.pnp.cjs`, the file that tells Node where Yarn put each package.
-To run a CLI installed with npm elsewhere, globally or in another directory,
-load that file yourself from the project directory with `node -r`, and name
+To build with a CLI installed with npm elsewhere, globally or in another
+directory, load that file into Node yourself from the project directory with
+`node -r`, and name
 the package's `bin/hooknostic.mjs` (the `node_modules/.bin` entry is not
 always a Node script). For a global npm install, in a POSIX shell:
 
@@ -63,11 +64,14 @@ In PowerShell:
 node -r ./.pnp.cjs "$(npm root -g)\hooknostic\bin\hooknostic.mjs" build
 ```
 
-Run any other way (`npx`, a globally installed `hooknostic` run directly,
-`pnpm dlx`), the build fails with HN504. `yarn dlx` is unsupported too: it
-builds only when the project's Zod is in range, and it never warns HN110,
-because looking up the project's SDK there would break the build (#216). See
-[ADR-0041](decisions/0041-yarn-pnp-runtime.md).
+The suite runs this with a CLI installed outside any other Yarn Plug'n'Play
+project; one installed inside another such project's tree is untested. Run
+any other way (`npx`, a globally installed `hooknostic` run directly,
+`pnpm dlx`), a build that needs a package from Yarn's install fails with
+HN504. `yarn dlx` is unsupported too, and best effort: at most it builds when
+the project's Zod is in range, it can fail in other ways, and it never warns
+HN110, because looking up the project's SDK there would break the build
+(#216). See [ADR-0041](decisions/0041-yarn-pnp-runtime.md).
 
 > **Trying unreleased changes?** The commands above install the latest release
 > from npm. To try a checkout of this repo instead, pack the SDK and CLI from it
