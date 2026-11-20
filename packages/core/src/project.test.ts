@@ -19,6 +19,14 @@ const dirs: string[] = [];
 const registry = defaultAdapterRegistry();
 registry.opencode = opencodeV1Adapter();
 const evaluate = { alias: { "@hooknostic/sdk": fileURLToPath(new URL("../../sdk/src/index.ts", import.meta.url)) } };
+// For tests that run several project commands in a row (#262). Each command
+// evaluates the configuration and builds every configured target (up to five
+// here), so these tests take 0.5 to 3.3 s on CI windows-latest but have run
+// past the 30 s default on a Windows machine shared with other test runs.
+// Raised per test rather than in vitest.config.ts so the default still flags
+// other slow tests, and rather than running files serially, which would not
+// remove load from outside the run and would lengthen every `pnpm test`.
+const PROJECT_CYCLES_TIMEOUT_MS = 120_000;
 afterEach(async () => {
   await Promise.all(dirs.splice(0).map((d) => rm(d, { recursive: true, force: true })));
 });
@@ -152,45 +160,49 @@ describe("complete project integration", () => {
     }
   });
 
-  it("wires all three harnesses, verifies cleanly, and detects stale source", async () => {
-    const { root, options } = await fixture();
-    const dry = await runProject({ ...options, command: "sync", dryRun: true });
-    expect(dry.errors).toEqual([]);
-    expect(dry.changes).toContain(".codex/hooks.json");
-    await expect(readFile(join(root, ".codex/hooks.json"))).rejects.toMatchObject({ code: "ENOENT" });
-    const synced = await runProject({ ...options, command: "sync" });
-    expect(synced.errors).toEqual([]);
-    expect((await runProject({ ...options, command: "verify" })).ok).toBe(true);
-    expect(await readFile(join(root, ".hooknostic/.gitattributes"), "utf8")).toBe("** -text\n");
-    const codex = JSON.parse(await readFile(join(root, ".codex/hooks.json"), "utf8"));
-    expect(codex.hooks.PreToolUse[0].hooks[0].timeout).toBe(9);
-    await mkdir(join(root, "backend/nested"), { recursive: true });
-    const hookRun = spawnSync(codex.hooks.PreToolUse[0].hooks[0].command, {
-      cwd: join(root, "backend/nested"),
-      encoding: "utf8",
-      input: JSON.stringify({
-        hook_event_name: "PreToolUse",
-        cwd: root,
-        session_id: "sample",
-        tool_name: "Bash",
-        tool_input: { command: "echo test" },
-      }),
-      shell: true,
-      timeout: 10_000,
-    });
-    expect(hookRun.status, hookRun.stderr).toBe(0);
-    expect(hookRun.stdout).toContain("project marker");
-    expect(await readFile(join(root, ".opencode/plugins/hooknostic.js"), "utf8")).toContain(
-      ".hooknostic/artifacts/opencode",
-    );
-    const source = await readFile(join(root, "hooks.ts"), "utf8");
-    await writeFile(join(root, "hooks.ts"), source.replace("4000", "9000"));
-    expect((await runProject({ ...options, command: "verify" })).drift).toBe(true);
-    expect((await runProject({ ...options, command: "sync" })).ok).toBe(true);
-    expect(
-      JSON.parse(await readFile(join(root, ".codex/hooks.json"), "utf8")).hooks.PreToolUse[0].hooks[0].timeout,
-    ).toBe(14);
-  });
+  it(
+    "wires all three harnesses, verifies cleanly, and detects stale source",
+    { timeout: PROJECT_CYCLES_TIMEOUT_MS },
+    async () => {
+      const { root, options } = await fixture();
+      const dry = await runProject({ ...options, command: "sync", dryRun: true });
+      expect(dry.errors).toEqual([]);
+      expect(dry.changes).toContain(".codex/hooks.json");
+      await expect(readFile(join(root, ".codex/hooks.json"))).rejects.toMatchObject({ code: "ENOENT" });
+      const synced = await runProject({ ...options, command: "sync" });
+      expect(synced.errors).toEqual([]);
+      expect((await runProject({ ...options, command: "verify" })).ok).toBe(true);
+      expect(await readFile(join(root, ".hooknostic/.gitattributes"), "utf8")).toBe("** -text\n");
+      const codex = JSON.parse(await readFile(join(root, ".codex/hooks.json"), "utf8"));
+      expect(codex.hooks.PreToolUse[0].hooks[0].timeout).toBe(9);
+      await mkdir(join(root, "backend/nested"), { recursive: true });
+      const hookRun = spawnSync(codex.hooks.PreToolUse[0].hooks[0].command, {
+        cwd: join(root, "backend/nested"),
+        encoding: "utf8",
+        input: JSON.stringify({
+          hook_event_name: "PreToolUse",
+          cwd: root,
+          session_id: "sample",
+          tool_name: "Bash",
+          tool_input: { command: "echo test" },
+        }),
+        shell: true,
+        timeout: 10_000,
+      });
+      expect(hookRun.status, hookRun.stderr).toBe(0);
+      expect(hookRun.stdout).toContain("project marker");
+      expect(await readFile(join(root, ".opencode/plugins/hooknostic.js"), "utf8")).toContain(
+        ".hooknostic/artifacts/opencode",
+      );
+      const source = await readFile(join(root, "hooks.ts"), "utf8");
+      await writeFile(join(root, "hooks.ts"), source.replace("4000", "9000"));
+      expect((await runProject({ ...options, command: "verify" })).drift).toBe(true);
+      expect((await runProject({ ...options, command: "sync" })).ok).toBe(true);
+      expect(
+        JSON.parse(await readFile(join(root, ".codex/hooks.json"), "utf8")).hooks.PreToolUse[0].hooks[0].timeout,
+      ).toBe(14);
+    },
+  );
   it("honors a named target at runtime", async () => {
     const adapter = registry.claude!;
     const { root, options } = await fixture({
@@ -736,48 +748,52 @@ describe("complete project integration", () => {
     expect((await runProject({ ...options, command: "sync" })).errors.join()).toContain("duplicate project");
     expect((await runProject({ ...options, command: "sync", targets: ["a"] })).errors.join()).toContain("partial");
   });
-  it("projects MCP declarations without expanding environment values", async () => {
-    // pi has no MCP channel (HN205 for its targets is the documented
-    // unsupported-component behavior), so this projection is judged on the
-    // adapters that declare one.
-    const { root, options } = await fixture({
-      components: { mcp: "./mcp.json" },
-      targets: Object.fromEntries(
-        Object.entries(registry)
-          .filter(([id]) => id !== "pi")
-          .map(([name, adapter]) => [
-            name,
-            {
-              adapter: name,
-              version: adapter.harness.recommendedRange,
-              delivery: "project",
-              output: `.hooknostic/artifacts/${name}`,
+  it(
+    "projects MCP declarations without expanding environment values",
+    { timeout: PROJECT_CYCLES_TIMEOUT_MS },
+    async () => {
+      // pi has no MCP channel (HN205 for its targets is the documented
+      // unsupported-component behavior), so this projection is judged on the
+      // adapters that declare one.
+      const { root, options } = await fixture({
+        components: { mcp: "./mcp.json" },
+        targets: Object.fromEntries(
+          Object.entries(registry)
+            .filter(([id]) => id !== "pi")
+            .map(([name, adapter]) => [
+              name,
+              {
+                adapter: name,
+                version: adapter.harness.recommendedRange,
+                delivery: "project",
+                output: `.hooknostic/artifacts/${name}`,
+              },
+            ]),
+        ),
+      });
+      await writeFile(
+        join(root, "mcp.json"),
+        JSON.stringify({
+          $schema: AGENT_PLUGIN_MCP_SCHEMA,
+          mcpServers: {
+            sample: {
+              type: "stdio",
+              command: "node",
+              args: ["${PLUGIN_ROOT}/server.mjs"],
+              env: { TOKEN: "${UNRESOLVED_TOKEN}" },
             },
-          ]),
-      ),
-    });
-    await writeFile(
-      join(root, "mcp.json"),
-      JSON.stringify({
-        $schema: AGENT_PLUGIN_MCP_SCHEMA,
-        mcpServers: {
-          sample: {
-            type: "stdio",
-            command: "node",
-            args: ["${PLUGIN_ROOT}/server.mjs"],
-            env: { TOKEN: "${UNRESOLVED_TOKEN}" },
           },
-        },
-      }),
-    );
-    const synced = await runProject({ ...options, command: "sync" });
-    expect(synced.errors).toEqual([]);
-    expect(await readFile(join(root, ".hooknostic/artifacts/claude/mcp-servers.json"), "utf8")).toContain(
-      "${UNRESOLVED_TOKEN}",
-    );
-    expect(await readFile(join(root, ".hooknostic/integration.json"), "utf8")).not.toContain("TOKEN");
-    expect((await runProject({ ...options, command: "verify" })).ok).toBe(true);
-  });
+        }),
+      );
+      const synced = await runProject({ ...options, command: "sync" });
+      expect(synced.errors).toEqual([]);
+      expect(await readFile(join(root, ".hooknostic/artifacts/claude/mcp-servers.json"), "utf8")).toContain(
+        "${UNRESOLVED_TOKEN}",
+      );
+      expect(await readFile(join(root, ".hooknostic/integration.json"), "utf8")).not.toContain("TOKEN");
+      expect((await runProject({ ...options, command: "verify" })).ok).toBe(true);
+    },
+  );
   // Claude's project stdio cell is `emulated`, so an `exact` floor puts it below.
   it.each(["warn", "error"] as const)(
     "reports a project component below compatibility as HN206 and still emits it (onBelowMinimum %s)",
@@ -1335,6 +1351,7 @@ describe("complete project integration", () => {
     { componentTargets: undefined, adapters: ["claude"] },
   ])(
     "refuses to hide existing fallback MCP servers with adapters $adapters and component targets $componentTargets",
+    { timeout: PROJECT_CYCLES_TIMEOUT_MS },
     async ({ componentTargets, adapters }) => {
       const { root, options } = await sharedMcpFixture(undefined, componentTargets, adapters);
       await mkdir(join(root, ".github"), { recursive: true });
@@ -1365,6 +1382,7 @@ describe("complete project integration", () => {
     ["copilot", ".claude/settings.json", "disabledMcpjsonServers"],
   ])(
     "fences the shared servers from the reader components.targets leaves out: only %s selected",
+    { timeout: PROJECT_CYCLES_TIMEOUT_MS },
     async (selected, fenceFile, fenceKey) => {
       const { root, options } = await sharedMcpFixture(undefined, [selected]);
       const synced = await runProject({ ...options, command: "sync" });
@@ -1375,7 +1393,7 @@ describe("complete project integration", () => {
       expect((await runProject({ ...options, command: "verify" })).ok).toBe(true);
     },
   );
-  it("keeps an author's disabled servers beside the fence", async () => {
+  it("keeps an author's disabled servers beside the fence", { timeout: PROJECT_CYCLES_TIMEOUT_MS }, async () => {
     const { root, options } = await sharedMcpFixture(undefined, ["claude"]);
     await mkdir(join(root, ".github/copilot"), { recursive: true });
     await writeFile(join(root, ".github/copilot/settings.json"), '{"disabledMcpServers":["authored"]}');
@@ -1450,148 +1468,164 @@ describe("complete project integration", () => {
     expect(result.errors).toEqual([]);
     expect(await readFile(join(root, ".codex/config.toml"), "utf8")).toContain("sample");
   });
-  it("launches Codex project MCP from nested directories and detects registration drift", async () => {
-    const { root, config, options } = await fixture({ components: { mcp: "./sources/mcp.json", targets: ["codex"] } });
-    await mkdir(join(root, "sources/worker"), { recursive: true });
-    await mkdir(join(root, "nested/deeper"), { recursive: true });
-    const program =
-      "console.log(JSON.stringify({cwd:process.cwd(),root:process.env.PLUGIN_ROOT,data:process.env.PLUGIN_DATA,ref:process.env.REF,args:process.argv.slice(1)}))";
-    await writeFile(
-      join(root, "sources/mcp.json"),
-      JSON.stringify({
-        $schema: AGENT_PLUGIN_MCP_SCHEMA,
-        mcpServers: {
-          remote: {
-            type: "streamable-http",
-            url: "http://127.0.0.1:1/mcp",
-            headers: { Authorization: "${UNCHANGED}" },
+  it(
+    "launches Codex project MCP from nested directories and detects registration drift",
+    { timeout: PROJECT_CYCLES_TIMEOUT_MS },
+    async () => {
+      const { root, config, options } = await fixture({
+        components: { mcp: "./sources/mcp.json", targets: ["codex"] },
+      });
+      await mkdir(join(root, "sources/worker"), { recursive: true });
+      await mkdir(join(root, "nested/deeper"), { recursive: true });
+      const program =
+        "console.log(JSON.stringify({cwd:process.cwd(),root:process.env.PLUGIN_ROOT,data:process.env.PLUGIN_DATA,ref:process.env.REF,args:process.argv.slice(1)}))";
+      await writeFile(
+        join(root, "sources/mcp.json"),
+        JSON.stringify({
+          $schema: AGENT_PLUGIN_MCP_SCHEMA,
+          mcpServers: {
+            remote: {
+              type: "streamable-http",
+              url: "http://127.0.0.1:1/mcp",
+              headers: { Authorization: "${UNCHANGED}" },
+            },
+            probe: {
+              type: "stdio",
+              command: "node",
+              args: ["-e", program, "${PLUGIN_ROOT}/support.txt"],
+              env: { REF: "${UNCHANGED}" },
+              cwd: "./worker",
+            },
           },
-          probe: {
-            type: "stdio",
-            command: "node",
-            args: ["-e", program, "${PLUGIN_ROOT}/support.txt"],
-            env: { REF: "${UNCHANGED}" },
-            cwd: "./worker",
-          },
-        },
-      }),
-    );
-    const synced = await runProject({ ...options, command: "sync" });
-    expect(synced.errors).toEqual([]);
-    const path = join(root, ".codex/config.toml");
-    const before = await readFile(path, "utf8");
-    const servers = readProjectToml(before).mcp_servers as Record<
-      string,
-      { args: string[]; env_http_headers: Record<string, string> }
-    >;
-    expect(servers.remote!.env_http_headers.Authorization).toBe("UNCHANGED");
-    const execution = spawnSync(process.execPath, servers.probe!.args, {
-      cwd: join(root, "nested/deeper"),
-      env: { ...process.env, UNCHANGED: "runtime-reference" },
-      encoding: "utf8",
-      timeout: 10000,
-    });
-    expect(execution.status, execution.stderr).toBe(0);
-    expect(JSON.parse(execution.stdout)).toEqual({
-      cwd: join(root, "sources/worker"),
-      root: join(root, "sources"),
-      data: join(root, ".hooknostic/data"),
-      ref: "runtime-reference",
-      args: [join(root, "sources") + "/support.txt"],
-    });
-    const git = (args: string[]) => {
-      const result = spawnSync("git", args, { cwd: root, encoding: "utf8", timeout: 10000 });
-      expect(result.status, result.stderr).toBe(0);
-    };
-    git(["init"]);
-    git(["config", "core.autocrlf", "true"]);
-    git(["add", "."]);
-    git([
-      "-c",
-      "user.name=Synthetic",
-      "-c",
-      "user.email=synthetic@example.invalid",
-      "-c",
-      "commit.gpgsign=false",
-      "commit",
-      "-m",
-      "Synthetic project MCP fixture",
-    ]);
-    const linked = join(root, "linked-worktree");
-    git(["worktree", "add", "--detach", linked, "HEAD"]);
-    await mkdir(join(linked, "nested/deeper"), { recursive: true });
-    await mkdir(join(linked, "sources/worker"), { recursive: true });
-    const linkedRun = spawnSync(process.execPath, servers.probe!.args, {
-      cwd: join(linked, "nested/deeper"),
-      env: { ...process.env, UNCHANGED: "runtime-reference" },
-      encoding: "utf8",
-      timeout: 10000,
-    });
-    expect(linkedRun.status, linkedRun.stderr).toBe(0);
-    expect(JSON.parse(linkedRun.stdout).root).toBe(join(linked, "sources"));
-    git(["worktree", "remove", "--force", linked]);
-    expect((await runProject({ ...options, command: "verify" })).ok).toBe(true);
-    await writeFile(path, before.replace("127.0.0.1:1", "127.0.0.1:2"));
-    expect((await runProject({ ...options, command: "verify" })).errors.join()).toContain("modified");
-    await writeFile(path, before);
-    delete config.targets.codex;
-    await writeFile(options.configPath, `export default ${JSON.stringify({ ...config, components: undefined })};`);
-    expect((await runProject({ ...options, command: "sync" })).errors).toEqual([]);
-    expect(readProjectToml(await readFile(path, "utf8")).mcp_servers).toBeUndefined();
-  });
-  it("warns HN107 only for Codex hooks synchronized into a linked worktree, naming the root checkout", async () => {
-    const { root, options } = await fixture();
-    const git = (cwd: string, args: string[]) => {
-      const result = spawnSync("git", args, { cwd, encoding: "utf8", timeout: 10000 });
-      expect(result.status, result.stderr).toBe(0);
-    };
-    git(root, ["init", "--quiet"]);
-    git(root, ["add", "hooks.ts", "hooknostic.config.ts"]);
-    git(root, [
-      "-c",
-      "user.name=Synthetic",
-      "-c",
-      "user.email=synthetic@example.invalid",
-      "-c",
-      "commit.gpgsign=false",
-      "commit",
-      "--quiet",
-      "-m",
-      "Synthetic linked worktree fixture",
-    ]);
-    const rootHooks = await runProject({ ...options, command: "sync" });
-    expect(rootHooks.errors).toEqual([]);
-    expect(rootHooks.diagnostics.filter((d) => d.code === "HN107")).toEqual([]);
+        }),
+      );
+      const synced = await runProject({ ...options, command: "sync" });
+      expect(synced.errors).toEqual([]);
+      const path = join(root, ".codex/config.toml");
+      const before = await readFile(path, "utf8");
+      const servers = readProjectToml(before).mcp_servers as Record<
+        string,
+        { args: string[]; env_http_headers: Record<string, string> }
+      >;
+      expect(servers.remote!.env_http_headers.Authorization).toBe("UNCHANGED");
+      const execution = spawnSync(process.execPath, servers.probe!.args, {
+        cwd: join(root, "nested/deeper"),
+        env: { ...process.env, UNCHANGED: "runtime-reference" },
+        encoding: "utf8",
+        timeout: 10000,
+      });
+      expect(execution.status, execution.stderr).toBe(0);
+      expect(JSON.parse(execution.stdout)).toEqual({
+        cwd: join(root, "sources/worker"),
+        root: join(root, "sources"),
+        data: join(root, ".hooknostic/data"),
+        ref: "runtime-reference",
+        args: [join(root, "sources") + "/support.txt"],
+      });
+      const git = (args: string[]) => {
+        const result = spawnSync("git", args, { cwd: root, encoding: "utf8", timeout: 10000 });
+        expect(result.status, result.stderr).toBe(0);
+      };
+      git(["init"]);
+      git(["config", "core.autocrlf", "true"]);
+      git(["add", "."]);
+      git([
+        "-c",
+        "user.name=Synthetic",
+        "-c",
+        "user.email=synthetic@example.invalid",
+        "-c",
+        "commit.gpgsign=false",
+        "commit",
+        "-m",
+        "Synthetic project MCP fixture",
+      ]);
+      const linked = join(root, "linked-worktree");
+      git(["worktree", "add", "--detach", linked, "HEAD"]);
+      await mkdir(join(linked, "nested/deeper"), { recursive: true });
+      await mkdir(join(linked, "sources/worker"), { recursive: true });
+      const linkedRun = spawnSync(process.execPath, servers.probe!.args, {
+        cwd: join(linked, "nested/deeper"),
+        env: { ...process.env, UNCHANGED: "runtime-reference" },
+        encoding: "utf8",
+        timeout: 10000,
+      });
+      expect(linkedRun.status, linkedRun.stderr).toBe(0);
+      expect(JSON.parse(linkedRun.stdout).root).toBe(join(linked, "sources"));
+      git(["worktree", "remove", "--force", linked]);
+      expect((await runProject({ ...options, command: "verify" })).ok).toBe(true);
+      await writeFile(path, before.replace("127.0.0.1:1", "127.0.0.1:2"));
+      expect((await runProject({ ...options, command: "verify" })).errors.join()).toContain("modified");
+      await writeFile(path, before);
+      delete config.targets.codex;
+      await writeFile(options.configPath, `export default ${JSON.stringify({ ...config, components: undefined })};`);
+      expect((await runProject({ ...options, command: "sync" })).errors).toEqual([]);
+      expect(readProjectToml(await readFile(path, "utf8")).mcp_servers).toBeUndefined();
+    },
+  );
+  it(
+    "warns HN107 only for Codex hooks synchronized into a linked worktree, naming the root checkout",
+    { timeout: PROJECT_CYCLES_TIMEOUT_MS },
+    async () => {
+      const { root, options } = await fixture();
+      const git = (cwd: string, args: string[]) => {
+        const result = spawnSync("git", args, { cwd, encoding: "utf8", timeout: 10000 });
+        expect(result.status, result.stderr).toBe(0);
+      };
+      git(root, ["init", "--quiet"]);
+      git(root, ["add", "hooks.ts", "hooknostic.config.ts"]);
+      git(root, [
+        "-c",
+        "user.name=Synthetic",
+        "-c",
+        "user.email=synthetic@example.invalid",
+        "-c",
+        "commit.gpgsign=false",
+        "commit",
+        "--quiet",
+        "-m",
+        "Synthetic linked worktree fixture",
+      ]);
+      const rootHooks = await runProject({ ...options, command: "sync" });
+      expect(rootHooks.errors).toEqual([]);
+      expect(rootHooks.diagnostics.filter((d) => d.code === "HN107")).toEqual([]);
 
-    // The live layout: a worktree nested inside the root checkout.
-    const linked = join(root, ".claude", "worktrees", "linked");
-    git(root, ["worktree", "add", "--detach", "--quiet", linked, "HEAD"]);
-    const linkedOptions = { ...options, configPath: join(linked, "hooknostic.config.ts") };
-    const rootCheckout = await realpath(root);
-    for (const command of ["sync", "verify"] as const) {
-      const result = await runProject({ ...linkedOptions, command });
-      expect(result.errors, command).toEqual([]);
-      expect(result.ok, command).toBe(true);
-      const warnings = result.diagnostics.filter((d) => d.code === "HN107");
-      expect(warnings, command).toHaveLength(1);
-      expect(warnings[0]).toMatchObject({ severity: "warn", target: "codex" });
-      expect(warnings[0]!.message).toContain(`root checkout ${rootCheckout}`);
-      expect(warnings[0]!.message).toContain(`runs the root checkout's ${join(rootCheckout, ".codex", "hooks.json")}`);
-    }
-    // Still written: the artifact is useful once it reaches the root checkout.
-    expect(await readFile(join(linked, ".codex/hooks.json"), "utf8")).toContain("PreToolUse");
-    git(root, ["worktree", "remove", "--force", linked]);
-  });
-  it("removes a configured project target without disturbing the others", async () => {
-    const { root, config, options } = await fixture();
-    expect((await runProject({ ...options, command: "sync" })).ok).toBe(true);
-    delete config.targets.opencode;
-    await writeFile(options.configPath, `export default ${JSON.stringify(config)};`);
-    expect((await runProject({ ...options, command: "sync" })).ok).toBe(true);
-    await expect(readFile(join(root, ".opencode/plugins/hooknostic.js"))).rejects.toMatchObject({ code: "ENOENT" });
-    expect((await runProject({ ...options, command: "verify" })).ok).toBe(true);
-    expect(await readFile(join(root, ".codex/hooks.json"), "utf8")).toContain("PreToolUse");
-  });
+      // The live layout: a worktree nested inside the root checkout.
+      const linked = join(root, ".claude", "worktrees", "linked");
+      git(root, ["worktree", "add", "--detach", "--quiet", linked, "HEAD"]);
+      const linkedOptions = { ...options, configPath: join(linked, "hooknostic.config.ts") };
+      const rootCheckout = await realpath(root);
+      for (const command of ["sync", "verify"] as const) {
+        const result = await runProject({ ...linkedOptions, command });
+        expect(result.errors, command).toEqual([]);
+        expect(result.ok, command).toBe(true);
+        const warnings = result.diagnostics.filter((d) => d.code === "HN107");
+        expect(warnings, command).toHaveLength(1);
+        expect(warnings[0]).toMatchObject({ severity: "warn", target: "codex" });
+        expect(warnings[0]!.message).toContain(`root checkout ${rootCheckout}`);
+        expect(warnings[0]!.message).toContain(
+          `runs the root checkout's ${join(rootCheckout, ".codex", "hooks.json")}`,
+        );
+      }
+      // Still written: the artifact is useful once it reaches the root checkout.
+      expect(await readFile(join(linked, ".codex/hooks.json"), "utf8")).toContain("PreToolUse");
+      git(root, ["worktree", "remove", "--force", linked]);
+    },
+  );
+  it(
+    "removes a configured project target without disturbing the others",
+    { timeout: PROJECT_CYCLES_TIMEOUT_MS },
+    async () => {
+      const { root, config, options } = await fixture();
+      expect((await runProject({ ...options, command: "sync" })).ok).toBe(true);
+      delete config.targets.opencode;
+      await writeFile(options.configPath, `export default ${JSON.stringify(config)};`);
+      expect((await runProject({ ...options, command: "sync" })).ok).toBe(true);
+      await expect(readFile(join(root, ".opencode/plugins/hooknostic.js"))).rejects.toMatchObject({ code: "ENOENT" });
+      expect((await runProject({ ...options, command: "verify" })).ok).toBe(true);
+      expect(await readFile(join(root, ".codex/hooks.json"), "utf8")).toContain("PreToolUse");
+    },
+  );
   it("removes the final project target from an empty desired target set", async () => {
     const codex = registry.codex!;
     const { root, config, options } = await fixture({
@@ -1620,18 +1654,22 @@ describe("complete project integration", () => {
     expect(await readFile(join(root, ".hooknostic/integration.json"), "utf8")).not.toContain(".codex/hooks.json");
     expect((await runProject({ ...options, command: "verify" })).ok).toBe(true);
   });
-  it("rejects mutated native timeout values and runtimes during verification", async () => {
-    const { root, options } = await fixture();
-    expect((await runProject({ ...options, command: "sync" })).ok).toBe(true);
-    const path = join(root, ".codex/hooks.json");
-    const before = await readFile(path, "utf8");
-    await writeFile(path, before.replace('"timeout": 9', '"timeout": 1'));
-    expect((await runProject({ ...options, command: "verify" })).errors.join()).toContain("modified");
-    await writeFile(path, before);
-    await writeFile(join(root, ".hooknostic/artifacts/codex/.codex/hooknostic/hooknostic.mjs"), "tampered");
-    expect((await runProject({ ...options, command: "verify" })).errors.join()).toContain("modified");
-  });
-  it("reports every explicitly degraded project MCP omission", async () => {
+  it(
+    "rejects mutated native timeout values and runtimes during verification",
+    { timeout: PROJECT_CYCLES_TIMEOUT_MS },
+    async () => {
+      const { root, options } = await fixture();
+      expect((await runProject({ ...options, command: "sync" })).ok).toBe(true);
+      const path = join(root, ".codex/hooks.json");
+      const before = await readFile(path, "utf8");
+      await writeFile(path, before.replace('"timeout": 9', '"timeout": 1'));
+      expect((await runProject({ ...options, command: "verify" })).errors.join()).toContain("modified");
+      await writeFile(path, before);
+      await writeFile(join(root, ".hooknostic/artifacts/codex/.codex/hooknostic/hooknostic.mjs"), "tampered");
+      expect((await runProject({ ...options, command: "verify" })).errors.join()).toContain("modified");
+    },
+  );
+  it("reports every explicitly degraded project MCP omission", { timeout: PROJECT_CYCLES_TIMEOUT_MS }, async () => {
     const { root, config, options } = await fixture({ components: { mcp: "./mcp.json" } });
     await writeFile(
       join(root, "mcp.json"),
