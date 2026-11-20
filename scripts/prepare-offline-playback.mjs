@@ -24,14 +24,14 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { harnessLaneId, harnessLanes } from "./harness-lanes.mjs";
+import { harnessLaneId, harnessLanes, isKnownLane } from "./harness-lanes.mjs";
 
 const args = process.argv.slice(2);
 const positional = args.filter((arg, index) => !arg.startsWith("--") && args[index - 1] !== "--version");
 const lane = positional.length === 1 ? harnessLaneId(positional[0]) : "";
 // An unknown lane would prepare nothing and pass, and the same misspelling in
 // HOOKNOSTIC_PLAYBACK would then skip every playback test.
-if (!Object.hasOwn(harnessLanes, lane)) {
+if (!isKnownLane(lane)) {
   console.error(
     "usage: node --experimental-strip-types scripts/prepare-offline-playback.mjs <lane> [--version V] [--check-online]",
   );

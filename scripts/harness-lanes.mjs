@@ -43,3 +43,10 @@ export const harnessLanes = {
 
 /** Preserve the old explicit automation selector as a v1 alias. */
 export const harnessLaneId = (id) => (id === "opencode" ? "opencode-v1" : id);
+
+/**
+ * Whether a selector (HOOKNOSTIC_PLAYBACK, or a prepare-offline-playback.mjs
+ * argument) names a playback lane. An empty or unknown one selects nothing;
+ * offline, that would skip every playback test and pass.
+ */
+export const isKnownLane = (id) => typeof id === "string" && Object.hasOwn(harnessLanes, harnessLaneId(id));
