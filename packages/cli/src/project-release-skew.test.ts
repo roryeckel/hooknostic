@@ -46,8 +46,11 @@ async function cli(args: string[]) {
   return { code, out: out.join("\n"), err: err.join("\n") };
 }
 
-/** The `HN110 warn:` lines a project command printed. */
+/** The HN110 headers a command printed: one per HN110, printed as `check` prints it (#260). */
 const hn110Lines = (output: string) => output.split("\n").filter((line) => line.startsWith("HN110 "));
+const HN110_HEADER = "HN110 CLI and project SDK on different releases [warn]";
+/** HN110's message, as the indented line of its printed diagnostic. */
+const HN110_MESSAGE = `\n  this hooknostic is ${HOOKNOSTIC_VERSION}, `;
 
 it("warns HN110 from sync and verify without failing either (#194)", { timeout: 120_000 }, async () => {
   const config = await skewedLocalProject();
@@ -55,9 +58,8 @@ it("warns HN110 from sync and verify without failing either (#194)", { timeout: 
     const { code, out, err } = await cli([command, "--config", config]);
     expect(code, out + err).toBe(0);
     // Once per run: buildProject reports it, and runProject does not repeat it.
-    expect(hn110Lines(out + "\n" + err)).toEqual([
-      expect.stringContaining(`HN110 warn: this hooknostic is ${HOOKNOSTIC_VERSION}`),
-    ]);
+    expect(hn110Lines(out + "\n" + err)).toEqual([HN110_HEADER]);
+    expect(out).toContain(HN110_MESSAGE);
   }
 });
 
@@ -86,10 +88,9 @@ it(
     });
     expect(code, human.out.join("\n") + human.err.join("\n")).toBe(2);
     // The project's verify reports it too; doctor prints it once, after its version line.
-    expect(hn110Lines(human.out.join("\n"))).toEqual([
-      expect.stringContaining(`HN110 warn: this hooknostic is ${HOOKNOSTIC_VERSION}`),
-    ]);
-    expect(human.out[1]).toMatch(/^HN110 warn: /);
+    expect(hn110Lines(human.out.join("\n"))).toEqual([HN110_HEADER]);
+    expect(human.out[1]).toMatch(/^HN110 CLI and project SDK on different releases \[warn\]\n/);
+    expect(human.out[1]).toContain(HN110_MESSAGE);
 
     const machine: string[] = [];
     expect(
@@ -116,14 +117,14 @@ it("warns HN110 from sync, verify and recover when the config fails to load (#19
     const human = await cli([command, "--config", config]);
     expect(human.code, human.out + human.err).toBe(2);
     expect(human.err).toContain("notInThisSdk");
-    expect(hn110Lines(human.out)).toEqual([
-      expect.stringContaining(`HN110 warn: this hooknostic is ${HOOKNOSTIC_VERSION}`),
-    ]);
+    expect(hn110Lines(human.out)).toEqual([HN110_HEADER]);
+    expect(human.out).toContain(HN110_MESSAGE);
 
     const json = await cli([command, "--config", config, "--json"]);
     expect(json.code, json.out + json.err).toBe(2);
     const report = JSON.parse(json.out) as { errors: string[]; diagnostics: { code: string }[] };
     expect(report.errors).toHaveLength(1);
-    expect(report.diagnostics.map((d) => d.code)).toEqual(["HN110"]);
+    // The load's HN501 follows, as buildProject orders them (#260).
+    expect(report.diagnostics.map((d) => d.code)).toEqual(["HN110", "HN501"]);
   }
 });

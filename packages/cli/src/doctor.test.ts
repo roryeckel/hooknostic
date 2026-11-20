@@ -187,11 +187,61 @@ describe("doctor version comparison", () => {
         expect(await runDoctor({ config: configPath, json: true, registry: defaultAdapterRegistry(), io })).toBe(2);
         const payload = JSON.parse(out.join(""));
         expect(payload.configurationErrors).toContain('no adapter is registered for target "claude".');
+        // The diagnostic itself too, remediation included (#260).
+        expect(payload.diagnostics).toContainEqual(
+          expect.objectContaining({
+            code: "HN501",
+            severity: "error",
+            message: 'no adapter is registered for target "claude".',
+            remediation: expect.stringContaining("available adapters"),
+          }),
+        );
+
+        // Printed as `check` prints it (#260).
+        const human = fakeIO();
+        expect(await runDoctor({ config: configPath, registry: defaultAdapterRegistry(), io: human.io })).toBe(2);
+        const err = human.err.join("\n");
+        expect(err).toMatch(/^HN501 invalid configuration \[error\]$/m);
+        expect(err).toContain('\n  no adapter is registered for target "claude".\n');
+        expect(err).toContain("\n  Remediation: available adapters: ");
       } finally {
         await rm(root, { recursive: true, force: true });
       }
     },
   );
+
+  it("lists a config that fails to load as a diagnostic, beside its unchanged configuration error (#260)", async () => {
+    const root = await mkdtemp(join(tmpdir(), "hooknostic-doctor-load-failure-"));
+    try {
+      const configPath = join(root, "hooknostic.config.ts");
+      await writeFile(configPath, `throw new Error("boom");\n`);
+      const failure = `failed to load config ${configPath}: boom`;
+
+      const machine = fakeIO();
+      expect(await runDoctor({ config: configPath, json: true, registry: {}, io: machine.io })).toBe(2);
+      const payload = JSON.parse(machine.out.join(""));
+      expect(payload.configurationErrors).toEqual([failure]);
+      expect(payload.diagnostics).toEqual([
+        expect.objectContaining({
+          code: "HN501",
+          severity: "error",
+          message: failure,
+          remediation: expect.stringContaining("defineConfig"),
+        }),
+      ]);
+
+      const human = fakeIO();
+      expect(await runDoctor({ config: configPath, registry: {}, io: human.io })).toBe(2);
+      const err = human.err.join("\n");
+      expect(err).toMatch(/^HN501 invalid configuration \[error\]$/m);
+      expect(err).toContain(`\n  ${failure}\n`);
+      expect(err).toContain(
+        "\n  Remediation: the config must be a TypeScript module whose default export is defineConfig({...}).",
+      );
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
 
   it("reports Codex wiring synchronized into a linked worktree as HN107, naming the root checkout", async () => {
     const scratch = await realpath(await mkdtemp(join(tmpdir(), "hooknostic-doctor-worktree-")));
@@ -235,9 +285,14 @@ describe("doctor version comparison", () => {
 
       const human = fakeIO();
       await runDoctor({ config: configPath, registry, io: human.io });
-      const warning = human.out.find((line) => line.startsWith("HN107 warn: "));
-      expect(warning, human.out.join("\n")).toContain(`root checkout ${main}`);
+      // Printed as `check` prints it, with the remediation that is its advice (#260).
+      const warning = human.out.join("\n");
+      expect(warning).toMatch(/^HN107 .* \[warn\]$/m);
+      expect(warning).toContain(`root checkout ${main}`);
       expect(warning).toContain(join(main, ".codex", "hooks.json"));
+      expect(warning).toContain(
+        "\n  Remediation: The generated wiring takes effect once it is present, and trusted, in ",
+      );
 
       const machine = fakeIO();
       await runDoctor({ config: configPath, json: true, registry, io: machine.io });
@@ -294,7 +349,15 @@ describe("doctor versions", () => {
       new RegExp(`^this hooknostic is ${literal(HOOKNOSTIC_VERSION)}, .* is 0\\.0\\.1-test, `),
     ),
   });
-  const SKEW_LINE = new RegExp(`^HN110 warn: this hooknostic is ${literal(HOOKNOSTIC_VERSION)}, `);
+  /** Doctor's HN110 as its text output prints it, as `check` does (#260). */
+  const SKEW_LINE = new RegExp(
+    `^HN110 CLI and project SDK on different releases \\[warn\\]\\n\\n  this hooknostic is ${literal(HOOKNOSTIC_VERSION)}, `,
+  );
+  /** The configuration errors that doctor's JSON also lists, after its own HN110 (#260). */
+  const configurationDiagnostics = (payload: { configurationErrors: string[] }) =>
+    payload.configurationErrors.map((message) =>
+      expect.objectContaining({ code: "HN501", severity: "error", message }),
+    );
   const PACKAGE_TARGET = `claude: { version: ${JSON.stringify(claudeHarness.recommendedRange)}, delivery: "package", output: "dist" }`;
 
   // Each mode doctor reported HN110 in only through a build it filtered to
@@ -318,7 +381,9 @@ describe("doctor versions", () => {
       const skewed = fakeIO();
       expect(await runDoctor({ config: configPath, json: true, registry: {}, io: skewed.io })).toBe(code);
       const payload = JSON.parse(skewed.out.join(""));
-      expect(payload.diagnostics).toEqual([SKEW]);
+      // Each failing row's configuration error follows HN110 there (#260).
+      expect(payload.configurationErrors.length > 0).toBe(code === 2);
+      expect(payload.diagnostics).toEqual([SKEW, ...configurationDiagnostics(payload)]);
       // Doctor's own: verify builds no project target here, so its report has no HN110.
       if (project) expect(payload.project.diagnostics).toEqual([]);
       else expect(payload.project).toBeUndefined();
@@ -331,7 +396,8 @@ describe("doctor versions", () => {
       await setSdkVersion(root, HOOKNOSTIC_VERSION);
       const matching = fakeIO();
       expect(await runDoctor({ config: configPath, json: true, registry: {}, io: matching.io })).toBe(code);
-      expect(JSON.parse(matching.out.join("")).diagnostics).toEqual([]);
+      const matched = JSON.parse(matching.out.join(""));
+      expect(matched.diagnostics).toEqual(configurationDiagnostics(matched));
     } finally {
       await rm(root, { recursive: true, force: true });
     }
@@ -487,6 +553,7 @@ describe("doctor versions", () => {
       expect(human.out).toEqual([
         `hooknostic ${HOOKNOSTIC_VERSION}, project @hooknostic/sdk 0.0.1-test (Node.js ${process.version})`,
         expect.stringMatching(SKEW_LINE),
+        "",
       ]);
       (scope[release] as () => void)();
       expect(await running).toBe(0);
@@ -515,7 +582,7 @@ describe("doctor versions", () => {
       await setSdkVersion(root, "0.0.2-test");
       (scope[release] as () => void)();
       await running;
-      expect(human.out.filter((line) => line.startsWith("HN110 warn: "))).toEqual([
+      expect(human.out.filter((block) => block.startsWith("HN110 "))).toEqual([
         expect.stringContaining(" is 0.0.1-test, "),
         expect.stringContaining(" is 0.0.2-test, "),
       ]);

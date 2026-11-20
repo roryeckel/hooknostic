@@ -672,8 +672,9 @@ moved there in 0.13.0, gets an HN501 remediation naming the subpath, the import
 to write instead, and the upgrade guide. A name missing from the SDK's schemas
 entry itself gets none: that import already names the subpath. For a config the
 hint replaces the generic remediation, which follows it only when the bundle
-failed for another reason too. `check`, `build` and `inspect --config` print it
-with the diagnostic. `dispatch`, which bundles the hook source itself, prints the
+failed for another reason too. `check`, `build`, `inspect --config`, `sync`,
+`verify`, `recover` and `doctor` print it with the diagnostic, and their `--json`
+lists it under `diagnostics` (the last four since #260). `dispatch`, which bundles the hook source itself, prints the
 same text as an indented `Remediation:` line under its `failed to bundle entry`
 error (#247).
 **HN103** an effect was truncated or dropped by a runtime budget.

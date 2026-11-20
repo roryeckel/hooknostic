@@ -252,9 +252,15 @@ facts: HN110 alone warns when the CLI and the SDK differ.
 
 `doctor` judges an SDK it reports as `found`, whatever the config's targets
 deliver and even when the config fails to load. Its text output prints that HN110
-on the line after the versions, before the config loads. `doctor --json` lists
-doctor's own diagnostics, HN110 among them, under a top-level `diagnostics` array,
-empty without a config or a skew. They never change the exit code.
+after the versions, before the config loads. `doctor --json` lists doctor's own
+diagnostics under a top-level `diagnostics` array: HN110 first, then each error of
+doctor's own builds of the config, such as a config that fails to load or a target
+with no registered adapter, with its remediation (#260). `configurationErrors` still
+lists those errors' messages, as strings. The array is empty without a config, or
+with a config that has neither a skew nor an error. HN110 never changes the exit
+code; a configuration error exits 2. The text output prints each diagnostic as
+`check` does, with its code and remediation: HN110 on stdout, the configuration
+errors on stderr.
 
 With a `project` configuration that has project-delivery targets,
 `project.diagnostics` keeps the report of the `verify` doctor runs, as `sync` and

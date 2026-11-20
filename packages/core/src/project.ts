@@ -54,6 +54,9 @@ export async function runProject(
       // to load never reaches it, and the skew may be why it failed (#194).
       const skew = projectSdkReleaseSkew(dirname(resolve(options.configPath)), options.evaluate);
       if (skew !== undefined) result.diagnostics.push(skew);
+      // Listed as diagnostics too, so their remediation reaches the report,
+      // after HN110 as buildProject orders them; `errors` keeps the messages (#260).
+      result.diagnostics.push(...loaded.diagnostics);
       throw new Error(loaded.diagnostics.map((d) => d.message).join("\n"));
     }
     const config = loaded.config;
