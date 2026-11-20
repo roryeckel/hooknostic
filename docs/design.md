@@ -744,7 +744,8 @@ resolves, when either version is not valid semver, and in this repository's
 workspace, whose examples resolve `packages/sdk` at the CLI's own version. It
 is also silent under another install's Plug'n'Play runtime, as under
 `yarn dlx` in a Plug'n'Play project: looking up the project's SDK there would
-load its runtime beside dlx's and break the build (#216). Add
+load its runtime beside dlx's and break the build (#216); `yarn dlx` is
+unsupported (ADR-0041). Add
 `hooknostic` to the project's devDependencies at the same version as its
 `@hooknostic/sdk`, and run that CLI from the project directory:
 `npx hooknostic`, or `pnpm exec hooknostic` in a pnpm project (a project made
@@ -766,10 +767,11 @@ Under `yarn hooknostic` itself, where the CLI is in the project's install, a
 failure to resolve Hooknostic's own Zod keeps esbuild's error instead. On
 Linux with Node 22, `yarn dlx` sharing Yarn's global cache with the project
 fails with HN501 "controlled by multiple pnpapi instances", whatever the Zod
-(#190). Run
-Hooknostic through Yarn from the project, `yarn hooknostic`, with
-`hooknostic` as a devDependency (ADR-0040; supporting the other invocations
-is #190).
+version. Run Hooknostic through Yarn from the project, `yarn hooknostic`, with
+`hooknostic` as a devDependency, or start a CLI installed elsewhere under the
+project's runtime from the project directory with
+`node -r ./.pnp.cjs <dir>/hooknostic/bin/hooknostic.mjs`. Every other
+invocation, `yarn dlx` included, is unsupported (ADR-0040, ADR-0041).
 
 #### HN502 — bundled CLI entry point
 
