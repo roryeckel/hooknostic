@@ -343,6 +343,17 @@ describe("sdkReleaseSkew (HN110)", () => {
     ["by its install state alone", { "node_modules/.modules.yaml": modulesYaml("pnp", "12.21.0") }],
     // pnpm 9 and 10 write the record as YAML.
     ["by a YAML install state alone", { "node_modules/.modules.yaml": modulesYaml("pnp", "10.4.0", "yaml") }],
+    // A project moved from Yarn with `pnpm import`, which needs yarn.lock and
+    // leaves it beside pnpm's lockfile, .pnp.cjs and record (.capture/pnpm-pnp,
+    // Session 3). The record wins: Yarn's install deletes it (YN0031).
+    [
+      "by its install state beside a yarn.lock left by pnpm import",
+      {
+        "yarn.lock": "",
+        "pnpm-lock.yaml": "lockfileVersion: '9.0'\n",
+        "node_modules/.modules.yaml": modulesYaml("pnp", "12.21.0"),
+      },
+    ],
   ])("tells pnpm's Plug'n'Play from Yarn's %s (#259)", async (_, files) => {
     const { root, entry } = await project(sdkManifest("0.11.9"), { pnp: true });
     await lay(root, files);
@@ -368,18 +379,13 @@ describe("sdkReleaseSkew (HN110)", () => {
   it.each<[string, Record<string, string>]>([
     // Yarn 4.18.1's own layout (.capture/pnpm-pnp): .pnp.cjs, yarn.lock, .yarn, no node_modules.
     ["Yarn's own layout", { "yarn.lock": "", ".yarn/install-state.gz": "" }],
-    // Left over from a move off pnpm: neither says pnpm installed the manifest.
+    // An isolated record says pnpm did not write the manifest.
     [
       "a stale isolated pnpm install state",
       { "yarn.lock": "", "node_modules/.modules.yaml": modulesYaml("isolated", "12.21.0") },
     ],
+    // With no record, yarn.lock vetoes the pnpm-lock.yaml fallback.
     ["both lockfiles", { "yarn.lock": "", "pnpm-lock.yaml": "lockfileVersion: '9.0'\n" }],
-    // A live yarn.lock wins over pnpm's record: Yarn's Plug'n'Play writes no
-    // node_modules, so the record is left from an earlier pnpm install.
-    [
-      "a leftover nodeLinker: pnp record",
-      { "yarn.lock": "", "node_modules/.modules.yaml": modulesYaml("pnp", "12.21.0") },
-    ],
   ])("keeps a Yarn Plug'n'Play project on yarn with %s (#259)", async (_, files) => {
     const { root, entry } = await project(sdkManifest("0.11.9"), { pnp: true });
     await lay(root, files);

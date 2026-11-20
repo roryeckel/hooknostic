@@ -181,21 +181,20 @@ function nearestPnpmRelease(directory: string): string | undefined {
 
 /**
  * Whether pnpm, with `nodeLinker: pnp`, wrote the PnP manifest at `manifest`
- * rather than Yarn. A `yarn.lock` beside it says Yarn, whatever else is
- * there: Yarn's Plug'n'Play install writes no `node_modules`, so a pnpm
- * record beside a `yarn.lock` is taken for one left from an earlier pnpm
- * install. Otherwise it is pnpm's when pnpm's install record beside it says
- * `nodeLinker: pnp`, or `pnpm-lock.yaml` is beside it, as when `node_modules`
- * was removed for a clean reinstall. Yarn writes neither (.capture/pnpm-pnp).
- * The manifest's content is not read: what each package manager generates
- * there can change in any release. A pnpm project that kept a `yarn.lock`
- * from before its move to pnpm is therefore read as Yarn's: an accepted
- * misreading, which changes only the advice.
+ * rather than Yarn. pnpm's install record beside it saying `nodeLinker: pnp`
+ * says pnpm, whatever else is there: Yarn's install deletes that record
+ * (YN0031, "node_modules have been detected and will be removed"), while
+ * `pnpm import`, the way from Yarn to pnpm, leaves `yarn.lock` beside pnpm's
+ * manifest and record (.capture/pnpm-pnp, Session 3). Without the record,
+ * as when `node_modules` was removed for a clean reinstall, `pnpm-lock.yaml`
+ * beside the manifest says pnpm unless a `yarn.lock` is there too. Yarn
+ * writes neither file. The manifest's content is not read: what each package
+ * manager generates there can change in any release.
  */
 function pnpmPlugAndPlay(manifest: string): boolean {
   const directory = dirname(manifest);
-  if (existsSync(join(directory, "yarn.lock"))) return false;
-  return pnpmInstall(directory)?.nodeLinker === "pnp" || existsSync(join(directory, "pnpm-lock.yaml"));
+  if (pnpmInstall(directory)?.nodeLinker === "pnp") return true;
+  return existsSync(join(directory, "pnpm-lock.yaml")) && !existsSync(join(directory, "yarn.lock"));
 }
 
 /**
