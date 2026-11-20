@@ -267,20 +267,97 @@ So no top-level `types` field is needed beside `main`.
 Yarn 4.18.1, a fresh project with one dependency: `.yarn/` holds
 `install-state.gz` and nothing else; no `node_modules`.
 
+### What `pnpm exec hooknostic build` bundles
+
+Recorded in a third session the same day, after the round-2 review measured
+it. `build.ts` points the shims' `@hooknostic/sdk` imports at the project's SDK
+when the project SDK lookup resolves one, so `main` also decides what the
+artifact contains under `pnpm exec`. Each row is one build of the same
+config and an empty hook list, in a fresh pnpm 12.21.0 `nodeLinker: pnp`
+project, exit 0. Module counts are esbuild's `// <path>` comments in
+`dist/claude/runtime/hooknostic.mjs`, grouped by package directory.
+
+| Project SDK | CLI | `main` | Bytes | Bundled |
+|---|---|---|---|---|
+| this repository's, packed as 0.12.99 | the project's, packed from this repository (its own SDK: the registry's 0.13.0) | no | 291,518 | project SDK 13 modules, **CLI's SDK 0.13.0 11 modules**, `zod@4.6.7` 18 |
+| the same | the same | yes | 288,326 | project SDK 14 modules, `zod@4.6.7` 18; HN110 printed |
+| the registry's 0.12.0 (its root imports Zod) | the same | no (as published) | 333,448 | project SDK 14, **CLI's SDK 0.13.0 11**, `zod@4.6.7` 29 |
+| the same, `main` added to its installed manifest | the same | yes | 308,881 | project SDK 14, `zod@4.6.7` 29; HN110 printed |
+| the registry's 0.12.0 | this repository's, `pnpm exec node <repo>/packages/cli/bin/hooknostic.mjs` | no | 532,239 | project SDK 14, `zod@4.6.7` 29, **`<repo>/packages/sdk` 11, `<repo>`'s `zod@4.6.7` 18** |
+| the same | the same | yes | 308,363 | project SDK 14, `zod@4.6.7` 29; HN110 printed |
+| the registry's 0.12.0 | the project's, as `node node_modules/hooknostic/bin/hooknostic.mjs build` (plain `node`, no pnpm runtime) | no | 308,881 | project SDK 14, `zod@4.6.7` 29; HN110 printed |
+
+So without `main`, a `pnpm exec` build bundles the CLI's own SDK for the
+shims beside the project's SDK for the hooks, as #258 fixed elsewhere, and
+HN110 is silent about it. Zod is bundled twice only when the CLI's SDK
+resolves another Zod directory than the project's, as with a CLI outside the
+project's store; with the project's own CLI and one `zod@4.6.7` in pnpm's
+store, both SDKs share it. The round-2 reviewer measured the last pair with
+its own scratch project: 534,359 bytes, two SDKs and two Zods, against
+310,303 with `main`.
+
+## Session 3: moving between Yarn and pnpm
+
+Same machine and day, Yarn 4.18.1 through corepack and pnpm 12.21.0 pinned
+through `devEngines`, each version checked before it ran. The question: can a
+pnpm `nodeLinker: pnp` record sit beside a `yarn.lock`, and if so, who
+installed last? The round-2 reviewer ran both migrations first; these are
+reruns.
+
+**pnpm to Yarn.** A pnpm 12.21.0 `nodeLinker: pnp` project with
+`is-number@7.0.0` (record `"nodeLinker": "pnp"`, `.pnp.cjs` containing
+`__pnpmPnp`). `package.json` then named `"packageManager": "yarn@4.18.1"` and
+no `devEngines`, an empty `yarn.lock` was written, and `corepack yarn install`
+ran, once with `pnpm-lock.yaml` deleted and once with it kept:
+
+```
+➤ YN0031: │ One or more node_modules have been detected and will be removed. This operation may take some time.
+yarn install exit 0
+```
+
+Both times `node_modules` afterwards held only `.pnpm`: `.modules.yaml` was
+gone, and `.pnp.cjs` was Yarn's (no `__pnpmPnp`). With the lockfile kept, the
+project has `yarn.lock` and `pnpm-lock.yaml` and no record.
+
+**Yarn to pnpm, with `pnpm import`.** A Yarn 4.18.1 project with
+`@hooknostic/sdk@0.12.0` and `zod@4.6.7` (`corepack yarn add -D`, exit 0;
+root: `.yarn`, `.pnp.cjs`, `.pnp.loader.mjs`, `package.json`, `yarn.lock`).
+`package.json` then dropped `packageManager` for `devEngines` naming pnpm
+12.21.0, `pnpm-workspace.yaml` set `nodeLinker: pnp`, and `pnpm import` and
+`pnpm install` both exited 0. Afterwards the root held `.yarn`,
+`node_modules`, `.pnp.cjs` (containing `__pnpmPnp`: pnpm's),
+`.pnp.loader.mjs` (Yarn's, left behind), `pnpm-lock.yaml`,
+`pnpm-workspace.yaml` and **`yarn.lock`**, and the record said
+`"nodeLinker": "pnp"` and `"packageManager": "pnpm@12.21.0"`. This
+repository's CLI (`node <repo-cli> doctor`, after the precedence fix) reported
+`project @hooknostic/sdk 0.12.0` and HN110 advising
+`pnpm add -D --allow-build=esbuild hooknostic@0.12.0` and
+`pnpm exec hooknostic`. The reviewer saw the earlier rule (a `yarn.lock`
+means Yarn) advise `yarn add -D` here, and following it with Yarn replaced
+the pnpm install.
+
+So a `nodeLinker: pnp` record means pnpm installed last: Yarn's install
+removes it, and `pnpm import` keeps `yarn.lock`. Not observed: Linux or macOS,
+Yarn 2 or 3, and a pnpm `node_modules` with only dot-entries
+(`symlink: false`), which Yarn might not count as detected.
+
 ## Consequences
 
 - HN110 names `pnpm exec hooknostic` and `pnpm add -D [--allow-build=esbuild]
-  hooknostic@<SDK version>` for a Plug'n'Play manifest pnpm wrote: no
-  `yarn.lock` beside it, and either `node_modules/.modules.yaml` says
-  `nodeLinker: pnp` or `pnpm-lock.yaml` is there. A `yarn.lock` means Yarn,
-  whatever else is there. The manifest's content is never read.
+  hooknostic@<SDK version>` for a Plug'n'Play manifest pnpm wrote:
+  `node_modules/.modules.yaml` beside it says `nodeLinker: pnp`, whatever else
+  is there (Session 3), or, without that record, `pnpm-lock.yaml` is beside it
+  and `yarn.lock` is not. The manifest's content is never read.
 - `--allow-build=esbuild` is printed when the nearest `.modules.yaml` that
   names a release records pnpm 10.4.0 or later. With no recorded release it
   is left out of a `node_modules` project's pnpm command, and kept, with a
   note for pnpm before 10.4, in a pnpm Plug'n'Play project's.
 - The SDK names `main`, so from the next release on, pnpm 12's
   `nodeLinker: pnp` runtime resolves it, and HN110 and doctor work under
-  `pnpm exec`. An SDK of 0.13.0 or earlier still reads as `not found` there.
+  `pnpm exec`, and a `pnpm exec` build bundles only the project's SDK. An SDK
+  of 0.13.0 or earlier still reads as `not found` there, and its builds also
+  bundle the CLI's own SDK for the shims; plain
+  `node node_modules/hooknostic/bin/hooknostic.mjs` avoids both.
 - pnpm's `nodeLinker: pnp` is **best effort**, as `yarn dlx` is for Yarn
   (ADR-0041): `pnpm exec hooknostic` built and the artifact ran with pnpm
   12.21.0's default `symlink`, but no suite runs it. `symlink: false` does not
