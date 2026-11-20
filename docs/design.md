@@ -758,15 +758,45 @@ another Yarn Plug'n'Play project's tree and started with the project's own
 `npx hooknostic`, or `pnpm exec hooknostic` in a pnpm project (a project made
 by pnpm 12's `pnpm init` names pnpm in `devEngines`, so `npx` refuses to run
 there), or `yarn hooknostic` under Yarn Plug'n'Play. Without a local install,
-and always under Plug'n'Play, `npx` fetches the registry's latest instead.
+and always under Yarn Plug'n'Play, `npx` fetches the registry's latest instead.
 Outside Plug'n'Play, `npx` and `pnpm exec` are both named rather than
-detecting the package manager.
+detecting the package manager. The advice prints each install command with the
+SDK's version (without build metadata) filled in, so it runs as printed (#259):
+`npm install --save-dev --save-exact hooknostic@<version>` (npm would otherwise
+save a `^` range), `pnpm add -D --allow-build=esbuild hooknostic@<version>`, or
+`yarn add -D hooknostic@<version>` under Yarn Plug'n'Play. pnpm 12 refuses
+esbuild's install script without `--allow-build`, and pnpm before 10.4 refuses
+the option, so it is printed when the nearest `node_modules/.modules.yaml`
+that names a pnpm release, pnpm's record of the install, names pnpm 10.4 or
+later. With no recorded release it is left out of a `node_modules` project's
+pnpm command, which may be an npm project, and kept, with a note for pnpm
+before 10.4, in a pnpm Plug'n'Play project's. Under pnpm's `nodeLinker: pnp`,
+which also writes `.pnp.cjs`, the advice is pnpm's, not Yarn's: the manifest
+is pnpm's when the `.modules.yaml` beside it says `nodeLinker: pnp`, whatever
+else is there, or, without that record, when `pnpm-lock.yaml` is beside it and
+`yarn.lock` is not. The record wins because it shows who installed last:
+Yarn's install deletes it (YN0031), while `pnpm import`, the way from Yarn to
+pnpm, leaves `yarn.lock` beside pnpm's manifest and record. pnpm
+Plug'n'Play is best effort, as `yarn dlx` is for Yarn: in the recorded capture
+(`.capture/pnpm-pnp`, pnpm 12.21.0 on Windows) `pnpm exec hooknostic` built a
+working artifact, and HN110 and doctor saw the project's SDK, but no suite
+runs it. pnpm's runtime resolves a package through its directory, which Node
+resolves by `main` alone, so the SDK names `main` beside `exports` (#259); an
+SDK of 0.13.0 or earlier has none. Under `pnpm exec` HN110 is then silent,
+doctor reports the SDK `not-found`, and a build bundles the CLI's own SDK for
+its shims beside the project's for the hooks, the mix #258 fixed elsewhere;
+`node node_modules/hooknostic/bin/hooknostic.mjs` avoids all three, as the
+capture's bundle table shows. With pnpm's `symlink: false` no build resolves
+the SDK at all, and pnpm 11's runtime, which is Yarn's, reads as another
+install's, so HN110 is silent there as under `yarn dlx`.
 **HN504** a build under a Yarn Plug'n'Play manifest needs a module from Yarn's
 install that this process cannot read, because Hooknostic is running without
 Yarn's PnP runtime: under plain `node`, `npx`, a global install or `pnpm dlx`.
 esbuild reads Yarn's zip archives itself, but what Hooknostic reads beside a
 module -- the SDK's manifest, licence notices -- would come back missing, so
-the build fails instead of bundling around it. `yarn dlx` loads a runtime, but
+the build fails instead of bundling around it. pnpm's `nodeLinker: pnp` never
+gives it: pnpm serves packages from real directories under `node_modules/.pnpm`
+(`.capture/pnpm-pnp`). `yarn dlx` loads a runtime, but
 not the project's, so a build that needs Hooknostic's own Zod fails the same
 way. It is an error, reported once per build, naming the module and the PnP
 manifest, or under `yarn dlx` where Hooknostic's own Zod failed to resolve.

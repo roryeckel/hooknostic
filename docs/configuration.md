@@ -234,7 +234,13 @@ config, and its own diagnostics, such as HN110, under `diagnostics` (see below).
   pnpm's bin shims set) or a global folder reaches does not count. Under Yarn's
   runtime, it means the project's Plug'n'Play install does not provide the SDK.
   An installed SDK that Node fails to resolve, such as one whose `exports` target
-  is missing, is `not-found` too;
+  is missing, is `not-found` too. So is an SDK of 0.13.0 or earlier under
+  `pnpm exec` in a project that uses pnpm 12's `nodeLinker: pnp`: pnpm's
+  runtime resolves a package through its directory, which Node resolves by
+  `main` alone, and only later SDKs name `main` (`.capture/pnpm-pnp`). Run
+  `hooknostic doctor` there with plain `node`
+  (`node node_modules/hooknostic/bin/hooknostic.mjs doctor`) to read its
+  version;
 - `unidentified`: it resolves, but the resolved package's manifest isn't
   `@hooknostic/sdk`'s or has no version;
 - `not-looked-up`, with a `reason`:
@@ -242,14 +248,18 @@ config, and its own diagnostics, such as HN110, under `diagnostics` (see below).
     as `yarn dlx`, as for HN110. A CLI installed by npm inside another Yarn
     Plug'n'Play project's tree, started with the project's own
     `node -r ./.pnp.cjs`, gets this reason too, although the runtime is the
-    project's (#269);
+    project's (#269). So does the project's own CLI under pnpm 11's
+    `nodeLinker: pnp` runtime, which is Yarn's, run with `pnpm exec`, as
+    captured in `.capture/pnpm-pnp`;
   - `outside-pnp-runtime`: `manifest`, a Yarn Plug'n'Play manifest, is in the
     config's directory or an ancestor, this process isn't running under Yarn's
     runtime, and no `node_modules/@hooknostic/sdk` is reachable. In a Yarn
     Plug'n'Play project, run `yarn hooknostic doctor`; a build run there
     without Yarn's runtime fails with HN504 when it needs a package from
     Yarn's install ([ADR-0041](decisions/0041-yarn-pnp-runtime.md)). A stray
-    manifest above a `node_modules` project gives this reason too.
+    manifest above a `node_modules` project gives this reason too, and so does
+    a pnpm `nodeLinker: pnp` project with `symlink: false`, whose `.pnp.cjs` is
+    pnpm's, though the reason calls it Yarn's; no build resolves the SDK there.
 
 `doctor` looks the SDK up from the config's directory by these rules, which HN110
 shares (#258). A build resolves it from each file that imports it instead, so an
