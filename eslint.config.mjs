@@ -21,7 +21,13 @@ export default tseslint.config(
   ...tseslint.configs.recommended,
   {
     // Package build scripts, repo scripts, and test fixture servers run under Node.
-    files: ["packages/*/scripts/**/*.mjs", "scripts/**/*.mjs", "packages/*/test/**/*.mjs", "examples/*/build/**/*.mjs"],
+    files: [
+      "packages/*/scripts/**/*.mjs",
+      "scripts/**/*.mjs",
+      "packages/*/test/**/*.mjs",
+      "examples/*/build/**/*.mjs",
+      "media/*/scripts/**/*.mjs",
+    ],
     languageOptions: {
       globals: {
         console: "readonly",
