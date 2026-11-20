@@ -464,8 +464,7 @@ it.skipIf(process.env["HOOKNOSTIC_YARN_PNP"] !== "1")(
       const build = ["build", "--config", "hooknostic.config.ts"];
       const modes: Record<string, (project: string) => Promise<{ code: number | null; output: string }>> = {
         "yarn hooknostic": (project) => run("corepack", ["yarn", "hooknostic", ...build], project),
-        "node -r .pnp.cjs": (project) =>
-          run(process.execPath, ["-r", join(project, ".pnp.cjs"), outsideBin, ...build], project),
+        "node -r .pnp.cjs": (project) => run(process.execPath, ["-r", "./.pnp.cjs", outsideBin, ...build], project),
         "plain node": (project) => run(process.execPath, [outsideBin, ...build], project),
         "yarn dlx": (project) =>
           run("corepack", ["yarn", "dlx", "-q", "-p", `hooknostic@file:${cli}`, "hooknostic", ...build], project),
