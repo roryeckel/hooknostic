@@ -733,17 +733,20 @@ its own lookup finds (#257): where that line reads `not found`, as for an SDK
 only `NODE_PATH` reaches, or `not looked up`, as in a Plug'n'Play project
 outside Yarn's runtime, doctor's own check is silent. With project-delivery
 targets, doctor also lists the report of the `verify` it runs, whose HN110 comes
-from the build's lookup: until that lookup walks `node_modules` as the version
-line's does (#258), it follows `NODE_PATH`, so that report may still warn about
-an SDK the version line reads as `not found`.
+from the build's lookup; that lookup walks `node_modules` as the version line's
+does (#258), so neither warns about an SDK the version line reads as `not found`.
 It never changes an exit code: `check` and `build` print it, `sync` and
 `verify` list it with their other build diagnostics, and `doctor --json` lists
 its own check's under a top-level `diagnostics`. That is the exception to once
 per run: in a project run, the JSON's `project.diagnostics`, the `verify`
 report, may repeat it. It is silent when no SDK
 resolves, when either version is not valid semver, and in this repository's
-workspace, whose examples resolve `packages/sdk` at the CLI's own version. It
-is also silent under another install's Plug'n'Play runtime, as under
+workspace, whose examples resolve `packages/sdk` at the CLI's own version. The
+SDK counts only when a `node_modules` folder in the config's directory or an
+ancestor holds it, or Yarn's runtime serves a Plug'n'Play project: one that
+only `NODE_PATH` (which pnpm's bin shims set) or a global folder reaches is not
+the project's, as for `doctor`, and the build does not bundle it either (#246,
+#258). It is also silent under another install's Plug'n'Play runtime, as under
 `yarn dlx` in a Plug'n'Play project: looking up the project's SDK there would
 load its runtime beside dlx's and break the build (#216); `yarn dlx` is
 unsupported (ADR-0041). Add
@@ -1362,10 +1365,12 @@ in reproducible configs.
 The package version has one carrier in the CLI, `HOOKNOSTIC_VERSION`, which
 `set-versions.mjs` rewrites and `versions.test.ts` pins to the CLI's manifest. It is
 what `hooknostic --version` prints, alone, what HN110 calls "this hooknostic", and the
-build report's `hooknosticVersion`. `doctor` reports it beside the project's
-`@hooknostic/sdk` version, looked up from the config's directory, as HN110 does (and,
-like HN110, never under another install's Plug'n'Play runtime), and Node.js's (#246);
-HN110 beside them judges an SDK that lookup found (#257).
+build report's `hooknosticVersion`. `doctor` reports it beside Node.js's version and
+the project's `@hooknostic/sdk` version, which it looks up as HN110 does (#246, #258):
+from the `node_modules` folders of the config's directory and its ancestors, never
+through `NODE_PATH`, outside Plug'n'Play; through Yarn's runtime in a Plug'n'Play
+project; and, like HN110, never under another install's Plug'n'Play runtime. HN110
+beside them judges an SDK that lookup found (#257).
 
 ## 17. Operational and trust considerations
 
