@@ -325,14 +325,14 @@ export const opencodeV2CapabilityProfiles: CapabilityProfile[] = [
         },
         {
           version: "2.0.17",
-          date: "2026-11-19",
+          date: "2026-11-20",
           method: "live-probe",
           artifact: ".capture/opencode-v2",
           what: "ripgrep pre-seed (#264), tools drive on Windows, Linux (WSL) and a macOS arm64 runner: unseeded, glob/grep logged downloading ripgrep at INFO and cached it as $XDG_CACHE_HOME/opencode/bin/rg (rg.exe on Windows); with the pinned build seeded there, nothing was downloaded, the seeded binary ran and both tools completed.",
         },
         {
           version: "2.3.2",
-          date: "2026-11-19",
+          date: "2026-11-20",
           method: "live-probe",
           artifact: ".capture/opencode-v2",
           what: "ripgrep pre-seed (#264), tools drive on Linux (WSL): unseeded, the harness logged downloading ripgrep at INFO and cached it as $XDG_CACHE_HOME/opencode/bin/rg; seeded there, it logged no download and glob/grep completed. This build logs no process spawns, so which rg ran is not recorded.",
