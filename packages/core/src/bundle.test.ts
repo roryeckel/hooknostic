@@ -537,6 +537,29 @@ describe("an SDK installed without its Zod peer", () => {
     }
   });
 
+  it("names Hooknostic's own Zod relative to the config's directory when the project installs Hooknostic", async () => {
+    // The CLI as a devDependency, its in-range Zod nested beside it: HN109
+    // names neither Zod by a path that names the machine (#256).
+    const { root, sdkEntry } = await project({ zod: "3.24.4", v4: false });
+    try {
+      const hooknostic = join(root, "node_modules", "hooknostic");
+      const ownDirectory = join(hooknostic, "dist");
+      await mkdir(ownDirectory, { recursive: true });
+      await writeZod(join(hooknostic, "node_modules", "zod"), ownZodVersion);
+      const result = await bundleRecorded(root, sdkEntry, {}, SOURCE, { ownDirectory });
+      expect(await run(root, result.code)).toBe(`project zod ${ownZodVersion}: ok`);
+      expect(result.diagnostics).toEqual([
+        substitution(
+          "zod@3.24.4",
+          `at ${inside("node_modules/zod")}`,
+          `from ${inside("node_modules/hooknostic/node_modules/zod")}`,
+        ),
+      ]);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   it("uses the reached Zod as is when the SDK's peer is not a semver range", async () => {
     // The workspace SDK's `catalog:` reference, which only `pnpm pack` rewrites: no floor to enforce.
     const { root, sdkEntry } = await project({ zod: "3.25.76", peer: "catalog:zod-peer" });

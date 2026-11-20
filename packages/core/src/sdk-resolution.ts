@@ -603,11 +603,12 @@ function substitutionDiagnostic(substitution: ZodSubstitution): Diagnostic {
  * and pnpm links a project's own Zod 3 as the peer with only a warning. The
  * SDK's import then resolves from here too, and `onSubstitution` receives an
  * HN109 warning rather than the build failing, naming each Zod as HN110 names
- * the SDK: by its path relative to the config's directory, or by Yarn's
- * Plug'n'Play install rather than its cache path (#256). The range comes
- * from the SDK's own manifest. A manifest whose range is not a semver range -- the
- * workspace's `catalog:` reference, which only `pnpm pack` rewrites -- has no
- * floor to enforce, and the reached Zod is used as is.
+ * the SDK: by its path, relative to the config's directory when inside it and
+ * absolute otherwise, or by Yarn's Plug'n'Play install rather than its cache
+ * path (#256). The range comes from the SDK's own manifest. A manifest whose
+ * range is not a semver range -- the workspace's `catalog:` reference, which
+ * only `pnpm pack` rewrites -- has no floor to enforce, and the reached Zod is
+ * used as is.
  *
  * The version checked is the one {@link reachableZod} reads, before anything
  * resolves, from the zod package the SDK's import reaches: the package esbuild

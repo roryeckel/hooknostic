@@ -696,12 +696,15 @@ import reaches (the first on its `node_modules` path, whether or not it provides
 the runtime bundles Hooknostic's own Zod instead. It is a warning, reported once
 per build, and it names the version and path found, the range, and the copy
 bundled. It names each Zod's path as HN110 names the SDK's: relative to the
-configuration's directory when inside it, and saying so. In a Plug'n'Play
-project, a Zod served from Yarn's install, inside a zip archive or behind a
-virtual folder, is named `from Yarn's Plug'n'Play install` instead of by its
-machine-specific cache path: the project's Zod under Yarn's runtime, and
-Hooknostic's own under `yarn hooknostic` (#256). Every other Zod keeps its
-path. A project with no reachable Zod gets Hooknostic's copy without one.
+configuration's directory when inside it, and saying so, and absolute
+otherwise, as for a CLI installed outside the project, whose own Zod's path
+may name a home directory. In a Plug'n'Play project, a Zod served from Yarn's
+install, inside a zip archive or behind a virtual folder, is named
+`from Yarn's Plug'n'Play install` instead of by its machine-specific cache
+path: the project's Zod under Yarn's runtime, and Hooknostic's own under
+`yarn hooknostic` (#256). Every other Zod is named by its path, relative or
+absolute as above. A project with no reachable Zod gets Hooknostic's copy
+without one.
 User code that imports Zod still bundles the project's copy (ADR-0040).
 **HN110** the CLI running a build and the project's `@hooknostic/sdk` are on
 different releases, so the build would mix one release's SDK with another
