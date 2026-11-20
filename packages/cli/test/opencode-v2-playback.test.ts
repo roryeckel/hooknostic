@@ -1,7 +1,20 @@
+import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { access, appendFile, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
+import {
+  access,
+  appendFile,
+  chmod,
+  mkdir,
+  mkdtemp,
+  readdir,
+  readFile,
+  realpath,
+  rm,
+  stat,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { isAbsolute, join, relative } from "node:path";
+import { basename, isAbsolute, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import semver from "semver";
@@ -12,6 +25,8 @@ import { resolveTargetAdapter } from "@hooknostic/core";
 
 // @ts-expect-error The capture event reader is plain JavaScript.
 import { readEventRecords } from "../../../.capture/opencode-v2/lifecycle.mjs";
+// @ts-expect-error The ripgrep pre-seed is plain JavaScript.
+import * as ripgrepSeed from "../../../.capture/opencode-v2/ripgrep.mjs";
 // @ts-expect-error The constructed loopback model is plain JavaScript.
 import { startToolModel } from "../../../.capture/opencode-v2/tool-model.mjs";
 import {
@@ -27,6 +42,7 @@ import {
 } from "./harness-playback.js";
 import { report } from "./report.js";
 
+const { checkRipgrepLog, defaultRipgrepDir, ensureRipgrep, ripgrepAsset, seedRipgrep, verifyRipgrepSeed } = ripgrepSeed;
 const enabled = process.env["HOOKNOSTIC_PLAYBACK"] === "opencode-v2";
 const version = process.env["HOOKNOSTIC_PLAYBACK_VERSION"] ?? opencodeV2Harness.referenceVersion;
 const adapter = resolveTargetAdapter(opencodeAdapter(), {
@@ -54,6 +70,290 @@ async function toolModelDelta(baseUrl: string, messages: unknown[]) {
   const chunk = (await response.text()).split("\n").find((line) => line.startsWith("data: {"))!;
   return JSON.parse(chunk.slice(6)).choices[0].delta;
 }
+
+/**
+ * Every named tool must have a completed execute.after in the captured rows. A
+ * missing one is reported with its own calls' outcomes, so a harness-side
+ * failure reads straight from the job log (#264): each call's execute.after
+ * status and the session.tool.failed error correlated by call id, plus a count
+ * of other failed calls (some are deliberate, such as the blocked websearch).
+ */
+function expectCompletedTools(captured: any[], names: string[]) {
+  const completed = captured.filter((row) => row.hook === "execute.after" && row.event.status === "completed");
+  const failures = captured.filter((row) => row.hook === "event" && row.event?.type === "session.tool.failed");
+  const outcome = (name: string) => {
+    const ids = captured
+      .filter((row) => row.hook === "execute.before" && row.event?.tool === name)
+      .map((row) => row.event.id);
+    const calls = ids.map((id) => {
+      const after = captured.find((row) => row.hook === "execute.after" && row.event?.id === id);
+      const failure = failures.find((row) => row.event.data?.id === id);
+      const error = failure && (failure.event.data.error?.message ?? JSON.stringify(failure.event.data.error));
+      return `${id} execute.after ${after?.event.status ?? "missing"}${failure ? `, session.tool.failed: ${error}` : ""}`;
+    });
+    const others = failures.filter((row) => !ids.includes(row.event.data?.id)).length;
+    return `${name}: ${calls.join("; ") || "no execute.before"} (${others} other session.tool.failed)`;
+  };
+  for (const name of names) {
+    const done = completed.some((row) => row.event.tool === name);
+    expect(done, done ? name : outcome(name)).toBe(true);
+  }
+}
+
+describe("OpenCode playback tool outcomes", () => {
+  // Constructed from the shapes in the failing CI artifact (#264, run
+  // 44475089995): a session.tool.failed row names its call only by data.id,
+  // and the tools drive deliberately blocks websearch with its own failure.
+  const call = (id: string, tool: string) => ({ hook: "execute.before", event: { tool, id, input: {} } });
+  const failed = (id: string, message: string) => ({
+    hook: "event",
+    event: { type: "session.tool.failed", data: { id, executed: false, error: { message } } },
+  });
+  const captured = [
+    call("call_probe_1", "read"),
+    { hook: "execute.after", event: { tool: "read", id: "call_probe_1", status: "completed" } },
+    call("call_probe_4", "glob"),
+    failed("call_probe_4", "ripgrep archive did not contain executable: <bin>/rg.exe"),
+    call("call_probe_8", "websearch"),
+    failed("call_probe_8", "hooknostic-boundary-only: external execution intentionally blocked"),
+  ];
+  it("passes when every named tool completed", () => {
+    expectCompletedTools(captured, ["read"]);
+  });
+  it("names the missing call's own failure, correlated by call id", () => {
+    let message = "";
+    try {
+      expectCompletedTools(captured, ["read", "glob"]);
+    } catch (error) {
+      message = String((error as Error).message);
+    }
+    expect(message).toContain("call_probe_4");
+    expect(message).toContain("ripgrep archive did not contain executable");
+    // The deliberately blocked call is another tool's outcome, counted but not quoted.
+    expect(message).not.toContain("hooknostic-boundary-only");
+    expect(message).toContain("1 other session.tool.failed");
+  });
+});
+
+describe("OpenCode ripgrep pre-seed", () => {
+  // Log lines in the shapes 2.0.17 and 2.3.2 wrote (.capture/opencode-v2/README.md,
+  // "ripgrep pre-seed"), home directories redacted: Windows quotes and escapes
+  // a spawned command, Linux and macOS leave it bare. Server-process lines end
+  // in role=server; the --version, run and serve start-up lines in role=cli.
+  const download =
+    'timestamp=2026-11-20T01:13:24.721Z level=INFO run=496ad607 message="downloading ripgrep" url=https://github.com/BurntSushi/ripgrep/releases/download/15.1.0/ripgrep-15.1.0-x86_64-pc-windows-msvc.zip role=server';
+  const tarSpawn =
+    'timestamp=2026-11-20T01:17:29.882Z level=INFO run=e035fcb5 message="spawning process" command=tar args="[\\"-xzf\\",\\"/home/user/hooknostic-v2-x/cache/opencode/bin/ripgrep-15.1.0-x86_64-unknown-linux-musl.tar.gz\\",\\"-C\\",\\"/home/user/hooknostic-v2-x/cache/opencode/bin/ripgrep-AbCdEf\\"]" cwd=undefined role=server';
+  const windowsRg = "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-v2-x\\cache\\opencode\\bin\\rg.exe";
+  const windowsSpawn =
+    'timestamp=2026-11-20T01:13:27.785Z level=INFO run=496ad607 message="spawning process" command="C:\\\\Users\\\\user\\\\AppData\\\\Local\\\\Temp\\\\hooknostic-v2-x\\\\cache\\\\opencode\\\\bin\\\\rg.exe" args="[\\"--no-config\\",\\"--files\\"]" cwd=C:\\Users\\user role=server';
+  const posixRg = "/home/user/hooknostic-v2-x/cache/opencode/bin/rg";
+  const posixSpawn =
+    'timestamp=2026-11-20T01:17:29.917Z level=INFO run=e035fcb5 message="spawning process" command=/home/user/hooknostic-v2-x/cache/opencode/bin/rg args="[\\"--no-config\\",\\"--files\\"]" cwd=/home/user role=server';
+  const shellSpawn =
+    'timestamp=2026-11-20T01:13:28.989Z level=INFO run=496ad607 message="spawning process" command="C:\\\\WINDOWS\\\\System32\\\\WindowsPowerShell\\\\v1.0\\\\powershell.EXE" args="[]" role=server';
+  const serverLine =
+    'timestamp=2026-11-20T02:19:42.885Z level=INFO run=6a99c51e message="database schema bootstrap started" migrations=62 role=server';
+  const versionOnly =
+    'timestamp=2026-11-20T01:42:42.086Z level=INFO run=732faad1 message="cli starting" version=2.3.2 channel=latest local=false args="[\\"--version\\"]" role=cli';
+  const bytes = Buffer.from("not really ripgrep\n");
+  const fake = { ...ripgrepAsset(), binarySha256: createHash("sha256").update(bytes).digest("hex") };
+  const refuse = () => {
+    throw new Error("fetched although a pinned copy was there");
+  };
+
+  it("pins the asset OpenCode's own bootstrap fetches on each platform, and its executable", () => {
+    expect(ripgrepAsset("win32", "x64")).toMatchObject({
+      executable: "rg.exe",
+      file: "ripgrep-15.1.0-x86_64-pc-windows-msvc.zip",
+      sha256: "124510b94b6baa3380d051fdf4650eaa80a302c876d611e9dba0b2e18d87493a",
+      binarySha256: "decdd4992f3f1b9a5ef9898f1b40ab16886d579d6516b4efd3d5eaa19364e408",
+    });
+    expect(ripgrepAsset("linux", "x64")).toMatchObject({
+      executable: "rg",
+      file: "ripgrep-15.1.0-x86_64-unknown-linux-musl.tar.gz",
+      sha256: "1c9297be4a084eea7ecaedf93eb03d058d6faae29bbc57ecdaf5063921491599",
+      binarySha256: "ebeaf56f8a25e102e9419933423738b3a2a613a444fd749d695e15eba53f71f2",
+    });
+    expect(ripgrepAsset("darwin", "arm64")).toMatchObject({
+      executable: "rg",
+      file: "ripgrep-15.1.0-aarch64-apple-darwin.tar.gz",
+      sha256: "378e973289176ca0c6054054ee7f631a065874a352bf43f0fa60ef079b6ba715",
+      binarySha256: "4fdf1d8365af224bc70e3c1490d8461d859c37cc70e739a11e987af0215f3e94",
+    });
+    expect(() => ripgrepAsset("freebsd", "x64")).toThrow(/ripgrep pre-seed failed: no pinned ripgrep for x64-freebsd/);
+  });
+  it("keeps its shared copy in a per-user directory, not the temporary directory", () => {
+    // Injected, so the host's own HOME or XDG_CACHE_HOME (possibly under /tmp) does not decide it.
+    const asset = ripgrepAsset("linux", "x64");
+    const under = (...base: string[]) => join(...base, "hooknostic", "ripgrep", "15.1.0", asset.platform);
+    const user = { home: join("/home", "user"), env: {} };
+    expect(defaultRipgrepDir(asset, { ...user, platform: "linux" })).toBe(under("/home", "user", ".cache"));
+    expect(defaultRipgrepDir(asset, { ...user, platform: "linux", env: { XDG_CACHE_HOME: "/xdg" } })).toBe(
+      under("/xdg"),
+    );
+    expect(defaultRipgrepDir(asset, { ...user, platform: "darwin" })).toBe(under("/home", "user", "Library", "Caches"));
+    expect(defaultRipgrepDir(asset, { ...user, platform: "win32", env: { LOCALAPPDATA: "/local" } })).toBe(
+      under("/local"),
+    );
+    expect(defaultRipgrepDir(asset, { ...user, platform: "win32" })).toBe(under("/home", "user", "AppData", "Local"));
+  });
+  it("rejects a download whose SHA-256 is not the pin, after every attempt, leaving nothing behind", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "hooknostic-ripgrep-test-"));
+    let calls = 0;
+    const fetch = async () => {
+      calls += 1;
+      return new Response("a truncated archive");
+    };
+    try {
+      await expect(ensureRipgrep({ dir, fetch, retryDelayMs: 0 })).rejects.toThrow(
+        /ripgrep pre-seed failed: .*after 3 attempts: SHA-256 mismatch/,
+      );
+      expect(calls).toBe(3);
+      expect(await readdir(dir)).toEqual([]);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+  it("reuses a cached copy only when it is the pinned executable", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "hooknostic-ripgrep-test-"));
+    try {
+      await writeFile(join(dir, fake.executable), bytes);
+      expect(await ensureRipgrep({ dir, asset: fake, fetch: refuse })).toBe(join(dir, fake.executable));
+      // A planted file that answers --version like ripgrep is not the pin: refetched.
+      await writeFile(join(dir, fake.executable), "ripgrep 15.1.0 impostor\n");
+      await expect(ensureRipgrep({ dir, asset: fake, fetch: refuse, retryDelayMs: 0 })).rejects.toThrow(
+        /fetched although a pinned copy was there/,
+      );
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+  it("fetches and extracts into a relative HKN_RIPGREP_DIR (cold cache)", async () => {
+    // A local archive in this host's asset format, checksummed into a fake pin:
+    // the real extraction runs, no network is used.
+    const real = ripgrepAsset();
+    const build = await mkdtemp(join(tmpdir(), "hooknostic-ripgrep-archive-"));
+    // Under the repository's ignored node_modules, so the override is relative to the cwd.
+    const scratch = await mkdtemp(join(process.cwd(), "node_modules", ".hooknostic-ripgrep-test-"));
+    const previous = process.env["HKN_RIPGREP_DIR"];
+    try {
+      await mkdir(join(build, real.name));
+      await writeFile(join(build, real.name, real.executable), bytes);
+      const archive = join(build, real.file);
+      if (real.extension === "zip")
+        execFileSync(
+          join(process.env["SystemRoot"] ?? "C:\\Windows", "System32", "tar.exe"),
+          ["-a", "-cf", archive, real.name],
+          {
+            cwd: build,
+          },
+        );
+      else execFileSync("tar", ["-czf", archive, real.name], { cwd: build });
+      const zipped = await readFile(archive);
+      const asset = { ...fake, sha256: createHash("sha256").update(zipped).digest("hex") };
+      const dir = relative(process.cwd(), join(scratch, "shared"));
+      expect(isAbsolute(dir)).toBe(false);
+      process.env["HKN_RIPGREP_DIR"] = dir;
+      const target = await ensureRipgrep({
+        asset,
+        fetch: async () => new Response(zipped),
+        attempts: 1,
+        versionOf: async () => `ripgrep ${real.name.split("-")[1]} (fake)`,
+      });
+      expect(target).toBe(join(scratch, "shared", real.executable));
+      expect(await readFile(target)).toEqual(bytes);
+    } finally {
+      if (previous === undefined) delete process.env["HKN_RIPGREP_DIR"];
+      else process.env["HKN_RIPGREP_DIR"] = previous;
+      await rm(build, { recursive: true, force: true });
+      await rm(scratch, { recursive: true, force: true });
+    }
+  });
+  it("seeds the pinned executable where the harness looks, and notices it being replaced", async () => {
+    const root = await mkdtemp(join(tmpdir(), "hooknostic-ripgrep-seed-"));
+    const dir = join(root, "shared");
+    try {
+      await mkdir(dir);
+      await writeFile(join(dir, fake.executable), bytes);
+      const seed = await seedRipgrep(join(root, "cache"), { dir, asset: fake, fetch: refuse });
+      const expected = join(root, "cache", "opencode", "bin", process.platform === "win32" ? "rg.exe" : "rg");
+      expect(seed).toEqual({ source: join(dir, fake.executable), seeded: expected });
+      expect(await readFile(expected)).toEqual(bytes);
+      expect(Math.round((await stat(expected)).mtimeMs / 1000)).toBe(Date.UTC(2001, 0, 1) / 1000);
+      await mkdir(join(root, "data", "opencode", "log"), { recursive: true });
+      await writeFile(join(root, "data", "opencode", "log", "opencode.log"), serverLine + "\n");
+      expect(await verifyRipgrepSeed(seed, join(root, "data"), "")).toEqual({ expected, spawned: [] });
+      const ran = (command: string) =>
+        `timestamp=2026-11-20T01:13:27.785Z level=INFO run=496ad607 message="spawning process" command=${JSON.stringify(command)} args="[]" role=server`;
+      const log = (...lines: string[]) =>
+        writeFile(join(root, "data", "opencode", "log", "opencode.log"), lines.join("\n") + "\n");
+      // Some other rg ran, although nothing was on the harness's PATH.
+      const other = join(root, "elsewhere", basename(expected));
+      await log(serverLine, ran(other));
+      await expect(verifyRipgrepSeed(seed, join(root, "data"), "")).rejects.toThrow(/not the expected ripgrep/);
+      // An rg on the harness's PATH is what it looks up first, so that one is expected (and a
+      // Windows PATH entry may be quoted). On POSIX it must be executable to count.
+      const onPath = join(root, "path dir");
+      await mkdir(onPath);
+      await writeFile(join(onPath, basename(expected)), "");
+      const searchPath = process.platform === "win32" ? `"${onPath}"` : onPath;
+      if (process.platform !== "win32") {
+        await chmod(join(onPath, basename(expected)), 0o644);
+        await log(serverLine, ran(expected));
+        expect((await verifyRipgrepSeed(seed, join(root, "data"), searchPath)).expected).toBe(expected);
+        await chmod(join(onPath, basename(expected)), 0o755);
+      }
+      await log(serverLine, ran(join(onPath, basename(expected))));
+      expect(await verifyRipgrepSeed(seed, join(root, "data"), searchPath)).toEqual({
+        expected: join(onPath, basename(expected)),
+        spawned: [join(onPath, basename(expected))],
+      });
+      // A harness that wrote its own ripgrep over the seed.
+      await log(serverLine);
+      await writeFile(expected, bytes);
+      await expect(verifyRipgrepSeed(seed, join(root, "data"), "")).rejects.toThrow(/was replaced/);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+  it("fails when the harness downloaded ripgrep, however the line is named", () => {
+    const downloaded = /OpenCode downloaded ripgrep despite the pre-seed/;
+    expect(() => checkRipgrepLog([download, windowsSpawn].join("\n"))).toThrow(downloaded);
+    // The review's probes: a renamed message, and a DEBUG line with a changed prefix, both naming the URL.
+    expect(() =>
+      checkRipgrepLog(
+        [versionOnly, serverLine, download.replace("downloading ripgrep", "fetching ripgrep")].join("\n"),
+      ),
+    ).toThrow(downloaded);
+    expect(() =>
+      checkRipgrepLog(
+        [serverLine, download.replace("level=INFO", "level=DEBUG").replace("downloading", "Downloading")].join("\n"),
+      ),
+    ).toThrow(downloaded);
+    // 2.0.17's extraction names the archive even with no download line at all.
+    expect(() => checkRipgrepLog([serverLine, tarSpawn, posixSpawn].join("\n"))).toThrow(downloaded);
+  });
+  it("refuses a log with no INFO line from the harness server, which could not show a download", () => {
+    const silent = /no INFO line from the harness server/;
+    expect(() => checkRipgrepLog("")).toThrow(silent);
+    // The drive's own --version call logs role=cli before the harness starts.
+    expect(() => checkRipgrepLog(versionOnly)).toThrow(silent);
+    expect(() => checkRipgrepLog(serverLine.replace("level=INFO", "level=WARN"))).toThrow(silent);
+  });
+  it("requires the expected ripgrep on a build that logs the processes it starts", () => {
+    expect(checkRipgrepLog([shellSpawn, windowsSpawn, windowsSpawn].join("\r\n"), { expected: windowsRg })).toEqual({
+      spawned: [windowsRg],
+    });
+    expect(checkRipgrepLog(posixSpawn, { expected: posixRg }).spawned).toEqual([posixRg]);
+    expect(() => checkRipgrepLog(posixSpawn, { expected: "/usr/bin/rg" })).toThrow(
+      /OpenCode ran \/home\/user\/.*\/rg, not the expected ripgrep \/usr\/bin\/rg/,
+    );
+    expect(() => checkRipgrepLog(shellSpawn, { expected: windowsRg })).toThrow(/no ripgrep among them/);
+    // 2.3.2 logs no processes: its server lines alone pass.
+    expect(checkRipgrepLog([versionOnly, serverLine].join("\n"), { expected: posixRg })).toEqual({ spawned: [] });
+  });
+});
 
 describe("OpenCode playback event records", () => {
   it("waits for a complete line while the capture is being appended", async () => {
@@ -907,6 +1207,10 @@ describe.skipIf(!enabled)("OpenCode v2 offline playback", () => {
     }
   }, 140000);
   it("classifies captured tools and preserves Code Mode's outer boundary", async () => {
+    // The drive seeds this pinned ripgrep for glob/grep and fails if the
+    // harness downloaded its own (#264). Fetch it here, before the drive's
+    // own timeout starts: up to three 20 s attempts on a cold machine.
+    await ensureRipgrep();
     const driver = fileURLToPath(new URL("../../../.capture/opencode-v2/drive.mjs", import.meta.url));
     const result = await runProcess(process.execPath, ["--experimental-strip-types", driver, "tools"], {
       cwd: fileURLToPath(new URL("../../..", import.meta.url)),
@@ -926,11 +1230,7 @@ describe.skipIf(!enabled)("OpenCode v2 offline playback", () => {
     expect(completed.find((row) => row.event.tool === "shell").event.result.output.output).toBe(
       join(root, "project/working directory"),
     );
-    for (const name of ["write", "read", "edit", "glob", "grep", "webfetch", "skill", "execute"])
-      expect(
-        completed.some((row) => row.event.tool === name),
-        name,
-      ).toBe(true);
+    expectCompletedTools(captured, ["write", "read", "edit", "glob", "grep", "webfetch", "skill", "execute"]);
     const modelRequests = JSON.stringify(playback.requests);
     expect(modelRequests).toContain("hooknostic-webfetch-result");
     expect(modelRequests).toContain("hooknostic-mcp-tool-output");
@@ -977,7 +1277,7 @@ describe.skipIf(!enabled)("OpenCode v2 offline playback", () => {
     const inner = completed.find((row) => row.event.tool === "hooknostic_hooknostic_echo");
     expect(inner.event.input).toEqual({});
     expect(inner.event.result.content).toEqual([{ type: "text", text: "hooknostic-mcp-tool-output" }]);
-  }, 70000);
+  }, 140000);
   it("gives a captured shell call the dialect of the shell this build said it runs", (context) => {
     if (toolsShellDialects === undefined) return context.skip("the tools drive did not run");
     const expectation = openCodeShellDialectExpectation();

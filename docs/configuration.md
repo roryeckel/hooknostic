@@ -245,9 +245,12 @@ config, and its own diagnostics, such as HN110, under `diagnostics` (see below).
   `@hooknostic/sdk`'s or has no version;
 - `not-looked-up`, with a `reason`:
   - `another-pnp-runtime`: under another install's Yarn Plug'n'Play runtime, such
-    as `yarn dlx`, as for HN110. pnpm 11's `nodeLinker: pnp` runtime is Yarn's,
-    and under `pnpm exec` it reads as another install's too, as captured in
-    `.capture/pnpm-pnp`;
+    as `yarn dlx`, as for HN110. A CLI installed by npm inside another Yarn
+    Plug'n'Play project's tree, started with the project's own
+    `node -r ./.pnp.cjs`, gets this reason too, although the runtime is the
+    project's (#269). So does the project's own CLI under pnpm 11's
+    `nodeLinker: pnp` runtime, which is Yarn's, run with `pnpm exec`, as
+    captured in `.capture/pnpm-pnp`;
   - `outside-pnp-runtime`: `manifest`, a Yarn Plug'n'Play manifest, is in the
     config's directory or an ancestor, this process isn't running under Yarn's
     runtime, and no `node_modules/@hooknostic/sdk` is reachable. In a Yarn
