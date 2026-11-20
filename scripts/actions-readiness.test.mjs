@@ -156,6 +156,51 @@ it("requires a deduped lockfile in the dependency policy lane", () => {
   );
 });
 
+it("runs the Linux playback lanes without network, after every step that needs it", () => {
+  const ci = readFileSync(new URL("../.github/workflows/ci.yml", import.meta.url), "utf8");
+  const job = ci.split("  harness-playback:")[1].split(/\r?\n {2}\S/)[0];
+  const steps = job.split(/\r?\n {6}- /).slice(1);
+  const step = (name) => steps.find((candidate) => candidate.split(/\r?\n/)[0] === `name: ${name}`);
+  const field = (body, key) => body?.match(new RegExp(`^ {8}${key}: (.+?)\\r?$`, "m"))?.[1];
+  const vitest =
+    "pnpm exec vitest run packages/cli/test/harness-playback.test.ts packages/cli/test/opencode-v2-playback.test.ts scripts/pi-drift-driver.test.mjs";
+  const offline = step("Run model-free playback without network (Linux)");
+  const online = step("Run model-free playback (Windows)");
+  const prepare = step("Prepare offline playback prerequisites");
+  // Matching the executable field, so a commented-out or prefixed form fails.
+  expect(field(offline, "if")).toBe("runner.os == 'Linux'");
+  expect(field(offline, "run")).toBe(`scripts/without-network.sh ${vitest}`);
+  expect(field(online, "if")).toBe("runner.os != 'Linux'");
+  expect(field(online, "run")).toBe(vitest);
+  // The isolation check must also see that the step's variables crossed sudo.
+  expect(field(offline, " {2}HKN_NO_NETWORK_REQUIRE_ENV")).toBe(
+    "HOOKNOSTIC_PLAYBACK,HKN_PLAYBACK_ARTIFACT_DIR,HKN_RIPGREP_DIR",
+  );
+  const env = (body) =>
+    body
+      .split(/\r?\n {8}env:\r?\n/)[1]
+      .split(/\r?\n/)
+      .filter((line) => /^ {10}\w+:/.test(line));
+  expect(env(offline)).toEqual(expect.arrayContaining(env(online)));
+  expect(field(prepare, "run")).toBe(
+    "node --experimental-strip-types scripts/prepare-offline-playback.mjs '${{ matrix.harness }}' --version '${{ steps.harness.outputs.version }}' ${{ runner.os == 'Linux' && '--check-online' || '' }}",
+  );
+  // Everything that needs the network runs before the namespaced step.
+  const order = [
+    "Install captured harness version",
+    "Bundle compiler and dependencies",
+    "Cache the OpenCode v2 tools drive's pinned ripgrep",
+    "Prepare offline playback prerequisites",
+    "Run model-free playback without network (Linux)",
+  ].map((name) => steps.indexOf(step(name)));
+  expect(order.every((index) => index >= 0)).toBe(true);
+  expect(order).toEqual([...order].sort((a, b) => a - b));
+  // Diagnostics survive a failure in any step: prepare, the isolation check, sudo, or the tests.
+  expect(field(step("Upload OpenCode v2 failure diagnostics"), "if")).toBe(
+    "${{ always() && matrix.harness == 'opencode-v2' && job.status == 'failure' }}",
+  );
+});
+
 function runWatchStep(name, expressions, prelude = "", workflow = "harness-watch", status = 0) {
   const source = readFileSync(new URL(`../.github/workflows/${workflow}.yml`, import.meta.url), "utf8");
   const step = source
