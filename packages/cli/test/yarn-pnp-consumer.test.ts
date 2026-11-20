@@ -3,9 +3,10 @@ import { cp, mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from "node
 import { tmpdir } from "node:os";
 import { basename, join, resolve } from "node:path";
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { runProcess } from "./harness-playback.js";
+import { report } from "./report.js";
 
 /** The Yarn release the projects pin through `packageManager`; corepack fetches it. */
 const YARN = "yarn@4.18.1";
@@ -259,6 +260,19 @@ async function files(directory: string): Promise<string[]> {
   return entries.filter((entry) => entry.isFile()).map((entry) => join(entry.parentPath, entry.name));
 }
 
+it("reports its diagnostics through stderr, which every reporter shows on a passing run", () => {
+  const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+  const log = vi.spyOn(console, "log").mockImplementation(() => {});
+  try {
+    report("--- probe");
+    expect(stderr).toHaveBeenCalledWith("--- probe\n");
+    expect(log).not.toHaveBeenCalled();
+  } finally {
+    stderr.mockRestore();
+    log.mockRestore();
+  }
+});
+
 it.skipIf(process.env["HOOKNOSTIC_YARN_PNP"] !== "1")(
   "builds Yarn Plug'n'Play consumers through Yarn's runtime, and fails with HN504 outside it",
   async () => {
@@ -346,7 +360,7 @@ it.skipIf(process.env["HOOKNOSTIC_YARN_PNP"] !== "1")(
       });
       const responds = result.stdout.split(/\r?\n/).some(isInitializeReply);
       if (!responds || process.env["HOOKNOSTIC_YARN_PNP_VERBOSE"] === "1")
-        console.log(`--- launcher in ${project} (exit ${result.code})\n${result.stdout}${result.stderr}`);
+        report(`--- launcher in ${project} (exit ${result.code})\n${result.stdout}${result.stderr}`);
       return responds ? "responds" : "silent";
     };
     try {
@@ -464,7 +478,7 @@ it.skipIf(process.env["HOOKNOSTIC_YARN_PNP"] !== "1")(
             ...(consumer.mcp ? { mcp: await launch(project) } : {}),
           };
           if (process.env["HOOKNOSTIC_YARN_PNP_VERBOSE"] === "1")
-            console.log(
+            report(
               `--- ${name} / ${mode} (exit ${result.code}), zod: ${[...packages].join(", ")}` +
                 `${consumer.mcp ? `, mcp: ${observed[mode][name]!.mcp}` : ""}\n${result.output}`,
             );
@@ -478,7 +492,7 @@ it.skipIf(process.env["HOOKNOSTIC_YARN_PNP"] !== "1")(
           const step = async (label: string, args: string[]) => {
             const result = await run("corepack", ["yarn", "hooknostic", ...args, ...config], project);
             if (result.code !== 0 || process.env["HOOKNOSTIC_YARN_PNP_VERBOSE"] === "1")
-              console.log(`--- ${name} / ${label} (exit ${result.code})\n${result.output}`);
+              report(`--- ${name} / ${label} (exit ${result.code})\n${result.output}`);
             return result.code;
           };
           const present = (file: string) =>
@@ -496,7 +510,7 @@ it.skipIf(process.env["HOOKNOSTIC_YARN_PNP"] !== "1")(
           };
         }
       }
-      console.log(JSON.stringify({ builds: observed, sync: synced }, null, 2));
+      report(JSON.stringify({ builds: observed, sync: synced }, null, 2));
       expect({ builds: observed, sync: synced }).toEqual({
         builds: EXPECTED,
         sync: { init: 0, sync: 0, resync: 0, verify: 0, state: true, lock: false } satisfies Synced,
