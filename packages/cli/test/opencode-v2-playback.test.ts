@@ -54,6 +54,70 @@ async function toolModelDelta(baseUrl: string, messages: unknown[]) {
   return JSON.parse(chunk.slice(6)).choices[0].delta;
 }
 
+/**
+ * Every named tool must have a completed execute.after in the captured rows. A
+ * missing one is reported with its own calls' outcomes, so a harness-side
+ * failure reads straight from the job log (#264): each call's execute.after
+ * status and the session.tool.failed error correlated by call id, plus a count
+ * of other failed calls (some are deliberate, such as the blocked websearch).
+ */
+function expectCompletedTools(captured: any[], names: string[]) {
+  const completed = captured.filter((row) => row.hook === "execute.after" && row.event.status === "completed");
+  const failures = captured.filter((row) => row.hook === "event" && row.event?.type === "session.tool.failed");
+  const outcome = (name: string) => {
+    const ids = captured
+      .filter((row) => row.hook === "execute.before" && row.event?.tool === name)
+      .map((row) => row.event.id);
+    const calls = ids.map((id) => {
+      const after = captured.find((row) => row.hook === "execute.after" && row.event?.id === id);
+      const failure = failures.find((row) => row.event.data?.id === id);
+      const error = failure && (failure.event.data.error?.message ?? JSON.stringify(failure.event.data.error));
+      return `${id} execute.after ${after?.event.status ?? "missing"}${failure ? `, session.tool.failed: ${error}` : ""}`;
+    });
+    const others = failures.filter((row) => !ids.includes(row.event.data?.id)).length;
+    return `${name}: ${calls.join("; ") || "no execute.before"} (${others} other session.tool.failed)`;
+  };
+  for (const name of names) {
+    const done = completed.some((row) => row.event.tool === name);
+    expect(done, done ? name : outcome(name)).toBe(true);
+  }
+}
+
+describe("OpenCode playback tool outcomes", () => {
+  // Constructed from the shapes in the failing CI artifact (#264, run
+  // 44475089995): a session.tool.failed row names its call only by data.id,
+  // and the tools drive deliberately blocks websearch with its own failure.
+  const call = (id: string, tool: string) => ({ hook: "execute.before", event: { tool, id, input: {} } });
+  const failed = (id: string, message: string) => ({
+    hook: "event",
+    event: { type: "session.tool.failed", data: { id, executed: false, error: { message } } },
+  });
+  const captured = [
+    call("call_probe_1", "read"),
+    { hook: "execute.after", event: { tool: "read", id: "call_probe_1", status: "completed" } },
+    call("call_probe_4", "glob"),
+    failed("call_probe_4", "ripgrep archive did not contain executable: <bin>/rg.exe"),
+    call("call_probe_8", "websearch"),
+    failed("call_probe_8", "hooknostic-boundary-only: external execution intentionally blocked"),
+  ];
+  it("passes when every named tool completed", () => {
+    expectCompletedTools(captured, ["read"]);
+  });
+  it("names the missing call's own failure, correlated by call id", () => {
+    let message = "";
+    try {
+      expectCompletedTools(captured, ["read", "glob"]);
+    } catch (error) {
+      message = String((error as Error).message);
+    }
+    expect(message).toContain("call_probe_4");
+    expect(message).toContain("ripgrep archive did not contain executable");
+    // The deliberately blocked call is another tool's outcome, counted but not quoted.
+    expect(message).not.toContain("hooknostic-boundary-only");
+    expect(message).toContain("1 other session.tool.failed");
+  });
+});
+
 describe("OpenCode playback event records", () => {
   it("waits for a complete line while the capture is being appended", async () => {
     const root = await mkdtemp(join(tmpdir(), "hooknostic-event-records-"));
@@ -925,11 +989,7 @@ describe.skipIf(!enabled)("OpenCode v2 offline playback", () => {
     expect(completed.find((row) => row.event.tool === "shell").event.result.output.output).toBe(
       join(root, "project/working directory"),
     );
-    for (const name of ["write", "read", "edit", "glob", "grep", "webfetch", "skill", "execute"])
-      expect(
-        completed.some((row) => row.event.tool === name),
-        name,
-      ).toBe(true);
+    expectCompletedTools(captured, ["write", "read", "edit", "glob", "grep", "webfetch", "skill", "execute"]);
     const modelRequests = JSON.stringify(playback.requests);
     expect(modelRequests).toContain("hooknostic-webfetch-result");
     expect(modelRequests).toContain("hooknostic-mcp-tool-output");
