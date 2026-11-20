@@ -1,0 +1,25 @@
+{
+ "run": "copilot-1.0.114-nonet",
+ "meta": {
+  "lane": "copilot",
+  "version": "1.0.114",
+  "mode": "nonet",
+  "date_utc": "2026-11-20T04:54:37Z",
+  "playback_version_env": "1.0.114",
+  "extra_env": [],
+  "seed_home": "none",
+  "kernel": "Linux 5.15.167.4-microsoft-standard-WSL2",
+  "node": "v24.22.3",
+  "which": "/home/user/hn-egress/harness/copilot-1.0.114/bin/copilot",
+  "interfaces": [
+   "lo UNKNOWN 127.0.0.1/8 ::1/128"
+  ],
+  "exit": "0",
+  "seconds": "39"
+ },
+ "tests": {
+  "passed": 66,
+  "skipped": 76
+ },
+ "failed": []
+}

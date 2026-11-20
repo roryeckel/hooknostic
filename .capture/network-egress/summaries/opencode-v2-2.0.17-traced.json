@@ -1,0 +1,379 @@
+{
+ "run": "opencode-v2-2.0.17-traced",
+ "meta": {
+  "lane": "opencode-v2",
+  "version": "2.0.17",
+  "mode": "traced",
+  "date_utc": "2026-11-20T03:57:28Z",
+  "kernel": "Linux 5.15.167.4-microsoft-standard-WSL2",
+  "node": "v24.22.3",
+  "which": "/home/user/hn-egress/harness/opencode-v2-2.0.17/bin/opencode",
+  "interfaces": [
+   "lo UNKNOWN 127.0.0.1/8 10.255.255.254/32 ::1/128",
+   "eth0 UP",
+   "br-8720e84bfcad DOWN",
+   "docker0 DOWN"
+  ],
+  "exit": "0",
+  "seconds": "237",
+  "extra_env": []
+ },
+ "tests": {
+  "passed": 91,
+  "skipped": 51
+ },
+ "failed": [],
+ "harness_processes": 122,
+ "harness_processes_with_egress": 47,
+ "destinations": [
+  {
+   "ip": "10.255.255.254",
+   "port": 53,
+   "kind": "dns-resolver",
+   "hostnames": [],
+   "tls_sni": [],
+   "exe": "/home/user/hn-egress/harness/opencode-v2-2.0.17/lib/node_modules/@opencode/cli/bin/opencode.exe",
+   "chain": [
+    "opencode.exe",
+    "opencode",
+    "node",
+    "node",
+    "node",
+    "pnpm"
+   ],
+   "results": [
+    "0"
+   ],
+   "count": 28,
+   "processes": 28,
+   "first_offset_s": 3.139,
+   "argv_examples": [
+    "/home/user/hn-egress/harness/opencode-v2-2.0.17/lib/node_modules/@opencode/cli/bin/opencode.exe serve --stdio --port"
+   ]
+  },
+  {
+   "ip": "104.18.11.66",
+   "port": 443,
+   "kind": "tcp-or-udp",
+   "hostnames": [
+    "models.opencode.ai",
+    "opencode.ai"
+   ],
+   "tls_sni": [
+    "models.opencode.ai",
+    "opencode.ai"
+   ],
+   "exe": "/home/user/hn-egress/harness/opencode-v2-2.0.17/lib/node_modules/@opencode/cli/bin/opencode.exe",
+   "chain": [
+    "opencode.exe",
+    "opencode",
+    "node",
+    "node",
+    "node",
+    "pnpm"
+   ],
+   "results": [
+    "0",
+    "EINPROGRESS"
+   ],
+   "count": 56,
+   "processes": 28,
+   "first_offset_s": 3.143,
+   "argv_examples": [
+    "/home/user/hn-egress/harness/opencode-v2-2.0.17/lib/node_modules/@opencode/cli/bin/opencode.exe serve --stdio --port"
+   ]
+  },
+  {
+   "ip": "104.18.10.66",
+   "port": 443,
+   "kind": "tcp-or-udp",
+   "hostnames": [
+    "models.opencode.ai",
+    "opencode.ai"
+   ],
+   "tls_sni": [
+    "models.opencode.ai"
+   ],
+   "exe": "/home/user/hn-egress/harness/opencode-v2-2.0.17/lib/node_modules/@opencode/cli/bin/opencode.exe",
+   "chain": [
+    "opencode.exe",
+    "opencode",
+    "node",
+    "node",
+    "node",
+    "pnpm"
+   ],
+   "results": [
+    "0",
+    "EINPROGRESS"
+   ],
+   "count": 56,
+   "processes": 28,
+   "first_offset_s": 3.144,
+   "argv_examples": [
+    "/home/user/hn-egress/harness/opencode-v2-2.0.17/lib/node_modules/@opencode/cli/bin/opencode.exe serve --stdio --port"
+   ]
+  },
+  {
+   "ip": "2606:4700::6812:a42",
+   "port": 443,
+   "kind": "tcp-or-udp",
+   "hostnames": [
+    "models.opencode.ai",
+    "opencode.ai"
+   ],
+   "tls_sni": [],
+   "exe": "/home/user/hn-egress/harness/opencode-v2-2.0.17/lib/node_modules/@opencode/cli/bin/opencode.exe",
+   "chain": [
+    "opencode.exe",
+    "opencode",
+    "node",
+    "node",
+    "node",
+    "pnpm"
+   ],
+   "results": [
+    "ENETUNREACH"
+   ],
+   "count": 56,
+   "processes": 28,
+   "first_offset_s": 3.144,
+   "argv_examples": [
+    "/home/user/hn-egress/harness/opencode-v2-2.0.17/lib/node_modules/@opencode/cli/bin/opencode.exe serve --stdio --port"
+   ]
+  },
+  {
+   "ip": "2606:4700::6812:b42",
+   "port": 443,
+   "kind": "tcp-or-udp",
+   "hostnames": [
+    "models.opencode.ai",
+    "opencode.ai"
+   ],
+   "tls_sni": [],
+   "exe": "/home/user/hn-egress/harness/opencode-v2-2.0.17/lib/node_modules/@opencode/cli/bin/opencode.exe",
+   "chain": [
+    "opencode.exe",
+    "opencode",
+    "node",
+    "node",
+    "node",
+    "pnpm"
+   ],
+   "results": [
+    "ENETUNREACH"
+   ],
+   "count": 56,
+   "processes": 28,
+   "first_offset_s": 3.144,
+   "argv_examples": [
+    "/home/user/hn-egress/harness/opencode-v2-2.0.17/lib/node_modules/@opencode/cli/bin/opencode.exe serve --stdio --port"
+   ]
+  },
+  {
+   "ip": "10.255.255.254",
+   "port": 53,
+   "kind": "dns-resolver",
+   "hostnames": [],
+   "tls_sni": [],
+   "exe": "/home/user/hn-egress/harness/opencode-v2-2.0.17/bin/opencode",
+   "chain": [
+    "opencode",
+    "node",
+    "node",
+    "node",
+    "pnpm"
+   ],
+   "results": [
+    "0"
+   ],
+   "count": 19,
+   "processes": 19,
+   "first_offset_s": 3.232,
+   "argv_examples": [
+    "opencode --standalone --auto",
+    "opencode serve --stdio --hostname"
+   ]
+  },
+  {
+   "ip": "2606:4700::6812:a42",
+   "port": 443,
+   "kind": "tcp-or-udp",
+   "hostnames": [
+    "models.opencode.ai",
+    "opencode.ai"
+   ],
+   "tls_sni": [],
+   "exe": "/home/user/hn-egress/harness/opencode-v2-2.0.17/bin/opencode",
+   "chain": [
+    "opencode",
+    "node",
+    "node",
+    "node",
+    "pnpm"
+   ],
+   "results": [
+    "ENETUNREACH"
+   ],
+   "count": 39,
+   "processes": 19,
+   "first_offset_s": 3.269,
+   "argv_examples": [
+    "opencode --standalone --auto",
+    "opencode serve --stdio --hostname"
+   ]
+  },
+  {
+   "ip": "2606:4700::6812:b42",
+   "port": 443,
+   "kind": "tcp-or-udp",
+   "hostnames": [
+    "models.opencode.ai",
+    "opencode.ai"
+   ],
+   "tls_sni": [],
+   "exe": "/home/user/hn-egress/harness/opencode-v2-2.0.17/bin/opencode",
+   "chain": [
+    "opencode",
+    "node",
+    "node",
+    "node",
+    "pnpm"
+   ],
+   "results": [
+    "ENETUNREACH"
+   ],
+   "count": 39,
+   "processes": 19,
+   "first_offset_s": 3.269,
+   "argv_examples": [
+    "opencode --standalone --auto",
+    "opencode serve --stdio --hostname"
+   ]
+  },
+  {
+   "ip": "104.18.10.66",
+   "port": 443,
+   "kind": "tcp-or-udp",
+   "hostnames": [
+    "models.opencode.ai",
+    "opencode.ai"
+   ],
+   "tls_sni": [
+    "models.opencode.ai"
+   ],
+   "exe": "/home/user/hn-egress/harness/opencode-v2-2.0.17/bin/opencode",
+   "chain": [
+    "opencode",
+    "node",
+    "node",
+    "node",
+    "pnpm"
+   ],
+   "results": [
+    "0",
+    "EINPROGRESS"
+   ],
+   "count": 39,
+   "processes": 19,
+   "first_offset_s": 3.269,
+   "argv_examples": [
+    "opencode --standalone --auto",
+    "opencode serve --stdio --hostname"
+   ]
+  },
+  {
+   "ip": "104.18.11.66",
+   "port": 443,
+   "kind": "tcp-or-udp",
+   "hostnames": [
+    "models.opencode.ai",
+    "opencode.ai"
+   ],
+   "tls_sni": [
+    "models.opencode.ai",
+    "opencode.ai"
+   ],
+   "exe": "/home/user/hn-egress/harness/opencode-v2-2.0.17/bin/opencode",
+   "chain": [
+    "opencode",
+    "node",
+    "node",
+    "node",
+    "pnpm"
+   ],
+   "results": [
+    "0",
+    "EINPROGRESS"
+   ],
+   "count": 39,
+   "processes": 19,
+   "first_offset_s": 3.27,
+   "argv_examples": [
+    "opencode --standalone --auto",
+    "opencode serve --stdio --hostname"
+   ]
+  }
+ ],
+ "dns_queries": [
+  {
+   "name": "models.opencode.ai",
+   "types": [
+    "A",
+    "AAAA"
+   ],
+   "procs": [
+    "opencode",
+    "opencode.exe"
+   ],
+   "answers": [
+    "A 104.18.10.66",
+    "A 104.18.11.66",
+    "AAAA 2606:4700::6812:a42",
+    "AAAA 2606:4700::6812:b42"
+   ],
+   "rcodes": [
+    0
+   ],
+   "first_offset_s": 3.14,
+   "querying_processes": 46,
+   "argv_examples": [
+    "/home/user/hn-egress/harness/opencode-v2-2.0.17/lib/node_modules/@opencode/cli/bin/opencode.exe serve --stdio --port 0",
+    "opencode serve --stdio --hostname 127.0.0.1"
+   ],
+   "seconds_after_exec": [
+    0.294,
+    0.974
+   ]
+  },
+  {
+   "name": "opencode.ai",
+   "types": [
+    "A",
+    "AAAA"
+   ],
+   "procs": [
+    "opencode"
+   ],
+   "answers": [
+    "A 104.18.10.66",
+    "A 104.18.11.66",
+    "AAAA 2606:4700::6812:a42",
+    "AAAA 2606:4700::6812:b42"
+   ],
+   "rcodes": [
+    0
+   ],
+   "first_offset_s": 3.232,
+   "querying_processes": 1,
+   "argv_examples": [
+    "opencode --standalone --auto"
+   ],
+   "seconds_after_exec": [
+    0.76,
+    0.76
+   ]
+  }
+ ],
+ "trace_bytes": 9695173
+}

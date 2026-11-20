@@ -1,0 +1,245 @@
+[
+ {
+  "probe": "probes/claude-baseline",
+  "exit": "exit=1",
+  "dns_queries": [
+   "api.anthropic.com"
+  ],
+  "connects": [
+   "api.anthropic.com:443"
+  ],
+  "resolver_attempts": 1
+ },
+ {
+  "probe": "probes/claude-nonessential",
+  "exit": "exit=1",
+  "dns_queries": [
+   "api.anthropic.com"
+  ],
+  "connects": [
+   "api.anthropic.com:443"
+  ],
+  "resolver_attempts": 1
+ },
+ {
+  "probe": "probes/claude-growthbook",
+  "exit": "exit=1",
+  "dns_queries": [
+   "api.anthropic.com"
+  ],
+  "connects": [
+   "api.anthropic.com:443"
+  ],
+  "resolver_attempts": 1
+ },
+ {
+  "probe": "probes/claude-telemetry",
+  "exit": "exit=1",
+  "dns_queries": [
+   "api.anthropic.com"
+  ],
+  "connects": [
+   "api.anthropic.com:443"
+  ],
+  "resolver_attempts": 1
+ },
+ {
+  "probe": "probes2/claude-all-disable",
+  "exit": "exit=1",
+  "dns_queries": [
+   "api.anthropic.com"
+  ],
+  "connects": [
+   "api.anthropic.com:443"
+  ],
+  "resolver_attempts": 1
+ },
+ {
+  "probe": "probes2/claude-base-url",
+  "exit": "exit=1",
+  "dns_queries": [],
+  "connects": [],
+  "resolver_attempts": 0
+ },
+ {
+  "probe": "probes2/claude-version",
+  "exit": "exit=0",
+  "dns_queries": [],
+  "connects": [],
+  "resolver_attempts": 0
+ },
+ {
+  "probe": "probes2/codex-analytics-off",
+  "exit": "exit=0",
+  "dns_queries": [
+   "chatgpt.com",
+   "github.com"
+  ],
+  "connects": [
+   "chatgpt.com:443",
+   "github.com:443"
+  ],
+  "resolver_attempts": 1
+ },
+ {
+  "probe": "probes2/codex-baseline",
+  "exit": "exit=0",
+  "dns_queries": [
+   "ab.chatgpt.com",
+   "chatgpt.com",
+   "github.com"
+  ],
+  "connects": [
+   "ab.chatgpt.com,chatgpt.com:443",
+   "github.com:443"
+  ],
+  "resolver_attempts": 2
+ },
+ {
+  "probe": "probes2/codex-both-off",
+  "exit": "exit=0",
+  "dns_queries": [],
+  "connects": [],
+  "resolver_attempts": 0
+ },
+ {
+  "probe": "probes2/codex-plugins-off",
+  "exit": "exit=0",
+  "dns_queries": [
+   "ab.chatgpt.com"
+  ],
+  "connects": [
+   "ab.chatgpt.com:443"
+  ],
+  "resolver_attempts": 0
+ },
+ {
+  "probe": "probes-opencode/opencode-v1-1.18.18-autoupdate-off",
+  "exit": "exit=1",
+  "dns_queries": [
+   "models.opencode.ai",
+   "registry.npmjs.org"
+  ],
+  "connects": [
+   "models.opencode.ai:443",
+   "registry.npmjs.org:443"
+  ],
+  "resolver_attempts": 2
+ },
+ {
+  "probe": "probes-opencode/opencode-v1-1.18.18-baseline",
+  "exit": "exit=1",
+  "dns_queries": [
+   "models.opencode.ai",
+   "registry.npmjs.org"
+  ],
+  "connects": [
+   "models.opencode.ai:443",
+   "registry.npmjs.org:443"
+  ],
+  "resolver_attempts": 2
+ },
+ {
+  "probe": "probes-opencode/opencode-v1-1.18.18-both-off",
+  "exit": "exit=1",
+  "dns_queries": [
+   "registry.npmjs.org"
+  ],
+  "connects": [
+   "registry.npmjs.org:443"
+  ],
+  "resolver_attempts": 1
+ },
+ {
+  "probe": "probes-opencode/opencode-v1-1.18.18-models-off",
+  "exit": "exit=1",
+  "dns_queries": [
+   "registry.npmjs.org"
+  ],
+  "connects": [
+   "registry.npmjs.org:443"
+  ],
+  "resolver_attempts": 1
+ },
+ {
+  "probe": "probes-opencode/opencode-v2-2.0.17-autoupdate-off",
+  "exit": "exit=1",
+  "dns_queries": [
+   "models.opencode.ai"
+  ],
+  "connects": [
+   "models.opencode.ai:443"
+  ],
+  "resolver_attempts": 1
+ },
+ {
+  "probe": "probes-opencode/opencode-v2-2.0.17-baseline",
+  "exit": "exit=1",
+  "dns_queries": [
+   "models.opencode.ai"
+  ],
+  "connects": [
+   "models.opencode.ai:443"
+  ],
+  "resolver_attempts": 1
+ },
+ {
+  "probe": "probes-opencode/opencode-v2-2.0.17-both-off",
+  "exit": "exit=1",
+  "dns_queries": [],
+  "connects": [],
+  "resolver_attempts": 0
+ },
+ {
+  "probe": "probes-opencode/opencode-v2-2.0.17-models-off",
+  "exit": "exit=1",
+  "dns_queries": [],
+  "connects": [],
+  "resolver_attempts": 0
+ },
+ {
+  "probe": "probes-opencode-tui/autoupdate-off",
+  "exit": "exit=137",
+  "screen_update_notice": null,
+  "dns_queries": [
+   "models.opencode.ai"
+  ],
+  "connects": [
+   "models.opencode.ai:443"
+  ],
+  "resolver_attempts": 1
+ },
+ {
+  "probe": "probes-opencode-tui/baseline",
+  "exit": "exit=137",
+  "screen_update_notice": "/update to install v2.3.2",
+  "dns_queries": [
+   "models.opencode.ai",
+   "opencode.ai"
+  ],
+  "connects": [
+   "models.opencode.ai,opencode.ai:443"
+  ],
+  "resolver_attempts": 2
+ },
+ {
+  "probe": "probes-opencode-tui/both-off",
+  "exit": "exit=137",
+  "screen_update_notice": null,
+  "dns_queries": [],
+  "connects": [],
+  "resolver_attempts": 0
+ },
+ {
+  "probe": "probes-opencode-tui/models-off",
+  "exit": "exit=137",
+  "screen_update_notice": "/update to install v2.3.2",
+  "dns_queries": [
+   "opencode.ai"
+  ],
+  "connects": [
+   "opencode.ai:443"
+  ],
+  "resolver_attempts": 1
+ }
+]

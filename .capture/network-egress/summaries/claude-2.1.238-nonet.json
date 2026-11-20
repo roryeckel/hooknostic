@@ -1,0 +1,23 @@
+{
+ "run": "claude-2.1.238-nonet",
+ "meta": {
+  "lane": "claude",
+  "version": "2.1.238",
+  "mode": "nonet",
+  "date_utc": "2026-11-20T04:03:50Z",
+  "kernel": "Linux 5.15.167.4-microsoft-standard-WSL2",
+  "node": "v24.22.3",
+  "which": "/home/user/hn-egress/harness/claude-2.1.238/bin/claude",
+  "interfaces": [
+   "lo UNKNOWN 127.0.0.1/8 ::1/128"
+  ],
+  "exit": "0",
+  "seconds": "42",
+  "extra_env": []
+ },
+ "tests": {
+  "passed": 68,
+  "skipped": 74
+ },
+ "failed": []
+}

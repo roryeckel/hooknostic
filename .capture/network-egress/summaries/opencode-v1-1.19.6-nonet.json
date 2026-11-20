@@ -1,0 +1,92 @@
+{
+ "run": "opencode-v1-1.19.6-nonet",
+ "meta": {
+  "lane": "opencode-v1",
+  "version": "1.19.6",
+  "mode": "nonet",
+  "date_utc": "2026-11-20T05:08:53Z",
+  "playback_version_env": "1.19.6",
+  "extra_env": [],
+  "seed_home": "none",
+  "kernel": "Linux 5.15.167.4-microsoft-standard-WSL2",
+  "node": "v24.22.3",
+  "which": "/home/user/hn-egress/harness/opencode-v1-1.19.6/bin/opencode",
+  "interfaces": [
+   "lo UNKNOWN 127.0.0.1/8 ::1/128"
+  ],
+  "exit": "1",
+  "seconds": "814"
+ },
+ "tests": {
+  "passed": 47,
+  "skipped": 82,
+  "failed": 13
+ },
+ "failed": [
+  {
+   "test": "offline harness playback: opencode-v1 runs repository-local integration without installing a plugin",
+   "duration_ms": 60132,
+   "error": "Error: npm timed out stdout: stderr: at Timeout._onTimeout (/home/user/hn-egress/repo/packages/cli/test/harness-playback.ts:679:21) at listOnTimeout (node:internal/timers:685:17) at process.processTimers (node:internal/timers:618:7)"
+  },
+  {
+   "test": "offline harness playback: opencode-v1 loads a projected npm package named by path and starts its MCP server",
+   "duration_ms": 60048,
+   "error": "Error: npm timed out stdout: stderr: at Timeout._onTimeout (/home/user/hn-egress/repo/packages/cli/test/harness-playback.ts:679:21) at listOnTimeout (node:internal/timers:685:17) at process.processTimers (node:internal/timers:618:7)"
+  },
+  {
+   "test": "offline harness playback: opencode-v1 drives the fixture MCP tool through the generated production artifact",
+   "duration_ms": 30007,
+   "error": "Error: Test timed out in 30000ms. If this is a long-running test, pass a timeout value as the last argument or configure it globally with \"testTimeout\". at task (file:///home/user/hn-egress/repo/node_modules/.pnpm/vitest@5.1.0_@types+node@22.20.5_vite@8.3.5_@types+node@22.20.5_esbuild@0.28.2_yaml@2.9.1_/node_modules/vitest/dist/chunks/run.CjdgFZiW.js:2700:43) at Object.<anonymous> (file:///home/user"
+  },
+  {
+   "test": "offline harness playback scenarios: opencode-v1 every advertised observable event reaches the artifact and normalizes to its canonical event name",
+   "duration_ms": 60048,
+   "error": "Error: npm timed out stdout: stderr: at Timeout._onTimeout (/home/user/hn-egress/repo/packages/cli/test/harness-playback.ts:679:21) at listOnTimeout (node:internal/timers:685:17) at process.processTimers (node:internal/timers:618:7)"
+  },
+  {
+   "test": "offline harness playback scenarios: opencode-v1 per-request injected context reaches the model in EVERY agent request",
+   "duration_ms": 60057,
+   "error": "Error: npm timed out stdout: stderr: at Timeout._onTimeout (/home/user/hn-egress/repo/packages/cli/test/harness-playback.ts:679:21) at listOnTimeout (node:internal/timers:685:17) at process.processTimers (node:internal/timers:618:7)"
+  },
+  {
+   "test": "offline harness playback scenarios: opencode-v1 blocking a pending tool call prevents its process from executing",
+   "duration_ms": 60046,
+   "error": "Error: npm timed out stdout: stderr: at Timeout._onTimeout (/home/user/hn-egress/repo/packages/cli/test/harness-playback.ts:679:21) at listOnTimeout (node:internal/timers:685:17) at process.processTimers (node:internal/timers:618:7)"
+  },
+  {
+   "test": "offline harness playback scenarios: opencode-v1 rewriting the shell command rewrites what the harness spawns",
+   "duration_ms": 60060,
+   "error": "Error: npm timed out stdout: stderr: at Timeout._onTimeout (/home/user/hn-egress/repo/packages/cli/test/harness-playback.ts:679:21) at listOnTimeout (node:internal/timers:685:17) at process.processTimers (node:internal/timers:618:7)"
+  },
+  {
+   "test": "offline harness playback scenarios: opencode-v1 replacing the tool output replaces what the model sees (or stays rejected where explicitly unsupported)",
+   "duration_ms": 60046,
+   "error": "Error: npm timed out stdout: stderr: at Timeout._onTimeout (/home/user/hn-egress/repo/packages/cli/test/harness-playback.ts:679:21) at listOnTimeout (node:internal/timers:685:17) at process.processTimers (node:internal/timers:618:7)"
+  },
+  {
+   "test": "offline harness playback scenarios: opencode-v1 an interactive permission prompt is observable and deniable from a hook",
+   "duration_ms": 60040,
+   "error": "Error: npm timed out stdout: stderr: at Timeout._onTimeout (/home/user/hn-egress/repo/packages/cli/test/harness-playback.ts:679:21) at listOnTimeout (node:internal/timers:685:17) at process.processTimers (node:internal/timers:618:7)"
+  },
+  {
+   "test": "offline harness playback scenarios: opencode-v1 preventing the first stop makes the harness take another model turn",
+   "duration_ms": 60047,
+   "error": "Error: npm timed out stdout: stderr: at Timeout._onTimeout (/home/user/hn-egress/repo/packages/cli/test/harness-playback.ts:679:21) at listOnTimeout (node:internal/timers:685:17) at process.processTimers (node:internal/timers:618:7)"
+  },
+  {
+   "test": "offline harness playback scenarios: opencode-v1 a session-start notice never reaches the model, and stays out of headless output",
+   "duration_ms": 60048,
+   "error": "Error: npm timed out stdout: stderr: at Timeout._onTimeout (/home/user/hn-egress/repo/packages/cli/test/harness-playback.ts:679:21) at listOnTimeout (node:internal/timers:685:17) at process.processTimers (node:internal/timers:618:7)"
+  },
+  {
+   "test": "offline harness playback scenarios: opencode-v1 stop-time notifications surface where claimed, and stay inert where explicitly unsupported",
+   "duration_ms": 60044,
+   "error": "Error: npm timed out stdout: stderr: at Timeout._onTimeout (/home/user/hn-egress/repo/packages/cli/test/harness-playback.ts:679:21) at listOnTimeout (node:internal/timers:685:17) at process.processTimers (node:internal/timers:618:7)"
+  },
+  {
+   "test": "offline harness playback scenarios: opencode-v1 every shell shape the adapter classifies and fixtures capture is drivable and observable end to end",
+   "duration_ms": 60039,
+   "error": "Error: npm timed out stdout: stderr: at Timeout._onTimeout (/home/user/hn-egress/repo/packages/cli/test/harness-playback.ts:679:21) at listOnTimeout (node:internal/timers:685:17) at process.processTimers (node:internal/timers:618:7)"
+  }
+ ]
+}

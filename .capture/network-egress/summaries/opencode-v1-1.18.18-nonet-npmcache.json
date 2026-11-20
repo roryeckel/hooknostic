@@ -1,0 +1,27 @@
+{
+ "run": "opencode-v1-1.18.18-nonet-npmcache",
+ "meta": {
+  "lane": "opencode-v1",
+  "version": "1.18.18",
+  "mode": "nonet",
+  "date_utc": "2026-11-20T04:26:29Z",
+  "playback_version_env": "unset",
+  "extra_env": [
+   "npm_config_offline=true"
+  ],
+  "seed_home": "/home/user/hn-egress/seed/npm-opencode-v1",
+  "kernel": "Linux 5.15.167.4-microsoft-standard-WSL2",
+  "node": "v24.22.3",
+  "which": "/home/user/hn-egress/harness/opencode-v1-1.18.18/bin/opencode",
+  "interfaces": [
+   "lo UNKNOWN 127.0.0.1/8 ::1/128"
+  ],
+  "exit": "0",
+  "seconds": "169"
+ },
+ "tests": {
+  "passed": 61,
+  "skipped": 81
+ },
+ "failed": []
+}

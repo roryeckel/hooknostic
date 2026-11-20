@@ -1,0 +1,23 @@
+{
+ "run": "pi-1.3.0-nonet",
+ "meta": {
+  "lane": "pi",
+  "version": "1.3.0",
+  "mode": "nonet",
+  "date_utc": "2026-11-20T04:06:49Z",
+  "kernel": "Linux 5.15.167.4-microsoft-standard-WSL2",
+  "node": "v24.22.3",
+  "which": "/home/user/hn-egress/harness/pi-1.3.0/bin/pi",
+  "interfaces": [
+   "lo UNKNOWN 127.0.0.1/8 ::1/128"
+  ],
+  "exit": "0",
+  "seconds": "22",
+  "extra_env": []
+ },
+ "tests": {
+  "passed": 70,
+  "skipped": 72
+ },
+ "failed": []
+}

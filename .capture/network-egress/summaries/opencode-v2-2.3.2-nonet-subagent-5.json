@@ -1,0 +1,31 @@
+{
+ "run": "opencode-v2-2.3.2-nonet-subagent-5",
+ "meta": {
+  "lane": "opencode-v2",
+  "version": "2.3.2",
+  "mode": "nonet",
+  "date_utc": "2026-11-20T05:30:38Z",
+  "playback_version_env": "2.3.2",
+  "extra_env": [],
+  "seed_home": "none",
+  "kernel": "Linux 5.15.167.4-microsoft-standard-WSL2",
+  "node": "v24.22.3",
+  "which": "/home/user/hn-egress/harness/opencode-v2-2.3.2/bin/opencode",
+  "interfaces": [
+   "lo UNKNOWN 127.0.0.1/8 ::1/128"
+  ],
+  "exit": "1",
+  "seconds": "2"
+ },
+ "tests": {
+  "skipped": 141,
+  "failed": 1
+ },
+ "failed": [
+  {
+   "test": "OpenCode v2 offline playback reports each completion of a followed-up subagent as its own agent.stop",
+   "duration_ms": 1440,
+   "error": "AssertionError: expected 1 to be 2 // Object.is equality at /home/user/hn-egress/repo/packages/cli/test/opencode-v2-playback.test.ts:689:37 at async file:///home/user/hn-egress/repo/node_modules/.pnpm/vitest@5.1.0_@types+node@22.20.5_vite@8.3.5_@types+node@22.20.5_esbuild@0.28.2_yaml@2.9.1_/node_modules/vitest/dist/chunks/run.CjdgFZiW.js:2801:20"
+  }
+ ]
+}
