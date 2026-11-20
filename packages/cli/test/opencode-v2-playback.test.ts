@@ -1,7 +1,19 @@
 import { createHash } from "node:crypto";
-import { access, appendFile, mkdir, mkdtemp, readdir, readFile, realpath, rm, stat, writeFile } from "node:fs/promises";
+import {
+  access,
+  appendFile,
+  chmod,
+  mkdir,
+  mkdtemp,
+  readdir,
+  readFile,
+  realpath,
+  rm,
+  stat,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { isAbsolute, join, relative } from "node:path";
+import { basename, isAbsolute, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import semver from "semver";
@@ -170,8 +182,19 @@ describe("OpenCode ripgrep pre-seed", () => {
     expect(() => ripgrepAsset("freebsd", "x64")).toThrow(/ripgrep pre-seed failed: no pinned ripgrep for x64-freebsd/);
   });
   it("keeps its shared copy in a per-user directory, not the temporary directory", () => {
-    expect(defaultRipgrepDir().startsWith(tmpdir())).toBe(false);
-    expect(defaultRipgrepDir()).toContain(join("hooknostic", "ripgrep", "15.1.0"));
+    // Injected, so the host's own HOME or XDG_CACHE_HOME (possibly under /tmp) does not decide it.
+    const asset = ripgrepAsset("linux", "x64");
+    const under = (...base: string[]) => join(...base, "hooknostic", "ripgrep", "15.1.0", asset.platform);
+    const user = { home: join("/home", "user"), env: {} };
+    expect(defaultRipgrepDir(asset, { ...user, platform: "linux" })).toBe(under("/home", "user", ".cache"));
+    expect(defaultRipgrepDir(asset, { ...user, platform: "linux", env: { XDG_CACHE_HOME: "/xdg" } })).toBe(
+      under("/xdg"),
+    );
+    expect(defaultRipgrepDir(asset, { ...user, platform: "darwin" })).toBe(under("/home", "user", "Library", "Caches"));
+    expect(defaultRipgrepDir(asset, { ...user, platform: "win32", env: { LOCALAPPDATA: "/local" } })).toBe(
+      under("/local"),
+    );
+    expect(defaultRipgrepDir(asset, { ...user, platform: "win32" })).toBe(under("/home", "user", "AppData", "Local"));
   });
   it("rejects a download whose SHA-256 is not the pin, after every attempt, leaving nothing behind", async () => {
     const dir = await mkdtemp(join(tmpdir(), "hooknostic-ripgrep-test-"));
@@ -218,7 +241,33 @@ describe("OpenCode ripgrep pre-seed", () => {
       await mkdir(join(root, "data", "opencode", "log"), { recursive: true });
       await writeFile(join(root, "data", "opencode", "log", "opencode.log"), serverLine + "\n");
       expect(await verifyRipgrepSeed(seed, join(root, "data"), "")).toEqual({ expected, spawned: [] });
+      const ran = (command: string) =>
+        `timestamp=2026-11-20T01:13:27.785Z level=INFO run=496ad607 message="spawning process" command=${JSON.stringify(command)} args="[]" role=server`;
+      const log = (...lines: string[]) =>
+        writeFile(join(root, "data", "opencode", "log", "opencode.log"), lines.join("\n") + "\n");
+      // Some other rg ran, although nothing was on the harness's PATH.
+      const other = join(root, "elsewhere", basename(expected));
+      await log(serverLine, ran(other));
+      await expect(verifyRipgrepSeed(seed, join(root, "data"), "")).rejects.toThrow(/not the expected ripgrep/);
+      // An rg on the harness's PATH is what it looks up first, so that one is expected (and a
+      // Windows PATH entry may be quoted). On POSIX it must be executable to count.
+      const onPath = join(root, "path dir");
+      await mkdir(onPath);
+      await writeFile(join(onPath, basename(expected)), "");
+      const searchPath = process.platform === "win32" ? `"${onPath}"` : onPath;
+      if (process.platform !== "win32") {
+        await chmod(join(onPath, basename(expected)), 0o644);
+        await log(serverLine, ran(expected));
+        expect((await verifyRipgrepSeed(seed, join(root, "data"), searchPath)).expected).toBe(expected);
+        await chmod(join(onPath, basename(expected)), 0o755);
+      }
+      await log(serverLine, ran(join(onPath, basename(expected))));
+      expect(await verifyRipgrepSeed(seed, join(root, "data"), searchPath)).toEqual({
+        expected: join(onPath, basename(expected)),
+        spawned: [join(onPath, basename(expected))],
+      });
       // A harness that wrote its own ripgrep over the seed.
+      await log(serverLine);
       await writeFile(expected, bytes);
       await expect(verifyRipgrepSeed(seed, join(root, "data"), "")).rejects.toThrow(/was replaced/);
     } finally {

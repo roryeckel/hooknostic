@@ -5,7 +5,8 @@
 // Evidence and procedure: README.md, "ripgrep pre-seed".
 import { execFile, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
-import { chmod, copyFile, mkdir, mkdtemp, readdir, readFile, rename, rm, stat, utimes, writeFile } from "node:fs/promises";
+import { constants } from "node:fs";
+import { access, chmod, copyFile, mkdir, mkdtemp, readdir, readFile, rename, rm, stat, utimes, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, delimiter, join, resolve } from "node:path";
 
@@ -89,13 +90,16 @@ export function ripgrepAsset(platform = process.platform, arch = process.arch) {
 }
 
 /** A per-user cache directory: never a shared temporary directory another account could write. */
-export function defaultRipgrepDir(asset = ripgrepAsset()) {
+export function defaultRipgrepDir(
+  asset = ripgrepAsset(),
+  { platform = process.platform, env = process.env, home = homedir() } = {},
+) {
   const base =
-    process.platform === "win32"
-      ? (process.env.LOCALAPPDATA ?? join(homedir(), "AppData", "Local"))
-      : process.platform === "darwin"
-        ? join(homedir(), "Library", "Caches")
-        : process.env.XDG_CACHE_HOME || join(homedir(), ".cache");
+    platform === "win32"
+      ? (env.LOCALAPPDATA ?? join(home, "AppData", "Local"))
+      : platform === "darwin"
+        ? join(home, "Library", "Caches")
+        : env.XDG_CACHE_HOME || join(home, ".cache");
   return join(base, "hooknostic", "ripgrep", RIPGREP_VERSION, asset.platform);
 }
 
@@ -284,10 +288,21 @@ export function checkRipgrepLog(text, { expected, where = "the harness log" } = 
   return { spawned };
 }
 
-/** Where the harness's PATH lookup finds `name` first, if anywhere. */
+/**
+ * Where the harness's PATH lookup finds `name` first, if anywhere: like a
+ * `which`, a POSIX candidate must be executable, and a Windows PATH entry may be
+ * quoted.
+ */
 export async function findOnPath(name, searchPath = "") {
-  for (const dir of searchPath.split(delimiter).filter(Boolean))
-    if (await isFile(join(dir, name))) return join(dir, name);
+  for (const entry of searchPath.split(delimiter)) {
+    const dir = process.platform === "win32" ? entry.replace(/^"(.*)"$/, "$1") : entry;
+    if (!dir) continue;
+    const candidate = join(dir, name);
+    if (!(await isFile(candidate))) continue;
+    if (process.platform !== "win32" && !(await access(candidate, constants.X_OK).then(() => true, () => false)))
+      continue;
+    return candidate;
+  }
   return undefined;
 }
 
