@@ -193,6 +193,16 @@ variables from the spawned process and supplies only a dummy credential where
 the harness requires a non-empty value. Model requests are served on
 `127.0.0.1` and never forwarded.
 
+OpenCode v2's `glob` and `grep` run ripgrep, which the harness would otherwise
+download from GitHub into each run's fresh cache. The `tools` drive instead
+places a pinned ripgrep, checked against its SHA-256, in the harness's cache,
+where it looks after `PATH` and before downloading. It fails the run if the
+harness log shows a download (#264). That copy
+is itself fetched from GitHub once per machine into a per-user cache, and CI
+caches it. A cached copy is used only if it matches the pinned executable's
+SHA-256. Set `HKN_RIPGREP_DIR` to a directory that holds, or should receive,
+that build. See `.capture/opencode-v2/README.md`, "ripgrep pre-seed".
+
 ## Marketplace release gates
 
 After `pnpm run bundle`, print the package baseline from existing capture metadata:
