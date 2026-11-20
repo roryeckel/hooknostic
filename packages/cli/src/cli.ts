@@ -51,6 +51,8 @@ Usage:
 Options:
   --config <path>     Path to hooknostic.config.ts (default ./hooknostic.config.ts)
   --target <a,b>      Narrow the configured target set (never adds targets)
+  --dry-run           sync: report what it would change, writing nothing
+  --local             init: create the missing config and hooks.ts, never overwriting
   --events <path>     JSON Lines of portable events to dispatch (default: stdin)
   --capability <id>   Inspect a single capability
   --component <id>    Inspect a single Agent Plugin component
@@ -126,8 +128,14 @@ function isCommand(command: string): command is Command {
   return Object.hasOwn(COMMAND_FLAGS, command);
 }
 
+/**
+ * Checked first, for any command, as they were before the table (#208): an
+ * unknown command given one is reported as the option, not the command.
+ */
+const EARLY_FLAGS: readonly Flag[] = ["dry-run", "unguarded"];
+
 /** The usage error for `flag` given to `command`, which does not take it. */
-function unsupportedFlag(command: Command, flag: Flag): string {
+function unsupportedFlag(command: string, flag: Flag): string {
   // Since #246, --version in place of a command is hooknostic's own.
   if (flag === "version")
     return `--version <range> is only supported by inspect; run "hooknostic --version" for this hooknostic's version`;
@@ -584,12 +592,18 @@ async function runCommand(argv: string[], options: RunCliOptions | undefined, ow
       io.stderr(CLI_USAGE);
       return 2;
     }
-    // The rest of the command line against the table (#208, #218, #255), for
-    // a known command: an unknown one is reported as that, below. Before the
-    // command reads or writes anything.
+    // The options rejected before the table (#208), for every command, an
+    // unknown one too, and in their order then: each command line they
+    // rejected keeps its message (#255).
+    for (const flag of EARLY_FLAGS)
+      if (parsed.values[flag] !== undefined && !(isCommand(command) && COMMAND_FLAGS[command].has(flag)))
+        return usage(unsupportedFlag(command, flag));
+    // The rest of the command line against the table (#255), for a known
+    // command: an unknown one is reported as that, below. Before the command
+    // reads or writes anything.
     if (isCommand(command)) {
-      // inspect without a target first: the target may be a word given as
-      // --target, which the table would report instead.
+      // inspect without a target next, as before the table: the target may
+      // be a word given as --target, which the table would report instead.
       if (command === "inspect" && parsed.positionals.length === 0) {
         io.stderr("inspect requires a target, e.g. `hooknostic inspect claude`.");
         return 2;

@@ -852,11 +852,30 @@ describe("runCli", () => {
     },
   );
 
+  // The commands that load a config, or write, when they get past their
+  // checks: init scaffolds beside its config and sync reconciles a project.
+  const LOADS = new Set(["check", "build", "init", "sync", "verify", "recover", "doctor"]);
+
+  /**
+   * `argv` with a fresh temp --config right after such a command, so a check
+   * that regressed acts on an empty temp directory, never the checkout. Run
+   * with `registry: {}` and assert the directory still empty.
+   */
+  async function isolated(argv: string[]): Promise<{ argv: string[]; dir: string | undefined }> {
+    const [command, ...rest] = argv;
+    if (command === undefined || !LOADS.has(command)) return { argv, dir: undefined };
+    const dir = await mkdtemp(join(tmpdir(), "hooknostic-cli-usage-"));
+    tempDirs.push(dir);
+    return { argv: [command, "--config", join(dir, "hooknostic.config.ts"), ...rest], dir };
+  }
+
   it.each(["check", "build"])("rejects an empty --target for %s", async (command) => {
     for (const value of ["", ", ,"]) {
       const { io, err } = captureIO();
-      expect(await runCli([command, "--target", value], { io })).toBe(2);
+      const run = await isolated([command, "--target", value]);
+      expect(await runCli(run.argv, { io, registry: {} })).toBe(2);
       expect(err()).toContain("at least one non-empty target");
+      expect(await readdir(run.dir as string)).toEqual([]);
     }
   });
 
@@ -897,8 +916,14 @@ describe("runCli", () => {
     ],
     // Present though empty; check and build keep their own message for it.
     [["sync", "--target", ""], "--target is not supported by sync"],
-    // An unknown command is that, whatever its options.
-    [["frobnicate", "--dry-run"], 'unknown command "frobnicate"'],
+    // --dry-run and --unguarded are checked first, for any command, as they
+    // were before the table: each command line they rejected keeps its message.
+    [["check", "--local", "--unguarded"], "--unguarded is only supported by dispatch"],
+    [["inspect", "--dry-run"], "--dry-run is only supported by sync"],
+    [["inspect", "--unguarded"], "--unguarded is only supported by dispatch"],
+    [["frobnicate", "--dry-run"], "--dry-run is only supported by sync"],
+    // Otherwise an unknown command is that, whatever its options.
+    [["frobnicate", "--local"], 'unknown command "frobnicate"'],
     [["frobnicate", "extra"], 'unknown command "frobnicate"'],
     // Stray words: inspect takes its target, and no command anything else.
     [["sync", "extra"], 'unexpected argument "extra": sync takes no positional arguments'],
@@ -914,20 +939,29 @@ describe("runCli", () => {
     [["check", "--local", "extra"], "--local is only supported by init"],
   ])("reports %j as a usage error", async (argv, message) => {
     const { io, out, err } = captureIO();
-    expect(await runCli(argv, { io })).toBe(2);
+    const run = await isolated(argv);
+    expect(await runCli(run.argv, { io, registry: {} })).toBe(2);
     expect(err()).toBe(`${message}\n${CLI_USAGE}`);
     expect(err()).not.toContain("unexpected error");
     expect(err()).not.toMatch(/^\s+at /m);
     expect(out()).toBe("");
+    if (run.dir !== undefined) expect(await readdir(run.dir)).toEqual([]);
   });
 
   it.each([
     [["build", "--dry-run", "--json"], "--dry-run is only supported by sync"],
     [["inspect", "claude", "--events", "f", "--json"], "--events is only supported by dispatch"],
     [["check", "extra", "--json"], 'unexpected argument "extra": check takes no positional arguments'],
+    // As before the table: the JSON line, ahead of inspect's missing target
+    // and of an unknown command.
+    [["inspect", "--dry-run", "--json"], "--dry-run is only supported by sync"],
+    [["inspect", "--unguarded", "--json"], "--unguarded is only supported by dispatch"],
+    [["frobnicate", "--unguarded", "--json"], "--unguarded is only supported by dispatch"],
   ])("keeps a usage error's JSON line under --json for %j (#208, #255)", async (argv, message) => {
     const { io, out, err } = captureIO();
-    expect(await runCli(argv, { io })).toBe(2);
+    const run = await isolated(argv);
+    expect(await runCli(run.argv, { io, registry: {} })).toBe(2);
+    if (run.dir !== undefined) expect(await readdir(run.dir)).toEqual([]);
     expect(JSON.parse(out())).toStrictEqual({
       schemaVersion: 1,
       command: argv[0],
@@ -1124,7 +1158,18 @@ describe("the options and words each command takes", () => {
   it("parses no option the table does not cover", () => {
     const parsed = Object.keys(PARSE_OPTIONS).filter((name) => name !== "help");
     const tabled = new Set(Object.values(COMMAND_FLAGS).flatMap((set) => [...set]));
-    expect(parsed.sort()).toEqual([...tabled].sort());
+    expect([...parsed].sort()).toEqual([...tabled].sort());
+    // And each is described under Options, not only on a usage line.
+    const options = CLI_USAGE.slice(CLI_USAGE.indexOf("\nOptions:\n"));
+    const described = new Set([...options.matchAll(/^ {2}(?:-\w, )?--([a-z-]+)/gm)].map((match) => match[1]));
+    expect(parsed.filter((name) => !described.has(name))).toEqual([]);
+  });
+
+  // The rows above cover every option the parser takes, so an option added
+  // to the CLI, even everywhere it belongs, needs rows here too. In the
+  // order they are checked in, which decides the message for two at once.
+  it("covers every option the parser takes, in its order", () => {
+    expect(Object.keys(PARSE_OPTIONS).filter((name) => name !== "help")).toEqual(["config", ...FLAGS]);
   });
 
   it.each(COMMANDS.flatMap((command) => (ACCEPTED[command] ?? []).map((flag) => [command, flag] as const)))(
