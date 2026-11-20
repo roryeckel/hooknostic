@@ -27,6 +27,7 @@ const SHIPPED_ADAPTERS = ["claude", "codex", "opencode", "pi"];
 interface Manifest {
   name: string;
   files: string[];
+  main?: string;
   exports: Record<string, unknown>;
   dependencies?: Record<string, string>;
   peerDependencies?: Record<string, string>;
@@ -93,7 +94,7 @@ describe("public package outputs", () => {
     // package's directory, and Node resolves a directory by `main` alone, so
     // without it HN110 and doctor found no SDK under pnpm exec (#259,
     // .capture/pnpm-pnp). Requiring the directory is that resolution.
-    expect(manifest.main).toBe(manifest.exports["."].default);
+    expect(manifest.main).toBe((manifest.exports["."] as { default: string }).default);
     expect(createRequire(import.meta.url).resolve(packageRoot)).toBe(resolve(packageRoot, "dist/index.js"));
     // Only the schemas subpath needs Zod (ADR-0040), but the peer stays
     // required: an optional one sends npm's arborist into a loop when a
