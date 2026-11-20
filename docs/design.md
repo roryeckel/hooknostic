@@ -763,19 +763,26 @@ SDK's version (without build metadata) filled in, so it runs as printed (#259):
 save a `^` range), `pnpm add -D --allow-build=esbuild hooknostic@<version>`, or
 `yarn add -D hooknostic@<version>` under Yarn Plug'n'Play. pnpm 12 refuses
 esbuild's install script without `--allow-build`, and pnpm before 10.4 refuses
-the option, so it is printed only when the nearest
-`node_modules/.modules.yaml`, pnpm's record of the install, names pnpm 10.4 or
-later. Under pnpm's `nodeLinker: pnp`, which also writes `.pnp.cjs`, the advice
-is pnpm's, not Yarn's: the manifest is pnpm's when the `.modules.yaml` beside
-it says `nodeLinker: pnp`, or when `pnpm-lock.yaml` is beside it and
-`yarn.lock` is not. pnpm Plug'n'Play is best effort, as `yarn dlx` is for Yarn:
-in the recorded capture (`.capture/pnpm-pnp`, pnpm 12.21.0 on Windows)
-`pnpm exec hooknostic` built a working artifact, but no suite runs it. Under
-`pnpm exec`, HN110 is silent and doctor reports the SDK `not-found`, because
-pnpm's runtime cannot resolve the SDK, whose manifest has only `exports`,
-through Node. With pnpm's `symlink: false` no build resolves the SDK at all,
-and pnpm 11's runtime, which is Yarn's, reads as another install's, so HN110
-is silent there as under `yarn dlx`.
+the option, so it is printed when the nearest `node_modules/.modules.yaml`
+that names a pnpm release, pnpm's record of the install, names pnpm 10.4 or
+later. With no recorded release it is left out of a `node_modules` project's
+pnpm command, which may be an npm project, and kept, with a note for pnpm
+before 10.4, in a pnpm Plug'n'Play project's. Under pnpm's `nodeLinker: pnp`,
+which also writes `.pnp.cjs`, the advice is pnpm's, not Yarn's: the manifest
+is pnpm's when no `yarn.lock` is beside it and either the `.modules.yaml`
+beside it says `nodeLinker: pnp` or `pnpm-lock.yaml` is beside it. A
+`yarn.lock` means Yarn whatever else is there, since Yarn's Plug'n'Play writes
+no `node_modules` and a pnpm record beside it is left from an earlier pnpm
+install; a pnpm project that kept a `yarn.lock` gets Yarn's advice. pnpm
+Plug'n'Play is best effort, as `yarn dlx` is for Yarn: in the recorded capture
+(`.capture/pnpm-pnp`, pnpm 12.21.0 on Windows) `pnpm exec hooknostic` built a
+working artifact, and HN110 and doctor saw the project's SDK, but no suite
+runs it. pnpm's runtime resolves a package through its directory, which Node
+resolves by `main` alone, so the SDK names `main` beside `exports` (#259); an
+SDK of 0.13.0 or earlier has none, and under `pnpm exec` HN110 is silent and
+doctor reports it `not-found`. With pnpm's `symlink: false` no build resolves
+the SDK at all, and pnpm 11's runtime, which is Yarn's, reads as another
+install's, so HN110 is silent there as under `yarn dlx`.
 **HN504** a build under a Yarn Plug'n'Play manifest needs a module from Yarn's
 install that this process cannot read, because Hooknostic is running without
 Yarn's PnP runtime: under plain `node`, `npx`, a global install or `pnpm dlx`.

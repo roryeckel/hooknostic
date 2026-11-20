@@ -234,18 +234,20 @@ config, and its own diagnostics, such as HN110, under `diagnostics` (see below).
   pnpm's bin shims set) or a global folder reaches does not count. Under Yarn's
   runtime, it means the project's Plug'n'Play install does not provide the SDK.
   An installed SDK that Node fails to resolve, such as one whose `exports` target
-  is missing, is `not-found` too. So is the SDK under `pnpm exec` in a project
-  that uses pnpm's `nodeLinker: pnp`: pnpm's runtime cannot resolve a package
-  whose manifest has only `exports`, as the SDK's has (`.capture/pnpm-pnp`).
-  Run `hooknostic doctor` there with plain `node`
-  (`node node_modules/hooknostic/bin/hooknostic.mjs doctor`) to read the
+  is missing, is `not-found` too. So is an SDK of 0.13.0 or earlier under
+  `pnpm exec` in a project that uses pnpm 12's `nodeLinker: pnp`: pnpm's
+  runtime resolves a package through its directory, which Node resolves by
+  `main` alone, and only later SDKs name `main` (`.capture/pnpm-pnp`). Run
+  `hooknostic doctor` there with plain `node`
+  (`node node_modules/hooknostic/bin/hooknostic.mjs doctor`) to read its
   version;
 - `unidentified`: it resolves, but the resolved package's manifest isn't
   `@hooknostic/sdk`'s or has no version;
 - `not-looked-up`, with a `reason`:
   - `another-pnp-runtime`: under another install's Yarn Plug'n'Play runtime, such
     as `yarn dlx`, as for HN110. pnpm 11's `nodeLinker: pnp` runtime is Yarn's,
-    and under `pnpm exec` it reads as another install's too;
+    and under `pnpm exec` it reads as another install's too, as captured in
+    `.capture/pnpm-pnp`;
   - `outside-pnp-runtime`: `manifest`, a Yarn Plug'n'Play manifest, is in the
     config's directory or an ancestor, this process isn't running under Yarn's
     runtime, and no `node_modules/@hooknostic/sdk` is reachable. In a Yarn

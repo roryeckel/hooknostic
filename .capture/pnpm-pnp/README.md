@@ -8,13 +8,16 @@ is the same: what pnpm writes and how Hooknostic runs under it are observed, not
 assumed. One session, on 2026-11-19, native Windows 11 (10.0.26300), Node.js
 24.20.0, npm 11.4.1.
 
-**Provenance class: captured.** Every claim below comes from a command run
-against real pnpm and Yarn releases and the published `hooknostic` and
+**Provenance class: captured, except where a claim is marked
+documentation-derived or inference.** The captured claims come from commands
+run against real pnpm and Yarn releases and the published `hooknostic` and
 `@hooknostic/sdk` 0.12.0 and 0.13.0, plus this repository's CLI built at
 `7c2bb929` (version 0.13.0, run with `node packages/cli/bin/hooknostic.mjs`).
-Scratch projects were under the temporary directory, shown as `<tmp>`, and
-removed afterwards. Not observed: Linux or macOS, a pnpm workspace with several
-packages under `nodeLinker: pnp`, and any pnpm release not named here.
+A second session the same day, after the SDK gained `main`, is under
+[Session 2](#session-2-the-sdks-main). Scratch projects were under the
+temporary directory, shown as `<tmp>`, and removed afterwards. Not observed:
+Linux or macOS, a pnpm workspace with several packages under `nodeLinker: pnp`,
+and any pnpm release not named here.
 
 ## Question
 
@@ -82,7 +85,7 @@ Variants, each a fresh project pinned the same way:
 
 | | pnpm 12.21.0, `nodeLinker: pnp` | Yarn 4.18.1 (Plug'n'Play) |
 |---|---|---|
-| Project root | `.pnp.cjs`, `pnpm-lock.yaml`, `pnpm-workspace.yaml`, `node_modules/` | `.pnp.cjs`, `.pnp.loader.mjs`, `yarn.lock`, `.yarn/`; no `node_modules` |
+| Project root | `.pnp.cjs`, `pnpm-lock.yaml`, `pnpm-workspace.yaml`, `node_modules/` | `.pnp.cjs`, `.pnp.loader.mjs`, `yarn.lock`, `.yarn/` (holding `install-state.gz`, Session 2); no `node_modules` |
 | `.pnp.data.json` | none | none |
 | `.pnp.cjs` | 15,364 bytes: a hand-written loader (`Module._resolveFilename` hook marked `__pnpmPnp`, a `registry` object) | 460,518 bytes: Yarn's runtime with `RAW_RUNTIME_STATE` |
 | Package locations | real directories, `./.pnpm/@hooknostic+sdk@0.12.0_zod@4.6.7/node_modules/@hooknostic/sdk` relative to `node_modules` | `.yarn/__virtual__/…/cache/@hooknostic-sdk-npm-0.12.0-….zip/node_modules/@hooknostic/sdk` |
@@ -128,9 +131,7 @@ and `.modules.yaml` said `"nodeLinker": "isolated"`. Only
 HN504 never fired: pnpm's package paths are real directories, which
 `PNP_PATH` does not match, so `pnpRuntimeGuardPlugin` has nothing to refuse.
 
-Why HN110 is silent under `pnpm exec`: pnpm's hook resolves a bare request to
-the package's directory and hands that to Node's own resolver, which ignores
-`exports` for a directory. `@hooknostic/sdk` has only `exports`, so
+Why HN110 is silent under `pnpm exec` (observed):
 
 ```powershell
 pnpm exec node -e "…createRequire(join(cwd, 'package.json')).resolve('@hooknostic/sdk')"
@@ -140,7 +141,24 @@ pnpm exec node -e "…createRequire(join(cwd, 'package.json')).resolve('@hooknos
 
 while plain `node` resolves `…\@hooknostic\sdk\dist\index.js`. The project
 SDK lookup behind HN110 and doctor's version line therefore finds nothing
-under `pnpm exec`. The #216 gate is not involved: `anotherInstallsPnpRuntime`
+under `pnpm exec`. The mechanism, read from pnpm 12.21.0's `.pnp.cjs`:
+its hook turns a bare request into the package's directory and hands that to
+Node's own resolver,
+
+```js
+// resolveToUnqualified
+const subpath = request.slice(name.length)
+const dependencyLocation = packageLocation(registry[dependencyId])
+const unqualified = path.resolve(dependencyLocation, `.${subpath}`)
+// setup()'s hook
+const unqualified = resolveToUnqualified(request, issuer)
+return originalResolveFilename.call(this, unqualified, parent, isMain, options)
+```
+
+and Node resolves a directory path by its manifest's `main` (or `index.js`),
+never by `exports`; the SDK had only `exports`. That last step is
+**inference** from Node's documented resolution and the error above;
+Session 2 tests it by adding `main`. The #216 gate is not involved: `anotherInstallsPnpRuntime`
 returns false, as `process.versions.pnp` is unset. The build itself is
 unaffected (esbuild resolves through `node_modules`).
 
@@ -159,7 +177,7 @@ Background, pnpm 11.28.13 with `nodeLinker: pnp`: `.pnp.cjs` is Yarn's runtime
 `null`. `pnpm exec hooknostic build` (CLI 0.13.0, SDK 0.12.0) exits 0 with no
 HN110: the #216 gate reads that runtime as another install's. With plain
 `node`, the project's CLI exits 0 and prints HN110 with the `yarn hooknostic`
-advice.
+advice. Doctor's report under pnpm 11 is in Session 2.
 
 ### Install commands (Q3)
 
@@ -171,10 +189,17 @@ advice.
 | pnpm 12.21.0, `pnpm add -D --allow-build=esbuild hooknostic@0.13.0` | exit 0; `package.json` saved `"hooknostic": "0.13.0"` (exact) |
 | `pnpm add --help` lists `--allow-build` | 10.4.0: yes. 10.3.0, 10.2.1, 9.15.9: no |
 | pnpm 10.3.0 and 9.15.9, `pnpm add -D --allow-build=esbuild is-number@7.0.0` | exit 1, `ERROR Unknown option: 'allow-build'` |
+| pnpm 10.4.0, `pnpm add -D --allow-build=esbuild esbuild@0.25.0` (Session 2; the round-1 reviewer ran the same with the same result) | exit 0; `package.json` gained `"pnpm": {"onlyBuiltDependencies": ["esbuild"]}` and `"esbuild": "0.25.0"` (exact) |
 | Yarn 4.18.1, `yarn add -D hooknostic@0.12.0` | exit 0 (on retry); `package.json` saved `"hooknostic": "0.12.0"` (exact); `YN0004: esbuild@npm:0.28.2 lists build scripts, but all build scripts have been disabled.` |
 
-npm was not run here: that `npm install --save-dev hooknostic@V` saves
-`^V` unless `--save-exact` is given is npm's documented `save-prefix` default.
+pnpm's own changelog agrees (documentation-derived): its 10.4.0 entry says
+"The `pnpm add` command now supports a new flag, `--allow-build`"
+([pnpm#9086](https://github.com/pnpm/pnpm/pull/9086)), and 10.3.0's lists no
+such flag.
+
+**Documentation-derived, not run here:** that
+`npm install --save-dev hooknostic@V` saves `^V` unless `--save-exact` is
+given is npm's documented `save-prefix` default.
 
 ### After the change
 
@@ -191,18 +216,74 @@ plain `node`:
   build then failed with HN501 `Could not resolve "zod/v4"` from the 0.12.0
   SDK, which this project installs without its Zod peer; unrelated to HN110.
 
+## Session 2: the SDK's `main`
+
+Same machine and day, after `packages/sdk/package.json` gained
+`"main": "./dist/index.js"` (its `exports` unchanged). The question: does that
+let pnpm 12's hook resolve the SDK, so HN110 and doctor work under
+`pnpm exec`?
+
+Method. This repository's packages were bundled and packed
+(`pnpm run bundle`; `pnpm pack` in `packages/sdk` and `packages/cli`, both
+0.13.0). The SDK tarball was unpacked, its `version` set to `0.12.99` so it
+differs from the CLI, and repacked twice with `tar -czf`: once as packed (with
+`main`) and once with `main` deleted. Nothing else differs between the two.
+Each went into a fresh pnpm 12.21.0 project (`devEngines` pinned, `pnpm
+--version` checked, `nodeLinker: pnp` in `pnpm-workspace.yaml`) with
+`pnpm add -D --allow-build=esbuild <sdk tarball> <cli tarball> zod@4.6.7`
+(exit 0 in both), and the config and hook from Session 1.
+
+| Command | SDK without `main` (as 0.13.0 and earlier) | SDK with `main` |
+|---|---|---|
+| `pnpm exec hooknostic build` | exit 0, BUILT, **no HN110** | exit 0, HN110 advising `pnpm add -D --allow-build=esbuild hooknostic@0.12.99` and `pnpm exec hooknostic`, BUILT |
+| `pnpm exec hooknostic doctor` | exit 0, `project @hooknostic/sdk not found` | exit 0, `project @hooknostic/sdk 0.12.99`, and HN110 |
+| `node node_modules/hooknostic/bin/hooknostic.mjs build` | exit 0, HN110, BUILT | exit 0, HN110, BUILT |
+| `pnpm exec node probe.cjs`: `require.resolve('@hooknostic/sdk')` from the project | `MODULE_NOT_FOUND` | `node_modules\.pnpm\@hooknostic+sdk@file+…sdk-0.12.99-main.tgz_zod@4.6.7\node_modules\@hooknostic\sdk\dist\index.js` |
+
+The same probe recorded pnpm 12.21.0's runtime under `pnpm exec`, in both
+projects: `process.versions.pnp` unset; `Module.findPnpApi` a function, which
+returns the API for the project root and `undefined` for the drive root (a
+path outside its registry); and that API's
+`findPackageLocator(<project root>\)` is `{"name":null,"reference":null}`.
+The `.pnp.cjs` (15,804 bytes here) defines `findPnpApi` in `setup()` as
+`findPackageLocator(lookupSource) === null ? undefined : api`. The artifact
+built with `main` denied the `--force` fixture payload and passed the plain
+one, as in Session 1.
+
+pnpm 11.28.13, `nodeLinker: pnp`, the same tarballs (SDK with `main`):
+`pnpm exec hooknostic doctor` exits 0 with
+`project @hooknostic/sdk not looked up under another install's Plug'n'Play runtime`
+and no HN110; `pnpm exec hooknostic build` exits 0 with no HN110; and
+`node node_modules/hooknostic/bin/hooknostic.mjs doctor` reports
+`project @hooknostic/sdk 0.12.99` and HN110. `main` does not change pnpm 11:
+its silence is the #216 gate, as Session 1 found.
+
+TypeScript (`moduleResolution: node10`, which reads no `exports`; TypeScript
+6.0.3 against `packages/sdk` linked into a scratch project's
+`node_modules`): with `main`, `@hooknostic/sdk` resolves to
+`dist/index.d.ts`, exit 0; without it, TS2307 `Cannot find module`, exit 2.
+So no top-level `types` field is needed beside `main`.
+
+Yarn 4.18.1, a fresh project with one dependency: `.yarn/` holds
+`install-state.gz` and nothing else; no `node_modules`.
+
 ## Consequences
 
 - HN110 names `pnpm exec hooknostic` and `pnpm add -D [--allow-build=esbuild]
-  hooknostic@<SDK version>` for a Plug'n'Play manifest pnpm wrote, told apart
-  by `node_modules/.modules.yaml` (`nodeLinker: pnp`) or by `pnpm-lock.yaml`
-  without `yarn.lock`. The manifest's content is never read.
-- `--allow-build=esbuild` is printed only when the nearest `.modules.yaml`
-  records pnpm 10.4.0 or later; with no record it is left out.
+  hooknostic@<SDK version>` for a Plug'n'Play manifest pnpm wrote: no
+  `yarn.lock` beside it, and either `node_modules/.modules.yaml` says
+  `nodeLinker: pnp` or `pnpm-lock.yaml` is there. A `yarn.lock` means Yarn,
+  whatever else is there. The manifest's content is never read.
+- `--allow-build=esbuild` is printed when the nearest `.modules.yaml` that
+  names a release records pnpm 10.4.0 or later. With no recorded release it
+  is left out of a `node_modules` project's pnpm command, and kept, with a
+  note for pnpm before 10.4, in a pnpm Plug'n'Play project's.
+- The SDK names `main`, so from the next release on, pnpm 12's
+  `nodeLinker: pnp` runtime resolves it, and HN110 and doctor work under
+  `pnpm exec`. An SDK of 0.13.0 or earlier still reads as `not found` there.
 - pnpm's `nodeLinker: pnp` is **best effort**, as `yarn dlx` is for Yarn
   (ADR-0041): `pnpm exec hooknostic` built and the artifact ran with pnpm
-  12.21.0's default `symlink`, but no suite runs it, and under `pnpm exec`
-  HN110 and doctor's version line do not see the project's SDK.
-  `symlink: false` does not build at all, and pnpm 11's runtime silences HN110
-  through the #216 gate.
+  12.21.0's default `symlink`, but no suite runs it. `symlink: false` does not
+  build at all, and pnpm 11's runtime silences HN110 and doctor's version
+  line through the #216 gate.
 - HN504's note and guard are unchanged: they cannot fire under pnpm.
