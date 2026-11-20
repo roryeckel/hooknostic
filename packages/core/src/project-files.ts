@@ -719,7 +719,7 @@ async function acquire(root: string, name = LOCK): Promise<() => Promise<void>> 
     if (name === LOCK && (error as NodeJS.ErrnoException).code === "EEXIST")
       throw Object.assign(
         new Error(
-          `another hooknostic sync may be running: ${lock} exists; if no sync is running, run hooknostic recover, which removes a lock left by a process that has exited`,
+          `another hooknostic sync or recover may be running: ${lock} exists; if neither is, run hooknostic recover with the same configuration, which removes a lock left by a process that has exited`,
           { cause: error },
         ),
         { code: "EEXIST", path: lock },

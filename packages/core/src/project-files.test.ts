@@ -339,7 +339,7 @@ describe("project reconciliation", () => {
     await writeFile(join(root, ".hooknostic/sync.lock"), String(process.pid));
     const lock = join(await realpath(root), ".hooknostic", "sync.lock");
     await expect(sync()).rejects.toMatchObject({
-      message: `another hooknostic sync may be running: ${lock} exists; if no sync is running, run hooknostic recover, which removes a lock left by a process that has exited`,
+      message: `another hooknostic sync or recover may be running: ${lock} exists; if neither is, run hooknostic recover with the same configuration, which removes a lock left by a process that has exited`,
       code: "EEXIST",
       path: lock,
       cause: { code: "EEXIST", path: lock },
@@ -361,7 +361,7 @@ describe("project reconciliation", () => {
     await writeFile(join(root, ".hooknostic/recovery.lock"), String(process.pid));
     const error: unknown = await recoverProject(root, config).catch((caught: unknown) => caught);
     expect(error).toMatchObject({ code: "EEXIST", syscall: "open" });
-    expect((error as Error).message).not.toContain("hooknostic sync may be running");
+    expect((error as Error).message).not.toContain("may be running");
   });
   it("recovers interrupted replacements from preimages", async () => {
     await mkdir(join(root, ".hooknostic"));
