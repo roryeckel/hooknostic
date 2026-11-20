@@ -279,12 +279,23 @@ jobs:
       - name: Bundle compiler and dependencies
         run: pnpm run bundle
 
+      - name: Cache the OpenCode v2 tools drive's pinned ripgrep
+        if: ${{ matrix.harness == 'opencode-v2' }}
+        uses: actions/cache@v6
+        with:
+          path: ${{ runner.temp }}/hooknostic-ripgrep
+          # ripgrep.mjs holds the version and both SHA-256 pins, so any change
+          # to them is a new key. A restored copy is still checked against the
+          # executable's pin before use and refetched if it differs (#264).
+          key: hooknostic-ripgrep-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.capture/opencode-v2/ripgrep.mjs') }}
+
       - name: Run model-free playback
         id: playback
         run: pnpm exec vitest run packages/cli/test/harness-playback.test.ts packages/cli/test/opencode-v2-playback.test.ts scripts/pi-drift-driver.test.mjs
         env:
           HOOKNOSTIC_PLAYBACK: ${{ matrix.harness }}
           HKN_PLAYBACK_ARTIFACT_DIR: ${{ runner.temp }}/opencode-v2-playback
+          HKN_RIPGREP_DIR: ${{ runner.temp }}/hooknostic-ripgrep
           # Deliberately blank: the test routes model traffic to loopback.
           ANTHROPIC_API_KEY: ""
           ANTHROPIC_AUTH_TOKEN: ""
