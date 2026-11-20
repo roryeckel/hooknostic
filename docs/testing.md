@@ -207,35 +207,77 @@ that build. See `.capture/opencode-v2/README.md`, "ripgrep pre-seed".
 
 ## Network isolation on Linux
 
-The six Linux playback lanes run in CI with no network but loopback, so a
-harness's update check, catalog fetch or download cannot slip into a lane
-unnoticed. `.capture/network-egress` is the inventory this rests on: what each
-harness reached before, which of those a lane needs (none), and what turns
-each off.
+The six Linux playback lanes run in CI with no IP network but loopback.
 
-- **The namespace.** `scripts/without-network.sh <command>` re-runs itself
-  under passwordless `sudo -n`, enters a new network namespace
-  (`unshare --net`, root, so no unprivileged user namespace and no AppArmor
-  userns restriction), brings `lo` up, and drops back to the calling user
-  with no capabilities and `no_new_privs`. Inside it sets
-  `HOOKNOSTIC_PLAYBACK_NETWORK=none`.
-- **The environment crosses sudo in a file.** The hosted runners' sudo
-  ignores `--preserve-env` ("preserving the entire environment is not
-  supported"). On the first CI run that silently emptied the environment:
-  every playback test skipped and the step passed. The wrapper therefore
-  writes the caller's environment NUL-separated to a `mktemp` file (mode
-  0600), and the root hop loads it and deletes it. Values never reach argv or
-  output.
+What this establishes:
+- A lane that **needs** the network fails.
+- Nothing a lane runs can reach the network.
+
+It does not detect new egress. A call that a lane does not depend on fails
+silently and the lane still passes. Codex's plugin sync is an example: it
+only adds about a minute of resolver retries. New egress is found by a traced
+inventory (`.capture/network-egress`, the procedure and the record this rests
+on), not by CI.
+
+- **The namespace.** `scripts/without-network.sh <command>` does the
+  following:
+  - re-runs itself as root through `sudo -n /bin/bash`;
+  - enters a new network namespace with `unshare --net`. This is root, so no
+    unprivileged user namespace and no AppArmor userns restriction is
+    involved;
+  - brings `lo` up;
+  - drops back to the calling user with no supplementary groups, no
+    capabilities and `no_new_privs`;
+  - sets `HOOKNOSTIC_PLAYBACK_NETWORK=none` inside.
+- **IP only.** A network namespace does not cut unix sockets, which are
+  reached through the filesystem. That is why the user keeps no supplementary
+  groups: on GitHub's images `runner` is in `docker`, whose socket would let
+  a process ask dockerd, in the host namespace, to reach the network. A
+  daemon reachable without a group (D-Bus, for one) is still reachable. No
+  harness was seen to do this.
+- **The root hops trust nothing from the caller.**
+  - Each root hop starts from an empty environment
+    (`/usr/bin/env -i … /bin/bash`), so there is no caller `PATH`,
+    `BASH_ENV` or `LD_*`. It calls `ip`, `setpriv` and `unshare` by absolute
+    path.
+  - `--as` must name the user that invoked sudo (`SUDO_UID`/`SUDO_GID`).
+  - The caller's environment crosses sudo in a file, because the hosted
+    runners' sudo ignores `--preserve-env` ("preserving the entire
+    environment is not supported"). On the first CI run that ignored option
+    silently emptied the environment: every playback test skipped and the
+    step passed. The file is created 0600 by `mktemp`. Root only checks that
+    it is a regular file of the caller's with that mode, and never reads or
+    removes it. It is loaded and removed after the drop, as the user.
+  - On this path no environment value reaches argv or output.
+- **Trust boundary.** The wrapper is a test harness, not a privilege boundary.
+  - It needs **unrestricted** passwordless sudo, as `runner` has on
+    GitHub-hosted runners, or `sudo -v` beforehand.
+  - It runs a file from your checkout as root, so use it only on a runner or
+    a single-user machine.
+  - Never give it a sudoers rule of its own: that would make it a root shell
+    for anything running as you. It also could not be used through one, since
+    it sudo's `/bin/bash`.
 - **The proof.** Before the command, `scripts/assert-no-network.mjs --offline`
-  fails the step unless: only `lo` exists; public IPv4 and IPv6 connects fail
-  with `ENETUNREACH`; DNS fails; the user, capabilities and `no_new_privs` are
-  as expected; and every name in `HKN_NO_NETWORK_REQUIRE_ENV` crossed `sudo`.
+  fails the step unless:
+  - only `lo` exists;
+  - each public IPv4 probe (1.1.1.1, 8.8.8.8, 9.9.9.9) and the IPv6 probe
+    fails with `ENETUNREACH`;
+  - DNS fails;
+  - the user is the expected one, with no supplementary groups, no
+    capabilities and `no_new_privs`;
+  - every name in `HKN_NO_NETWORK_REQUIRE_ENV` is present and non-empty.
+
   The wrapper reads that list before the sudo hop and passes it on as an
-  argument, so a lost environment cannot also lose the list.
-  It prints one line per check and never prints values. Its positive
-  control, `--online`, runs in the prepare step outside the namespace: the
-  same IPv4 connect and lookup must succeed there (IPv6 is reported, not
-  required).
+  argument, so a lost environment cannot also lose the list. The check prints
+  one line per item and never prints values. Its positive control,
+  `--online`, runs in the prepare step outside the namespace: one IPv4 probe
+  and the lookup must succeed there, so one filtered address does not fail a
+  lane. IPv6 is reported, not required; hosted runners have none.
+- **No lane, no pass.** Under `HOOKNOSTIC_PLAYBACK_NETWORK=none`,
+  `harness-playback.test.ts` requires `HOOKNOSTIC_PLAYBACK` to name a known
+  lane, so a namespaced run that selects nothing fails instead of skipping
+  every test. `prepare-offline-playback.mjs` likewise rejects an unknown
+  lane.
 - **What the lanes fetch beforehand.**
   `node --experimental-strip-types scripts/prepare-offline-playback.mjs <lane>`
   does it, with network:
@@ -250,30 +292,39 @@ each off.
   - OpenCode's model-catalog fetch and v2's update check;
   - Claude's `plugin validate` gets the drives' environment.
 
-  Two calls remain and fail harmlessly without network: Codex's curated plugin
-  sync (github.com, chatgpt.com, api.github.com) and Claude's official
-  marketplace fetch (downloads.claude.ai).
+  Nothing asserts on these; inside the namespace the calls would fail
+  harmlessly anyway. The traced inventory is what shows each one works.
+
+  Two calls remain and fail harmlessly: Codex's curated plugin sync
+  (github.com, chatgpt.com, api.github.com) and Claude's official marketplace
+  fetch (downloads.claude.ai).
 - **Not isolated.** The Windows lanes, the Code Mode and marketplace jobs, and
   harness-watch's scheduled verification of newer builds still run with
   network.
+- **Rollback.** Revert the `ci:` commit that wraps the lanes. Also revert the
+  hunks that describe enforcement as current: this section, the "on Linux CI
+  no network" clause in AGENTS.md, and the matching bullet in the
+  harness-integration skill. The switches, the npm `--offline` mode and the
+  scripts stay harmless with network.
 
-To reproduce a lane on Linux (or WSL), install its harness and bundle as
-above, then:
+To reproduce a lane on Linux, install its harness and bundle as above. Then
+run CI's two commands. On a Linux CI runner the prepare step adds
+`--check-online`:
 
 ```bash
 node --experimental-strip-types scripts/prepare-offline-playback.mjs codex --check-online
-HOOKNOSTIC_PLAYBACK=codex scripts/without-network.sh pnpm exec vitest run packages/cli/test/harness-playback.test.ts
+HOOKNOSTIC_PLAYBACK=codex HKN_NO_NETWORK_REQUIRE_ENV=HOOKNOSTIC_PLAYBACK scripts/without-network.sh \
+  pnpm exec vitest run packages/cli/test/harness-playback.test.ts packages/cli/test/opencode-v2-playback.test.ts scripts/pi-drift-driver.test.mjs
 ```
 
-That needs passwordless `sudo`. Where sudo prompts (WSL's default user), run
-the wrapper as root and name the user instead:
+That needs unrestricted passwordless sudo (see the trust boundary above).
+Where sudo prompts (WSL's default user), run the wrapper from a root shell and
+name the user. That root shell's environment, with the playback variables,
+becomes the user's, and `PATH` and `HOME` come from the arguments:
 
 ```bash
 scripts/without-network.sh --as "$(id -u user):$(id -g user)" --path "$PATH" --home /home/user -- <command>
 ```
-
-Here `user`'s `PATH` and the playback variables must already be in that root
-shell's environment.
 
 ## Marketplace release gates
 

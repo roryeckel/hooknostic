@@ -152,7 +152,7 @@ ends rotate.
 
 | Destination | Process and test | Purpose | Needed | Knob |
 | --- | --- | --- | --- | --- |
-| api.anthropic.com:443 (160.79.104.10; IPv6 2607:6bc0::10 was attempted and unreachable) | `claude plugin validate --strict <dir>`, 1 of 82 harness processes. Test: "discovers a projected skill, starts all MCP transports with native variables, and runs combined hooks" (`harness-playback.test.ts:2383`), which runs it with `env: process.env`: no `ANTHROPIC_BASE_URL` and none of the drive's `DISABLE_*` variables. | A request built on the API base URL (**captured**: it disappears with `ANTHROPIC_BASE_URL` on loopback). Which endpoint is not known. The binary names `/api/claude_code/settings`, `/api/claude_code/policy_limits` and `/api/eval/` among others (**inference**). `claude --version` makes no request. | **No** | `ANTHROPIC_BASE_URL=http://127.0.0.1:<port>` (**captured**, standalone probe). Not removed by `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC`, `DISABLE_GROWTHBOOK`, `DISABLE_TELEMETRY`, `DISABLE_ERROR_REPORTING`, `DISABLE_AUTOUPDATER` or `DISABLE_INSTALLATION_CHECKS`, alone or together (**captured**). |
+| api.anthropic.com:443 (160.79.104.10; IPv6 2607:6bc0::10 was attempted and unreachable) | `claude plugin validate --strict <dir>`, 1 of 82 harness processes. Test: "discovers a projected skill, starts all MCP transports with native variables, and runs combined hooks". At the inventory's base (`51d4fa22`), that test's `plugin validate` call ran with `env: process.env`: no `ANTHROPIC_BASE_URL` and none of the drive's `DISABLE_*` variables. That is the state measured here. This branch changed it; see "Acted on". | A request built on the API base URL (**captured**: it disappears with `ANTHROPIC_BASE_URL` on loopback). Which endpoint is not known. The binary names `/api/claude_code/settings`, `/api/claude_code/policy_limits` and `/api/eval/` among others (**inference**). `claude --version` makes no request. | **No** | `ANTHROPIC_BASE_URL=http://127.0.0.1:<port>` (**captured**, standalone probe). Not removed by `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC`, `DISABLE_GROWTHBOOK`, `DISABLE_TELEMETRY`, `DISABLE_ERROR_REPORTING`, `DISABLE_AUTOUPDATER` or `DISABLE_INSTALLATION_CHECKS`, alone or together (**captured**). |
 | downloads.claude.ai:443 (35.190.46.17, SNI downloads.claude.ai) | The interactive TUI in both pty drives (`--permission-mode manual`), 2 processes. These drives already set `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1`, `DISABLE_AUTOUPDATER=1` and `DISABLE_TELEMETRY=1`. | The official plugin marketplace: the binary's only URLs on this host are `…/claude-code-releases/plugins/claude-plugins-official` and the release bucket (**inference**). | **No** | None found. The drives' existing knobs do not stop it (**captured**). |
 
 A third connection, to `172.17.0.1:33349`, came from the same pty TUI. That
@@ -317,14 +317,78 @@ All six lanes passed in the namespace, with the canary green before vitest:
 | opencode-v2 | 95 | 51 |
 | opencode-v1 | 65 | 81 |
 
+Why every count is exactly 4 higher than the inventory table (68/67/66/70/91/61):
+- the tree, not the test selection;
+- master gained four tests in `opencode-v2-playback.test.ts` between the
+  inventory's base (`51d4fa22`) and this branch's (`766f2370`);
+- those four run outside that file's lane gate, so every lane counts them.
+
+The round-2 runs below add one more, the no-lane guard.
+
 Two wrapped runs were expected to fail, and did:
 - opencode-v1 without the prepare step failed 13 tests in 6 s with `ENOTCACHED`
   (26 installs). Before, it timed out.
 - The wrapper with `--net` removed failed in the canary, on the interfaces,
   IPv4 and DNS checks.
 
-The sudo path was exercised through a temporary sudoers rule scoped to the
-wrapper, removed afterwards.
+The sudo path was exercised once in round 1, through a temporary sudoers rule
+scoped to the wrapper and removed straight after. **Do not copy that.**
+Implementation review round 1 showed that the root hop of that version trusted
+the caller's environment. With such a rule, that made the wrapper a root shell
+for anything running as that user. The wrapper is now hardened (round 2,
+below). It also sudo's `/bin/bash`, so a rule scoped to it no longer matches.
+It is meant for unrestricted sudo only (`docs/testing.md`, "Trust boundary").
+
+### Round 2: implementation review fixes
+
+- **Root hop hardened.**
+  - Each root hop starts from `/usr/bin/env -i … /bin/bash`, with absolute
+    `ip`, `setpriv` and `unshare`.
+  - `--as` must match `SUDO_UID`/`SUDO_GID`.
+  - Root checks the env file (regular, 0600, the caller's, named by this
+    script) but never reads or removes it. The user loads it after the drop.
+
+  The reviewer's attacks, re-run in WSL against the round-1 wrapper (80166e8d)
+  and the new one, as sudo enters root (a sanitized environment plus
+  `SUDO_UID`):
+
+  | Attack | Round 1 | Round 2 |
+  |---|---|---|
+  | caller `PATH` with a fake `ip` | fake `ip` ran as uid 0 | never ran |
+  | caller `BASH_ENV` | sourced as uid 0 | never sourced |
+  | `--env-file` naming a root-owned 0600 file | root deleted it | refused, file kept |
+  | `--env-file` a symlink | accepted | refused |
+  | `--as 65534:65534` with `SUDO_UID=1000` | ran as 65534 | refused |
+
+  In the same run the legitimate command ran as 1000, the canary passed, and
+  no env file was left.
+- **No supplementary groups.** `--clear-groups` replaces `--init-groups`, and
+  the canary checks it: with `--init-groups`, WSL showed 12 supplementary
+  groups, `docker` among them. All six lanes pass without them:
+
+  | Lane | Passed | Skipped |
+  |---|---|---|
+  | claude | 73 | 74 |
+  | codex | 72 | 75 |
+  | copilot | 71 | 76 |
+  | pi | 75 | 72 |
+  | opencode-v2 | 96 | 51 |
+  | opencode-v1 | 66 | 81 |
+
+  Each count is one higher than above: the no-lane guard.
+- **Vacuous-green holes closed.**
+  - A required variable must be non-empty.
+  - `prepare-offline-playback.mjs` rejects an unknown lane (exit 2).
+  - Under `HOOKNOSTIC_PLAYBACK_NETWORK=none`, `harness-playback.test.ts`
+    fails when no known lane is selected. The previous file passed vacuously
+    (36 passed, 41 skipped).
+- **Online control.** It accepts any of 1.1.1.1, 8.8.8.8 and 9.9.9.9;
+  offline requires all three to be unreachable.
+- **Rollback.** Revert the `ci:` commit (5a60b406). Also revert the hunks that
+  describe enforcement as current: `docs/testing.md` "Network isolation on
+  Linux", the AGENTS.md clause, and the harness-integration skill bullet (from
+  6cd49405 and their round-2 updates). Everything else is harmless with
+  network.
 
 ### CI evidence (draft PR #288)
 
