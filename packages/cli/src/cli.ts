@@ -2,11 +2,13 @@ import { rmSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
+import type { ParseArgsOptionDescriptor } from "node:util";
 import { parseArgs } from "node:util";
 
 import type { AdapterRegistry, EvaluationGuard } from "@hooknostic/core";
 import {
   EvaluationStalledError,
+  formatDiagnostics,
   HOOKNOSTIC_VERSION,
   loadConfig,
   runProject,
@@ -50,6 +52,8 @@ Usage:
 Options:
   --config <path>     Path to hooknostic.config.ts (default ./hooknostic.config.ts)
   --target <a,b>      Narrow the configured target set (never adds targets)
+  --dry-run           sync: report what it would change, writing nothing
+  --local             init: create the missing config and hooks.ts, never overwriting
   --events <path>     JSON Lines of portable events to dispatch (default: stdin)
   --capability <id>   Inspect a single capability
   --component <id>    Inspect a single Agent Plugin component
@@ -61,6 +65,92 @@ Options:
   --json              Machine-readable output (not accepted by dispatch, which always writes JSON Lines)
   -h, --help          Show this help
 `;
+
+type Command = "check" | "build" | "init" | "sync" | "verify" | "recover" | "doctor" | "inspect" | "dispatch";
+
+/** Every option a command can take, in the order a command line is checked in. */
+const FLAG_OPTIONS = {
+  config: { type: "string" },
+  "dry-run": { type: "boolean" },
+  local: { type: "boolean" },
+  target: { type: "string" },
+  capability: { type: "string" },
+  component: { type: "string" },
+  field: { type: "string" },
+  delivery: { type: "string" },
+  events: { type: "string" },
+  version: { type: "string" },
+  unguarded: { type: "boolean" },
+  json: { type: "boolean" },
+} as const satisfies Record<string, ParseArgsOptionDescriptor>;
+
+type Flag = keyof typeof FLAG_OPTIONS;
+const FLAGS = Object.keys(FLAG_OPTIONS) as Flag[];
+
+/**
+ * What the parser accepts: the options in the table, and --help, which every
+ * command takes ahead of any check. Add an option to FLAG_OPTIONS, never here.
+ */
+export const PARSE_OPTIONS = {
+  ...FLAG_OPTIONS,
+  help: { type: "boolean", short: "h" },
+} as const satisfies Record<string, ParseArgsOptionDescriptor>;
+
+/**
+ * Which command takes which option: each command's line in CLI_USAGE (#255).
+ * Any other is a usage error, before the command does anything.
+ */
+export const COMMAND_FLAGS: Readonly<Record<Command, ReadonlySet<Flag>>> = {
+  check: new Set(["config", "target", "json"]),
+  build: new Set(["config", "target", "json"]),
+  init: new Set(["config", "local", "json"]),
+  sync: new Set(["config", "dry-run", "json"]),
+  verify: new Set(["config", "json"]),
+  recover: new Set(["config", "json"]),
+  doctor: new Set(["config", "json"]),
+  inspect: new Set(["config", "capability", "component", "field", "version", "delivery", "json"]),
+  dispatch: new Set(["config", "target", "events", "unguarded"]),
+};
+
+/** How many positional words each command takes: inspect its target, the rest none (#255). */
+export const COMMAND_POSITIONALS: Readonly<Record<Command, number>> = {
+  check: 0,
+  build: 0,
+  init: 0,
+  sync: 0,
+  verify: 0,
+  recover: 0,
+  doctor: 0,
+  inspect: 1,
+  dispatch: 0,
+};
+
+function isCommand(command: string): command is Command {
+  return Object.hasOwn(COMMAND_FLAGS, command);
+}
+
+/**
+ * Checked first, for any command, as they were before the table (#208): an
+ * unknown command given one is reported as the option, not the command.
+ */
+const EARLY_FLAGS: readonly Flag[] = ["dry-run", "unguarded"];
+
+/** The usage error for `flag` given to `command`, which does not take it. */
+function unsupportedFlag(command: string, flag: Flag): string {
+  // Since #246, --version in place of a command is hooknostic's own.
+  if (flag === "version")
+    return `--version <range> is only supported by inspect; run "hooknostic --version" for this hooknostic's version`;
+  const takers = (Object.keys(COMMAND_FLAGS) as Command[]).filter((other) => COMMAND_FLAGS[other].has(flag));
+  return takers.length === 1
+    ? `--${flag} is only supported by ${takers[0]}`
+    : `--${flag} is not supported by ${command}`;
+}
+
+/** The usage error for `word`, a positional `command` has no place for. */
+function unexpectedWord(command: Command, word: string): string {
+  const takes = COMMAND_POSITIONALS[command];
+  return `unexpected argument ${JSON.stringify(word)}: ${command} ${takes === 1 ? "takes one target" : "takes no positional arguments"}`;
+}
 
 export interface RunCliOptions {
   registry?: AdapterRegistry;
@@ -447,25 +537,8 @@ async function runCommand(argv: string[], options: RunCliOptions | undefined, ow
 
   let parsed: { values: Record<string, string | boolean | undefined>; positionals: string[] };
   try {
-    parsed = parseArgs({
-      args: rest,
-      allowPositionals: true,
-      options: {
-        config: { type: "string" },
-        "dry-run": { type: "boolean" },
-        local: { type: "boolean" },
-        target: { type: "string" },
-        capability: { type: "string" },
-        component: { type: "string" },
-        field: { type: "string" },
-        delivery: { type: "string" },
-        events: { type: "string" },
-        version: { type: "string" },
-        unguarded: { type: "boolean" },
-        json: { type: "boolean" },
-        help: { type: "boolean", short: "h" },
-      },
-    });
+    // Positionals are checked per command below, so each gets its own message.
+    parsed = parseArgs({ args: rest, allowPositionals: true, options: PARSE_OPTIONS });
   } catch (error) {
     io.stderr(error instanceof Error ? error.message : String(error));
     io.stderr(CLI_USAGE);
@@ -520,8 +593,30 @@ async function runCommand(argv: string[], options: RunCliOptions | undefined, ow
       io.stderr(CLI_USAGE);
       return 2;
     }
-    if (parsed.values["dry-run"] && command !== "sync") return usage("--dry-run is only supported by sync");
-    if (parsed.values["unguarded"] && command !== "dispatch") return usage("--unguarded is only supported by dispatch");
+    // The options rejected before the table (#208), for every command, an
+    // unknown one too, and in their order then: each command line they
+    // rejected keeps its message (#255).
+    for (const flag of EARLY_FLAGS)
+      if (parsed.values[flag] !== undefined && !(isCommand(command) && COMMAND_FLAGS[command].has(flag)))
+        return usage(unsupportedFlag(command, flag));
+    // The rest of the command line against the table (#255), for a known
+    // command: an unknown one is reported as that, below. Before the command
+    // reads or writes anything.
+    if (isCommand(command)) {
+      // inspect without a target next, as before the table: the target may
+      // be a word given as --target, which the table would report instead.
+      if (command === "inspect" && parsed.positionals.length === 0) {
+        io.stderr("inspect requires a target, e.g. `hooknostic inspect claude`.");
+        return 2;
+      }
+      // Options in their declaration order, so the message does not depend
+      // on where they stand; present when given at all, even empty.
+      const accepted = COMMAND_FLAGS[command];
+      for (const flag of FLAGS)
+        if (parsed.values[flag] !== undefined && !accepted.has(flag)) return usage(unsupportedFlag(command, flag));
+      const stray = parsed.positionals[COMMAND_POSITIONALS[command]];
+      if (stray !== undefined) return usage(unexpectedWord(command, stray));
+    }
     switch (command) {
       case "init":
         if (!parsed.values["local"]) return usage("init requires --local");
@@ -545,8 +640,11 @@ async function runCommand(argv: string[], options: RunCliOptions | undefined, ow
         });
         if (parsed.values["json"]) io.stdout(JSON.stringify({ schemaVersion: 1, command, ...result }, null, 2));
         else {
-          for (const diagnostic of result.diagnostics)
-            io.stdout(`${diagnostic.code} ${diagnostic.severity}: ${diagnostic.message}`);
+          // As `check` prints them, remediation included (#260).
+          if (result.diagnostics.length > 0) {
+            io.stdout(formatDiagnostics(result.diagnostics));
+            io.stdout("");
+          }
           for (const [id, target] of Object.entries(result.targets ?? {})) {
             const exclusions = target.project?.authorExclusions;
             if (exclusions)
@@ -585,11 +683,8 @@ async function runCommand(argv: string[], options: RunCliOptions | undefined, ow
           io,
         });
       case "inspect": {
-        let target = parsed.positionals[0];
-        if (target === undefined) {
-          io.stderr("inspect requires a target, e.g. `hooknostic inspect claude`.");
-          return 2;
-        }
+        // Present: checked with the rest of the command line above.
+        let target = parsed.positionals[0] as string;
         if (typeof parsed.values["config"] === "string") {
           const loaded = await loadConfig(resolve(parsed.values["config"]));
           const report = { io, ...(parsed.values["json"] ? { json: true } : {}) };

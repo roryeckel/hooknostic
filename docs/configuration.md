@@ -202,7 +202,10 @@ Use `--config <path>` to select a configuration. `check` and `build` accept
 `--target <a,b>` to narrow the configured targets; project reconciliation commands
 process the whole integration and reject that flag. Every command but `dispatch`
 accepts `--json`; `dispatch` always writes JSON Lines, rejects `--json` with exit 2,
-and reads `--events <path>` or stdin.
+and reads `--events <path>` or stdin. Each command accepts only the options its
+usage line in `hooknostic --help` shows, plus `-h`/`--help`, which every command
+accepts, and no extra words: only `inspect` takes one, its target. Anything else
+is a usage error with exit 2, reported before the command reads or writes anything.
 
 ```sh
 hooknostic inspect codex --delivery package --component agent-plugin.mcp.stdio --config hooknostic.config.ts
@@ -221,7 +224,8 @@ harness version range instead.
 line naming the CLI and Node.js, plus the project's `@hooknostic/sdk` when there is
 a config. `doctor --json` prints no such line; it carries the versions as
 `runtime.hooknostic` and `runtime.node`, plus `runtime.sdk` only when there is a
-config. `runtime.sdk.status` is one of:
+config, and its own diagnostics, such as HN110, under `diagnostics` (see below).
+`runtime.sdk.status` is one of:
 
 - `found`, with `version`, from the SDK's own manifest;
 - `not-found`: the SDK does not resolve from the config's directory. Outside
@@ -239,15 +243,42 @@ config. `runtime.sdk.status` is one of:
   - `outside-pnp-runtime`: `manifest`, a Yarn Plug'n'Play manifest, is in the
     config's directory or an ancestor, this process isn't running under Yarn's
     runtime, and no `node_modules/@hooknostic/sdk` is reachable. In a Yarn
-    Plug'n'Play project, run `yarn hooknostic doctor`; there, a build run any
-    other way fails with HN504. A stray manifest above a `node_modules` project
-    gives this reason too.
+    Plug'n'Play project, run `yarn hooknostic doctor`; a build run there
+    without Yarn's runtime fails with HN504 when it needs a package from
+    Yarn's install ([ADR-0041](decisions/0041-yarn-pnp-runtime.md)). A stray
+    manifest above a `node_modules` project gives this reason too.
 
 `doctor` looks the SDK up from the config's directory, as HN110 does. A build
 resolves it from each file that imports it instead, so an SDK that only a nested
 entry's directory reaches, such as one installed only in a workspace package below
 a root config, reads `not-found` though the build bundles it. The versions are
 facts: HN110 alone warns when the CLI and the SDK differ.
+
+`doctor` judges an SDK it reports as `found`, whatever the config's targets
+deliver and even when the config fails to load. Its text output prints that HN110
+after the versions, before the config loads. `doctor --json` lists doctor's own
+diagnostics under a top-level `diagnostics` array: HN110 first, then each error of
+doctor's own builds, with its remediation (#260). Doctor builds a config that fails
+to load, every target of a config without `project`, and the package-delivery
+targets of a `project` configuration, so these errors include a config that fails
+to load and such a target with no registered adapter. `configurationErrors` still
+lists those errors' messages, as strings. The array is empty without a config, or
+with a config that has neither a skew nor an error in those builds. HN110 never
+changes the exit code; a configuration error exits 2. The text output prints each
+diagnostic as `check` does, with its code and remediation: HN110 on stdout, the
+configuration errors on stderr.
+
+With a `project` configuration that has project-delivery targets,
+`project.diagnostics` keeps the report of the `verify` doctor runs, as `sync` and
+`verify` list it, so HN110 may appear in both. That report's HN110 comes from the
+build's own lookup, which also follows `NODE_PATH`, so it may warn about an SDK the
+version line reads as `not found`. A project-delivery target's errors, such as one
+with no registered adapter, are listed only there, not in the top-level
+`diagnostics` or `configurationErrors`. The text output prints the report's
+diagnostics on stdout after the project wiring line, leaving out one identical to
+doctor's own. When the
+verify build fails, the errors printed after them repeat every build message,
+HN110's included.
 
 ## Build reports and troubleshooting
 
