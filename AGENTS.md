@@ -9,9 +9,10 @@ skill before editing this file, `CLAUDE.md`, or anything under
 ## Repository
 
 hooknostic compiles portable agent hooks — one TypeScript source — into native
-artifacts per harness (Claude Code, OpenAI Codex CLI, OpenCode, Pi). pnpm
-workspace: library packages in `packages/`, runnable examples in `examples/`,
-captured harness payloads in `fixtures/`, capture projects in `.capture/`.
+artifacts per harness, one `packages/adapter-*` each (the generated
+`docs/harness-support.md` lists them). pnpm workspace: library packages in
+`packages/`, runnable examples in `examples/`, captured harness payloads in
+`fixtures/`, capture projects in `.capture/`.
 
 - **Agents never run `npm publish` or `pnpm publish`.** Routine publication is
   workflow-only through `.github/workflows/release-publish.yml`, triggered by

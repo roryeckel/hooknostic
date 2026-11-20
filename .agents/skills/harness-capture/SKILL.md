@@ -1,6 +1,6 @@
 ---
 name: harness-capture
-description: Capture real harness behavior before implementing against it. Use when adding or changing any claim about Claude Code, Codex, or OpenCode — hook payload fields, tool argument shapes (ShellShapes, FileShapes, toolmap, tool.shell, tool.file), which tools a harness advertises, whether a wire channel (updatedInput, systemMessage) is honoured, which interpreter or shell dialect a shell tool runs (.capture/shell-dialects), whether a harness loads another harness's files (`.claude/settings.json`, `.claude/skills`, `.mcp.json`) — or when adding fixtures under fixtures/<harness>/, editing a provenance README, working in .capture/ (including .capture/file-tools), or verifying an adapter claim live.
+description: Capture real harness behavior before implementing against it. Use when adding or changing any claim about a harness (Claude Code, Codex, OpenCode, Pi, GitHub Copilot CLI, or any other) — hook payload fields, tool argument shapes (ShellShapes, FileShapes, toolmap, tool.shell, tool.file), which tools a harness advertises, whether a wire channel (updatedInput, systemMessage) is honoured, which interpreter or shell dialect a shell tool runs (.capture/shell-dialects), whether a harness loads another harness's files (`.claude/settings.json`, `.claude/skills`, `.mcp.json`) — or when adding fixtures under fixtures/<harness>/, editing a provenance README, working in .capture/ (including .capture/file-tools), or verifying an adapter claim live.
 ---
 
 # Harness capture
@@ -17,7 +17,7 @@ guard that compiled clean and silently allowed a whole harness's shell calls.
 |---|---|---|
 | **captured** | Verbatim payload from a live harness session, with version and date | Full |
 | schema-derived | Built from wire schemas extracted from the harness binary | Shape only, not behavior |
-| doc-derived | From vendor docs | Weakest — docs drift; the first three adapters each found doc drift only capture revealed |
+| doc-derived | From vendor docs | Weakest — docs drift; the first three adapters each found doc drift only capture (or binary/type inspection) revealed |
 | constructed | Assembled (e.g. log-derived args in a schema-derived envelope) | Say exactly what was observed and what was not |
 
 Upgrading a claim's provenance (doc-derived → captured) is always worth a
