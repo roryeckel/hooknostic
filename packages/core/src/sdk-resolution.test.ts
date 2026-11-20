@@ -7,7 +7,7 @@ import { dirname, join, resolve } from "node:path";
 import { afterAll, afterEach, describe, expect, it } from "vitest";
 
 import { projectSdkRelease, projectSdkReleaseSkew } from "./build.js";
-import { nodeModulesHas, sdkReleaseSkew } from "./sdk-resolution.js";
+import { anotherInstallsPnpRuntime, nodeModulesHas, sdkReleaseSkew } from "./sdk-resolution.js";
 
 const CLI = "0.12.0";
 const roots: string[] = [];
@@ -489,6 +489,89 @@ describe("projectSdkReleaseSkew (HN110)", () => {
       const diagnostic = projectSdkReleaseSkew(root, { alias: { "@hooknostic/sdk": aliased.entry } });
       expect(diagnostic).toMatchObject({ code: "HN110" });
       expect(diagnostic?.message).toContain("is 0.10.0,");
+    });
+
+    /**
+     * Today's answers for the layouts the #269 probe ran against real installs
+     * (Yarn 4.18.1, Node 24.20.0, Windows, 2026-11-19). These tests simulate
+     * the outcomes it captured; they are not a live capture.
+     */
+    describe("asks about the CLI's own directory wherever it is (#269 probe)", () => {
+      /**
+       * Yarn's runtime with these APIs loaded, each listing the paths under
+       * its prefixes. `findPnpApi` returns the API that lists a path, or null,
+       * as Yarn's does.
+       */
+      function loadedApis(...apis: string[][]): void {
+        versions["pnp"] = "3";
+        const lists = (prefixes: string[], path: string) => prefixes.some((prefix) => path.startsWith(prefix));
+        nodeModule.findPnpApi = (location: string) => {
+          asked.push(location);
+          const api = apis.find((prefixes) => lists(prefixes, location));
+          if (api === undefined) return null;
+          return {
+            findPackageLocator: (path: string) => (lists(api, path) ? { name: "app", reference: "workspace:." } : null),
+          };
+        };
+        nodeModule._resolveFilename = function (request, parent, ...rest) {
+          if (parent?.filename !== undefined) issuers.push(parent.filename);
+          return originalResolve.call(this, request, parent, ...rest);
+        };
+      }
+
+      const installA = join(tmpdir(), "yarn-install-a");
+      const portal = join(tmpdir(), "hooknostic-checkout", "packages", "cli", "dist");
+
+      // R1: resolving from the project loaded its manifest beside install A's.
+      it.each([
+        [
+          "unplugged",
+          join(installA, ".yarn", "unplugged", "hooknostic-npm-0.0.0-0", "node_modules", "hooknostic", "dist"),
+        ],
+        ["a workspace", join(installA, "packages", "hooknostic", "dist")],
+        ["through portal:", portal],
+      ])("answers true for a CLI install A holds outside a zip (%s), against another project", async (_, own) => {
+        const { root } = await project(sdkManifest("0.11.9"), { pnp: true });
+        loadedApis([installA, portal]);
+        expect(anotherInstallsPnpRuntime(root, own)).toBe(true);
+        expect(asked).toEqual([own]);
+      });
+
+      it("answers false for an unplugged CLI in the project's own install", async () => {
+        const { root } = await project(sdkManifest("0.11.9"), { pnp: true });
+        const own = join(root, ".yarn", "unplugged", "hooknostic-npm-0.0.0-0", "node_modules", "hooknostic", "dist");
+        loadedApis([root]);
+        expect(anotherInstallsPnpRuntime(root, own)).toBe(false);
+      });
+
+      // R2: resolving from the project loaded its manifest beside the tree's.
+      it("answers true for an npm CLI inside another Yarn tree, started with that tree's runtime", async () => {
+        const { root } = await project(sdkManifest("0.11.9"), { pnp: true });
+        const tree = join(tmpdir(), "yarn-tree-f");
+        const own = join(tree, "tools", "node_modules", "hooknostic", "dist");
+        loadedApis([tree]);
+        expect(anotherInstallsPnpRuntime(root, own)).toBe(true);
+      });
+
+      // The #269 layout. The probe found the tree's manifest already loaded
+      // when the CLI starts, and this answer wrong: the runtime is the
+      // project's, and resolving from it loads nothing. Accepted.
+      it("answers true, wrongly, for that CLI started with the project's own runtime (accepted)", async () => {
+        const { root } = await project(sdkManifest("0.11.9"), { pnp: true });
+        const tree = join(tmpdir(), "yarn-tree-f");
+        const own = join(tree, "tools", "node_modules", "hooknostic", "dist");
+        loadedApis([root], [tree]);
+        expect(anotherInstallsPnpRuntime(root, own)).toBe(true);
+      });
+
+      it("keeps HN110 silent and doctor's SDK not looked up in the #269 layout (accepted)", async () => {
+        const { root } = await project(sdkManifest("0.11.9"), { pnp: true });
+        // This file's package stands for the other Yarn tree around the CLI.
+        loadedApis([root], [resolve(import.meta.dirname, "..")]);
+        expect(projectSdkReleaseSkew(root)).toBeUndefined();
+        expect(projectSdkRelease(root)).toEqual({ status: "not-looked-up", reason: "another-pnp-runtime" });
+        expect(issuers.filter((issuer) => issuer.startsWith(root))).toEqual([]);
+      });
     });
   });
 });

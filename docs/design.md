@@ -749,7 +749,10 @@ the project's, as for `doctor`, and the build does not bundle it either (#246,
 #258). It is also silent under another install's Plug'n'Play runtime, as under
 `yarn dlx` in a Plug'n'Play project: looking up the project's SDK there would
 load its runtime beside dlx's and break the build (#216); `yarn dlx` is
-unsupported (ADR-0041). Add
+unsupported (ADR-0041). It is silent too for a CLI installed by npm inside
+another Yarn Plug'n'Play project's tree and started with the project's own
+`node -r ./.pnp.cjs`, which Yarn reports as served by that other project
+(#269). Add
 `hooknostic` to the project's devDependencies at the same version as its
 `@hooknostic/sdk`, and run that CLI from the project directory:
 `npx hooknostic`, or `pnpm exec hooknostic` in a pnpm project (a project made
