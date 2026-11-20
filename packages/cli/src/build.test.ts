@@ -2,8 +2,9 @@ import { spawnSync } from "node:child_process";
 import { existsSync, realpathSync } from "node:fs";
 import { readFileSync } from "node:fs";
 import { chmod, cp, mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
+import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
-import { basename, join, resolve } from "node:path";
+import { basename, dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { stop as stopEsbuild } from "esbuild";
@@ -3106,14 +3107,14 @@ async function sdkOnlyOnNodePath() {
     expect(reached.status, reached.stderr).toBe(0);
     expect(reached.stdout.trim()).toBe(join(sdk, "dist/index.js"));
   };
-  return { env, expectReachedFrom };
+  return { global, env, expectReachedFrom };
 }
 
-/** `hooknostic check --json --config <config>`, spawned from the built CLI with `env`. */
-function spawnCheck(config: string, env: NodeJS.ProcessEnv) {
+/** `hooknostic <command> --json --config <config>`, spawned from the built CLI with `env`. */
+function spawnCli(command: "build" | "check", config: string, env: NodeJS.ProcessEnv) {
   return spawnSync(
     process.execPath,
-    [join(REPO, "packages/cli/bin/hooknostic.mjs"), "check", "--json", "--config", config],
+    [join(REPO, "packages/cli/bin/hooknostic.mjs"), command, "--json", "--config", config],
     { env, encoding: "utf8", timeout: 120_000 },
   );
 }
@@ -3253,7 +3254,7 @@ describe("a CLI and a project SDK on different releases (HN110, #194)", () => {
       );
       const { env, expectReachedFrom } = await sdkOnlyOnNodePath();
       expectReachedFrom(dir);
-      const run = spawnCheck(config, env);
+      const run = spawnCli("check", config, env);
       expect(run.status, `${run.stdout}\n${run.stderr}`).toBe(0);
       expect(hn110(JSON.parse(run.stdout).diagnostics)).toEqual([]);
     },
@@ -3287,7 +3288,7 @@ describe("the build's SDK alias ignores an SDK that only NODE_PATH reaches (#258
     // project's SDK, so it matters even for an entry that imports none. Node's
     // lookup also searches NODE_PATH, which esbuild never does: a foreign SDK
     // there must not stand in for the project's.
-    const dir = await mkdtemp(join(tmpdir(), "hooknostic-alias-node-path-"));
+    const dir = realpathSync(await mkdtemp(join(tmpdir(), "hooknostic-alias-node-path-")));
     cleanupDirs.push(dir);
     await writeFile(join(dir, "plugin.ts"), 'export default { name: "no-sdk", version: "1.0.0", hooks: [] };\n');
     const config = join(dir, "hooknostic.config.ts");
@@ -3298,11 +3299,17 @@ describe("the build's SDK alias ignores an SDK that only NODE_PATH reaches (#258
         targets: { claude: { version: ${JSON.stringify(claudeHarness.recommendedRange)}, delivery: "package", output: "dist/claude" } },
       };`,
     );
-    const { env, expectReachedFrom } = await sdkOnlyOnNodePath();
+    const { global, env, expectReachedFrom } = await sdkOnlyOnNodePath();
     expectReachedFrom(dir);
-    const run = spawnCheck(config, env);
+    const run = spawnCli("build", config, env);
     expect(run.status, `${run.stdout}\n${run.stderr}`).toBe(0);
     expect((JSON.parse(run.stdout) as { diagnostics: { code: string }[] }).diagnostics).toEqual([]);
+    // esbuild names each bundled module in a `// <path>` line, relative to the
+    // config's directory: the CLI's own SDK is there, the stand-in is not.
+    const runtime = await readFile(join(dir, "dist/claude/runtime/hooknostic.mjs"), "utf8");
+    const cliSdk = dirname(createRequire(join(REPO, "packages/cli/package.json")).resolve("@hooknostic/sdk"));
+    expect(runtime).toContain(`\n// ${relative(dir, cliSdk).replaceAll("\\", "/")}/`);
+    expect(runtime).not.toContain(basename(global));
   });
 });
 
