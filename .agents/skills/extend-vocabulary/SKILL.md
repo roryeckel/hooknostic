@@ -33,20 +33,21 @@ decision does not.
 - `packages/runtime/src/dispatch.ts`: an apply case in the effect switch. If
   the effect is portable-but-lowered (like `updateShell`), lower it in
   dispatch to an existing kind and mark the synthesized entry with
-  `loweredFrom`, so the three adapter `apply.ts` reducers stay untouched.
-  They each independently resolve `kind === "replaceInput"` **and each
+  `loweredFrom`, so every `packages/adapter-*/src/**/apply.ts` reducer
+  (OpenCode's `v2/` family has its own) stays untouched. They each independently resolve `kind === "replaceInput"` **and each
   suppresses a recorded rewrite on a terminal deny** (denial precedence) —
   a new effect kind slipping past those reducers, or a reducer missing the
   precedence rule, diverges per adapter; both have happened.
-- Docs: effect list in `docs/design.md` §7, table in `docs/concepts.md`,
+- Docs: effect list in `docs/design.md` §6.4, table in `docs/concepts.md`,
   composition rule 4 if terminality changed.
 
 ## New capability id
 
 - Append to `ALL_CAPABILITY_IDS` (`packages/sdk/src/capabilities.ts`).
-- Rate it in **all three** `packages/adapter-*/src/profile.ts` matrices;
-  non-exact levels need a rationale (testkit-enforced, and rendered to users
-  by `inspect`).
+- Rate it in **every** `packages/adapter-*/src/**/profile.ts` matrix,
+  including OpenCode's `v2/profile.ts` — an unrated id silently reads as
+  `unsupported`. Non-exact levels need a rationale (testkit-enforced, and
+  rendered to users by `inspect`).
 - Ask first whether the real gate is per-target at all: per-invocation
   knowledge (like tool shape coverage) cannot live in a build-time matrix —
   reuse the existing capability and document a runtime feature-detect
@@ -96,8 +97,9 @@ host configurations that could change it (`.capture/shell-dialects`).
   dialect to `dispatch()` as `shellDialect`, or a view that a rewrite creates
   has none.
 - **A new family**: `SHELL_DIALECTS` in `tools.ts` (the schema twin derives
-  from it), the name map, and the three places docs list the values
-  (`design.md` §6.3, `concepts.md`, `writing-hooks-safely.md`).
+  from it), the name map, and every doc that lists the values (today
+  `design.md` §6.3, `concepts.md`, `writing-hooks-safely.md`,
+  `opencode-families.md`; grep `docs/` for `posix` to find new ones).
 
 ## New normalized tool view
 

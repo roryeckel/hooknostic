@@ -189,7 +189,8 @@ contribution. It carries:
 - a capability profile whose every entry has a `validatedOn` record, at least one
   of them `captured`;
 - harness metadata (recommended range, reference build, fixture directory);
-- all ten obligations in the testkit's adapter contract suite;
+- every obligation in the testkit's adapter contract suite
+  (`describeAdapterContract`);
 - registration in the CLI registry and in the shim bundler;
 - a playback lane pinned to the adapter's reference version;
 - and **ongoing re-capture** as that harness ships new versions — the part that

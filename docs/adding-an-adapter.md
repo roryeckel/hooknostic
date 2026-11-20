@@ -13,7 +13,7 @@ reference it points to.
 
 ## 1. Capture reality before writing code
 
-Do not implement from vendor docs alone. All three existing adapters found
+Do not implement from vendor docs alone. The first three adapters each found
 doc drift only fixture capture (or binary/type inspection) revealed:
 
 - Claude Code docs said `user_prompt`; the wire field is `prompt`.
@@ -96,7 +96,7 @@ states the identity elsewhere, apply `reported.mcp` and declare
 The contract suite then hands a fixture's split back only on those events.
 
 Run the contract suite from your own package — it is the definition of done for
-an adapter, and it is the same one the three shipped adapters run:
+an adapter, and it is the same one every shipped adapter runs:
 
 ```ts
 import { describeAdapterContract } from "@hooknostic/testkit";
