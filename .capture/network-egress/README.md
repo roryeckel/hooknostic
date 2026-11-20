@@ -417,8 +417,9 @@ edit, so such a rule is a root shell (`docs/testing.md`, "Trust boundary").
   - The script finds its own path with builtins.
   - The root hops use bare tool names under the pinned system `PATH` rather
     than merged-/usr paths.
-  - The root-entry path removes its env file on exit if the hops fail before
-    the last one.
+  - The root-entry path removes its own env file on exit if a hop fails. As
+    first written, this covered only the hop that creates the file; round 4
+    extends it to the namespace hop.
 - **The refusals are tested as a normal user.** The `--as` and `--env-file`
   checks now run before the root check. `scripts/without-network.test.mjs`
   (Linux; CI's ubuntu test job) covers each refusal, and shows a valid request
@@ -447,6 +448,22 @@ edit, so such a rule is a root shell (`docs/testing.md`, "Trust boundary").
 
   The counts are the same as round 2's, with `groups: gid 1000 only` and all
   three required names present in every canary.
+
+### Round 4: implementation review round 3
+
+Re-run in WSL against round 3 (`aebf33e0`) and round 4:
+
+| Probe | Round 3 | Round 4 |
+|---|---|---|
+| root entry, `ip link set lo up` failing | 1 env file left in `/tmp` | none left (the namespace hop's trap) |
+| sudo shape, `ip` failing | caller's file untouched | caller's file untouched (root never removes it; the caller's own trap does) |
+| env file with `POSIXLY_CORRECT` before `EUID` | the run died silently: no check, nothing ran | completes; the check sees variables loaded after `EUID` |
+| `SHELLOPTS` and `EUID` | completes | completes; bash's readonly names are skipped |
+
+The load now skips bash's own readonly names (`BASHOPTS`, `BASH_VERSINFO`,
+`EUID`, `PPID`, `SHELLOPTS`, `UID`), and applies `POSIXLY_CORRECT` only after
+the loop. The nested guard run in `scripts/harness-lanes.test.mjs` also drops
+`HOOKNOSTIC_PLAYBACK_VERSION`, `HOOKNOSTIC_SMOKE` and `HOOKNOSTIC_PACK`.
 
 ### CI evidence (draft PR #288)
 
