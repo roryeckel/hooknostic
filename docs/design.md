@@ -713,18 +713,24 @@ folder (`__virtual__`, Yarn 2's `$$virtual`), is named by that install instead:
 `@hooknostic/sdk from Yarn's Plug'n'Play install is 0.11.9` (#225). Its path is
 unreadable, and usually machine-specific: it runs through `__virtual__` into
 Yarn's global cache, whose hash, depth and folder differ by machine. It is a
-warning, reported at most once per run, even when the configuration fails to
-load, so `check`, `build`, `sync` and `verify` all report it beside a load
-failure that the skew may cause, and so does `recover`, which reports it only
-beside a load failure. `doctor` reports it for any configuration it is given,
-whatever its targets deliver and even when it fails to load, after its version
-line and before the load, but only for an SDK its own lookup finds (#257): where
-that line reads `not found`, as for an SDK only `NODE_PATH` reaches, or
-`not looked up`, as in a Plug'n'Play project outside Yarn's runtime, `doctor`
-is silent.
+warning, reported at most once per run (`doctor --json` aside, below), even when
+the configuration fails to load, so `check`, `build`, `sync` and `verify` all
+report it beside a load failure that the skew may cause, and so does `recover`,
+which reports it only beside a load failure. `doctor` makes its own check for
+any configuration it is given, whatever its targets deliver and even when it
+fails to load, after its version line and before the load, but only for an SDK
+its own lookup finds (#257): where that line reads `not found`, as for an SDK
+only `NODE_PATH` reaches, or `not looked up`, as in a Plug'n'Play project
+outside Yarn's runtime, doctor's own check is silent. With project-delivery
+targets, doctor also lists the report of the `verify` it runs, whose HN110 comes
+from the build's lookup: until that lookup walks `node_modules` as the version
+line's does (#258), it follows `NODE_PATH`, so that report may still warn about
+an SDK the version line reads as `not found`.
 It never changes an exit code: `check` and `build` print it, `sync` and
 `verify` list it with their other build diagnostics, and `doctor --json` lists
-it under its own top-level `diagnostics`. It is silent when no SDK
+its own check's under a top-level `diagnostics`. That is the exception to once
+per run: in a project run, the JSON's `project.diagnostics`, the `verify`
+report, may repeat it. It is silent when no SDK
 resolves, when either version is not valid semver, and in this repository's
 workspace, whose examples resolve `packages/sdk` at the CLI's own version. It
 is also silent under another install's Plug'n'Play runtime, as under

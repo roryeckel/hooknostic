@@ -254,10 +254,16 @@ facts: HN110 alone warns when the CLI and the SDK differ.
 deliver and even when the config fails to load. Its text output prints that HN110
 on the line after the versions, before the config loads. `doctor --json` lists
 doctor's own diagnostics, HN110 among them, under a top-level `diagnostics` array,
-empty without a config or a skew. They never change the exit code. With a
-`project` configuration, `project.diagnostics` keeps the report `verify` makes,
-as `sync` and `verify` list it, so when the config has project-delivery targets
-HN110 may appear in both; the text output prints it once.
+empty without a config or a skew. They never change the exit code.
+
+With a `project` configuration that has project-delivery targets,
+`project.diagnostics` keeps the report of the `verify` doctor runs, as `sync` and
+`verify` list it, so HN110 may appear in both. That report's HN110 comes from the
+build's own lookup, which also follows `NODE_PATH`, so it may warn about an SDK the
+version line reads as `not found`. The text output prints the report's diagnostics
+after the project wiring line, leaving out one identical to doctor's own. When the
+verify build fails, the errors printed after them repeat every build message,
+HN110's included.
 
 ## Build reports and troubleshooting
 

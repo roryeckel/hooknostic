@@ -142,9 +142,16 @@ export function doctorVersionLine(sdk: ProjectSdkRelease | undefined, node: stri
  * not (#246).
  */
 function doctorDiagnostics(configDir: string | undefined, sdk: ProjectSdkRelease | undefined): Diagnostic[] {
+  // Once HN110 resolves the SDK as the version line does (#258), every status
+  // but `found` leaves it silent anyway, and this gate is redundant.
   if (configDir === undefined || sdk?.status !== "found") return [];
   const skew = projectSdkReleaseSkew(configDir);
   return skew === undefined ? [] : [skew];
+}
+
+/** A diagnostic as doctor's text output prints it, as `sync` does. */
+function diagnosticLine(diagnostic: Diagnostic): string {
+  return `${diagnostic.code} ${diagnostic.severity}: ${diagnostic.message}`;
 }
 
 /**
@@ -166,8 +173,7 @@ export async function runDoctor(options: DoctorCommandOptions): Promise<number> 
   const diagnostics = doctorDiagnostics(configDir, sdk);
   if (!options.json) {
     options.io.stdout(doctorVersionLine(sdk));
-    for (const diagnostic of diagnostics)
-      options.io.stdout(`${diagnostic.code} ${diagnostic.severity}: ${diagnostic.message}`);
+    for (const diagnostic of diagnostics) options.io.stdout(diagnosticLine(diagnostic));
   }
   const entries: DoctorEntry[] = [];
 
@@ -423,10 +429,14 @@ export async function runDoctor(options: DoctorCommandOptions): Promise<number> 
     // As `sync` prints them. A wiring warning such as HN107 has no other
     // witness: the harness's own output still looks hooked. One doctor
     // printed beside its version line, as HN110, is not repeated here; the
-    // JSON keeps both copies.
+    // JSON keeps both copies. Same code and same message: verify's build
+    // words HN110 with core's same projectSdkReleaseSkew, from the same
+    // config directory, so the two match unless they judged different SDKs,
+    // and then both are printed. A change to HN110's wording or remediation
+    // (#256, #259) changes both copies alike.
     for (const diagnostic of project.diagnostics) {
       if (diagnostics.some((own) => own.code === diagnostic.code && own.message === diagnostic.message)) continue;
-      options.io.stdout(`${diagnostic.code} ${diagnostic.severity}: ${diagnostic.message}`);
+      options.io.stdout(diagnosticLine(diagnostic));
     }
     for (const message of [...project.guidance, ...project.errors]) options.io.stdout(message);
   }

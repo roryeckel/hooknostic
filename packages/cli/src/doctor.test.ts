@@ -496,6 +496,35 @@ describe("doctor versions", () => {
     }
   });
 
+  it("prints verify's HN110 too when it judged another SDK than doctor's own (#257)", async () => {
+    // Only the same code and message is one warning. The SDK changes while the
+    // config loads: after doctor judges it, before verify's build does.
+    const release = "__hooknosticDoctorVersionsVerifyRelease";
+    const scope = globalThis as Record<string, unknown>;
+    const project = `{ project: { root: "." }, entry: "./hooks.ts", targets: { codex: { version: ${JSON.stringify(codexHarness.recommendedRange)}, delivery: "project", output: ".hooknostic/artifacts/codex" } } }`;
+    const { root, configPath } = await projectWith(
+      SKEWED_SDK,
+      `export default new Promise((resolve) => { (globalThis as Record<string, unknown>)[${JSON.stringify(release)}] = () => resolve(${project}); });`,
+    );
+    // No detect(): doctor must not depend on a Codex install for this report.
+    const { detect: _detect, ...codex } = codexAdapter();
+    try {
+      const human = fakeIO();
+      const running = runDoctor({ config: configPath, registry: { codex }, io: human.io });
+      await vi.waitFor(() => expect(scope[release]).toBeTypeOf("function"), { timeout: 30_000, interval: 20 });
+      await setSdkVersion(root, "0.0.2-test");
+      (scope[release] as () => void)();
+      await running;
+      expect(human.out.filter((line) => line.startsWith("HN110 warn: "))).toEqual([
+        expect.stringContaining(" is 0.0.1-test, "),
+        expect.stringContaining(" is 0.0.2-test, "),
+      ]);
+    } finally {
+      delete scope[release];
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   it("judges the SDK in its JSON as it was before the config loads (#257)", async () => {
     // The JSON is written only at the end, so the SDK changes while the load
     // waits: a judgement made after the load would find no skew.
