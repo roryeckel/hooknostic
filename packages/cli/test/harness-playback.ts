@@ -750,6 +750,12 @@ export async function prepareOpenCodePluginDependency(projectDir: string, harnes
         "--no-fund",
         "--no-audit",
         "--save-exact",
+        // Without network (scripts/without-network.sh sets this), install only
+        // from the cache that scripts/prepare-offline-playback.mjs filled just
+        // before, so a gap fails at once with ENOTCACHED instead of retrying
+        // into the timeout. Elsewhere npm resolves online as it always has, so
+        // a capture drive never records a dependency set from a stale cache.
+        ...(process.env["HOOKNOSTIC_PLAYBACK_NETWORK"] === "none" ? ["--offline"] : []),
         `@opencode-ai/plugin@${harnessVersion}`,
       ],
       { cwd: projectDir, env: process.env, timeoutMs: 60_000 },
