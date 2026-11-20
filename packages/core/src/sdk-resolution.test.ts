@@ -298,6 +298,32 @@ describe("sdkReleaseSkew (HN110)", () => {
     );
   });
 
+  it("does not let a record that names no pnpm release hide an ancestor's (#259)", async () => {
+    // An interrupted or hand-edited record nearer the config: the flag the
+    // root's pnpm 12 needs must not be dropped for it.
+    const { root, entry } = await project(sdkManifest("0.11.9"));
+    const app = join(root, "packages/app");
+    await lay(root, {
+      "node_modules/.modules.yaml": modulesYaml("isolated", "12.21.0"),
+      "packages/app/node_modules/.modules.yaml": JSON.stringify({ layoutVersion: 5, nodeLinker: "isolated" }),
+    });
+    expect(sdkReleaseSkew(entry, CLI, app)?.remediation).toContain(
+      "`pnpm add -D --allow-build=esbuild hooknostic@0.11.9` in a pnpm project",
+    );
+  });
+
+  it.each([
+    ["one-line JSON", '{"nodeLinker":"pnp","packageManager":"pnpm@12.21.0"}'],
+    ["YAML's flow form", "{nodeLinker: pnp, packageManager: pnpm@12.21.0}\n"],
+  ])("reads pnpm's record written as %s (#259)", async (_, record) => {
+    // No lockfile: the record alone says pnpm, and which release.
+    const { root, entry } = await project(sdkManifest("0.11.9"), { pnp: true });
+    await lay(root, { "node_modules/.modules.yaml": record });
+    expect(sdkReleaseSkew(entry, CLI, root)?.remediation).toContain(
+      "with `pnpm add -D --allow-build=esbuild hooknostic@0.11.9`, and run it with `pnpm exec hooknostic`.",
+    );
+  });
+
   it("points a pnpm node-linker=pnp project at pnpm exec, not yarn (#259)", async () => {
     // pnpm 12.21.0 with `nodeLinker: pnp` writes .pnp.cjs beside pnpm-lock.yaml
     // and node_modules/.modules.yaml, and serves packages from real
@@ -315,14 +341,28 @@ describe("sdkReleaseSkew (HN110)", () => {
 
   it.each<[string, Record<string, string>]>([
     ["by its install state alone", { "node_modules/.modules.yaml": modulesYaml("pnp", "12.21.0") }],
-    // node_modules deleted for a clean reinstall: the lockfile still says pnpm.
-    ["by pnpm-lock.yaml alone, with no yarn.lock", { "pnpm-lock.yaml": "lockfileVersion: '9.0'\n" }],
+    // pnpm 9 and 10 write the record as YAML.
+    ["by a YAML install state alone", { "node_modules/.modules.yaml": modulesYaml("pnp", "10.4.0", "yaml") }],
   ])("tells pnpm's Plug'n'Play from Yarn's %s (#259)", async (_, files) => {
     const { root, entry } = await project(sdkManifest("0.11.9"), { pnp: true });
     await lay(root, files);
     const remediation = sdkReleaseSkew(entry, CLI, root)?.remediation;
+    expect(remediation).toContain("`pnpm add -D --allow-build=esbuild hooknostic@0.11.9`");
     expect(remediation).toContain("`pnpm exec hooknostic`");
     expect(remediation).not.toContain("yarn");
+  });
+
+  it("keeps --allow-build with a note when only pnpm-lock.yaml says pnpm (#259)", async () => {
+    // node_modules deleted for a clean reinstall: the lockfile still says pnpm,
+    // but nothing records which pnpm. pnpm 12 needs the flag, and pnpm before
+    // 10.4 refuses it, so the advice says both.
+    const { root, entry } = await project(sdkManifest("0.11.9"), { pnp: true });
+    await lay(root, { "pnpm-lock.yaml": "lockfileVersion: '9.0'\n" });
+    expect(sdkReleaseSkew(entry, CLI, root)?.remediation).toBe(
+      "add hooknostic to the project's devDependencies at the same version as its @hooknostic/sdk, " +
+        "with `pnpm add -D --allow-build=esbuild hooknostic@0.11.9` (without `--allow-build=esbuild` before pnpm 10.4), " +
+        "and run it with `pnpm exec hooknostic`.",
+    );
   });
 
   it.each<[string, Record<string, string>]>([
@@ -334,6 +374,12 @@ describe("sdkReleaseSkew (HN110)", () => {
       { "yarn.lock": "", "node_modules/.modules.yaml": modulesYaml("isolated", "12.21.0") },
     ],
     ["both lockfiles", { "yarn.lock": "", "pnpm-lock.yaml": "lockfileVersion: '9.0'\n" }],
+    // A live yarn.lock wins over pnpm's record: Yarn's Plug'n'Play writes no
+    // node_modules, so the record is left from an earlier pnpm install.
+    [
+      "a leftover nodeLinker: pnp record",
+      { "yarn.lock": "", "node_modules/.modules.yaml": modulesYaml("pnp", "12.21.0") },
+    ],
   ])("keeps a Yarn Plug'n'Play project on yarn with %s (#259)", async (_, files) => {
     const { root, entry } = await project(sdkManifest("0.11.9"), { pnp: true });
     await lay(root, files);
@@ -452,9 +498,15 @@ describe("projectSdkReleaseSkew (HN110)", () => {
     );
   });
 
-  /** A pnpm 12 `nodeLinker: pnp` project as .capture/pnpm-pnp records it: the SDK linked into node_modules. */
-  async function pnpmPnpProject() {
-    const created = await project(sdkManifest("0.11.9"), { pnp: true });
+  /**
+   * A pnpm 12 `nodeLinker: pnp` project as .capture/pnpm-pnp records it: the
+   * SDK linked into node_modules. Its manifest names `main`, as the SDK's has
+   * since #259, unless `main` is false.
+   */
+  async function pnpmPnpProject(options: { main?: boolean } = {}) {
+    const manifest = JSON.parse(sdkManifest("0.11.9")) as Record<string, unknown>;
+    if (options.main !== false) manifest["main"] = "./dist/index.js";
+    const created = await project(JSON.stringify(manifest), { pnp: true });
     await writeFile(join(created.root, "pnpm-lock.yaml"), "lockfileVersion: '9.0'\n");
     await writeFile(
       join(created.root, "node_modules/.modules.yaml"),
@@ -609,27 +661,66 @@ describe("projectSdkReleaseSkew (HN110)", () => {
       expect(issuers.filter((issuer) => issuer.startsWith(root))).toEqual([]);
     });
 
-    it("does not take pnpm 12's node-linker=pnp runtime for another install's (#259)", async () => {
-      // pnpm 12.21.0's .pnp.cjs, which pnpm exec loads through NODE_OPTIONS,
-      // sets Module.findPnpApi -- undefined for a path its registry does not
-      // list -- but not process.versions.pnp (.capture/pnpm-pnp). So the #216
-      // gate stays open. Under pnpm exec HN110 is still silent, for another
-      // reason this test does not model: pnpm's hook cannot resolve the
-      // exports-only SDK through Node, so no SDK is found (the capture's
-      // known limitation).
-      const { root } = await pnpmPnpProject();
+    /** Bare requests pnpm 12's hook resolved, by the hook below. */
+    let pnpmResolved: string[] = [];
+
+    /**
+     * pnpm 12.21.0's `.pnp.cjs`, which pnpm exec loads through NODE_OPTIONS,
+     * as .capture/pnpm-pnp quotes it: it leaves process.versions.pnp unset,
+     * sets Module.findPnpApi (undefined for a path its registry does not
+     * list), and hooks Module._resolveFilename to turn a bare request from the
+     * project into the package's directory, which it hands to Node's own
+     * resolver. Node resolves a directory by its manifest's `main` alone.
+     */
+    function simulatePnpm12Runtime(root: string): void {
       nodeModule.findPnpApi = (location: string) => {
         asked.push(location);
         return location.startsWith(root) ? { findPackageLocator: () => ({ name: null, reference: null }) } : undefined;
       };
+      nodeModule._resolveFilename = function (request, parent, ...rest) {
+        const issuer = parent?.filename;
+        const name = /^(@[^/]+\/[^/]+|[^./@][^/]*)/.exec(request)?.[1];
+        if (name === undefined || request.startsWith("node:") || issuer === undefined || !issuer.startsWith(root))
+          return originalResolve.call(this, request, parent, ...rest);
+        pnpmResolved.push(request);
+        const directory = join(root, "node_modules", name, request.slice(name.length));
+        return originalResolve.call(this, directory, parent, ...rest);
+      };
+    }
+
+    afterEach(() => {
+      pnpmResolved = [];
+    });
+
+    it("warns under pnpm 12's node-linker=pnp runtime, through the SDK's main (#259)", async () => {
+      // The #216 gate stays open, never asking pnpm's findPnpApi: pnpm's
+      // runtime leaves process.versions.pnp unset. The SDK's `main` lets
+      // pnpm's hook resolve it, so pnpm exec warns and doctor finds it.
+      const { root } = await pnpmPnpProject();
+      simulatePnpm12Runtime(root);
       const diagnostic = projectSdkReleaseSkew(root);
+      expect(pnpmResolved).toContain("@hooknostic/sdk");
+      expect(asked).toEqual([]);
       expect(diagnostic).toMatchObject({ code: "HN110" });
       expect(diagnostic?.remediation).toContain("`pnpm exec hooknostic`");
       expect(projectSdkRelease(root)).toEqual({ status: "found", version: "0.11.9" });
     });
 
-    it("stays silent under pnpm 11's node-linker=pnp runtime, which looks like another install's (#259, #269)", async () => {
-      // pnpm 11.28.13's .pnp.cjs is Yarn's runtime: under pnpm exec it sets
+    it("finds no SDK without main under pnpm 12's runtime, as for an SDK before #259", async () => {
+      // Pins why the SDK names `main`: an SDK of 0.13.0 or earlier has only
+      // `exports`, and under pnpm exec HN110 is silent and doctor says
+      // not-found, as captured.
+      const { root } = await pnpmPnpProject({ main: false });
+      expect(projectSdkReleaseSkew(root)).toMatchObject({ code: "HN110" });
+      simulatePnpm12Runtime(root);
+      expect(projectSdkReleaseSkew(root)).toBeUndefined();
+      expect(pnpmResolved).toContain("@hooknostic/sdk");
+      expect(projectSdkRelease(root)).toEqual({ status: "not-found" });
+    });
+
+    it("pins a known limitation: silent under pnpm 11's node-linker=pnp runtime (#269)", async () => {
+      // Not a fix test: this holds before and after #259. pnpm 11.28.13's
+      // .pnp.cjs is Yarn's runtime: under pnpm exec it sets
       // process.versions.pnp to 3, and its API's findPackageLocator returns
       // null for the project's root (.capture/pnpm-pnp, background). The
       // #216 gate then reads it as another install, as under yarn dlx: a

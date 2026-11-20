@@ -135,11 +135,11 @@ interface PnpmInstall {
 
 /**
  * pnpm's record of the install in `directory`, from its
- * `node_modules/.modules.yaml`, or undefined when there is none. pnpm 11 and
- * 12 write the file as JSON, pnpm 9 and 10 as YAML (.capture/pnpm-pnp), so
- * each field is read with one pattern that matches either, as
- * `scripts/check-sdk-zod-peers.mjs` reads it, without a YAML parser at
- * runtime.
+ * `node_modules/.modules.yaml`, or undefined when there is none or it names
+ * neither field. pnpm 11.28.13 and 12.21.0 wrote the file as JSON, pnpm
+ * 9.15.9 and 10.3.0 as YAML (.capture/pnpm-pnp): JSON is parsed as such, and
+ * anything else is read with one pattern per field that also matches YAML's
+ * flow form (`{nodeLinker: pnp, …}`), without a YAML parser at runtime.
  */
 function pnpmInstall(directory: string): PnpmInstall | undefined {
   let text: string;
@@ -148,16 +148,31 @@ function pnpmInstall(directory: string): PnpmInstall | undefined {
   } catch {
     return undefined;
   }
-  const nodeLinker = /^\s*"?nodeLinker"?\s*:\s*"?([\w-]+)/m.exec(text)?.[1];
-  const version = /^\s*"?packageManager"?\s*:\s*"?pnpm@([^"',\s]+)/m.exec(text)?.[1];
-  return { ...(nodeLinker === undefined ? {} : { nodeLinker }), ...(version === undefined ? {} : { version }) };
+  let nodeLinker: unknown;
+  let packageManager: unknown;
+  try {
+    const record: unknown = JSON.parse(text);
+    if (typeof record === "object" && record !== null)
+      ({ nodeLinker, packageManager } = record as { nodeLinker?: unknown; packageManager?: unknown });
+  } catch {
+    nodeLinker = /(?:^|[{,\s])"?nodeLinker"?\s*:\s*["']?([\w-]+)/.exec(text)?.[1];
+    packageManager = /(?:^|[{,\s])"?packageManager"?\s*:\s*["']?(pnpm@[^"',}\s]+)/.exec(text)?.[1];
+  }
+  const version =
+    typeof packageManager === "string" && packageManager.startsWith("pnpm@") ? packageManager.slice(5) : undefined;
+  if (typeof nodeLinker !== "string" && version === undefined) return undefined;
+  return { ...(typeof nodeLinker === "string" ? { nodeLinker } : {}), ...(version === undefined ? {} : { version }) };
 }
 
-/** The nearest pnpm install record in `directory` or an ancestor, as a workspace package's is its root's. */
-function nearestPnpmInstall(directory: string): PnpmInstall | undefined {
+/**
+ * The pnpm release recorded nearest to `directory`, in it or an ancestor, as
+ * a workspace package's install is its root's. A record that names no release
+ * is passed over, so it cannot hide an ancestor's.
+ */
+function nearestPnpmRelease(directory: string): string | undefined {
   for (let current = directory; ;) {
-    const install = pnpmInstall(current);
-    if (install !== undefined) return install;
+    const version = pnpmInstall(current)?.version;
+    if (version !== undefined) return version;
     const parent = dirname(current);
     if (parent === current) return undefined;
     current = parent;
@@ -166,35 +181,45 @@ function nearestPnpmInstall(directory: string): PnpmInstall | undefined {
 
 /**
  * Whether pnpm, with `nodeLinker: pnp`, wrote the PnP manifest at `manifest`
- * rather than Yarn: pnpm's install record beside it says `nodeLinker: pnp`,
- * or `pnpm-lock.yaml` is beside it and `yarn.lock` is not, as when
- * `node_modules` was removed for a clean reinstall. Yarn writes neither
- * (.capture/pnpm-pnp). The manifest's content is not read: what each package
- * manager generates there can change in any release.
+ * rather than Yarn. A `yarn.lock` beside it says Yarn, whatever else is
+ * there: Yarn's Plug'n'Play install writes no `node_modules`, so a pnpm
+ * record beside a `yarn.lock` is taken for one left from an earlier pnpm
+ * install. Otherwise it is pnpm's when pnpm's install record beside it says
+ * `nodeLinker: pnp`, or `pnpm-lock.yaml` is beside it, as when `node_modules`
+ * was removed for a clean reinstall. Yarn writes neither (.capture/pnpm-pnp).
+ * The manifest's content is not read: what each package manager generates
+ * there can change in any release. A pnpm project that kept a `yarn.lock`
+ * from before its move to pnpm is therefore read as Yarn's: an accepted
+ * misreading, which changes only the advice.
  */
 function pnpmPlugAndPlay(manifest: string): boolean {
   const directory = dirname(manifest);
-  if (pnpmInstall(directory)?.nodeLinker === "pnp") return true;
-  return existsSync(join(directory, "pnpm-lock.yaml")) && !existsSync(join(directory, "yarn.lock"));
+  if (existsSync(join(directory, "yarn.lock"))) return false;
+  return pnpmInstall(directory)?.nodeLinker === "pnp" || existsSync(join(directory, "pnpm-lock.yaml"));
 }
 
 /**
  * The first pnpm release whose `pnpm add` accepts `--allow-build`: 10.3.0 and
- * 9.15.9 exit 1 on it as an unknown option (.capture/pnpm-pnp).
+ * 9.15.9 exit 1 on it as an unknown option, and 10.4.0 installs with it
+ * (.capture/pnpm-pnp).
  */
 const PNPM_ALLOW_BUILD = "10.4.0";
 
 /**
  * `pnpm add -D` for `hooknostic@<version>`, allowing esbuild's install script
- * when `install` shows a pnpm that accepts `--allow-build`: pnpm 12 refuses
- * the script by default, with ERR_PNPM_IGNORED_BUILDS (#259). Without a
- * record of the pnpm release the flag is left out, since an older pnpm
- * refuses the whole command.
+ * when `pnpm`, the recorded pnpm release, accepts `--allow-build`: pnpm 12
+ * refuses the script by default, with ERR_PNPM_IGNORED_BUILDS (#259). An
+ * older release refuses the whole command, so its form leaves the flag out.
+ * With no recorded release, `unrecorded` decides: `omit` leaves it out, for a
+ * project that may not use pnpm at all, and `note` prints it with a note
+ * saying when to leave it out, for one that pnpm installed.
  */
-function pnpmAdd(install: PnpmInstall | undefined, version: string): string {
-  const pnpm = install?.version === undefined ? null : semver.valid(install.version);
-  const allow = pnpm !== null && semver.gte(pnpm, PNPM_ALLOW_BUILD) ? "--allow-build=esbuild " : "";
-  return `pnpm add -D ${allow}hooknostic@${version}`;
+function pnpmAdd(pnpm: string | undefined, version: string, unrecorded: "omit" | "note"): string {
+  const release = pnpm === undefined ? null : semver.valid(pnpm);
+  const flagged = `\`pnpm add -D --allow-build=esbuild hooknostic@${version}\``;
+  const plain = `\`pnpm add -D hooknostic@${version}\``;
+  if (release !== null) return semver.gte(release, PNPM_ALLOW_BUILD) ? flagged : plain;
+  return unrecorded === "omit" ? plain : `${flagged} (without \`--allow-build=esbuild\` before pnpm 10.4)`;
 }
 
 /**
@@ -250,7 +275,10 @@ export function sdkReleaseSkew(
  *
  * Under Plug'n'Play the manifest tells Yarn from pnpm with `nodeLinker: pnp`
  * ({@link pnpmPlugAndPlay}), which runs as `pnpm exec hooknostic`: best
- * effort, by .capture/pnpm-pnp, as `yarn dlx` is for Yarn (ADR-0041).
+ * effort, by .capture/pnpm-pnp, as `yarn dlx` is for Yarn (ADR-0041). There
+ * pnpm installed the project, so with no recorded release (the lockfile alone
+ * said pnpm) its command keeps the flag, with a note for an older pnpm. That
+ * state rarely reaches HN110: without `node_modules` no SDK resolves.
  */
 function skewRemediation(version: string, projectDirectory: string): string {
   const add = `add hooknostic to the project's devDependencies at the same version as its ${SDK}, with `;
@@ -258,13 +286,13 @@ function skewRemediation(version: string, projectDirectory: string): string {
   if (manifest === undefined)
     return (
       `${add}\`npm install --save-dev --save-exact hooknostic@${version}\`, ` +
-      `or \`${pnpmAdd(nearestPnpmInstall(projectDirectory), version)}\` in a pnpm project, ` +
+      `or ${pnpmAdd(nearestPnpmRelease(projectDirectory), version, "omit")} in a pnpm project, ` +
       "and run that CLI from the project directory with `npx hooknostic` " +
       "(without a local install, npx fetches the registry's latest), " +
       "or `pnpm exec hooknostic` in a pnpm project."
     );
   if (pnpmPlugAndPlay(manifest))
-    return `${add}\`${pnpmAdd(pnpmInstall(dirname(manifest)), version)}\`, and run it with \`pnpm exec hooknostic\`.`;
+    return `${add}${pnpmAdd(nearestPnpmRelease(dirname(manifest)), version, "note")}, and run it with \`pnpm exec hooknostic\`.`;
   return (
     `${add}\`yarn add -D hooknostic@${version}\`, ` +
     "and run `yarn hooknostic`, which runs that CLI (under Plug'n'Play, npx fetches the registry's latest)."
