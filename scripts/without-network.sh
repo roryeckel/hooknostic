@@ -1,56 +1,69 @@
 #!/usr/bin/env bash
-# Run a command with no network but loopback, as the invoking user. Linux only.
+# Run a command with no IP network but loopback, as the invoking user. Linux only.
 #
 #   scripts/without-network.sh <command> [args...]
 #
-# Run it as yourself. It re-runs itself as root through `sudo -n /bin/bash`
-# to enter a new network namespace and bring loopback up, then drops back to
-# your uid/gid with no supplementary groups, no capabilities and no_new_privs.
-# There it restores your environment, proves the isolation with
+# Run it as yourself. It re-runs itself as root through `sudo -n /bin/bash`,
+# enters a new network namespace and brings loopback up. It then drops back to
+# your uid/gid with no supplementary groups, no capabilities and
+# no_new_privs, restores your environment, proves the isolation with
 # scripts/assert-no-network.mjs --offline, and runs the command. Inside,
 # HOOKNOSTIC_PLAYBACK_NETWORK=none tells the playback helpers they are offline
 # (packages/cli/test/harness-playback.ts).
 #
-# Trust boundary. This is a test harness, not a privilege boundary.
-#   - It needs UNRESTRICTED passwordless sudo, as `runner` has on GitHub-hosted
-#     runners, or `sudo -v` beforehand.
-#   - It runs a file from your checkout as root, so use it only on a runner or
-#     on a single-user machine.
-#   - Never give it a sudoers rule of its own. Such a rule would turn the
-#     script into a root shell for anything running as you. It cannot be
-#     invoked through one anyway: it sudo's /bin/bash, not itself.
+# Trust boundary: this is a test harness, not a privilege boundary.
+#   - It needs UNRESTRICTED passwordless sudo, as `runner` has on
+#     GitHub-hosted runners, or `sudo -v` beforehand.
+#   - It runs this file, from your checkout, as root. Use it only on a runner
+#     or on a single-user machine.
+#   - Never give it a sudoers rule of its own. A rule can name it (e.g.
+#     `NOPASSWD: /bin/bash /path/to/without-network.sh *`), but the script is
+#     a file you can edit, so that rule is a root shell for anything running
+#     as you.
 #
-# The root hops never load your environment. Each re-enters through
-# `/usr/bin/env -i ... /bin/bash` (no BASH_ENV, no caller PATH, no LD_*) and
-# calls ip, setpriv and unshare by absolute path.
-#
-# Your environment crosses sudo in a file. The hosted runners' sudo ignores
-# --preserve-env ("preserving the entire environment is not supported").
-#   - The file is created 0600 by mktemp.
-#   - Root only checks it is a regular file of yours with mode 0600. It does
-#     not read or delete it.
-#   - It is read and removed after the drop, as you.
-# On the sudo path no environment value appears in argv or output.
+# Environment handling:
+#   - The sudo entry runs /bin/bash under sudo's env_reset. With the default
+#     policy that means no caller PATH, BASH_ENV or LD_*, and sudo's SUDO_UID
+#     and SUDO_GID. No external command runs before PATH is pinned to the
+#     system directories.
+#   - Every later hop starts from `env -i PATH=<system>`, and finds ip,
+#     setpriv and unshare only there.
+#   - Your environment crosses sudo in a file, because the hosted runners'
+#     sudo ignores --preserve-env ("preserving the entire environment is not
+#     supported"). The file is created 0600 by mktemp. Root only checks it: a
+#     regular file of yours, mode 0600, named by this script. Root never reads
+#     or removes it.
+#   - The file is read and removed after the drop, as you. The script's own
+#     variables are named _hkn_* and readonly, and the file's _hkn_* names
+#     are skipped, so no name in it can replace the script's own.
+#   - On the sudo path no environment value appears in argv or output.
 #
 # HKN_NO_NETWORK_REQUIRE_ENV (comma-separated names) is read before the sudo
 # hop and handed on as an argument. The isolation check then fails if any of
 # those variables is missing or empty, and the list itself cannot silently
 # vanish.
 #
+# The checks on --as and --env-file run before the root check, so a normal
+# user can test them (scripts/without-network.test.mjs).
+#
 # Root without sudo (e.g. `wsl -u root`): name the user explicitly. Here PATH
 # and HOME do appear in argv, and the rest of root's own environment becomes
-# the user's.
+# the user's:
 #   scripts/without-network.sh --as UID:GID --path "$PATH" --home "$HOME" -- <command>
 #
 # A root `unshare --net` needs no unprivileged user namespace, so AppArmor's
-# userns restriction does not apply. Isolation is of IP only: a unix socket
-# on the host stays reachable through the filesystem. That is why the user
-# keeps no supplementary groups (e.g. `docker`, which reaches the Docker
-# socket). See docs/testing.md, "Network isolation on Linux".
+# userns restriction does not apply. Isolation is of the IP network only: a
+# unix socket on the host stays reachable through the filesystem. That is why
+# the user keeps no supplementary groups (e.g. `docker`). See docs/testing.md,
+# "Network isolation on Linux".
 set -euo pipefail
-self="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]}")"
-here="$(dirname "$self")"
-SYSPATH=/usr/sbin:/usr/bin:/sbin:/bin
+# Builtins only until PATH is pinned: this may already be root.
+_hkn_src="${BASH_SOURCE[0]}"
+case "$_hkn_src" in */*) _hkn_dir="${_hkn_src%/*}" ;; *) _hkn_dir=. ;; esac
+_hkn_here="$(CDPATH='' cd -P -- "$_hkn_dir" && pwd)"
+readonly _hkn_here
+readonly _hkn_self="$_hkn_here/${_hkn_src##*/}"
+readonly _hkn_syspath=/usr/sbin:/usr/bin:/sbin:/bin
 usage() {
   echo "usage: $0 <command> [args...]   (as root: $0 --as UID:GID --path PATH --home HOME -- <command> [args...])" >&2
   exit 2
@@ -64,29 +77,45 @@ case "${1:-}" in
   --inside)
     # Last hop: in the namespace, as the user, from an empty environment.
     # Restore the caller's environment, prove the isolation, run the command.
-    uid="$2" envfile="$3" path="$4" home="$5" require="$6"
+    readonly _hkn_uid="$2" _hkn_envfile="$3" _hkn_path="$4" _hkn_home="$5" _hkn_require="$6"
     shift 6
     [ "${1:-}" = "--" ] && shift
     [ "$#" -gt 0 ] || usage
-    while IFS= read -r -d '' kv; do export "$kv" 2>/dev/null || true; done < "$envfile"
-    rm -f "$envfile"
-    [ -n "$path" ] && export PATH="$path"
-    [ -n "$home" ] && export HOME="$home"
-    export HOOKNOSTIC_PLAYBACK_NETWORK=none HKN_NO_NETWORK_UID="$uid"
-    node "$here/assert-no-network.mjs" --offline --require-env "$require"
+    # This script's own names (_hkn_*) are skipped, so no caller variable can
+    # replace the required list or the canary's path; they are readonly too.
+    # The note names the variable, never its value. `set -e` is off for the
+    # load: under it, bash ends the run silently on any refused readonly
+    # assignment, ours or its own (EUID, SHELLOPTS, ...). Off, the assignment
+    # is refused and the load goes on.
+    set +e
+    while IFS= read -r -d '' _hkn_kv; do
+      case "$_hkn_kv" in
+        _hkn_*) echo "without-network: ignoring the caller's ${_hkn_kv%%=*}, a name this script reserves" >&2 ;;
+        *) export "$_hkn_kv" 2>/dev/null ;;
+      esac
+    done < "$_hkn_envfile"
+    set -e
+    rm -f -- "$_hkn_envfile"
+    [ -n "$_hkn_path" ] && export PATH="$_hkn_path"
+    [ -n "$_hkn_home" ] && export HOME="$_hkn_home"
+    export HOOKNOSTIC_PLAYBACK_NETWORK=none HKN_NO_NETWORK_UID="$_hkn_uid"
+    node "$_hkn_here/assert-no-network.mjs" --offline --require-env "$_hkn_require"
     exec "$@"
     ;;
   --netns)
     # Root, in the new namespace, from an empty environment: loopback up, then
     # drop to the user with no groups, capabilities or way back.
+    PATH="$_hkn_syspath"
     uid="$2" gid="$3" envfile="$4" path="$5" home="$6" require="$7"
     shift 7
     [ "${1:-}" = "--" ] && shift
-    /usr/sbin/ip link set lo up
-    exec /usr/bin/setpriv --reuid="$uid" --regid="$gid" --clear-groups --inh-caps=-all --no-new-privs -- \
-      /usr/bin/env -i PATH="$SYSPATH" /bin/bash "$self" --inside "$uid" "$envfile" "$path" "$home" "$require" -- "$@"
+    ip link set lo up
+    exec setpriv --reuid="$uid" --regid="$gid" --clear-groups --inh-caps=-all --no-new-privs -- \
+      env -i PATH="$_hkn_syspath" bash "$_hkn_self" --inside "$uid" "$envfile" "$path" "$home" "$require" -- "$@"
     ;;
   --as)
+    # Pin PATH before any external command: under sudo this is already root.
+    PATH="$_hkn_syspath"
     as="" path="" home="" envfile="" require="${HKN_NO_NETWORK_REQUIRE_ENV:-}"
     while [ "$#" -gt 0 ]; do
       case "$1" in
@@ -99,7 +128,6 @@ case "${1:-}" in
         *) usage ;;
       esac
     done
-    [ "$(/usr/bin/id -u)" = 0 ] || die "--as needs root"
     [ -n "$as" ] && [ "$#" -gt 0 ] || usage
     uid="${as%%:*}" gid="${as#*:}"
     [[ "$uid" =~ ^[0-9]+$ && "$gid" =~ ^[0-9]+$ ]] || die "--as takes numeric UID:GID"
@@ -111,17 +139,22 @@ case "${1:-}" in
     if [ -n "$envfile" ]; then
       # The caller's file, as mktemp made it. Root checks it but never reads or removes it.
       [ ! -L "$envfile" ] && [ -f "$envfile" ] || die "--env-file is not a regular file"
-      [ "$(/usr/bin/stat -c '%u %a' -- "$envfile")" = "$uid 600" ] || die "--env-file is not a 0600 file owned by $uid"
-      case "$(/usr/bin/basename -- "$envfile")" in without-network-env.*) ;; *) die "--env-file is not one this script made" ;; esac
-    else
-      # Root entry: root's own environment, handed to the user in the same kind of file.
-      [ -n "$path" ] && [ -n "$home" ] || usage
-      envfile="$(umask 077 && /usr/bin/mktemp /tmp/without-network-env.XXXXXX)"
-      /usr/bin/env -0 > "$envfile"
-      /usr/bin/chown "$uid:$gid" -- "$envfile"
+      [ "$(stat -c '%u %a' -- "$envfile")" = "$uid 600" ] || die "--env-file is not a 0600 file owned by $uid"
+      case "${envfile##*/}" in without-network-env.*) ;; *) die "--env-file is not one this script made" ;; esac
     fi
-    exec /usr/bin/unshare --net -- /usr/bin/env -i PATH="$SYSPATH" \
-      /bin/bash "$self" --netns "$uid" "$gid" "$envfile" "$path" "$home" "$require" -- "$@"
+    # Everything above can be checked as a normal user; everything below is root's.
+    [ "$(id -u)" = 0 ] || die "--as needs root"
+    if [ -z "$envfile" ]; then
+      # Root entry: root's own environment, handed to the user in the same kind
+      # of file. Removed here if the hops never reach --inside.
+      [ -n "$path" ] && [ -n "$home" ] || usage
+      envfile="$(umask 077 && mktemp /tmp/without-network-env.XXXXXX)"
+      trap 'rm -f -- "$envfile"' EXIT
+      env -0 > "$envfile"
+      chown "$uid:$gid" -- "$envfile"
+    fi
+    exec unshare --net -- env -i PATH="$_hkn_syspath" \
+      bash "$_hkn_self" --netns "$uid" "$gid" "$envfile" "$path" "$home" "$require" -- "$@"
     ;;
   "" | -*)
     usage
@@ -129,10 +162,13 @@ case "${1:-}" in
   *)
     [ "$(id -u)" != 0 ] || die "as root, pass --as UID:GID --path PATH --home HOME"
     envfile="$(umask 077 && mktemp "${TMPDIR:-/tmp}/without-network-env.XXXXXX")"
-    trap 'rm -f "$envfile"' EXIT
+    trap 'rm -f -- "$envfile"' EXIT
     env -0 > "$envfile"
     status=0
-    sudo -n -- /bin/bash "$self" --as "$(id -u):$(id -g)" --env-file "$envfile" \
+    # /bin/bash by path, not `bash`: sudo resolves a bare name by its own
+    # policy (secure_path or not), and this is the one hop that runs before
+    # PATH is pinned.
+    sudo -n -- /bin/bash "$_hkn_self" --as "$(id -u):$(id -g)" --env-file "$envfile" \
       --require-env "${HKN_NO_NETWORK_REQUIRE_ENV:-}" -- "$@" || status=$?
     exit "$status"
     ;;
