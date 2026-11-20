@@ -903,7 +903,10 @@ describe("runCli", () => {
     // Stray words: inspect takes its target, and no command anything else.
     [["sync", "extra"], 'unexpected argument "extra": sync takes no positional arguments'],
     [["sync", "--dry-run", "false"], 'unexpected argument "false": sync takes no positional arguments'],
-    [["dispatch", "--target", "claude", "extra"], 'unexpected argument "extra": dispatch takes no positional arguments'],
+    [
+      ["dispatch", "--target", "claude", "extra"],
+      'unexpected argument "extra": dispatch takes no positional arguments',
+    ],
     [["inspect", "claude", "extra"], 'unexpected argument "extra": inspect takes one target'],
     [["inspect", "claude", "extra", "more"], 'unexpected argument "extra": inspect takes one target'],
     [["check", "--", "--json"], 'unexpected argument "--json": check takes no positional arguments'],
@@ -1100,7 +1103,10 @@ describe("the options and words each command takes", () => {
       if (command === undefined || rest === undefined) throw new Error(line);
       flags[command] = [...rest.matchAll(/--([a-z-]+)/g)].map((match) => match[1] as string).sort();
       // A <placeholder> that is not an option's value is a positional.
-      const tokens = rest.replace(/[[\]|]/g, " ").split(/\s+/).filter(Boolean);
+      const tokens = rest
+        .replace(/[[\]|]/g, " ")
+        .split(/\s+/)
+        .filter(Boolean);
       words[command] = tokens.filter((token, at) => token.startsWith("<") && !tokens[at - 1]?.startsWith("--")).length;
     }
     expect(Object.keys(flags).sort()).toEqual([...COMMANDS].sort());

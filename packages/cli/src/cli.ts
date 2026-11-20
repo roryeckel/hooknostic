@@ -132,7 +132,9 @@ function unsupportedFlag(command: Command, flag: Flag): string {
   if (flag === "version")
     return `--version <range> is only supported by inspect; run "hooknostic --version" for this hooknostic's version`;
   const takers = (Object.keys(COMMAND_FLAGS) as Command[]).filter((other) => COMMAND_FLAGS[other].has(flag));
-  return takers.length === 1 ? `--${flag} is only supported by ${takers[0]}` : `--${flag} is not supported by ${command}`;
+  return takers.length === 1
+    ? `--${flag} is only supported by ${takers[0]}`
+    : `--${flag} is not supported by ${command}`;
 }
 
 /** The usage error for `word`, a positional `command` has no place for. */
