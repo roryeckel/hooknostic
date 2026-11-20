@@ -110,7 +110,7 @@ compilation, so a package may be hookless.
 
 **Component support** — the exact/emulated/approximate/unsupported classification for an
 Agent Plugin component such as skills or an MCP transport. It is separate from hook
-capability support and can be inspected with `hooknostic inspect --component`.
+capability support and can be inspected with `hooknostic inspect <target> --component <id>`.
 
 **Deviation** — a known, captured way a harness treats some instances of a component
 differently from Agent Plugins 1.0, which Hooknostic reports rather than corrects. It is
