@@ -716,9 +716,15 @@ Yarn's global cache, whose hash, depth and folder differ by machine. It is a
 warning, reported at most once per run, even when the configuration fails to
 load, so `check`, `build`, `sync` and `verify` all report it beside a load
 failure that the skew may cause, and so does `recover`, which reports it only
-beside a load failure.
-It never changes an exit code: `check` and `build` print it, and `sync` and
-`verify` list it with their other build diagnostics. It is silent when no SDK
+beside a load failure. `doctor` reports it for any configuration it is given,
+whatever its targets deliver and even when it fails to load, after its version
+line and before the load, but only for an SDK its own lookup finds (#257): where
+that line reads `not found`, as for an SDK only `NODE_PATH` reaches, or
+`not looked up`, as in a Plug'n'Play project outside Yarn's runtime, `doctor`
+is silent.
+It never changes an exit code: `check` and `build` print it, `sync` and
+`verify` list it with their other build diagnostics, and `doctor --json` lists
+it under its own top-level `diagnostics`. It is silent when no SDK
 resolves, when either version is not valid semver, and in this repository's
 workspace, whose examples resolve `packages/sdk` at the CLI's own version. It
 is also silent under another install's Plug'n'Play runtime, as under
@@ -1340,7 +1346,8 @@ The package version has one carrier in the CLI, `HOOKNOSTIC_VERSION`, which
 what `hooknostic --version` prints, alone, what HN110 calls "this hooknostic", and the
 build report's `hooknosticVersion`. `doctor` reports it beside the project's
 `@hooknostic/sdk` version, looked up from the config's directory, as HN110 does (and,
-like HN110, never under another install's Plug'n'Play runtime), and Node.js's (#246).
+like HN110, never under another install's Plug'n'Play runtime), and Node.js's (#246);
+HN110 beside them judges an SDK that lookup found (#257).
 
 ## 17. Operational and trust considerations
 

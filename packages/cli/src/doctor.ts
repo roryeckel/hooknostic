@@ -3,7 +3,7 @@ import { delimiter, dirname, isAbsolute, relative, resolve, sep } from "node:pat
 
 import semver from "semver";
 
-import type { AdapterRegistry, McpServerCommand, ProjectSdkRelease } from "@hooknostic/core";
+import type { AdapterRegistry, Diagnostic, McpServerCommand, ProjectSdkRelease } from "@hooknostic/core";
 import {
   buildProject,
   HOOKNOSTIC_VERSION,
@@ -11,6 +11,7 @@ import {
   mcpAmbientCommands,
   type ProjectCommandResult,
   projectSdkRelease,
+  projectSdkReleaseSkew,
   registeredAdapter,
   resolveTargetAdapter,
   runProject,
@@ -133,19 +134,41 @@ export function doctorVersionLine(sdk: ProjectSdkRelease | undefined, node: stri
 }
 
 /**
+ * Doctor's own diagnostics for the config in `configDir`, whose SDK lookup
+ * found `sdk` (#257). HN110 judges the release doctor's version line shows,
+ * whatever the config delivers and even when it fails to load. Only for an SDK
+ * that lookup found, so doctor never warns about one its version line calls
+ * missing: HN110's own lookup also follows `NODE_PATH`, which the line's does
+ * not (#246).
+ */
+function doctorDiagnostics(configDir: string | undefined, sdk: ProjectSdkRelease | undefined): Diagnostic[] {
+  if (configDir === undefined || sdk?.status !== "found") return [];
+  const skew = projectSdkReleaseSkew(configDir);
+  return skew === undefined ? [] : [skew];
+}
+
+/**
  * `hooknostic doctor` — detect locally installed harnesses and compare them
  * with each adapter's validated capability ranges. Unknown/newer versions
  * warn rather than silently passing; `build` never consults local versions
- * (reproducibility, design §16.2).
+ * (reproducibility, design §16.2). With a config, it also reports HN110 for
+ * any delivery, never in its exit code.
  */
 export async function runDoctor(options: DoctorCommandOptions): Promise<number> {
   if (options.config === undefined && existsSync(resolve("hooknostic.config.ts")))
     options = { ...options, config: "hooknostic.config.ts" };
   // The versions a bug report asks for. Facts only: HN110 alone judges a
-  // mismatch. Printed before the config loads, so they are out even when the
-  // load never finishes or doctor fails before its report.
-  const sdk = options.config === undefined ? undefined : projectSdkRelease(dirname(resolve(options.config)));
-  if (!options.json) options.io.stdout(doctorVersionLine(sdk));
+  // mismatch, printed with them. Both come before the config loads, so they
+  // are out even when the load never finishes or doctor fails before its
+  // report, and a load the skew may have broken is reported beside it.
+  const configDir = options.config === undefined ? undefined : dirname(resolve(options.config));
+  const sdk = configDir === undefined ? undefined : projectSdkRelease(configDir);
+  const diagnostics = doctorDiagnostics(configDir, sdk);
+  if (!options.json) {
+    options.io.stdout(doctorVersionLine(sdk));
+    for (const diagnostic of diagnostics)
+      options.io.stdout(`${diagnostic.code} ${diagnostic.severity}: ${diagnostic.message}`);
+  }
   const entries: DoctorEntry[] = [];
 
   let adapters = Object.values(options.registry);
@@ -331,6 +354,9 @@ export async function runDoctor(options: DoctorCommandOptions): Promise<number> 
           harnesses: entries,
           configurationErrors,
           mcpCommands,
+          // Doctor's own; `project.diagnostics` keeps verify's, which may
+          // repeat HN110. Additive, so schemaVersion stays 2 (#257).
+          diagnostics,
           // Additive, so schemaVersion stays 2 (#246).
           runtime: { node: process.version, hooknostic: HOOKNOSTIC_VERSION, ...(sdk === undefined ? {} : { sdk }) },
           ...(projectReport === undefined
@@ -395,9 +421,13 @@ export async function runDoctor(options: DoctorCommandOptions): Promise<number> 
       `Project wiring: ${project.ok ? "current" : project.errors.length ? "conflict or invalid" : "drifted"}; hook execution has not been observed.`,
     );
     // As `sync` prints them. A wiring warning such as HN107 has no other
-    // witness: the harness's own output still looks hooked.
-    for (const diagnostic of project.diagnostics)
+    // witness: the harness's own output still looks hooked. One doctor
+    // printed beside its version line, as HN110, is not repeated here; the
+    // JSON keeps both copies.
+    for (const diagnostic of project.diagnostics) {
+      if (diagnostics.some((own) => own.code === diagnostic.code && own.message === diagnostic.message)) continue;
       options.io.stdout(`${diagnostic.code} ${diagnostic.severity}: ${diagnostic.message}`);
+    }
     for (const message of [...project.guidance, ...project.errors]) options.io.stdout(message);
   }
   return ok ? 0 : 2;
