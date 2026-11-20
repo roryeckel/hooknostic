@@ -240,11 +240,19 @@ Every other tool completed. The test, the drive and the shim were not involved.
   `powershell.exe` on Windows, `tar -xzf` on Linux and macOS, then `<bin>/rg`
   for `glob` and `grep`. The extraction line names the archive. 2.3.2 logs no
   process spawns.
-- Every line carries the role of the process that wrote it. The `serve`
+- Most lines carry the role of the process that wrote it. The `serve`
   process, where the bootstrap runs, writes `role=server`; the download line is
   one of its lines. The `--version` check the drive runs first, and each
   process's `cli starting` line, write `role=cli` to the same file. Observed on
   2.0.17 (Windows, Linux) and 2.3.2 (Linux).
+- Not every line is tagged. In CI run 44667110009's artifact (39 logs, 2.0.17),
+  420 of 2530 lines have no role: 370 `watcher subscribe` lines and 50 `event`
+  lines. Every one of them carries the `run=` id of its log's `role=server`
+  lines, and none is a spawn line; every spawn line in those logs is tagged.
+  The check therefore counts as the server's: lines tagged `role=server`, and
+  untagged lines whose run id also appears on `role=server` lines. A
+  `role=cli` line never counts, although the serve process logs its own
+  `cli starting` under the server's run id.
 - Seeded with the pinned build at that path, no probed build logged a download,
   and `glob` and `grep` completed. On 2.0.17 the spawned `rg` was the
   seeded file on all three platforms.
@@ -256,8 +264,14 @@ Every other tool completed. The test, the drive and the shim were not involved.
     03:24:28.066Z, by its `session.tool.called` event.
   - Its only `spawning process` line was the run CLI (`role=cli`) starting
     `opencode serve`, and it held no download line.
-  - All 39 logs in that job's failure artifact ended after the same four
-    startup event types (`provider`, `model`, `agent` and `command.updated`).
+  - The job's failure artifact holds 39 logs. 31 of them, this one included,
+    end on a startup event (`command.updated` 13, `model.updated` 18). The
+    other 8 end later: 3 at `session generation usage diagnostic`, 2 at
+    `Failed to drain Session`, 1 at `mcp connected`, 1 at a spawn line, and
+    1 at a Bun `InterruptError` line. So the loss is not shown for the
+    whole job. It is shown for this run by the timestamps above. (The commit
+    that first recorded this, `b501ee52`, said all 39 ended at the startup
+    events, and that was wrong.)
 
   A complete local 2.0.17 log of the same drive on Windows has three
   `role=server` lines after the first tool call: the two `rg.exe` spawns and
@@ -329,8 +343,9 @@ only, the drive does the following:
      and under any message name.
    - No INFO line comes from the server process (`role=server`). The drive's
      own `--version` call does not count.
-   - The server (`role=server`; the CLI's own spawns do not count) logged an
-     `rg` other than the expected one. The expected one is the seeded file,
+   - The server logged an `rg` other than the expected one. The server's
+     lines are those tagged `role=server`, plus untagged lines from the same
+     run; the CLI's own spawns do not count. The expected one is the seeded file,
      unless the harness's `PATH` holds an `rg`, which the harness looks up
      first.
    - The log covers the tool calls, the server logs the processes it starts
@@ -341,7 +356,12 @@ only, the drive does the following:
      something replaced it.
 
    `ripgrep.json` records the seed, the expected `rg`, the `rg` processes
-   logged, and `coversTools`.
+   logged, and `coversTools`. Its `verified: true` means the checks ran and
+   passed; with `coversTools: false` they could not see the tool calls.
+
+   A `tools` run that produced no seed record fails before the harness
+   starts, so the check is never skipped. The playback test also requires
+   `ripgrep.json` with the seeded path and `verified: true`.
 
 What this guarantees: the checks are text-based plus one file check. When the
 log covers the tool calls (`coversTools: true`), each of 2.0.17 and 2.3.2
@@ -390,6 +410,9 @@ Fail-first evidence:
     with `coversTools: false`.
   - Mutants that count the CLI's spawns, ignore coverage, never find
     coverage, or date the search tools by any tool's call each fail a test.
+  - So do mutants that drop `toolsFrom` inside `verifyRipgrepSeed`, accept any
+    line (a CLI line) as coverage, ignore untagged server lines, or count
+    untagged lines from any run.
   - Replayed through the new check, the real artifact gives
     `{"spawned":[],"coversTools":false}`. A complete local Windows 2.0.17 run
     gives `coversTools: true` with the seeded `rg.exe` as the one spawned.

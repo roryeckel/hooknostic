@@ -296,6 +296,20 @@ describe("OpenCode ripgrep pre-seed", () => {
         spawned: [],
         coversTools: false,
       });
+      // The drive passes the first glob/grep call's time. A log that reaches it and
+      // records the server's processes must include rg; one that ends before it cannot.
+      await writeFile(
+        join(root, "data", "opencode", "log", "opencode.log"),
+        [serverLine, shellSpawn].join("\n") + "\n",
+      );
+      await expect(
+        verifyRipgrepSeed(seed, join(root, "data"), "", Date.parse("2026-11-20T01:13:28.000Z")),
+      ).rejects.toThrow(/no ripgrep among them/);
+      expect(await verifyRipgrepSeed(seed, join(root, "data"), "", Date.parse("2026-11-20T03:00:00.000Z"))).toEqual({
+        expected,
+        spawned: [],
+        coversTools: false,
+      });
       const ran = (command: string) =>
         `timestamp=2026-11-20T01:13:27.785Z level=INFO run=496ad607 message="spawning process" command=${JSON.stringify(command)} args="[]" role=server`;
       const log = (...lines: string[]) =>
@@ -383,6 +397,41 @@ describe("OpenCode ripgrep pre-seed", () => {
     expect(checkRipgrepLog([cliSpawn, serverLine].join("\n"), { expected: windowsRg, toolsFrom })).toEqual({
       spawned: [],
       coversTools: true,
+    });
+    // Nor does a CLI line after the first tool call show that the server's log reaches it.
+    expect(
+      checkRipgrepLog([serverLine, cliSpawn].join("\n"), {
+        expected: windowsRg,
+        toolsFrom: Date.parse("2026-11-20T02:19:42.890Z"),
+      }),
+    ).toEqual({ spawned: [], coversTools: false });
+  });
+  it("counts the server's untagged lines by their run id", () => {
+    // Real lines from CI run 44667110009: 2.0.17 leaves some server lines (here a
+    // watcher line) without role=, under the server's run id e4e5325a.
+    const started =
+      'timestamp=2026-11-20T03:24:27.011Z level=INFO run=e4e5325a message="database schema bootstrap started" migrations=48 role=server';
+    const watcher =
+      'timestamp=2026-11-20T03:24:27.368Z level=INFO run=e4e5325a message="watcher subscribe" path="D:\\\\a\\\\_temp\\\\opencode-v2-playback\\\\hooknostic-v2-UxvfHm\\\\project\\\\AGENTS.md" type=file ignores=0';
+    const toolsFrom = Date.parse("2026-11-20T03:24:27.300Z");
+    expect(checkRipgrepLog([started, watcher].join("\n"), { toolsFrom })).toEqual({ spawned: [], coversTools: true });
+    // An untagged spawn from the server's run counts as the server's.
+    const untagged = (run: string, command: string) =>
+      `timestamp=2026-11-20T03:24:28.100Z level=INFO run=${run} message="spawning process" command=${JSON.stringify(command)} args="[]"`;
+    const shell = "C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\powershell.EXE";
+    expect(() => checkRipgrepLog([started, untagged("e4e5325a", shell)].join("\n"), { toolsFrom })).toThrow(
+      /no ripgrep among them/,
+    );
+    expect(() =>
+      checkRipgrepLog([started, untagged("e4e5325a", "C:\\elsewhere\\rg.exe")].join("\n"), {
+        expected: windowsRg,
+        toolsFrom,
+      }),
+    ).toThrow(/not the expected ripgrep/);
+    // One from a run with no server lines (the run CLI's) does not.
+    expect(checkRipgrepLog([started, untagged("96adca68", shell)].join("\n"), { toolsFrom })).toEqual({
+      spawned: [],
+      coversTools: false,
     });
   });
   it("dates the first glob or grep call from the capture's tool events", () => {
@@ -1267,9 +1316,10 @@ describe.skipIf(!enabled)("OpenCode v2 offline playback", () => {
     }
   }, 140000);
   it("classifies captured tools and preserves Code Mode's outer boundary", async () => {
-    // The drive seeds this pinned ripgrep for glob/grep and fails if the
-    // harness downloaded its own (#264). Fetch it here, before the drive's
-    // own timeout starts: up to three 20 s attempts on a cold machine.
+    // The drive seeds this pinned ripgrep for glob/grep, and fails if the
+    // harness log shows a download or the seed was replaced (#264). Fetch it
+    // here, before the drive's own timeout starts: up to three 20 s attempts on
+    // a cold machine.
     await ensureRipgrep();
     const driver = fileURLToPath(new URL("../../../.capture/opencode-v2/drive.mjs", import.meta.url));
     const result = await runProcess(process.execPath, ["--experimental-strip-types", driver, "tools"], {
@@ -1279,6 +1329,12 @@ describe.skipIf(!enabled)("OpenCode v2 offline playback", () => {
     });
     expect(result.code, result.stdout + result.stderr).toBe(0);
     const { root } = JSON.parse(result.stdout.split("\n").find((line) => line.startsWith('{"root"'))!);
+    // The seed ran and its check ran: a drive that skipped either could pass
+    // on a machine where the harness's own download succeeds.
+    expect(JSON.parse(await readFile(join(root, "ripgrep.json"), "utf8"))).toMatchObject({
+      seeded: join(root, "cache", "opencode", "bin", process.platform === "win32" ? "rg.exe" : "rg"),
+      verified: true,
+    });
     const playback = JSON.parse(await readFile(join(root, "result.json"), "utf8"));
     expect(playback.errors).toEqual([]);
     expect(await readFile(join(root, "project/probe.txt"), "utf8")).toBe("hooknostic-after-edit");

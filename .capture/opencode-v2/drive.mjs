@@ -310,6 +310,12 @@ const ripgrep =
   effect === "tools"
     ? await diagnostics.run("seed-ripgrep", async () => (await import("./ripgrep.mjs")).seedRipgrep(env.XDG_CACHE_HOME))
     : undefined;
+// Without a seed record the post-run check would be skipped and a harness
+// download could pass unnoticed: refuse to run the tools drive without one.
+if (effect === "tools" && !ripgrep?.seeded)
+  await diagnostics.run("seed-ripgrep", async () => {
+    throw new Error("ripgrep pre-seed failed: the tools drive produced no seed record");
+  });
 if (ripgrep) diagnostics.snapshot("ripgrep.json", ripgrep);
 diagnostics.complete("prepare-native-config");
 // Save loopback observations while the harness runs, before an outer timeout can kill this process.

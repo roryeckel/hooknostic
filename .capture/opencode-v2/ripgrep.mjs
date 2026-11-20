@@ -292,7 +292,7 @@ export function checkRipgrepLog(text, { expected, where = "the harness log", too
   if (fetched) throw new Error(`OpenCode downloaded ripgrep despite the pre-seed (${where}): ${fetched}`);
   if (!lines.some((line) => / level=INFO /.test(line) && / role=server(?:\s|$)/.test(line)))
     throw new Error(`no INFO line from the harness server in ${where}; cannot tell whether it downloaded ripgrep`);
-  const server = lines.filter(isServerLine);
+  const server = serverLines(lines);
   const coversTools = Number.isFinite(toolsFrom) && server.some((line) => timeOf(line) >= toolsFrom);
   const processes = server.map(spawnedCommand).filter(Boolean);
   const spawned = [...new Set(processes.filter(isRipgrep))];
@@ -303,7 +303,20 @@ export function checkRipgrepLog(text, { expected, where = "the harness log", too
   return { spawned, coversTools };
 }
 
-const isServerLine = (line) => / role=server(?:\s|$)/.test(line);
+const roleOf = (line) => / role=(\w+)(?:\s|$)/.exec(line)?.[1];
+const runOf = (line) => / run=(\S+)/.exec(line)?.[1];
+
+/**
+ * The server process's lines: those tagged role=server, and untagged lines
+ * from a run that has role=server lines. 2.0.17 leaves some of its server's
+ * `watcher subscribe` and `event` lines untagged, under the server's run id;
+ * a role=cli line never counts, although the serve process logs its own
+ * `cli starting` under that same run id.
+ */
+function serverLines(lines) {
+  const runs = new Set(lines.filter((line) => roleOf(line) === "server").map(runOf));
+  return lines.filter((line) => roleOf(line) === "server" || (roleOf(line) === undefined && runs.has(runOf(line))));
+}
 const timeOf = (line) => Date.parse(/^timestamp=(\S+)/.exec(line)?.[1] ?? "");
 
 /**
