@@ -240,14 +240,44 @@ Every other tool completed. The test, the drive and the shim were not involved.
   `powershell.exe` on Windows, `tar -xzf` on Linux and macOS, then `<bin>/rg`
   for `glob` and `grep`. The extraction line names the archive. 2.3.2 logs no
   process spawns.
-- Every line carries the role of the process that wrote it. The `serve`
+- Most lines carry the role of the process that wrote it. The `serve`
   process, where the bootstrap runs, writes `role=server`; the download line is
   one of its lines. The `--version` check the drive runs first, and each
   process's `cli starting` line, write `role=cli` to the same file. Observed on
   2.0.17 (Windows, Linux) and 2.3.2 (Linux).
+- Not every line is tagged. In CI run 44667110009's artifact (39 logs, 2.0.17),
+  420 of 2530 lines have no role: 370 `watcher subscribe` lines and 50 `event`
+  lines. Every one of them carries the `run=` id of its log's `role=server`
+  lines, and none is a spawn line; every spawn line in those logs is tagged.
+  The check therefore counts as the server's: lines tagged `role=server`, and
+  untagged lines whose run id also appears on `role=server` lines. A
+  `role=cli` line never counts, although the serve process logs its own
+  `cli starting` under the server's run id.
 - Seeded with the pinned build at that path, no probed build logged a download,
   and `glob` and `grep` completed. On 2.0.17 the spawned `rg` was the
   seeded file on all three platforms.
+- The server's lines can be missing from the file. In CI run 44667110009
+  (attempt 1, windows-latest, 2.0.17, `tools` drive `hooknostic-v2-UxvfHm`),
+  the harness exited 0 and both `glob` and `grep` completed, but the log was
+  incomplete:
+  - It had 51 lines and ended at 03:24:27.889Z. `glob` was called at
+    03:24:28.066Z, by its `session.tool.called` event.
+  - Its only `spawning process` line was the run CLI (`role=cli`) starting
+    `opencode serve`, and it held no download line.
+  - The job's failure artifact holds 39 logs. 31 of them, this one included,
+    end on a startup event (`command.updated` 13, `model.updated` 18). The
+    other 8 end later: 3 at `session generation usage diagnostic`, 2 at
+    `Failed to drain Session`, 1 at `mcp connected`, 1 at a spawn line, and
+    1 at a Bun `InterruptError` line. So the loss is not shown for the
+    whole job. It is shown for this run by the timestamps above. (The commit
+    that first recorded this, `b501ee52`, said all 39 ended at the startup
+    events, and that was wrong.)
+
+  A complete local 2.0.17 log of the same drive on Windows has three
+  `role=server` lines after the first tool call: the two `rg.exe` spawns and
+  the shell's `powershell` spawn. In 2.0.17 those spawns are the server's only
+  lines during the tools. The round-2 check counted the CLI's spawn as "this
+  build logs its processes" and failed the run with "no ripgrep among them".
 
 **Reproduction attempts (Windows 11, 2.0.17, 2026-11-20).** The failure did
 not reproduce locally, so the CI artifacts above remain the evidence of record:
@@ -313,24 +343,40 @@ only, the drive does the following:
      and under any message name.
    - No INFO line comes from the server process (`role=server`). The drive's
      own `--version` call does not count.
-   - On a build that logs the processes it starts (2.0.17), no `rg` among
-     them, or an `rg` other than the expected one. The expected one is the
-     seeded file, unless the harness's `PATH` holds an `rg`, which the harness
-     looks up first.
+   - The server logged an `rg` other than the expected one. The server's
+     lines are those tagged `role=server`, plus untagged lines from the same
+     run; the CLI's own spawns do not count. The expected one is the seeded file,
+     unless the harness's `PATH` holds an `rg`, which the harness looks up
+     first.
+   - The log covers the tool calls, the server logs the processes it starts
+     (2.0.17), and no `rg` is among them. "Covers" means at least one server
+     line at or after the first `glob`/`grep` call, timed by the capture's
+     `session.tool.called` event.
    - The seeded file no longer carries its modification time, meaning
      something replaced it.
 
-   `ripgrep.json` records the seed, the expected `rg` and the `rg` processes
-   logged.
+   `ripgrep.json` records the seed, the expected `rg`, the `rg` processes
+   logged, and `coversTools`. Its `verified: true` means the checks ran and
+   passed; with `coversTools: false` they could not see the tool calls.
 
-What this guarantees: the checks are text-based plus one file check. Each of
-2.0.17 and 2.3.2 writes the download line from the server process, so a
-download by either build fails the run. A future build is caught if it logs
-the URL or an archive name, if it logs its processes (an `rg` that is not the
-seed, or an extraction), or if it writes its own copy over the seed. A build
-that downloads to another place while logging none of these would not be
-caught. harness-watch's latest-build lane runs this check against each new
-build.
+   A `tools` run that produced no seed record fails before the harness
+   starts, so the check is never skipped. The playback test also requires
+   `ripgrep.json` with the seeded path and `verified: true`.
+
+What this guarantees: the checks are text-based plus one file check. When the
+log covers the tool calls (`coversTools: true`), each of 2.0.17 and 2.3.2
+writes the download line from the server process, so a download by either
+build fails the run. A future build is caught if it logs the URL or an archive
+name, if it logs its processes (an `rg` that is not the seed, or an
+extraction), or if it writes its own copy over the seed.
+
+When the server's lines stop before the tools ran (`coversTools: false`, as in
+CI run 44667110009), the log can show neither a download nor which `rg` ran.
+Only the download scan of what the log does contain and the seed-file check
+apply. The current builds look for the seed before downloading, and download
+only into that same place, which the file check covers. A build that downloads to another place while
+logging none of these, or whose log is cut off, would not be caught.
+harness-watch's latest-build lane runs this check against each new build.
 
 The playback test fetches the asset before starting the drive, so a slow first
 fetch is not charged to the drive's own timeout.
@@ -357,6 +403,19 @@ Fail-first evidence:
   - reuse of an unpinned cached file;
   - the replaced-seed check;
   - a temporary-directory default.
+- *The truncated CI log* (`hooknostic-v2-UxvfHm`) has a unit test built from
+  its real lines.
+  - Against the round-2 check it failed with CI's own error, "the harness
+    logged the processes it started but no ripgrep among them". It now passes
+    with `coversTools: false`.
+  - Mutants that count the CLI's spawns, ignore coverage, never find
+    coverage, or date the search tools by any tool's call each fail a test.
+  - So do mutants that drop `toolsFrom` inside `verifyRipgrepSeed`, accept any
+    line (a CLI line) as coverage, ignore untagged server lines, or count
+    untagged lines from any run.
+  - Replayed through the new check, the real artifact gives
+    `{"spawned":[],"coversTools":false}`. A complete local Windows 2.0.17 run
+    gives `coversTools: true` with the seeded `rg.exe` as the one spawned.
 
 The pins move with ripgrep's version in the harness.
 

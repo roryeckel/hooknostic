@@ -265,13 +265,23 @@ const samePath = (a, b) =>
  * - no INFO line from the harness server (`role=server`), where the bootstrap
  *   runs and logs: such a log could not show a download, however named. The
  *   `--version` and `run` processes log as `role=cli` and do not count;
- * - on a build that logs the processes it starts (2.0.17), no ripgrep among
- *   them, or one other than `expected`.
+ * - a ripgrep process other than `expected` logged by the server;
+ * - when the log reaches the tool calls (`coversTools`: a server line at or
+ *   after `toolsFrom`, the first glob/grep call), on a build whose server logs
+ *   the processes it starts (2.0.17), no ripgrep among them.
+ *
+ * Only server spawns count: the run CLI logs its own spawn of `opencode serve`
+ * (role=cli). The server's later lines can be missing from the file even when
+ * the run succeeded: a CI log ended before glob was called, with both tools
+ * completed (README, "ripgrep pre-seed"). Such a log is reported with
+ * `coversTools: false`; it can show neither a download nor which rg ran, so
+ * only the download scan of what it has and verifyRipgrepSeed's file check
+ * apply to it.
  *
  * Text-based: a build that downloads without logging the URL, the archive or
  * its processes is caught only by verifyRipgrepSeed's file check.
  */
-export function checkRipgrepLog(text, { expected, where = "the harness log" } = {}) {
+export function checkRipgrepLog(text, { expected, where = "the harness log", toolsFrom } = {}) {
   const lines = text.split(/\r?\n/);
   const fetched = lines.find(
     (line) =>
@@ -282,13 +292,46 @@ export function checkRipgrepLog(text, { expected, where = "the harness log" } = 
   if (fetched) throw new Error(`OpenCode downloaded ripgrep despite the pre-seed (${where}): ${fetched}`);
   if (!lines.some((line) => / level=INFO /.test(line) && / role=server(?:\s|$)/.test(line)))
     throw new Error(`no INFO line from the harness server in ${where}; cannot tell whether it downloaded ripgrep`);
-  const processes = lines.map(spawnedCommand).filter(Boolean);
+  const server = serverLines(lines);
+  const coversTools = Number.isFinite(toolsFrom) && server.some((line) => timeOf(line) >= toolsFrom);
+  const processes = server.map(spawnedCommand).filter(Boolean);
   const spawned = [...new Set(processes.filter(isRipgrep))];
-  if (processes.length && !spawned.length)
-    throw new Error(`the harness logged the processes it started but no ripgrep among them (${where})`);
+  if (coversTools && processes.length && !spawned.length)
+    throw new Error(`the harness server logged the processes it started but no ripgrep among them (${where})`);
   const other = expected ? spawned.filter((command) => !samePath(command, expected)) : [];
   if (other.length) throw new Error(`OpenCode ran ${other[0]}, not the expected ripgrep ${expected} (${where})`);
-  return { spawned };
+  return { spawned, coversTools };
+}
+
+const roleOf = (line) => / role=(\w+)(?:\s|$)/.exec(line)?.[1];
+const runOf = (line) => / run=(\S+)/.exec(line)?.[1];
+
+/**
+ * The server process's lines: those tagged role=server, and untagged lines
+ * from a run that has role=server lines. 2.0.17 leaves some of its server's
+ * `watcher subscribe` and `event` lines untagged, under the server's run id;
+ * a role=cli line never counts, although the serve process logs its own
+ * `cli starting` under that same run id.
+ */
+function serverLines(lines) {
+  const runs = new Set(lines.filter((line) => roleOf(line) === "server").map(runOf));
+  return lines.filter((line) => roleOf(line) === "server" || (roleOf(line) === undefined && runs.has(runOf(line))));
+}
+const timeOf = (line) => Date.parse(/^timestamp=(\S+)/.exec(line)?.[1] ?? "");
+
+/**
+ * When glob or grep was first called (epoch ms), from the capture plugin's
+ * rows: the session.tool.called event of an execute.before for either tool.
+ * NaN when neither was called.
+ */
+export function searchToolsCalledAt(captured) {
+  const ids = captured
+    .filter((row) => row.hook === "execute.before" && ["glob", "grep"].includes(row.event?.tool))
+    .map((row) => row.event.id);
+  const times = captured
+    .filter((row) => row.hook === "event" && row.event?.type === "session.tool.called" && ids.includes(row.event.data?.id))
+    .map((row) => row.event.created);
+  return times.length ? Math.min(...times) : NaN;
 }
 
 /**
@@ -313,19 +356,19 @@ export async function findOnPath(name, searchPath = "") {
  * After a run: checkRipgrepLog over the harness logs under `dataHome` (its
  * XDG_DATA_HOME), expecting the seeded ripgrep unless the harness's PATH holds
  * one, which it looks up first; and the seeded file still carries SEED_MTIME,
- * so nothing replaced it.
+ * so nothing replaced it. `toolsFrom` is searchToolsCalledAt's time.
  */
-export async function verifyRipgrepSeed(seed, dataHome, searchPath) {
+export async function verifyRipgrepSeed(seed, dataHome, searchPath, toolsFrom) {
   const dir = resolve(dataHome, "opencode", "log");
   const names = (await readdir(dir).catch(() => [])).filter((name) => name.endsWith(".log"));
   const text = (await Promise.all(names.map((name) => readFile(join(dir, name), "utf8")))).join("\n");
   const onPath = await findOnPath(basename(seed.seeded), searchPath);
   const expected = onPath ?? seed.seeded;
-  const { spawned } = checkRipgrepLog(text, { expected, where: dir });
+  const { spawned, coversTools } = checkRipgrepLog(text, { expected, where: dir, toolsFrom });
   const info = await stat(seed.seeded).catch(() => undefined);
   if (!info || Math.round(info.mtimeMs / 1000) !== SEED_MTIME.getTime() / 1000)
     throw new Error(
       `the seeded ${seed.seeded} was ${info ? `replaced (modified ${info.mtime.toISOString()})` : "removed"} during the run`,
     );
-  return { expected, spawned };
+  return { expected, spawned, coversTools };
 }
