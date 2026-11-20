@@ -139,12 +139,12 @@ export function doctorVersionLine(sdk: ProjectSdkRelease | undefined, node: stri
  * found `sdk` (#257). HN110 judges the release doctor's version line shows,
  * whatever the config delivers and even when it fails to load. Only for an SDK
  * that lookup found, so doctor never warns about one its version line calls
- * missing: HN110's own lookup also follows `NODE_PATH`, which the line's does
- * not (#246).
+ * missing (#246).
  */
 function doctorDiagnostics(configDir: string | undefined, sdk: ProjectSdkRelease | undefined): Diagnostic[] {
-  // Once HN110 resolves the SDK as the version line does (#258), every status
-  // but `found` leaves it silent anyway, and this gate is redundant.
+  // HN110 now resolves the SDK as the version line does (#258), so every status
+  // but `found` leaves it silent anyway and this gate is redundant. It stays so
+  // the two cannot drift apart again.
   if (configDir === undefined || sdk?.status !== "found") return [];
   const skew = projectSdkReleaseSkew(configDir);
   return skew === undefined ? [] : [skew];
