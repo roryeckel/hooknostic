@@ -132,7 +132,9 @@ it.each([[""], ["codexx"], ["opencode-v3"], ["CLAUDE"], ["toString"], ["__proto_
 // with no lane selected: it must fail, so deleting the guard fails here.
 it("fails, rather than skips, an offline playback run that selects no lane", () => {
   const env = Object.fromEntries(Object.entries(process.env).filter(([name]) => !name.startsWith("VITEST")));
-  delete env["HOOKNOSTIC_PLAYBACK"];
+  // Nor may it depend on how this run was invoked.
+  for (const name of ["HOOKNOSTIC_PLAYBACK", "HOOKNOSTIC_PLAYBACK_VERSION", "HOOKNOSTIC_SMOKE", "HOOKNOSTIC_PACK"])
+    delete env[name];
   // In CI the nested run would add the github-actions reporter, turning its
   // expected failure into an error annotation on this job, and would colour
   // its summary. Neither belongs to the run under test.
