@@ -88,6 +88,13 @@ describe("public package outputs", () => {
       types: "./dist/schemas.d.ts",
       default: "./dist/schemas.js",
     });
+    // `main` names the root entry for a resolver that reads no `exports`:
+    // pnpm 12's nodeLinker: pnp hook resolves `@hooknostic/sdk` to the
+    // package's directory, and Node resolves a directory by `main` alone, so
+    // without it HN110 and doctor found no SDK under pnpm exec (#259,
+    // .capture/pnpm-pnp). Requiring the directory is that resolution.
+    expect(manifest.main).toBe(manifest.exports["."].default);
+    expect(createRequire(import.meta.url).resolve(packageRoot)).toBe(resolve(packageRoot, "dist/index.js"));
     // Only the schemas subpath needs Zod (ADR-0040), but the peer stays
     // required: an optional one sends npm's arborist into a loop when a
     // project replaces its Zod (#240).
