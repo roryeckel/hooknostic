@@ -7,7 +7,8 @@ update checks, model catalogs, plugin catalogs, telemetry, package installs?
 Which of those does a lane need to pass, and which setting turns each one off?
 The answers inform whether CI should block egress for these lanes.
 
-This is a measurement only. No product code, test, or CI change was made.
+The inventory itself was a measurement only. What was then acted on is in
+"Acted on", below.
 
 ## Environment
 
@@ -274,46 +275,97 @@ Avoidable, harness-side; no lane needs any of them:
 | OpenCode model catalog (models.opencode.ai) | `OPENCODE_DISABLE_MODELS_FETCH=1`. For v2 it must be set after `drive.mjs` strips `OPENCODE*` |
 | OpenCode v2 TUI update check (opencode.ai) | `OPENCODE_DISABLE_AUTOUPDATE=1`, with the same caveat |
 
-## Consequences for enforcing no egress in CI
+## Acted on (2026-11-20)
 
-These are not implemented here.
+The owner's decisions, and the branch `ci/offline-playback` (draft PR
+roryeckel/hooknostic#288) that carries them, together with this inventory:
 
-- **Linux lanes, using a network namespace.** The namespace used here needs only
-  root, which a GitHub-hosted runner has through passwordless `sudo`. It does
-  not need an unprivileged user namespace, so AppArmor's
-  `kernel.apparmor_restrict_unprivileged_userns` does not apply. Ubuntu 24.04
-  images had that restriction switched off in actions/runner-images#11489.
-  A third-party report says `ubuntu-latest` has been moving to 26.04, where a
-  bubblewrap profile ships enabled. The namespace path does not use bubblewrap
-  (**inference**; not run on a runner). The wrapped step is the playback step only:
+| Item | Decision | Where |
+|---|---|---|
+| opencode-v1 test setup reaching registry.npmjs.org | Warm npm's cache in a prepare step that has network, and prove it with a second `--offline` install through the test's own helper. Inside the namespace the helper installs with `--offline`, so a gap fails at once with `ENOTCACHED`. Outside, npm resolves online as before. A Pi-style loopback registry was rejected: the plugin resolves to 42 packages, including platform-specific optionals and auto-installed peers. | `scripts/prepare-offline-playback.mjs`, `prepareOpenCodePluginDependency` |
+| Codex metrics (ab.chatgpt.com) | `-c analytics.enabled=false` on every `codex exec`, `plugin marketplace add` and `plugin add` in the lane | `playbackQuiet.codexArgs` |
+| OpenCode model catalog (models.opencode.ai) | `OPENCODE_DISABLE_MODELS_FETCH=1`, on v1 and v2 | `playbackQuiet.opencodeV1Env` / `opencodeV2Env` |
+| OpenCode v2 TUI update check (opencode.ai) | `OPENCODE_DISABLE_AUTOUPDATE=1`, set in `.capture/opencode-v2/drive.mjs` after its `OPENCODE*` strip, and after the effect test's own strip | `playbackQuiet.opencodeV2Env` |
+| Claude `plugin validate` (api.anthropic.com) | Give it the drives' environment (`claudePlaybackEnv`) with the API on a refused loopback port | `harness-playback.test.ts` |
+| Codex curated plugin sync (github.com, chatgpt.com, api.github.com) | Left alone; fails harmlessly without network | — |
+| Claude official marketplace (downloads.claude.ai) | Left alone; no setting found, and it fails harmlessly | — |
+| Enforcement | The six Ubuntu `harness-playback` entries run through `scripts/without-network.sh`, which checks the isolation with `scripts/assert-no-network.mjs` before the tests start. The Windows entries are unchanged. | `.github/workflows/ci.yml` |
 
-  ```
-  sudo unshare --net -- sh -c 'ip link set lo up; exec setpriv --reuid=… --regid=… --init-groups env … pnpm exec vitest run …'
-  ```
+### After the change, with network (traced, WSL, as above)
 
-  Everything that needs the network must run before it:
-  - `pnpm install`, the harness install and `actions/cache`;
-  - the ripgrep seed fetch on a cache miss;
-  - for opencode-v1, warming the npm cache for `@opencode-ai/plugin` (or
-    serving it from a loopback registry as the Pi lane does), with
-    `npm_config_offline=true` inside.
+Destinations reached, excluding loopback, the resolver and route probes. All
+eight runs passed. Summaries are in `summaries/*-traced-after.json`.
 
-  `sudo` resets the environment, so the step must pass `PATH`, the toolcache
-  Node and the playback variables explicitly.
-- **Without that npm change, opencode-v1 fails** (13 tests). The other five
-  Linux lanes passed unchanged in the namespace.
-- **Windows lanes** (copilot, pi, opencode-v2, Code Mode) cannot use a network
-  namespace and were not measured.
+| Lane | Reference | Latest |
+|---|---|---|
+| claude | downloads.claude.ai (pty TUIs; left alone) | same (2.1.329) |
+| codex | github.com (git), chatgpt.com (plugin sync; left alone). ab.chatgpt.com gone. | github.com only (0.171.0) |
+| opencode-v1 | registry.npmjs.org from the test's `npm install`, which runs online outside the wrapper. models.opencode.ai gone. | same (1.19.6) |
+| opencode-v2 | **none** | **none** (2.3.2) |
+| copilot, pi | none (unchanged) | — |
+
+### Without network, in the wrapper (WSL, reference versions)
+
+All six lanes passed in the namespace, with the canary green before vitest:
+
+| Lane | Passed | Skipped |
+|---|---|---|
+| claude | 72 | 74 |
+| codex | 71 | 75 |
+| copilot | 70 | 76 |
+| pi | 74 | 72 |
+| opencode-v2 | 95 | 51 |
+| opencode-v1 | 65 | 81 |
+
+Two wrapped runs were expected to fail, and did:
+- opencode-v1 without the prepare step failed 13 tests in 6 s with `ENOTCACHED`
+  (26 installs). Before, it timed out.
+- The wrapper with `--net` removed failed in the canary, on the interfaces,
+  IPv4 and DNS checks.
+
+The sudo path was exercised through a temporary sudoers rule scoped to the
+wrapper, removed afterwards.
+
+### CI evidence (draft PR #288)
+
+| Run | Tree | Outcome |
+|---|---|---|
+| [44691873247](https://github.com/roryeckel/hooknostic/actions/runs/44691873247) | first green | **Vacuous**, caught by reading the logs. The runner's sudo printed `preserving the entire environment is not supported, '--preserve-env' is ignored`. The step lost `HOOKNOSTIC_PLAYBACK`, so every playback test skipped (49 passed, 97 skipped). The same hop lost `HKN_NO_NETWORK_REQUIRE_ENV`, so the canary reported "no required names". The plan review had flagged this assumption. Fixed in `2cce6d15`: the environment now crosses sudo in a 0600 file, and the required list travels as an argument. A mutant that skips loading the file now fails the canary. |
+| [44693790195](https://github.com/roryeckel/hooknostic/actions/runs/44693790195) | `2cce6d15` | Green. Every Linux canary shows the three required names present, and the counts match WSL (72/71/70/74/95/65). |
+| [44694633807](https://github.com/roryeckel/hooknostic/actions/runs/44694633807) | Mutant A: `--net` dropped | All six Linux entries failed in the canary before vitest: `FAIL interfaces: non-loopback: eth0` (`enp39s0` on one runner), `FAIL public IPv4 connect: 1.1.1.1:443 -> connected`, `FAIL DNS lookup`. Windows green. |
+| [44695246302](https://github.com/roryeckel/hooknostic/actions/runs/44695246302) | Mutant B: a test fetching github.com | All six Linux entries: canary green, then exactly that test failed with `fetch failed`, cause `getaddrinfo EAI_AGAIN github.com`. The Windows lanes and every `lint + typecheck + test` job were green. |
+| [44695948182](https://github.com/roryeckel/hooknostic/actions/runs/44695948182) | mutants dropped by force-push (back to `2cce6d15`) | Green, with the same counts and canary lines. |
+
+Hosted runners had no IPv6 even outside the namespace
+(`[2606:4700:4700::1111]:443 -> ENETUNREACH` in `--online`), which confirms
+the review's point that the positive control must not require IPv6.
+
+Linux playback step, seconds. Master is run 44679264511 at 766f2370, with the
+plain step. The wrapped runs are 44693790195 and 44695948182.
+
+| Lane | Master | Wrapped (two runs) | Notes |
+|---|---|---|---|
+| claude | 67 | 55, 64 | |
+| codex | 26 | 90, 88 | Codex's musl resolver retries each refused lookup of its plugin sync and metrics hosts |
+| copilot | 42 | 54, 45 | |
+| pi | 29 | 33, 28 | |
+| opencode-v1 | 210 | 200, 162 | Plus 11–12 s for the prepare step |
+| opencode-v2 | 175 | 190, 154 | |
+
+Codex's added minute is the price of leaving its plugin sync on. It is well
+inside the 15-minute job timeout.
 
 ## Not measured
 
 - **Windows and macOS.** The Windows playback lanes (copilot, pi, opencode-v2)
   and the Windows Code Mode lane were not traced; the Linux results say nothing
   about them.
-- **A GitHub-hosted runner.** WSL's NAT network and resolver differ from a
-  runner's: the runner uses the systemd-resolved stub at 127.0.0.53, which
-  inside a new network namespace is a loopback port with nothing listening.
-  Nothing here was run on a runner.
+- **A traced inventory on a GitHub-hosted runner.** WSL's NAT network and
+  resolver differ from a runner's: the runner uses the systemd-resolved stub
+  at 127.0.0.53. The destination traces ran only in WSL. The enforcement did
+  run on runners (see "CI evidence" above). There, lookups inside the
+  namespace failed with `EAI_AGAIN`, and the Codex resolver delay persisted,
+  at about a minute per lane.
 - **Request paths and bodies.** Purposes come from the binaries' strings and
   from which knob removes a destination. TLS hides the path, and no MITM proxy
   was used.

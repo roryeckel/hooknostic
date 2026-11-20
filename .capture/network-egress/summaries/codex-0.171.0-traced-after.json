@@ -1,0 +1,178 @@
+{
+ "run": "codex-0.171.0-traced-after",
+ "meta": {
+  "lane": "codex",
+  "version": "0.171.0",
+  "mode": "traced",
+  "date_utc": "2026-11-20T07:07:28Z",
+  "playback_version_env": "0.171.0",
+  "extra_env": [],
+  "seed_home": "none",
+  "kernel": "Linux 5.15.167.4-microsoft-standard-WSL2",
+  "node": "v24.22.3",
+  "which": "/home/user/hn-egress/harness/codex-0.171.0/bin/codex",
+  "interfaces": [
+   "lo UNKNOWN 127.0.0.1/8 10.255.255.254/32 ::1/128",
+   "eth0 UP",
+   "br-8720e84bfcad DOWN",
+   "docker0 DOWN"
+  ],
+  "exit": "0",
+  "seconds": "41"
+ },
+ "tests": {
+  "passed": 73,
+  "skipped": 73
+ },
+ "failed": [],
+ "harness_processes": 35,
+ "harness_processes_with_egress": 0,
+ "destinations": [
+  {
+   "ip": "10.255.255.254",
+   "port": 53,
+   "kind": "dns-resolver",
+   "hostnames": [],
+   "tls_sni": [],
+   "exe": "/usr/lib/git-core/git-remote-https",
+   "chain": [
+    "git-remote-https",
+    "git",
+    "git",
+    "codex",
+    "node",
+    "node",
+    "pnpm"
+   ],
+   "results": [
+    "0"
+   ],
+   "count": 39,
+   "processes": 39,
+   "first_offset_s": 6.401,
+   "argv_examples": [
+    "/usr/lib/git-core/git-remote-https https://github.com/openai/plugins.git https://github.com/openai/plugins.git"
+   ]
+  },
+  {
+   "ip": "140.82.112.3",
+   "port": 443,
+   "kind": "tcp-or-udp",
+   "hostnames": [
+    "github.com"
+   ],
+   "tls_sni": [
+    "github.com"
+   ],
+   "exe": "/usr/lib/git-core/git-remote-https",
+   "chain": [
+    "git-remote-https",
+    "git",
+    "git",
+    "codex",
+    "node",
+    "node",
+    "pnpm"
+   ],
+   "results": [
+    "EINPROGRESS"
+   ],
+   "count": 22,
+   "processes": 22,
+   "first_offset_s": 6.422,
+   "argv_examples": [
+    "/usr/lib/git-core/git-remote-https https://github.com/openai/plugins.git https://github.com/openai/plugins.git"
+   ]
+  },
+  {
+   "ip": "140.82.113.4",
+   "port": 443,
+   "kind": "tcp-or-udp",
+   "hostnames": [
+    "github.com"
+   ],
+   "tls_sni": [
+    "github.com"
+   ],
+   "exe": "/usr/lib/git-core/git-remote-https",
+   "chain": [
+    "git-remote-https",
+    "git",
+    "git",
+    "codex",
+    "node",
+    "node",
+    "pnpm"
+   ],
+   "results": [
+    "EINPROGRESS"
+   ],
+   "count": 9,
+   "processes": 9,
+   "first_offset_s": 25.182,
+   "argv_examples": [
+    "/usr/lib/git-core/git-remote-https https://github.com/openai/plugins.git https://github.com/openai/plugins.git"
+   ]
+  },
+  {
+   "ip": "140.82.112.4",
+   "port": 443,
+   "kind": "tcp-or-udp",
+   "hostnames": [
+    "github.com"
+   ],
+   "tls_sni": [
+    "github.com"
+   ],
+   "exe": "/usr/lib/git-core/git-remote-https",
+   "chain": [
+    "git-remote-https",
+    "git",
+    "git",
+    "codex",
+    "node",
+    "node",
+    "pnpm"
+   ],
+   "results": [
+    "EINPROGRESS"
+   ],
+   "count": 8,
+   "processes": 8,
+   "first_offset_s": 35.124,
+   "argv_examples": [
+    "/usr/lib/git-core/git-remote-https https://github.com/openai/plugins.git https://github.com/openai/plugins.git"
+   ]
+  }
+ ],
+ "dns_queries": [
+  {
+   "name": "github.com",
+   "types": [
+    "A",
+    "AAAA"
+   ],
+   "procs": [
+    "git-remote-https"
+   ],
+   "answers": [
+    "A 140.82.112.3",
+    "A 140.82.112.4",
+    "A 140.82.113.4"
+   ],
+   "rcodes": [
+    0
+   ],
+   "first_offset_s": 6.401,
+   "querying_processes": 39,
+   "argv_examples": [
+    "/usr/lib/git-core/git-remote-https https://github.com/openai/plugins.git https://github.com/openai/plugins.git"
+   ],
+   "seconds_after_exec": [
+    0.002,
+    0.004
+   ]
+  }
+ ],
+ "trace_bytes": 64845326
+}
