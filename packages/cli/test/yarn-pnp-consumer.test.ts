@@ -3,9 +3,10 @@ import { cp, mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from "node
 import { tmpdir } from "node:os";
 import { basename, join, resolve } from "node:path";
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { runProcess } from "./harness-playback.js";
+import { report } from "./report.js";
 
 /** The Yarn release the projects pin through `packageManager`; corepack fetches it. */
 const YARN = "yarn@4.18.1";
@@ -259,13 +260,18 @@ async function files(directory: string): Promise<string[]> {
   return entries.filter((entry) => entry.isFile()).map((entry) => join(entry.parentPath, entry.name));
 }
 
-/**
- * Print diagnostic output straight to stderr. Vitest's reporter hides a passing
- * test's `console` output in some environments (the minimal reporter, chosen when
- * it detects a coding agent); the worker's own stderr reaches the terminal under
- * every reporter (#263).
- */
-const report = (text: string) => void process.stderr.write(`${text}\n`);
+it("reports its diagnostics through stderr, which every reporter shows on a passing run", () => {
+  const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+  const log = vi.spyOn(console, "log").mockImplementation(() => {});
+  try {
+    report("--- probe");
+    expect(stderr).toHaveBeenCalledWith("--- probe\n");
+    expect(log).not.toHaveBeenCalled();
+  } finally {
+    stderr.mockRestore();
+    log.mockRestore();
+  }
+});
 
 it.skipIf(process.env["HOOKNOSTIC_YARN_PNP"] !== "1")(
   "builds Yarn Plug'n'Play consumers through Yarn's runtime, and fails with HN504 outside it",

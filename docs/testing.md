@@ -301,12 +301,10 @@ every install and `YN0001` any exception) stops the test at once with an
 not a missing HN504. Set `HOOKNOSTIC_YARN_PNP_VERBOSE=1` to print every
 build's output and the Zod it bundled, each `sync` step's output, and each MCP
 launcher's output; a launcher that does not answer, or a `sync` step that
-fails, prints its output regardless. This output, and the table of observed
-outcomes printed on every run, is written straight to stderr rather than
-through `console`, so it shows on a passing run without `--silent=false`
-(#263). As a consequence `--silent` does not hide it, a file reporter such as
-`junit` does not record it, and redirecting only stdout leaves it on the
-terminal: redirect stderr (`2>&1`) to capture it.
+fails, prints its output regardless. This output and the table of observed
+outcomes go straight to stderr (#263): they show on a passing run, `--silent`
+does not hide them, a `junit` report does not record them, and capturing them
+in a file needs `2>&1`.
 
 The normal suite covers HN504 without Yarn, through a synthetic layout: a
 hand-written `.pnp.data.json` and stored zip archives that esbuild resolves
