@@ -239,9 +239,10 @@ config. `runtime.sdk.status` is one of:
   - `outside-pnp-runtime`: `manifest`, a Yarn Plug'n'Play manifest, is in the
     config's directory or an ancestor, this process isn't running under Yarn's
     runtime, and no `node_modules/@hooknostic/sdk` is reachable. In a Yarn
-    Plug'n'Play project, run `yarn hooknostic doctor`; there, a build run any
-    other way fails with HN504. A stray manifest above a `node_modules` project
-    gives this reason too.
+    Plug'n'Play project, run `yarn hooknostic doctor`; a build run there without
+    Yarn's runtime fails with HN504
+    ([ADR-0041](decisions/0041-yarn-pnp-runtime.md)). A stray manifest above a
+    `node_modules` project gives this reason too.
 
 `doctor` looks the SDK up from the config's directory, as HN110 does. A build
 resolves it from each file that imports it instead, so an SDK that only a nested

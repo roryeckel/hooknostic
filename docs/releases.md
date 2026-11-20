@@ -84,6 +84,17 @@ preparation branch, then dispatch **Release prepare** from that branch. A local
 version bump can be used as a rehearsal, but must stay out of the preparation
 commit. Let the workflow generate the final bump and artifacts.
 
+Before dispatching, check whether the release changes how builds resolve or
+read packages, or how `sync` writes project files: read the changes since the
+previous release (`git log --oneline v<previous>..`). If it does, run the
+[opt-in Yarn Plug'n'Play suite](testing.md#yarn-plugnplay-consumers) on the
+preparation branch, which shows the command for POSIX shells and PowerShell,
+and report its result with the release PR. CI does not run it, and it is the
+only test against a real Yarn install. During 0.13.0's development, running it
+caught a regression under `yarn dlx` (#216) before release, and the work on
+that fix turned up two older Plug'n'Play failures that had already shipped:
+MCP components (#224) and `sync` (#229).
+
 HN110 cannot flag a tree built before the bump. Until the workflow bumps the
 versions, a CLI built or packed from the tree still carries the previous
 release's version, so it is silent against the registry's SDK of that version
@@ -133,7 +144,9 @@ fails the duplicate-branch guard.
    checks stop on authentication/service errors, and failure cleanup deletes
    only a branch created by that run.
 2. Review the PR — CI runs the 3-OS matrix, the artifact byte gate, and the
-   docs drift gate on it. Merge it (**decision 1**).
+   docs drift gate on it, but not the Yarn Plug'n'Play suite: check the
+   preparation's result for it, when the release needed one (above). Merge it
+   (**decision 1**).
 3. **Release draft** fires on the merge: asserts every version carrier agrees
    (`set-versions.mjs --check`), asserts the publish guard was removed (see
    below), polls CI green at the merge sha, generates the notes (harness

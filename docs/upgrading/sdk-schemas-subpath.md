@@ -171,21 +171,25 @@ in one of two cases:
   range to share one.
 
 Under Yarn Plug'n'Play, install `hooknostic` as a devDependency and run it
-through Yarn (`yarn hooknostic`), which loads the project's PnP runtime.
-`npx`, a global install and `pnpm dlx` run without it, and the build fails
-with HN504. `yarn dlx` fails with HN504 when the build needs Hooknostic's own
-Zod, because its install is not in the project's PnP manifest. On Linux with
-Node 22, `yarn dlx` that shares Yarn's global cache with the project fails
-with HN501 ("controlled by multiple pnpapi instances") whatever the Zod.
-Supporting those invocations is tracked in
-[#190](https://github.com/roryeckel/hooknostic/issues/190).
+through Yarn (`yarn hooknostic`), which loads the project's PnP runtime, or
+start a CLI installed elsewhere under that runtime from the project directory
+with `node -r ./.pnp.cjs <dir>/hooknostic/bin/hooknostic.mjs`
+([getting started](../getting-started.md) shows it for a global install).
+`npx`, a globally installed `hooknostic` run directly and `pnpm dlx` run
+without that runtime, and the build fails with HN504. `yarn dlx` is
+unsupported: it fails with HN504 when the build needs Hooknostic's own Zod,
+because its install is not in the project's PnP manifest, and on Linux with
+Node 22, sharing Yarn's global cache with the project, it fails with HN501
+("controlled by multiple pnpapi instances") whatever the Zod version.
+[ADR-0041](../decisions/0041-yarn-pnp-runtime.md) records the decision.
 
 Keep the SDK and CLI on the same Hooknostic release: an older CLI cannot bundle
 against this SDK. From 0.13.0, a CLI that builds against an SDK from another
 release warns HN110. Under `yarn dlx` in a Plug'n'Play project, HN110
 stays silent: checking the project's SDK there would load the project's PnP
-runtime beside dlx's and break the build. Run `yarn hooknostic` to get the
-check. Rebuild or re-sync with the new CLI to regenerate owned output.
-Artifact bytes change even when your sources do not.
+runtime beside dlx's and break the build. Run `yarn hooknostic`, or the
+`node -r` form above, to get the check. Rebuild or re-sync with the new CLI
+to regenerate owned output. Artifact bytes change even when your sources do
+not.
 
 To upgrade the SDK and CLI together, use the command in [Upgrading](README.md).
