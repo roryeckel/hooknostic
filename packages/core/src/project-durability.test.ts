@@ -1,7 +1,7 @@
 import type * as fs from "node:fs";
 import { fsync } from "node:fs";
 import type * as fsPromises from "node:fs/promises";
-import { mkdtemp, readdir, readFile, rm, stat } from "node:fs/promises";
+import { mkdtemp, readdir, readFile, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -22,6 +22,8 @@ const io = vi.hoisted(() => ({
   written: new Map<string, string>(),
   /** Each flush, in order: the file's path and its contents on disk at that moment. */
   flushes: [] as { path: string; contents: string }[],
+  /** Runs once, just before the file at the path it is given is opened. */
+  beforeOpen: undefined as ((path: string) => Promise<void>) | undefined,
 }));
 
 vi.mock("node:fs/promises", async (importOriginal) => {
@@ -30,6 +32,9 @@ vi.mock("node:fs/promises", async (importOriginal) => {
     ...actual,
     async open(...args: Parameters<typeof actual.open>) {
       const path = String(args[0]);
+      const beforeOpen = io.beforeOpen;
+      io.beforeOpen = undefined;
+      await beforeOpen?.(path);
       const handle = await actual.open(...args);
       io.paths.set(handle.fd, path);
       io.written.set(path, "");
@@ -108,6 +113,7 @@ afterEach(async () => {
   io.paths.clear();
   io.written.clear();
   io.flushes.length = 0;
+  io.beforeOpen = undefined;
   vi.mocked(fsync).mockClear();
   await rm(root, { recursive: true, force: true });
 });
@@ -184,6 +190,22 @@ describe("a failed flush aborts and leaves nothing behind", () => {
     expect(await exists(".hooknostic/recovery.lock")).toBe(false);
     expect(await exists(".hooknostic/sync.lock")).toBe(false);
   });
+});
+
+it("names the other recover when one takes the recovery lock first (#267)", async () => {
+  const lock = join(await realpath(root), ".hooknostic", "recovery.lock");
+  // A peer recover creates its lock after this one found none and before it creates its own.
+  io.beforeOpen = async (path) => {
+    if (path === lock) await writeFile(lock, String(process.pid));
+  };
+
+  await expect(recoverProject(root, owner)).rejects.toMatchObject({
+    message: `another hooknostic recover may be running: ${lock} exists; rerun hooknostic recover, which removes a lock left by a process that has exited`,
+    code: "EEXIST",
+    path: lock,
+    cause: { code: "EEXIST", path: lock },
+  });
+  expect(await readFile(lock, "utf8")).toBe(String(process.pid));
 });
 
 it("removes the lock when closing it fails after a successful flush", async () => {
