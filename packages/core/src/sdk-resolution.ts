@@ -188,13 +188,13 @@ export function sdkManifestVersion(sdkEntry: string): string | undefined {
 }
 
 /**
- * `directory` as HN110 names it: relative to the config's directory, with
- * forward slashes and saying so, when that directory contains it, because the
- * build report that carries the message may be committed, and an absolute path
- * differs by machine and can name a home directory. Otherwise absolute. The
- * SDK's path is real (Node resolves symlinks), so the project's real path is
- * tried too. A Plug'n'Play SDK is named by its install instead
- * ({@link sdkLocation}).
+ * `directory` as HN109 and HN110 name it: relative to the config's directory,
+ * with forward slashes and saying so, when that directory contains it, because
+ * the build report that carries the message may be committed, and an absolute
+ * path differs by machine and can name a home directory. Otherwise absolute.
+ * The package's path is real (Node and esbuild resolve symlinks), so the
+ * project's real path is tried too. A package Yarn's Plug'n'Play install
+ * serves is named by that install instead ({@link packageLocation}).
  */
 function shownPath(directory: string, projectDirectory: string): string {
   let real = projectDirectory;
@@ -214,21 +214,37 @@ function shownPath(directory: string, projectDirectory: string): string {
 /** A path inside a Yarn zip archive or virtual folder (Yarn 2's `$$virtual`, Yarn 3+'s `__virtual__`). */
 export const PNP_PATH = /\.zip[\\/]|[\\/](?:__virtual__|\$\$virtual)[\\/]/;
 
+/** How HN109 and HN110 name a package that Yarn's Plug'n'Play install serves. */
+const PNP_INSTALL = "from Yarn's Plug'n'Play install";
+
 /**
- * Where HN110 says the project's SDK is, preposition included: `at <path>`
- * ({@link shownPath}), or, in a Plug'n'Play project whose SDK resolves inside
- * a zip archive or a virtual folder, `from Yarn's Plug'n'Play install`. That
- * path is unreadable, and usually machine-specific: it runs through
- * `__virtual__` into Yarn's global cache, whose hash, depth and cache folder
- * differ by machine, while the message already names the package and its
- * version (#225). A real directory named `*.zip` outside Plug'n'Play keeps its
- * path. Inside a Plug'n'Play project, a real `*.zip` or `__virtual__`
- * directory on the SDK's path is taken for Yarn's install, and gets the
- * install wording: an accepted false positive, which changes only the wording.
+ * Where a diagnostic says the package at `directory` is, preposition
+ * included: `<preposition> <path>` ({@link shownPath}), or, in a Plug'n'Play
+ * project (`pnpProject`, asked only for such a path) where the package
+ * resolves inside a zip archive or a virtual folder, `from Yarn's Plug'n'Play
+ * install`. That path is unreadable, and usually machine-specific: it runs
+ * through `__virtual__` into Yarn's global cache, whose hash, depth and cache
+ * folder differ by machine, while the message already names the package and
+ * its version (#225, #256). A real directory named `*.zip` outside
+ * Plug'n'Play keeps its path, and so does any other path in a Plug'n'Play
+ * project, such as a `node_modules` package esbuild falls back to. Inside a
+ * Plug'n'Play project, a real `*.zip` or `__virtual__` directory on the
+ * package's path is taken for Yarn's install, and gets the install wording:
+ * an accepted false positive, which changes only the wording.
  */
+function packageLocation(
+  directory: string,
+  projectDirectory: string,
+  preposition: "at" | "from",
+  pnpProject: () => boolean,
+): string {
+  if (PNP_PATH.test(directory) && pnpProject()) return PNP_INSTALL;
+  return `${preposition} ${shownPath(directory, projectDirectory)}`;
+}
+
+/** Where HN110 says the project's SDK is ({@link packageLocation}). */
 function sdkLocation(directory: string, projectDirectory: string): string {
-  if (PNP_PATH.test(directory) && pnpManifest(projectDirectory) !== undefined) return "from Yarn's Plug'n'Play install";
-  return `at ${shownPath(directory, projectDirectory)}`;
+  return packageLocation(directory, projectDirectory, "at", () => pnpManifest(projectDirectory) !== undefined);
 }
 
 /**
@@ -524,6 +540,10 @@ interface ZodSubstitution {
   foundVersion?: string;
   ownPath: string;
   ownVersion?: string;
+  /** The config's directory, which the build's working directory is: paths inside it are shown relative to it. */
+  projectDirectory: string;
+  /** Whether the build is in a Plug'n'Play project, as esbuild finds its manifest. */
+  pnpProject: boolean;
 }
 
 /** A Zod the SDK reached that it cannot use: out of its peer range, or versionless. */
@@ -533,25 +553,33 @@ interface ReachedZod {
   range: string;
 }
 
-/** "the SDK's zod import reached zod@<version> at <path>" */
-function reachedText(reached: { path: string; version?: string }): string {
+/** "the SDK's zod import reached zod@<version> <location>", where `location` is `at <path>` or names an install. */
+function reachedText(reached: { version?: string }, location: string): string {
   const found = reached.version === undefined ? "a zod package with no readable version" : `zod@${reached.version}`;
-  return `the SDK's zod import reached ${found} at ${reached.path}`;
+  return `the SDK's zod import reached ${found} ${location}`;
 }
 
-/** HN109 for one substituted Zod. */
+/**
+ * HN109 for one substituted Zod. Each Zod is named as HN110 names the SDK
+ * ({@link packageLocation}): its path relative to the config's directory when
+ * inside it, or Yarn's install for one Plug'n'Play serves, as the reached Zod
+ * is under Yarn's runtime and Hooknostic's own is under `yarn hooknostic` (#256).
+ */
 function substitutionDiagnostic(substitution: ZodSubstitution): Diagnostic {
-  const reached = reachedText({
-    path: substitution.foundPath,
-    ...(substitution.foundVersion === undefined ? {} : { version: substitution.foundVersion }),
-  });
+  const { projectDirectory } = substitution;
+  const pnpProject = () => substitution.pnpProject;
+  const reached = reachedText(
+    substitution.foundVersion === undefined ? {} : { version: substitution.foundVersion },
+    packageLocation(substitution.foundPath, projectDirectory, "at", pnpProject),
+  );
   const own = substitution.ownVersion === undefined ? "zod" : `zod@${substitution.ownVersion}`;
+  const ownLocation = packageLocation(substitution.ownPath, projectDirectory, "from", pnpProject);
   return {
     code: "HN109",
     severity: "warn",
     message:
       `${reached}, outside the SDK's zod peer range ` +
-      `${substitution.range}; the runtime bundles Hooknostic's own ${own} from ${substitution.ownPath} instead, ` +
+      `${substitution.range}; the runtime bundles Hooknostic's own ${own} ${ownLocation} instead, ` +
       "while user code that imports zod still bundles the project's copy.",
     remediation: `install a zod that satisfies ${substitution.range} in the project, so the SDK and user code share one copy.`,
   };
@@ -574,8 +602,10 @@ function substitutionDiagnostic(substitution: ZodSubstitution): Diagnostic {
  * inherited from an unrelated dependency beside it without a peer conflict,
  * and pnpm links a project's own Zod 3 as the peer with only a warning. The
  * SDK's import then resolves from here too, and `onSubstitution` receives an
- * HN109 warning rather than the build failing. The range comes from the SDK's
- * own manifest. A manifest whose range is not a semver range -- the
+ * HN109 warning rather than the build failing, naming each Zod as HN110 names
+ * the SDK: by its path relative to the config's directory, or by Yarn's
+ * Plug'n'Play install rather than its cache path (#256). The range comes
+ * from the SDK's own manifest. A manifest whose range is not a semver range -- the
  * workspace's `catalog:` reference, which only `pnpm pack` rewrites -- has no
  * floor to enforce, and the reached Zod is used as is.
  *
@@ -708,9 +738,12 @@ export function sdkZodFallbackPlugin(
           // With an out-of-range Zod, never bundle it: a CLI that cannot
           // resolve its own dependency is broken. Say which Zod needed it.
           if (found !== undefined) {
+            // The note keeps the absolute path, as it keeps ownDirectory's:
+            // a failed build writes no report, and esbuild's error message,
+            // which HN301 carries, does not include notes.
             const note = {
               text:
-                `${reachedText(found)}, outside the SDK's zod peer range ${found.range}, ` +
+                `${reachedText(found, `at ${found.path}`)}, outside the SDK's zod peer range ${found.range}, ` +
                 `and Hooknostic's own zod, which would replace it, did not resolve from ${ownDirectory}.`,
             };
             return { errors: own.errors.map((error) => ({ ...error, notes: [...error.notes, note] })) };
@@ -730,6 +763,8 @@ export function sdkZodFallbackPlugin(
               ...(found.version === undefined ? {} : { foundVersion: found.version }),
               ownPath: mine?.directory ?? own.path,
               ...(mine?.version === undefined ? {} : { ownVersion: mine.version }),
+              projectDirectory,
+              pnpProject,
             }),
           );
         }

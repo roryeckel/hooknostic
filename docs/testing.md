@@ -258,11 +258,12 @@ Zod 3.24.4, 3.25.76 and 4.6.7, Zod 4.6.7 with the SDK repacked as 0.11.9,
 and Zod 4.6.7 with an MCP component), and builds each through `yarn hooknostic`,
 `node -r .pnp.cjs`, plain `node` against a CLI installed outside the project,
 and `yarn dlx`. The first five build `examples/basic`. It compares the whole
-table of outcomes, counting HN504, HN301 and HN109 and recording each HN110's
-wording (Yarn's install or a path) in each:
+table of outcomes, counting HN504 and HN301 and recording each HN109's and
+HN110's wording (Yarn's install or a path) in each:
 through Yarn's runtime the build uses the project's in-range Zod or the CLI's
-own (with HN109 when the project's is out of range), and the repacked SDK
-warns one HN110, which names Yarn's Plug'n'Play install rather than a path
+own (with HN109 when the project's is out of range, which names the project's
+Zod by Yarn's install, and the CLI's own too under `yarn hooknostic`, #256),
+and the repacked SDK warns one HN110, which names Yarn's Plug'n'Play install rather than a path
 (#225); plain `node` fails with one HN504
 (#183), with no HN110; `yarn dlx` fails with HN504 unless the project's Zod is
 in range, and never warns HN110. The `yarn dlx` row also guards #216, where

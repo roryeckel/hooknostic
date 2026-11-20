@@ -64,6 +64,17 @@ export default defineConfig({
 /** Where {@link MCP_CONFIG}'s launcher is written, relative to the project. */
 const MCP_LAUNCHER = ["dist", "claude", "mcp-launcher.mjs"];
 
+/**
+ * How HN109 and HN110 name a package Yarn's Plug'n'Play install serves, in
+ * place of its cache path. A literal: this suite does not import core's internals.
+ */
+const PNP_INSTALL = "from Yarn's Plug'n'Play install";
+
+/** Whether a diagnostic names a package by {@link PNP_INSTALL} or by a path. */
+type Named = "install" | "path";
+
+const named = (text: string): Named => (text.includes(PNP_INSTALL) ? "install" : "path");
+
 /** How a run turned out, compared as a whole so a failure shows every cell. */
 interface Outcome {
   /** The process's exit code: Hooknostic exits 2 for a build with errors. */
@@ -71,12 +82,17 @@ interface Outcome {
   hn504: number;
   /** An artifact that failed to build, such as an MCP launcher esbuild could not bundle (#224). */
   hn301: number;
-  hn109: number;
+  /**
+   * One entry per HN109, `<reached>/<own>`: whether it names the Zod the SDK
+   * reached, then Hooknostic's own Zod bundled instead, by Yarn's Plug'n'Play
+   * install or by a path, which in Yarn's cache differs by machine (#256).
+   */
+  hn109: `${Named}/${Named}`[];
   /**
    * One entry per HN110: whether it names the SDK by Yarn's Plug'n'Play
    * install, or by a path, which in Yarn's cache differs by machine (#225).
    */
-  hn110: ("install" | "path")[];
+  hn110: Named[];
   /**
    * Whose Zod the Claude runtime bundles, per zod archive: the project's
    * version, or another, the CLI's own. In one shared cache the project's
@@ -94,7 +110,7 @@ interface Outcome {
   mcp?: "responds" | "missing" | "silent";
 }
 
-const ok = (hn109: number, zod: Outcome["zod"], hn110: Outcome["hn110"] = []): Outcome => ({
+const ok = (hn109: Outcome["hn109"], zod: Outcome["zod"], hn110: Outcome["hn110"] = []): Outcome => ({
   exit: 0,
   hn504: 0,
   hn301: 0,
@@ -102,7 +118,27 @@ const ok = (hn109: number, zod: Outcome["zod"], hn110: Outcome["hn110"] = []): O
   hn110,
   zod,
 });
-const hn504: Outcome = { exit: 2, hn504: 1, hn301: 0, hn109: 0, hn110: [], zod: [] };
+const hn504: Outcome = { exit: 2, hn504: 1, hn301: 0, hn109: [], hn110: [], zod: [] };
+
+/**
+ * Each HN109 in `output`, by how it names the reached Zod and Hooknostic's
+ * own. Each diagnostic is a heading line and its indented message below, so
+ * each HN109's whole block is split at the clause that turns to Hooknostic's
+ * own Zod, and a block that does not split in two fails the run.
+ */
+function hn109Blocks(output: string): Outcome["hn109"] {
+  return blocks(output, "HN109").map((block) => {
+    const halves = block.split("; the runtime bundles");
+    if (halves.length !== 2 || halves.some((half) => half.trim() === ""))
+      throw new Error(`an HN109 that does not name its two Zods apart:\n${block}`);
+    return `${named(halves[0]!)}/${named(halves[1]!)}` as const;
+  });
+}
+
+/** Every `code` diagnostic in `output`: its heading line and the indented message below. */
+function blocks(output: string, code: string): string[] {
+  return output.split(/^(?=HN\d{3} )/m).filter((block) => block.startsWith(`${code} `));
+}
 
 /** The MCP launcher's `initialize`, as a client sends it. */
 const INITIALIZE = {
@@ -180,25 +216,50 @@ describe("the opt-in Yarn check's network classifier", () => {
   });
 });
 
+describe("the opt-in Yarn check's HN109 classifier", () => {
+  const heading = "HN109 SDK's Zod outside its peer range [warn]\n\n";
+  const message = (reached: string, own: string) =>
+    `  the SDK's zod import reached zod@3.24.4 ${reached}, outside the SDK's zod peer range ^4.6.7; ` +
+    `the runtime bundles Hooknostic's own zod@4.6.7 ${own} instead, while user code that imports zod ` +
+    "still bundles the project's copy.\n  install a zod that satisfies ^4.6.7 in the project.\n";
+
+  it("names each Zod apart, the reached one first", () => {
+    const output =
+      `${heading}${message(PNP_INSTALL, "from /tmp/npm-cli/node_modules/zod")}\n` +
+      `${heading}${message("at node_modules/zod (relative to the config's directory)", PNP_INSTALL)}\n` +
+      "HN110 something else [warn]\n\n  from Yarn's Plug'n'Play install\n";
+    expect(hn109Blocks(output)).toEqual(["install/path", "path/install"]);
+  });
+
+  it("fails on an HN109 it cannot split in two", () => {
+    expect(() => hn109Blocks(`${heading}  the SDK's zod import reached zod@3.24.4 ${PNP_INSTALL}.\n`)).toThrow(
+      /does not name its two Zods apart/,
+    );
+  });
+});
+
 /**
  * Under the project's own Yarn runtime, the SDK takes the project's in-range
  * Zod and the CLI's otherwise, and the project's SDK resolves, so a skewed
  * one warns HN110, naming Yarn's install rather than its cache path (#225).
+ * An out-of-range Zod warns HN109, which names the project's Zod by Yarn's
+ * install, and the CLI's own as `own` says (#256).
  */
-const underYarnRuntime: Record<Project, Outcome> = {
-  "no-zod": ok(0, ["cli"]),
-  "zod-3.24.4": ok(1, ["cli"]),
-  "zod-3.25.76": ok(1, ["cli"]),
-  "zod-4.6.7": ok(0, ["project"]),
-  "skew-4.6.7": ok(0, ["project"], ["install"]),
+const underYarnRuntime = (own: Named): Record<Project, Outcome> => ({
+  "no-zod": ok([], ["cli"]),
+  "zod-3.24.4": ok([`install/${own}`], ["cli"]),
+  "zod-3.25.76": ok([`install/${own}`], ["cli"]),
+  "zod-4.6.7": ok([], ["project"]),
+  "skew-4.6.7": ok([], ["project"], ["install"]),
   // The launcher's dependencies resolve through the runtime that loaded the
   // CLI, not esbuild's manifest lookup from cross-spawn's archive (#224).
-  "mcp-4.6.7": { ...ok(0, ["project"]), mcp: "responds" },
-};
+  "mcp-4.6.7": { ...ok([], ["project"]), mcp: "responds" },
+});
 
 const EXPECTED: Record<string, Record<Project, Outcome>> = {
-  "yarn hooknostic": underYarnRuntime,
-  "node -r .pnp.cjs": underYarnRuntime,
+  "yarn hooknostic": underYarnRuntime("install"),
+  // The CLI npm installed outside the project: its own Zod is a real path.
+  "node -r .pnp.cjs": underYarnRuntime("path"),
   // npx, a global install, pnpm dlx: Hooknostic outside the project, without
   // Yarn's runtime. Node cannot resolve the project's SDK, so HN110 is silent.
   "plain node": {
@@ -219,9 +280,9 @@ const EXPECTED: Record<string, Record<Project, Outcome>> = {
     "no-zod": hn504,
     "zod-3.24.4": hn504,
     "zod-3.25.76": hn504,
-    "zod-4.6.7": ok(0, ["project"]),
-    "skew-4.6.7": ok(0, ["project"]),
-    "mcp-4.6.7": { ...ok(0, ["project"]), mcp: "responds" },
+    "zod-4.6.7": ok([], ["project"]),
+    "skew-4.6.7": ok([], ["project"]),
+    "mcp-4.6.7": { ...ok([], ["project"]), mcp: "responds" },
   },
 };
 
@@ -450,13 +511,8 @@ it.skipIf(process.env["HOOKNOSTIC_YARN_PNP"] !== "1")(
             hn504: (result.output.match(/^HN504 /gm) ?? []).length,
             // Counted by heading line: esbuild's text below it may span lines.
             hn301: (result.output.match(/^HN301 /gm) ?? []).length,
-            hn109: (result.output.match(/^HN109 /gm) ?? []).length,
-            // Each diagnostic is a heading line and its indented message
-            // below, so classify each HN110's whole block.
-            hn110: result.output
-              .split(/^(?=HN\d{3} )/m)
-              .filter((block) => block.startsWith("HN110 "))
-              .map((block) => (block.includes("from Yarn's Plug'n'Play install") ? "install" : "path")),
+            hn109: hn109Blocks(result.output),
+            hn110: blocks(result.output, "HN110").map(named),
             zod: [...packages].map((path) => {
               // A Zod outside Yarn's cache, such as the npm-installed CLI's, is never the project's.
               const version = /\/zod-npm-(\d+\.\d+\.\d+)-/.exec(path)?.[1];
