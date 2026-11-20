@@ -882,14 +882,26 @@ async function lockState(path: string): Promise<LockState | null> {
  *   before it is removed. A plain check-then-remove could remove a lock that a
  *   peer created in between: two recovers both judging the same dead recovery
  *   lock, or a sync taking the sync lock after someone deleted a dead one. The
- *   bytes alone are not enough: a peer's lock can hold the same pid. A
- *   claimed file that turns out to be a peer's, or that cannot be checked, is
- *   renamed back. That rename replaces whatever is at the lock path, so a
- *   third process that created the lock in that instant would lose it:
- *   concurrent recovers are best-effort, not serialized.
+ *   bytes alone are not enough: a peer's lock can hold the same pid. The
+ *   inode and mtime are also rechecked just before the claim, which narrows
+ *   that window to one system call but cannot close it.
+ * - A claimed file that turns out to be a peer's, or that cannot be checked,
+ *   is renamed back. Meanwhile a third process may have created the lock.
+ *   Where rename replaces an existing file (POSIX, and Windows when that file
+ *   is not in use), the third process's lock is overwritten: it and the peer
+ *   both believe they hold the lock, and whichever releases first deletes the
+ *   other's. Where the rename back fails instead (observed on Windows, with
+ *   EPERM, when several recovers start together), the peer's live lock stays
+ *   in staging, and recover reports where it is and to delete it once no sync
+ *   or recover is running. Either way two recovers can then hold
+ *   `recovery.lock` at once; `sync.lock`, taken the same way, still
+ *   serializes `restore` unless the race strikes there too. Concurrent
+ *   recovers are best-effort, not serialized: run one recover at a time.
  * - The staging directory is created first, so an ENOENT from the rename can
  *   only mean the lock itself is gone, taken by a peer; the lock is then
- *   contended for normally by `acquire`. A claim left by a crash stays in
+ *   contended for normally by `acquire`. EPERM, EBUSY or EACCES there (on
+ *   Windows, a lock being deleted while another process has it open) means a
+ *   peer is at work too, and recover stops. A claim left by a crash stays in
  *   staging, which `.hooknostic/.gitignore` ignores wherever it exists and
  *   nothing reads.
  * - A process in another pid namespace (WSL and Windows sharing a checkout, a
@@ -915,20 +927,54 @@ async function clearDeadLock(root: string, name: LockName): Promise<void> {
     throw new Error(
       `a hooknostic ${holder} is still running: PID ${pid} holds ${path}; if no such process exists (its PID may have been reused), delete that file and rerun hooknostic recover`,
     );
+  const took = `another hooknostic ${holder} is running: it took ${path} while recover was checking it`;
   const claim = await projectPath(root, `.hooknostic/staging/${randomUUID()}`);
   await mkdir(dirname(claim), { recursive: true });
+  // Recheck just before the claim, so the window in which a peer's lock can be
+  // claimed by mistake is one system call, not the checks above.
+  let current: BigIntStats;
   try {
-    await rename(path, claim);
+    current = await lstat(path, { bigint: true });
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return;
     throw error;
   }
+  if (current.ino !== seen.stat.ino || current.mtimeNs !== seen.stat.mtimeNs)
+    throw new Error(`${took}; rerun hooknostic recover after it finishes`);
+  try {
+    await rename(path, claim);
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === "ENOENT") return;
+    if (code === "EPERM" || code === "EBUSY" || code === "EACCES")
+      throw Object.assign(
+        new Error(
+          `another hooknostic ${holder} may be running: ${path} could not be claimed (${code}), as when its holder is removing it; rerun hooknostic recover`,
+          { cause: error },
+        ),
+        { code, path },
+      );
+    throw error;
+  }
+  /** Puts the claim back at the lock path; if that fails, says where it is and what to do with it. */
+  const putBack = async (lead: string): Promise<void> => {
+    try {
+      await rename(claim, path);
+    } catch (error) {
+      throw new Error(
+        `${lead}; it is now at ${claim}. Once no hooknostic sync or recover is running, delete that file and rerun hooknostic recover`,
+        { cause: error },
+      );
+    }
+  };
   let claimed: LockState | null;
   try {
     claimed = await lockState(claim);
   } catch (error) {
     // Unchecked, the claim may be a peer's live lock: put it back.
-    await rename(claim, path).catch(() => undefined);
+    await putBack(
+      `recover could not check the lock it claimed from ${path} (${(error as Error).message}), and could not put it back`,
+    );
     throw error;
   }
   if (
@@ -940,10 +986,8 @@ async function clearDeadLock(root: string, name: LockName): Promise<void> {
     await rm(claim, { force: true });
     return;
   }
-  if (claimed) await rename(claim, path);
-  throw new Error(
-    `another hooknostic ${holder} is running: it took ${path} while recover was checking it; rerun hooknostic recover after it finishes`,
-  );
+  if (claimed) await putBack(`${took}, and recover could not put that lock back`);
+  throw new Error(`${took}; rerun hooknostic recover after it finishes`);
 }
 export async function recoverProject(root: string, config: string): Promise<void> {
   validatePath(config);

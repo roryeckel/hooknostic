@@ -302,8 +302,11 @@ across files, but running harnesses may observe intermediate replacements.
 configuration and wiring checks passed; execution remains unobserved, and restart
 or trust actions may still be required.
 
-Recovery itself uses an exclusive `recovery.lock`. If recovery is interrupted,
-retain the transaction journal and rerun recover. Recover clears a
+Recover holds `.hooknostic/recovery.lock` exclusively while it runs. Run one
+recover at a time: when several start together on a lock a killed process left
+behind, the takeover described below is best-effort, and two of them can end up
+holding `recovery.lock`. If recovery is interrupted, retain the transaction
+journal and rerun recover. Recover clears a
 `recovery.lock` or `sync.lock` whose recorded PID names a process that has
 exited. When the PID belongs to a running process, possibly an unrelated one
 that reused the number, it refuses and names the PID and the lock's path. It
