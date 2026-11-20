@@ -444,9 +444,10 @@ try {
   if (ripgrep && code !== 0) diagnostics.snapshot("ripgrep.json", { ...ripgrep, verified: false, harnessExit: code });
   else if (ripgrep) {
     const searchPath = Object.entries(env).find(([name]) => name.toUpperCase() === "PATH")?.[1];
-    const used = await diagnostics.run("verify-ripgrep-seed", async () =>
-      (await import("./ripgrep.mjs")).verifyRipgrepSeed(ripgrep, env.XDG_DATA_HOME, searchPath),
-    );
+    const used = await diagnostics.run("verify-ripgrep-seed", async () => {
+      const { searchToolsCalledAt, verifyRipgrepSeed } = await import("./ripgrep.mjs");
+      return verifyRipgrepSeed(ripgrep, env.XDG_DATA_HOME, searchPath, searchToolsCalledAt(captured));
+    });
     diagnostics.snapshot("ripgrep.json", { ...ripgrep, ...used, verified: true });
   }
 } catch (error) {
