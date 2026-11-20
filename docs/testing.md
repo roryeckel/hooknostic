@@ -210,8 +210,10 @@ that build. See `.capture/opencode-v2/README.md`, "ripgrep pre-seed".
 The six Linux playback lanes run in CI with no IP network but loopback.
 
 What this establishes:
-- A lane that **needs** the network fails.
-- Nothing a lane runs can reach the network.
+- A lane that **needs** the IP network fails.
+- Nothing a lane runs can reach an IP network directly. A daemon on the host
+  that a unix socket still reaches could reach it on the lane's behalf (see
+  "IP only").
 
 It does not detect new egress. A call that a lane does not depend on fails
 silently and the lane still passes. Codex's plugin sync is an example: it
@@ -236,27 +238,37 @@ on), not by CI.
   daemon reachable without a group (D-Bus, for one) is still reachable. No
   harness was seen to do this.
 - **The root hops trust nothing from the caller.**
-  - Each root hop starts from an empty environment
-    (`/usr/bin/env -i … /bin/bash`), so there is no caller `PATH`,
-    `BASH_ENV` or `LD_*`. It calls `ip`, `setpriv` and `unshare` by absolute
-    path.
+  - The sudo entry runs `/bin/bash` under sudo's `env_reset`. With the default
+    policy (no `PATH`, `BASH_ENV` or `LD_*` in `env_keep`), that leaves no
+    caller `PATH`, `BASH_ENV` or `LD_*`. It runs no external command before
+    pinning `PATH` to the system directories.
+  - Every later hop starts from `env -i PATH=<system>`, and `ip`, `setpriv`
+    and `unshare` are found only there.
   - `--as` must name the user that invoked sudo (`SUDO_UID`/`SUDO_GID`).
+  - These refusals, and the ones on the env file below, run before the root
+    check. That way `scripts/without-network.test.mjs` exercises them as a
+    normal user in the Ubuntu test job.
   - The caller's environment crosses sudo in a file, because the hosted
     runners' sudo ignores `--preserve-env` ("preserving the entire
     environment is not supported"). On the first CI run that ignored option
     silently emptied the environment: every playback test skipped and the
     step passed. The file is created 0600 by `mktemp`. Root only checks that
     it is a regular file of the caller's with that mode, and never reads or
-    removes it. It is loaded and removed after the drop, as the user.
+    removes it. It is loaded and removed after the drop, as the user. The
+    script's own variables are named `_hkn_*` and readonly, and the file's
+    `_hkn_*` names are skipped, so no caller variable can replace the
+    required list or the isolation check.
   - On this path no environment value reaches argv or output.
 - **Trust boundary.** The wrapper is a test harness, not a privilege boundary.
   - It needs **unrestricted** passwordless sudo, as `runner` has on
     GitHub-hosted runners, or `sudo -v` beforehand.
   - It runs a file from your checkout as root, so use it only on a runner or
     a single-user machine.
-  - Never give it a sudoers rule of its own: that would make it a root shell
-    for anything running as you. It also could not be used through one, since
-    it sudo's `/bin/bash`.
+  - Never give it a sudoers rule of its own. A rule can name it
+    (`NOPASSWD: /bin/bash /path/to/scripts/without-network.sh *` matches the
+    wrapper's own call), but the script is a file in your checkout that you
+    can edit. Such a rule is therefore a root shell for anything running as
+    you.
 - **The proof.** Before the command, `scripts/assert-no-network.mjs --offline`
   fails the step unless:
   - only `lo` exists;
@@ -277,7 +289,10 @@ on), not by CI.
   `harness-playback.test.ts` requires `HOOKNOSTIC_PLAYBACK` to name a known
   lane, so a namespaced run that selects nothing fails instead of skipping
   every test. `prepare-offline-playback.mjs` likewise rejects an unknown
-  lane.
+  lane. Both use `isKnownLane` (`scripts/harness-lanes.mjs`).
+  `scripts/harness-lanes.test.mjs` unit-tests it, and also runs that one guard
+  the way a namespaced lane would, with no lane, so the ordinary test job
+  fails if the guard is removed.
 - **What the lanes fetch beforehand.**
   `node --experimental-strip-types scripts/prepare-offline-playback.mjs <lane>`
   does it, with network:

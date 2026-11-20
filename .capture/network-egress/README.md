@@ -335,15 +335,18 @@ The sudo path was exercised once in round 1, through a temporary sudoers rule
 scoped to the wrapper and removed straight after. **Do not copy that.**
 Implementation review round 1 showed that the root hop of that version trusted
 the caller's environment. With such a rule, that made the wrapper a root shell
-for anything running as that user. The wrapper is now hardened (round 2,
-below). It also sudo's `/bin/bash`, so a rule scoped to it no longer matches.
-It is meant for unrestricted sudo only (`docs/testing.md`, "Trust boundary").
+for anything running as that user. The wrapper is now hardened (rounds 2 and
+3, below). Even so, it is meant for unrestricted sudo only. A rule naming
+`/bin/bash <script>` still matches its call, and the script is a file you can
+edit, so such a rule is a root shell (`docs/testing.md`, "Trust boundary").
 
 ### Round 2: implementation review fixes
 
 - **Root hop hardened.**
-  - Each root hop starts from `/usr/bin/env -i … /bin/bash`, with absolute
-    `ip`, `setpriv` and `unshare`.
+  - Every hop after the sudo entry starts from `env -i PATH=<system>`. The
+    sudo entry itself relies on sudo's `env_reset` (round 3 says so, and
+    replaced the absolute tool paths with bare names under the pinned
+    `PATH`).
   - `--as` must match `SUDO_UID`/`SUDO_GID`.
   - Root checks the env file (regular, 0600, the caller's, named by this
     script) but never reads or removes it. The user loads it after the drop.
@@ -390,6 +393,61 @@ It is meant for unrestricted sudo only (`docs/testing.md`, "Trust boundary").
   6cd49405 and their round-2 updates). Everything else is harmless with
   network.
 
+### Round 3: implementation review round 2
+
+- **Caller variables kept off the wrapper's own.** The last hop loaded the
+  caller's environment over its locals.
+  - The script's variables are now `_hkn_*` and readonly, and the env file's
+    `_hkn_*` names are skipped with a note.
+  - `set -e` is off during the load. Under it, bash 5.2 ends the run silently
+    on a refused readonly assignment, even with `|| true`. That held for this
+    script's names and for bash's own (`EUID`, `SHELLOPTS`, …).
+
+  Re-run in WSL as sudo enters root, against round 2 (9cb5674b) and round 3:
+
+  | Attack | Round 2 | Round 3 |
+  |---|---|---|
+  | caller `require=` (empties the required list) | "no required names", command ran | `missing or empty: HOOKNOSTIC_PLAYBACK`, nothing ran |
+  | caller `here=<dir>` (replaces the check) | the fake check ran, exit 0 | the real check ran |
+  | caller `_hkn_require=` / `_hkn_here=` | (names unused) | skipped with a note; real check |
+  | caller exports `SHELLOPTS` | the run died silently, exit 1 | the run completes |
+  | the five earlier attacks | refused or inert | refused or inert |
+- **No external command before `PATH` is pinned.**
+  - The sudo entry relies on sudo's `env_reset`.
+  - The script finds its own path with builtins.
+  - The root hops use bare tool names under the pinned system `PATH` rather
+    than merged-/usr paths.
+  - The root-entry path removes its env file on exit if the hops fail before
+    the last one.
+- **The refusals are tested as a normal user.** The `--as` and `--env-file`
+  checks now run before the root check. `scripts/without-network.test.mjs`
+  (Linux; CI's ubuntu test job) covers each refusal, and shows a valid request
+  reaching "--as needs root". In WSL, reverting the `SUDO_UID` binding fails
+  one of its tests, and reverting the env-file checks fails another.
+- **The no-lane guard is pinned.** `isKnownLane` (`scripts/harness-lanes.mjs`)
+  is unit-tested. `scripts/harness-lanes.test.mjs` also runs the guard itself
+  the way a namespaced lane would, with no lane. Deleting the guard,
+  `isKnownLane` returning `true`, and `isKnownLane` accepting any defined id
+  each fail it.
+- **Docs.**
+  - The claim that a sudoers rule cannot match is gone: one naming
+    `/bin/bash <script>` does. The reason never to add one is given instead.
+  - "IP network" replaces "network" where unix-socket daemons remain
+    reachable.
+- All six lanes still pass wrapped, in WSL:
+
+  | Lane | Passed | Skipped |
+  |---|---|---|
+  | claude | 73 | 74 |
+  | codex | 72 | 75 |
+  | copilot | 71 | 76 |
+  | pi | 75 | 72 |
+  | opencode-v2 | 96 | 51 |
+  | opencode-v1 | 66 | 81 |
+
+  The counts are the same as round 2's, with `groups: gid 1000 only` and all
+  three required names present in every canary.
+
 ### CI evidence (draft PR #288)
 
 | Run | Tree | Outcome |
@@ -399,6 +457,10 @@ It is meant for unrestricted sudo only (`docs/testing.md`, "Trust boundary").
 | [44694633807](https://github.com/roryeckel/hooknostic/actions/runs/44694633807) | Mutant A: `--net` dropped | All six Linux entries failed in the canary before vitest: `FAIL interfaces: non-loopback: eth0` (`enp39s0` on one runner), `FAIL public IPv4 connect: 1.1.1.1:443 -> connected`, `FAIL DNS lookup`. Windows green. |
 | [44695246302](https://github.com/roryeckel/hooknostic/actions/runs/44695246302) | Mutant B: a test fetching github.com | All six Linux entries: canary green, then exactly that test failed with `fetch failed`, cause `getaddrinfo EAI_AGAIN github.com`. The Windows lanes and every `lint + typecheck + test` job were green. |
 | [44695948182](https://github.com/roryeckel/hooknostic/actions/runs/44695948182) | mutants dropped by force-push (back to `2cce6d15`) | Green, with the same counts and canary lines. |
+| [44700854750](https://github.com/roryeckel/hooknostic/actions/runs/44700854750) | `9cb5674b`, the round-2 hardened tree | Green. Every Linux lane shows `groups: gid 1001 only` and all three IPv4 targets `ENETUNREACH`. Counts are +1 for the guard: 73/72/71/75/96/66. On the claude runner `9.9.9.9` timed out in `--online`, and the any-of-three control absorbed it. |
+
+A commit cannot cite the CI run of its own tree, so the round-3 run is
+recorded in the PR body, not here.
 
 Hosted runners had no IPv6 even outside the namespace
 (`[2606:4700:4700::1111]:443 -> ENETUNREACH` in `--online`), which confirms
