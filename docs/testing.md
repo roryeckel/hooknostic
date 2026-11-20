@@ -214,15 +214,24 @@ harness reached before, which of those a lane needs (none), and what turns
 each off.
 
 - **The namespace.** `scripts/without-network.sh <command>` re-runs itself
-  under passwordless `sudo -n --preserve-env`, enters a new network namespace
+  under passwordless `sudo -n`, enters a new network namespace
   (`unshare --net`, root, so no unprivileged user namespace and no AppArmor
   userns restriction), brings `lo` up, and drops back to the calling user
   with no capabilities and `no_new_privs`. Inside it sets
   `HOOKNOSTIC_PLAYBACK_NETWORK=none`.
+- **The environment crosses sudo in a file.** The hosted runners' sudo
+  ignores `--preserve-env` ("preserving the entire environment is not
+  supported"). On the first CI run that silently emptied the environment:
+  every playback test skipped and the step passed. The wrapper therefore
+  writes the caller's environment NUL-separated to a `mktemp` file (mode
+  0600), and the root hop loads it and deletes it. Values never reach argv or
+  output.
 - **The proof.** Before the command, `scripts/assert-no-network.mjs --offline`
   fails the step unless: only `lo` exists; public IPv4 and IPv6 connects fail
   with `ENETUNREACH`; DNS fails; the user, capabilities and `no_new_privs` are
   as expected; and every name in `HKN_NO_NETWORK_REQUIRE_ENV` crossed `sudo`.
+  The wrapper reads that list before the sudo hop and passes it on as an
+  argument, so a lost environment cannot also lose the list.
   It prints one line per check and never prints values. Its positive
   control, `--online`, runs in the prepare step outside the namespace: the
   same IPv4 connect and lookup must succeed there (IPv6 is reported, not

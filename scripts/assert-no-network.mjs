@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Prove, by effect, the network state a playback step relies on.
 //
-//   node scripts/assert-no-network.mjs --offline
+//   node scripts/assert-no-network.mjs --offline [--require-env A,B]
 //     Inside scripts/without-network.sh, before the playback command. Fails
 //     unless the process has no route out: no non-loopback interface, public
 //     IPv4 and IPv6 connects refused by the kernel with ENETUNREACH, DNS
@@ -132,7 +132,11 @@ async function observe(mode) {
     };
   }
   if (mode === "offline") {
-    const required = (process.env["HKN_NO_NETWORK_REQUIRE_ENV"] ?? "").split(",").filter(Boolean);
+    // From scripts/without-network.sh, which read the list before the sudo
+    // hop, so a list lost in that hop cannot pass for "nothing required".
+    const flag = process.argv.indexOf("--require-env");
+    const list = flag === -1 ? (process.env["HKN_NO_NETWORK_REQUIRE_ENV"] ?? "") : (process.argv[flag + 1] ?? "");
+    const required = list.split(",").filter(Boolean);
     seen.env = {
       required,
       missing: required.filter((name) => process.env[name] === undefined),
