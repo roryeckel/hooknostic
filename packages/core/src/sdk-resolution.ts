@@ -126,6 +126,77 @@ export function pnpManifest(directory: string): string | undefined {
   }
 }
 
+/** What pnpm records about an install in `node_modules/.modules.yaml`. */
+interface PnpmInstall {
+  nodeLinker?: string;
+  /** The pnpm release that made the install, from `packageManager: pnpm@<version>`. */
+  version?: string;
+}
+
+/**
+ * pnpm's record of the install in `directory`, from its
+ * `node_modules/.modules.yaml`, or undefined when there is none. pnpm 11 and
+ * 12 write the file as JSON, pnpm 9 and 10 as YAML (.capture/pnpm-pnp), so
+ * each field is read with one pattern that matches either, as
+ * `scripts/check-sdk-zod-peers.mjs` reads it, without a YAML parser at
+ * runtime.
+ */
+function pnpmInstall(directory: string): PnpmInstall | undefined {
+  let text: string;
+  try {
+    text = readFileSync(join(directory, "node_modules", ".modules.yaml"), "utf8");
+  } catch {
+    return undefined;
+  }
+  const nodeLinker = /^\s*"?nodeLinker"?\s*:\s*"?([\w-]+)/m.exec(text)?.[1];
+  const version = /^\s*"?packageManager"?\s*:\s*"?pnpm@([^"',\s]+)/m.exec(text)?.[1];
+  return { ...(nodeLinker === undefined ? {} : { nodeLinker }), ...(version === undefined ? {} : { version }) };
+}
+
+/** The nearest pnpm install record in `directory` or an ancestor, as a workspace package's is its root's. */
+function nearestPnpmInstall(directory: string): PnpmInstall | undefined {
+  for (let current = directory; ;) {
+    const install = pnpmInstall(current);
+    if (install !== undefined) return install;
+    const parent = dirname(current);
+    if (parent === current) return undefined;
+    current = parent;
+  }
+}
+
+/**
+ * Whether pnpm, with `nodeLinker: pnp`, wrote the PnP manifest at `manifest`
+ * rather than Yarn: pnpm's install record beside it says `nodeLinker: pnp`,
+ * or `pnpm-lock.yaml` is beside it and `yarn.lock` is not, as when
+ * `node_modules` was removed for a clean reinstall. Yarn writes neither
+ * (.capture/pnpm-pnp). The manifest's content is not read: what each package
+ * manager generates there can change in any release.
+ */
+function pnpmPlugAndPlay(manifest: string): boolean {
+  const directory = dirname(manifest);
+  if (pnpmInstall(directory)?.nodeLinker === "pnp") return true;
+  return existsSync(join(directory, "pnpm-lock.yaml")) && !existsSync(join(directory, "yarn.lock"));
+}
+
+/**
+ * The first pnpm release whose `pnpm add` accepts `--allow-build`: 10.3.0 and
+ * 9.15.9 exit 1 on it as an unknown option (.capture/pnpm-pnp).
+ */
+const PNPM_ALLOW_BUILD = "10.4.0";
+
+/**
+ * `pnpm add -D` for `hooknostic@<version>`, allowing esbuild's install script
+ * when `install` shows a pnpm that accepts `--allow-build`: pnpm 12 refuses
+ * the script by default, with ERR_PNPM_IGNORED_BUILDS (#259). Without a
+ * record of the pnpm release the flag is left out, since an older pnpm
+ * refuses the whole command.
+ */
+function pnpmAdd(install: PnpmInstall | undefined, version: string): string {
+  const pnpm = install?.version === undefined ? null : semver.valid(install.version);
+  const allow = pnpm !== null && semver.gte(pnpm, PNPM_ALLOW_BUILD) ? "--allow-build=esbuild " : "";
+  return `pnpm add -D ${allow}hooknostic@${version}`;
+}
+
 /**
  * HN110 when the CLI running a build and the project's `@hooknostic/sdk` are
  * on different releases: the build would mix one release's SDK with another
@@ -149,22 +220,9 @@ export function sdkReleaseSkew(
   if (sdkEntry === undefined) return undefined;
   const sdk = owningManifest(sdkEntry, new Map());
   if (sdk?.name !== SDK || sdk.version === undefined) return undefined;
-  if (semver.valid(sdk.version) === null || semver.valid(cliVersion) === null) return undefined;
-  if (semver.eq(sdk.version, cliVersion)) return undefined;
-  // npx runs the project's CLI only when the project installs one; without it,
-  // and always under Plug'n'Play, where npx does not see the project's install
-  // (as HN504 explains), it fetches the registry's latest instead. npx also
-  // refuses a project made by pnpm 12's `pnpm init`, which names pnpm in
-  // `devEngines`. Outside Plug'n'Play, npx and `pnpm exec` are both named
-  // rather than detecting the package manager (#245).
-  const remediation =
-    pnpManifest(projectDirectory) !== undefined
-      ? `add hooknostic to the project's devDependencies at the same version as its ${SDK}, ` +
-        "and run `yarn hooknostic`, which runs that CLI (under Plug'n'Play, npx fetches the registry's latest)."
-      : `add hooknostic to the project's devDependencies at the same version as its ${SDK}, ` +
-        "and run that CLI from the project directory with `npx hooknostic` " +
-        "(without a local install, npx fetches the registry's latest), " +
-        "or `pnpm exec hooknostic` in a pnpm project.";
+  const version = semver.valid(sdk.version);
+  if (version === null || semver.valid(cliVersion) === null) return undefined;
+  if (semver.eq(version, cliVersion)) return undefined;
   return {
     code: "HN110",
     severity: "warn",
@@ -172,8 +230,45 @@ export function sdkReleaseSkew(
       `this hooknostic is ${cliVersion}, but the project's ${SDK} ${sdkLocation(sdk.directory, projectDirectory)} ` +
       `is ${sdk.version}, so the build mixes one release's SDK with another release's compiler and shims; ` +
       "run the project's own hooknostic, or install both at one version.",
-    remediation,
+    remediation: skewRemediation(version, projectDirectory),
   };
+}
+
+/**
+ * HN110's advice: install hooknostic at `version`, the SDK's without build
+ * metadata, with a command that can be run as printed, and run it (#259).
+ *
+ * npx runs the project's CLI only when the project installs one; without it,
+ * and always under Yarn Plug'n'Play, where npx does not see the project's
+ * install (as HN504 explains), it fetches the registry's latest instead. npx
+ * also refuses a project made by pnpm 12's `pnpm init`, which names pnpm in
+ * `devEngines`. Outside Plug'n'Play, npm's and pnpm's commands are both named
+ * rather than detecting the package manager (#245); pnpm's install record
+ * only decides whether its command can allow esbuild's install script. npm
+ * gets `--save-exact`, since it would otherwise save `^<version>` and let the
+ * CLI move away from the SDK again.
+ *
+ * Under Plug'n'Play the manifest tells Yarn from pnpm with `nodeLinker: pnp`
+ * ({@link pnpmPlugAndPlay}), which runs as `pnpm exec hooknostic`: best
+ * effort, by .capture/pnpm-pnp, as `yarn dlx` is for Yarn (ADR-0041).
+ */
+function skewRemediation(version: string, projectDirectory: string): string {
+  const add = `add hooknostic to the project's devDependencies at the same version as its ${SDK}, with `;
+  const manifest = pnpManifest(projectDirectory);
+  if (manifest === undefined)
+    return (
+      `${add}\`npm install --save-dev --save-exact hooknostic@${version}\`, ` +
+      `or \`${pnpmAdd(nearestPnpmInstall(projectDirectory), version)}\` in a pnpm project, ` +
+      "and run that CLI from the project directory with `npx hooknostic` " +
+      "(without a local install, npx fetches the registry's latest), " +
+      "or `pnpm exec hooknostic` in a pnpm project."
+    );
+  if (pnpmPlugAndPlay(manifest))
+    return `${add}\`${pnpmAdd(pnpmInstall(dirname(manifest)), version)}\`, and run it with \`pnpm exec hooknostic\`.`;
+  return (
+    `${add}\`yarn add -D hooknostic@${version}\`, ` +
+    "and run `yarn hooknostic`, which runs that CLI (under Plug'n'Play, npx fetches the registry's latest)."
+  );
 }
 
 /**
@@ -272,7 +367,9 @@ const PNP_RUNTIME_NOTE = {
  * It costs nothing under Yarn's runtime (`process.versions.pnp`) or outside a
  * PnP project, and it refuses only a path the process cannot see: a real
  * directory whose name ends in `.zip`, or a stray ancestor manifest above a
- * `node_modules` project, never fires it.
+ * `node_modules` project, never fires it. Nor does pnpm's `nodeLinker: pnp`,
+ * which serves packages from real directories under `node_modules/.pnpm`
+ * (.capture/pnpm-pnp).
  */
 export function pnpRuntimeGuardPlugin(): Plugin {
   return {

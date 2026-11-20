@@ -73,6 +73,15 @@ the project's Zod is in range, it can fail in other ways, and it never warns
 HN110, because looking up the project's SDK there would break the build
 (#216). See [ADR-0041](decisions/0041-yarn-pnp-runtime.md).
 
+pnpm's Plug'n'Play mode (`nodeLinker: pnp` in `pnpm-workspace.yaml`; pnpm 12
+ignores `node-linker` in `.npmrc`) is best effort: run each command as
+`pnpm exec hooknostic`. It built and ran with pnpm 12.21.0 in one recorded
+check (`.capture/pnpm-pnp`), but no test suite runs it. There, HN110 does not
+warn about a CLI and an SDK on different releases, and doctor reports the
+project's SDK as `not-found`. With pnpm's `symlink: false`, no build finds
+the SDK at all. For a supported pnpm install, keep pnpm's default,
+`nodeLinker: isolated`.
+
 > **Trying unreleased changes?** The commands above install the latest release
 > from npm. To try a checkout of this repo instead, pack the SDK and CLI from it
 > as tarballs and install both of those, so they stay on one release; the
