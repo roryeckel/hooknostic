@@ -661,216 +661,175 @@ The per-job `summary.json` and `outbound.csv` files are artifacts of run
 44839983846, kept for 14 days. The marketplace traces were reduced with
 `parse_strace.py`.
 
-## Windows lane isolation trial (review of the Windows plan, 2026-11-21)
+## Acted on: option B (2026-11-21)
 
-A review of the Windows enforcement plan asked, among other things:
-- whether a dedicated standard user can write anything the runner's
-  administrator later runs or trusts;
-- whether the real lanes run as that user, including the pty drive;
-- how timeouts, BITS and the audit behave.
+The rule is the same on every OS. Every CI job that drives a real harness
+and is meant to be offline runs with non-loopback IP blocked, so a lane that
+needs a new download, or a build that starts calling home, fails loudly.
 
-A prototype of the mechanism answered these on GitHub's windows-latest
-runners. It is the files below, run from a temporary workflow in four rounds,
-reverted in `fa7734d4`:
+The goal is **accidental** egress. Stopping a deliberate escape is a
+non-goal: these are our own tests against harness builds pinned by version.
+"Hardening findings" below records what that would have taken.
 
-| Round | Run | What changed |
+The one documented limitation: on Windows, hostnames still resolve through
+the system DNS Client service. A lane can look a name up, but cannot connect
+to it.
+
+| Job | Block | Where |
 | --- | --- | --- |
-| 1 | [44845678483](https://github.com/roryeckel/hooknostic/actions/runs/44845678483) | Medium and Low integrity for every lane; probes; step and job timeouts; and on ubuntu, harness-watch verify wrapped, and the drift container under `--network none` |
-| 2 | [44846805022](https://github.com/roryeckel/hooknostic/actions/runs/44846805022) | Low only, with read denies, a lane copy of pnpm, and the audit join fixed |
-| 3 | [44847702464](https://github.com/roryeckel/hooknostic/actions/runs/44847702464) | A lane copy of the npm prefix (abandoned), exact `OpenProcess` probes, 5157 and 5152 listings |
-| 4 | [44848733702](https://github.com/roryeckel/hooknostic/actions/runs/44848733702) | A Low-labelled lane profile, and (trial only) entry creation in `node_modules`. The pi job was rerun after an npm registry 404 in its install step. |
+| ci.yml `harness-playback`, Linux (×6) | loopback-only network namespace | `scripts/without-network.sh` (unchanged) |
+| ci.yml `harness-playback`, Windows (copilot, pi, opencode-v2) | a dedicated standard user, with one outbound block rule on its SID | `scripts/without-network.ps1` |
+| ci.yml `code-mode` (Windows) | the same | the same |
+| ci.yml `marketplace` (claude, codex) | the Linux namespace, after the install switches | `without-network.sh` |
+| harness-watch `verify` | the Linux namespace, after a prepare step | `without-network.sh` |
+| harness-watch `drift`, playback transport | phase 2 of two containers, `--network none` | the workflow |
+| harness-watch `drift`, llm transport | none: online by design (the LiteLLM sidecar) | — |
 
-### The prototype
+The CI evidence is in "Option B CI evidence" below.
 
-The prototype works in four parts:
+## Supporting measurements for option B
 
-- **Setup, as the runner's administrator** (`lane-setup.ps1`):
-  - stages the admin-side scripts into `C:\hkn-admin`, which only Administrators
-    and SYSTEM can read;
-  - turns on WFP and process-creation auditing, and checks auditpol;
-  - creates a standard user (`Users` only), with an outbound block rule on its SID;
-  - creates a scratch tree, `D:\hkn-lane`, that only that user may write, optionally
-    labelled Low integrity. A Low-labelled `node.exe` copy then starts the lane at
-    Low integrity, and every lane process inherits it.
-- **Launch** (`lane-run.ps1`, the staged copy):
-  - the lane gets an allowlisted environment: Windows' own variables, `CI`,
-    `GITHUB_ACTIONS`, `RUNNER_OS`/`ARCH`/`ENVIRONMENT`/`TRACKING_ID`, and
-    `HOOKNOSTIC_*`/`HKN_*`;
-  - its profile, temp and app-data variables point into the scratch tree;
-  - `Start-Process -Credential -UseNewEnvironment` starts it, with output
-    streamed into the log.
-- **First lane code** (`lane-inner.mjs`):
-  - checks the exact SID, the integrity level and Administrators membership;
-  - probes the network;
-  - probes every path the admin later trusts;
-  - then runs the command with the allowlisted environment.
-- **After, `always()`** (`lane-after.ps1`, the staged copy):
-  - stops the user's processes by owner SID;
-  - checks auditpol;
-  - joins the audit. It deletes nothing.
+### Marketplace with the switches (WSL, 2026-11-21)
 
-### Results (all **captured** on the runner)
+The committed test change gives both claude install calls (`plugin
+marketplace add`, `plugin install`) `ANTHROPIC_BASE_URL` on a refused
+loopback port, and keeps the test's own environment object. Every codex call
+gets `-c analytics.enabled=false`. It was traced with that tree.
 
-**A standard user is not enough.** Round 1, Medium integrity: the runner's
-volume ACLs grant `Authenticated Users:(OI)(CI)(IO)(M)` on `C:\` and
-`Users:(CI)(AD)(WD)` on `D:\`, so the lane user could:
+| Lane | traced | inside `without-network.sh` | Non-loopback destinations (traced) |
+| --- | --- | --- | --- |
+| claude 2.1.260 | 3 passed | 3 passed | **none**: 0 of 7 harness processes (without the switch: api.anthropic.com from `plugin marketplace add`) |
+| codex 0.153.2 | 6 passed | 6 passed, 17 s | github.com (git plugin sync) and chatgpt.com (plugin export). ab.chatgpt.com gone. |
 
-| Access | Paths |
+### Codex's plugin sync: `features.plugins=false` measured, not used (WSL)
+
+Inside `without-network.sh`, with `-c features.plugins=false` added to
+`playbackQuiet.codexArgs`:
+
+| Build | As is | With the key |
+| --- | --- | --- |
+| codex 0.148.0 (ci.yml reference) | 72 passed, 87 s | 72 passed, 13 s, the plugin drives passing |
+| codex 0.171.0 (latest) | 74 passed, 15 s | 3 failed: both "through an installed plugin" drives, and "starts a projected MCP server through the generated launcher" |
+| marketplace gate, codex 0.153.2 | 6 passed, 17 s | 1 failed: the marketplace install |
+
+Newer builds gate installed plugins behind the same key, so it stays off,
+and so does the namespace's resolver-retry cost. That cost is about 60 s in
+CI at 0.148.0 and gone at 0.171.0.
+
+### harness-watch verify and drift (ubuntu-latest, run 44845678483)
+
+**verify**: a prepare step with `--version <latest> --check-online`, then
+`without-network.sh`.
+- opencode-v1 1.19.6: 64 passed.
+- opencode-v2 2.3.2: 93 passed, 1 failed. The failure is the known
+  "followed-up subagent agent.stop" flake, seen before with and without
+  network.
+
+**drift, playback transport**:
+- Phase 1, `--network bridge`, installs the harness into the mounted `/drift`
+  and runs `prepare-offline-playback.mjs --check-online`.
+- Phase 2, `--network none`, with the phase-1 prefix, npm cache and
+  `HKN_RIPGREP_DIR`, runs the isolation check, then the drive.
+- The container check passed: loopback only; IPv4 and IPv6 `ENETUNREACH`;
+  DNS `EAI_AGAIN`; uid 1000; CapEff 0; NoNewPrivs 1.
+
+| Harness | bridge (old shape) | phase 2, `--network none` |
+| --- | --- | --- |
+| pi 1.6.0 | 0 | 0 |
+| codex 0.171.0 | 0, clean | 0, clean |
+| opencode-v2 2.3.2 | 4, drift | 4, drift, with the same report |
+
+### Windows lanes as a dedicated user (windows-latest)
+
+The prototype these measurements used is in git history (`3e4430e6` and
+before; see "Hardening findings").
+
+**As the lane user at Medium integrity**, which is option B's level (run
+44845678483):
+
+| Job | Result |
 | --- | --- |
-| Create files in | the workspace, including `scripts\`, `.git\` and `node_modules\`; `RUNNER_TEMP` and `_runner_file_commands`; `_actions`; the global npm prefix (on PATH); the toolcache; the pnpm store; `C:\Windows\Temp`; the runner's root and `bin` directory |
-| Modify | existing toolcache files: opening the running `node.exe` for write failed with `EBUSY`, not `EPERM` |
-| Read | the runner's `.credentials` and `.runner`; the checkout's credentials file (`git-credentials-*.config`, which holds the job token while the job runs); the file-command files |
-| Not write | existing `GITHUB_ENV`/`PATH`/`OUTPUT`/`STATE`/`STEP_SUMMARY` files, `scripts\without-network.sh`, `.git\config`, the admin staging directory, `C:\` and `D:\` roots, the runner user's profile (`EPERM`) |
+| copilot | 78 passed |
+| Code Mode | 3 passed |
+| pi | failed only `'pnpm' is not recognized` (2 tests) |
+| opencode-v2 | failed only `'pnpm' is not recognized` (6 tests) |
 
-Developer Mode is on (`AllowDevelopmentWithoutDevLicense=1`). The Medium lane
-user created a file symlink, and a junction to `C:\actions-runner`.
+pnpm/action-setup puts pnpm under the runner user's profile, which the lane
+user cannot reach. With pnpm at `dest: ${{ runner.tool_cache }}/...`, pi passed
+83 and opencode-v2 103 (run 44851379004). Those runs were at Low integrity.
+**Medium integrity with `dest:` together was not measured before option B's
+CI run**, which is that measurement.
 
-**Low integrity closes writing:**
-- Rounds 1–4: every write probe above is denied (`EPERM`), and so are symlink
-  and junction creation, even inside the Low-labelled scratch tree.
-- Reads still succeed at Low. An inheritable deny-read ACE for the lane SID
-  on `RUNNER_TEMP` and `C:\actions-runner` (14–23 ms and 62–110 ms) closed
-  them (rounds 2–4).
-- The lane can open the runner's worker and the admin step's shell only
-  with `PROCESS_QUERY_LIMITED_INFORMATION`. `PROCESS_QUERY_INFORMATION |
-  PROCESS_VM_READ` and all-access are denied with error 5 (round 3).
-
-**Network, every lane, both integrity levels:**
+**Network as the lane user** (every run):
 - public IPv4 `EACCES` ×3;
-- IPv6 `ENETUNREACH`: the runner has no IPv6 route; the administrator's own
-  control gets `ENETUNREACH` too;
+- IPv6 `ENETUNREACH` (the runner has no IPv6 route);
 - HTTPS `EACCES`;
 - the loopback round trip works;
-- DNS resolves.
+- DNS resolves;
+- BITS refused ("the user has not logged on");
+- `certutil -urlcache` blocked.
 
-`certutil -urlcache` as the lane user failed with `0x80072EFD` (cannot
-connect). `Start-BitsTransfer` as the lane user failed with "the user has not
-logged on", with the BITS service on manual start and then disabled.
+**Environment**: the allowlist passed 40–43 of 155–163 names. The names kept
+out include the `ACTIONS_*` ones, the five file-command paths and the blank
+API keys. No `ACTIONS_RUNTIME_TOKEN`, `ACTIONS_ID_TOKEN_*` or `GITHUB_TOKEN`
+was in a `run` step's environment.
 
-**Environment:**
-- The step had 155–163 variables. The lane got 40–43.
-- The names dropped that look sensitive: `ACTIONS_ORCHESTRATION_ID`,
-  `ACTIONS_RUNNER_ACTION_ARCHIVE_CACHE`,
-  `ACTIONS_RUNNER_RETURN_JOB_RESULT_FOR_HOSTED`, the five file-command paths,
-  `PGPASSWORD` (the image's preinstalled PostgreSQL), and the blank API keys.
-- No `ACTIONS_RUNTIME_TOKEN`, `ACTIONS_ID_TOKEN_*` or `GITHUB_TOKEN` was in
-  a `run` step's environment.
-- `-UseNewEnvironment` started the lane with the machine environment (94
-  names; one `ACTIONS_*` machine variable), which `lane-inner` then replaced.
+**Timeouts**: the `always()` cleanup ran after a 1-minute step timeout and
+after a 4-minute job timeout (job cancelled). Both times, 4 lane processes
+had outlived the runner's kill of the step, and the owner-SID stop left 0.
+Cancellation from the UI was not tried.
 
-**The lanes as the dedicated user:**
+## Hardening findings (out of scope)
 
-| Lane | Medium (round 1) | Low |
-| --- | --- | --- |
-| copilot 1.0.101 | 78 passed | 78 passed (round 4); command 83 s |
-| pi 1.3.0 | 2 failed: `'pnpm' is not recognized` (pnpm sits under the runner user's profile) | all 3 files passed (round 4, rerun); command 46 s |
-| opencode-v2 2.0.17 (pty) | 6 failed, the same pnpm cause | 103 passed (round 4); command 200 s |
-| Code Mode, codex 0.156.1 | 3 passed | 3 passed (round 4); command 10 s |
+The trials also measured what a lane user could do beyond the network,
+which option B leaves alone by design.
 
-What each Low row needed:
-- **A lane copy of pnpm**, put first on its PATH: 4–8 s to copy.
-- **No vitest writes in the workspace.** Vitest's own flags work
-  (`--configLoader runner --no-cache --fsModuleCachePath <scratch>`). So do
-  pre-created, lane-writable `node_modules\.vite-temp`, `.vite` and
-  `.vitest-cache`. opencode-v2 passed both ways in round 2.
-- **For Code Mode, a Low-labelled real profile.** The Code Mode drive sets no
-  `CODEX_HOME`, so Codex finds `~\.codex` through the known-folder API. That
-  ignores `USERPROFILE`. Without the profile: "could not create PATH aliases:
-  Access is denied", then "failed to initialize in-process app-server client:
-  Access is denied". Creating the profile with one logon and labelling it
-  Low took 20–53 s.
-- **One test needs its own fix.** "fetches and extracts into a relative
-  HKN_RIPGREP_DIR (cold cache)" makes its temporary directory in the
-  workspace's `node_modules` by design. It fails at Low; the round-4 passes
-  used a trial-only grant to create entries there.
+**Windows**: a standard user at Medium integrity on windows-latest could:
+- create files in the workspace (`scripts\`, `.git\`, `node_modules\`),
+  `RUNNER_TEMP` and `_runner_file_commands`, `_actions`, the npm prefix on
+  PATH, the toolcache, the pnpm store, and the runner's root and `bin`;
+- modify toolcache files;
+- read the runner's `.credentials` and `.runner`, the checkout's token file
+  and the file-command files;
+- make symlinks, because Developer Mode is on.
 
-What did not work:
-- **Copying the npm prefix**: 315–797 MB, 37–61 s. It did not help Codex, and
-  it broke npm's cache (`EPERM` on `C:\npm\cache`).
+The cause is the image's volume ACLs (`Authenticated Users:(OI)(CI)(IO)(M)`
+on `C:\`).
 
-Overhead per lane job, outside the command:
-- setup: 3 s, or 20–56 s with the profile;
-- launch: 7–10 s, including the pnpm copy;
-- the after step: 9–11 s.
+**Linux**: `/opt/hostedtoolcache` and the tool trees under it are
+world-writable on ubuntu-latest. A separate lane user could create files in
+node's toolcache `bin`, the npm global `node_modules` and pnpm's directory.
+With traverse on `~runner` (mode 750), it could read the file-command files,
+the checkout's credentials file and the runner's `.credentials` (all 644).
 
-**Timeouts** (round 1, the lane command `setInterval`):
-- With a 1-minute step timeout, the next `always()` step ran (job status
-  `failure`). With a 4-minute job timeout, the job was cancelled and the
-  `always()` step still ran (status `cancelled`).
-- Both times, 4 lane processes (`cmd`, `conhost`, `node` ×2) had survived the
-  runner's kill of the step. The owner-SID stop left 0.
-- `tasklist /FI "USERNAME eq <name>"` matched the bare and the
-  `COMPUTER\name` forms alike.
+**Why out of scope**: the goal is accidental egress from our own tests
+against pinned builds. Closing these took:
+- on Windows: Low integrity, deny-read ACEs, a Low-labelled profile and a
+  trusted-state snapshot;
+- on Linux: read-only mount, tmpfs and PID namespaces, a separate user and a
+  post-run ctime and hash check.
 
-**Audit:**
-- Every 5157 the canary caused (4 per run, the three IPv4 probes and the
-  HTTPS fetch) carries the pid `lane-run` started. That first process's
-  4688 is not logged under the lane SID; its descendants' are (Subject the
-  lane, Target `S-1-0-0`).
-- With the descendants joined, Code Mode's run shows 12 blocked lane
-  connections and 0 allowed. They are `codex.exe` ×10 and
-  `git-remote-https.exe` ×2: the plugin export and git sync.
-- The join must add the started pid from `lane-run`. The prototype does not,
-  and therefore reported "audit not live".
-- 5152 (packet drop) records the same blocked connects.
+Both were measured working: runs 44845678483, 44846805022, 44847702464,
+44848733702, 44851379004, 44852516193 and 44853112456. The evidence is those
+run URLs. The prototype scripts are not kept in the tree; they are in git
+history up to `3e4430e6` (`.capture/network-egress/linux/`, `windows/lane-*`).
+The design is in the owner's planning notes, should the threat model change.
 
-### Linux leftovers, same round 1 run (ubuntu-latest)
+## Option B CI evidence
 
-- **harness-watch verify, wrapped, with the prepare step added.**
-  - opencode-v1 1.19.6: 64 passed.
-  - opencode-v2 2.3.2: 93 passed, 1 failed, the known "followed-up subagent
-    agent.stop" flake (`expected 1 to be 2`), seen before with and without
-    network.
-  - The canary passed in both.
-- **The drift container in two phases:**
-  - The install and `prepare-offline-playback.mjs --check-online` ran with
-    `--network bridge`.
-  - The drive ran with `--network none`, after the canary inside the
-    container. The canary passed:
-    - loopback only;
-    - IPv4 and IPv6 `ENETUNREACH`;
-    - DNS `EAI_AGAIN`;
-    - uid 1000;
-    - CapEff 0;
-    - NoNewPrivs 1.
-
-  | Harness (latest) | bridge (today's shape) | `--network none` |
-  | --- | --- | --- |
-  | pi 1.6.0 | exit 0 | exit 0 |
-  | codex 0.171.0 | 0, clean | 0, clean |
-  | opencode-v2 2.3.2 | 4, drift | 4, drift: the same new event variants, the tails differing only by a one-line window offset |
-
-### Marketplace with the planned switches (WSL, 2026-11-21)
-
-Both claude install calls (`plugin marketplace add`, `plugin install`) were
-given `ANTHROPIC_BASE_URL` on a refused loopback port. The test's own
-environment object was otherwise kept. Every codex call got
-`-c analytics.enabled=false`. This was a scratch-clone patch only.
-
-| Lane | traced | nonet | Non-loopback destinations (traced) |
-| --- | --- | --- | --- |
-| claude 2.1.260 | 3 passed | same | **none**: 0 of 7 harness processes |
-| codex 0.153.2 | 6 passed | same | github.com (git plugin sync), chatgpt.com (plugin export). ab.chatgpt.com gone |
-
-### Trial files
-
-| File | What it is |
-| --- | --- |
-| `windows/lane-setup.ps1` | Stage the admin scripts; auditing; the user, its rule, the scratch tree; optional Low integrity and a Low-labelled profile |
-| `windows/lane-run.ps1` | Run a command as the lane user. Options: `-DenyRead`, `-WorkspaceCacheDirs`, `-CopyNpmPrefix` (abandoned), `-NodeModulesCreate` (trial only), `-Bits`, `-TimeoutSec` |
-| `windows/lane-inner.mjs` | Identity, network and escape probes, then the command |
-| `windows/lane-after.ps1` | Stop the user's processes; check auditpol; the audit join (without the started pid; see above) |
+To be filled in by the green, mutant and dispatch runs.
 
 ## Not measured
 
 - **macOS.** No macOS job drives a real harness except the manual
   `shell-interpreter-capture.yml`. The macOS unit-test entries leave
   `HOOKNOSTIC_PLAYBACK` and `HOOKNOSTIC_SMOKE` empty and install no harness.
-- **The Windows lanes under the final mechanism.** The lanes ran as the
-  dedicated user under the prototype ("Windows lane isolation trial"), not
-  under the implementation. The audit join with the started pid, the
-  ripgrep test's fix, and the drift and marketplace changes in CI are
-  unmeasured until implemented.
+- **Before option B's CI runs**:
+  - the Windows lanes at Medium integrity with pnpm at `dest:` together;
+  - the drift two-phase container from the committed workflow (the
+    prototype's was measured);
+  - cancellation of a Windows job from the UI, where `always()` is not
+    guaranteed.
 - **Service-mediated Windows requests** other than DNS (for example WinHTTP
   proxy auto-discovery, or certificate revocation fetches made by a service).
   They are attributed to the service. `svchost.exe` fetched crl.microsoft.com
