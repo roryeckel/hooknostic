@@ -12,7 +12,7 @@
 //   Watch-Lane definitions out of its syntax tree and run only those, on a
 //   node child of their own.
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -68,7 +68,8 @@ it.skipIf(!shell)("accepts valid arguments, then refuses outside a GitHub-hosted
 });
 
 const dir = mkdtempSync(join(tmpdir(), "without-network-ps1-"));
-afterAll(() => rmSync(dir, { recursive: true, force: true }));
+// Retried: on Windows a child that has just been stopped can hold its files for a moment.
+afterAll(() => rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 }));
 
 // Loads only Read-New and Watch-Lane from the script, starts a node child
 // with its output redirected to files, as the wrapper does, and watches it.
@@ -77,7 +78,10 @@ writeFileSync(
   harness,
   `param($Script, $Child, $Limit, $Poll)
 $ErrorActionPreference = 'Stop'
-[Console]::OutputEncoding = New-Object Text.UTF8Encoding($false)
+# Console.Out, which Read-New writes, goes to a file: 12 MB through a pipe
+# into node took over 90 s on a loaded Windows runner.
+$sink = New-Object IO.StreamWriter("$Child.streamed", $false, (New-Object Text.UTF8Encoding($false)))
+[Console]::SetOut($sink)
 $ast = [System.Management.Automation.Language.Parser]::ParseFile($Script, [ref]$null, [ref]$null)
 $wanted = { param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -in 'Read-New', 'Watch-Lane' }
 foreach ($f in $ast.FindAll($wanted, $true)) { . ([scriptblock]::Create($f.Extent.Text)) }
@@ -87,6 +91,7 @@ $p = Start-Process -FilePath node -ArgumentList ('"' + $Child + '"') -RedirectSt
 $null = $p.Handle
 $code = Watch-Lane -Process $p -Paths $out, $err -LimitSeconds $Limit -Timer $timer -Stop { Stop-Process -Id $p.Id -Force } -PollMilliseconds $Poll
 [Console]::Out.WriteLine("harness: exit $code; child exited $($p.HasExited)")
+$sink.Close()
 `,
 );
 const watch = (name, source, limit, poll) => {
@@ -108,11 +113,11 @@ const watch = (name, source, limit, poll) => {
       "-Poll",
       poll,
     ],
-    { encoding: "utf8", timeout: 90_000, maxBuffer: 256 * 1024 * 1024 },
+    { encoding: "utf8", timeout: 90_000 },
   );
   expect(result.error).toBeUndefined();
-  expect(result.status, result.stderr).toBe(0);
-  return result.stdout.split(/\r?\n/);
+  expect(result.status, result.stdout + result.stderr).toBe(0);
+  return readFileSync(`${child}.streamed`, "utf8").split(/\r?\n/);
 };
 
 it.skipIf(!shell)(
@@ -128,7 +133,12 @@ it.skipIf(!shell)(
       `import { writeSync } from "node:fs";
 let i = 0;
 const burst = () => {
-  for (const end = Math.min(i + 2000, ${total}); i < end; i++) writeSync(1, \`\${i} \${"é".repeat(20)}\\n\`);
+  // 20 lines a write: many writes, each one cheap.
+  for (const end = Math.min(i + 2000, ${total}); i < end; ) {
+    let chunk = "";
+    for (const stop = Math.min(i + 20, end); i < stop; i++) chunk += \`\${i} \${"é".repeat(20)}\\n\`;
+    writeSync(1, chunk);
+  }
   if (i < ${total}) setTimeout(burst, 1);
   else { writeSync(2, "done\\n"); process.exit(3); }
 };
