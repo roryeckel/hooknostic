@@ -101,7 +101,7 @@ function Invoke-LaneCleanup {
     if ($user) {
       $left = Stop-LaneProcesses $user.SID.Value
       [Console]::Out.WriteLine("without-network: lane processes left after stopping: $left")
-      Disable-LocalUser -Name $LaneUser -ErrorAction Stop
+      Disable-LocalUser -Name $LaneUser -ErrorAction Stop | Out-Null
     } else {
       [Console]::Out.WriteLine('without-network: no lane user, so no lane processes')
     }
@@ -111,7 +111,8 @@ function Invoke-LaneCleanup {
   }
   try {
     $existing = @(Get-NetFirewallRule -Group $RuleGroup -ErrorAction SilentlyContinue)
-    if ($existing.Count) { $existing | Remove-NetFirewallRule -ErrorAction Stop }
+    # Out-Null: the cmdlet's CIM objects must not join the helper's return value.
+    if ($existing.Count) { $existing | Remove-NetFirewallRule -ErrorAction Stop | Out-Null }
     $rules = @(Get-NetFirewallRule -Group $RuleGroup -ErrorAction SilentlyContinue).Count
     [Console]::Out.WriteLine("without-network: firewall rules removed: $($existing.Count); left: $rules")
   } catch {
