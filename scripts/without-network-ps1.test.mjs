@@ -123,27 +123,31 @@ const watch = (name, source, limit, poll) => {
 it.skipIf(!shell)(
   "streams every line the lane writes, while it writes, with multi-byte characters whole",
   () => {
-    // The lane writes for 1.5 s without pause, 20 lines a write, as fast as
-    // it can, and is polled every 100 ms. So every read lands while it is
-    // writing, and each finds far more than 64 KiB: 2-byte characters keep
-    // splitting across reads, and the original body's read-then-length
-    // window is wide. The cost is bounded by time, not volume: a
-    // slow runner writes fewer lines, and the test needs only 10,000. The
-    // last line comes just before the exit, after the last poll.
+    // The lane writes without pause, 20 lines a write, as fast as it can,
+    // and is polled every 100 ms. So every read lands while it is writing,
+    // and on a fast machine each finds far more than 64 KiB: 2-byte
+    // characters keep splitting across reads, and the original body's
+    // read-then-length window is wide. It writes for 1.5 s, and on until it
+    // has 20,000 lines, which the test requires: CI's Windows test job wrote
+    // only 6,480 lines in 1.5 s (run 44878091388). It stops at 10 s whatever
+    // it has. So the cost is bounded by time, not by a line count: 200,000
+    // fixed lines took 39.7 s there. The last line comes just before the
+    // exit, after the last poll.
     //
     // It catches the reviewed defect, the original Read-New (ReadToEnd, then
     // the file's length), every time. A known survivor: $fs.Length in place
     // of $fs.Position inside the current read loop. Its window is the
     // microseconds between the last Read returning 0 and that call. This
-    // test seldom hits it (it survived 6 of 6 runs, under Windows PowerShell
-    // 5.1 and PowerShell 7.7), and hitting it reliably would take a hook
-    // inside Read-New, so the test is no proof against that variant.
+    // test hits it only some of the time (killed in 3 of 12 local runs over
+    // two rounds, none under PowerShell 7.7), and hitting it reliably would
+    // take a hook inside Read-New, so the test is no proof against that
+    // variant.
     const lines = watch(
       "lines",
       `import { writeSync } from "node:fs";
 const start = Date.now();
 let i = 0;
-while (Date.now() - start < 1500) {
+while ((Date.now() - start < 1500 || i < 20_000) && Date.now() - start < 10_000) {
   let chunk = "";
   for (const stop = i + 20; i < stop; i++) chunk += \`\${i} \${"é".repeat(20)}\\n\`;
   writeSync(1, chunk);
@@ -154,7 +158,7 @@ process.exit(3);`,
       100,
     );
     const total = Number(lines.find((line) => line.startsWith("done "))?.slice(5));
-    expect(total).toBeGreaterThanOrEqual(10_000);
+    expect(total).toBeGreaterThanOrEqual(20_000);
     const streamed = lines.filter((line) => /^\d+ /.test(line));
     const gaps = streamed.filter((line, index) => line !== `${index} ${"é".repeat(20)}`);
     expect({
