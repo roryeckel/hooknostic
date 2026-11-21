@@ -8,11 +8,13 @@ contract suite in `@hooknostic/testkit` audits every row.
 See [OpenCode families](opencode-families.md) for selecting v1 or v2 and keeping separate outputs.
 
 > [!WARNING]
-> **macOS has unit and fixture coverage, but no real-harness playback evidence.**
-> Claude Code, Codex CLI, GitHub Copilot CLI, and both OpenCode families have
-> shell interpreter captures from GitHub macOS runners
-> (`.capture/shell-dialects`). Pi has no macOS harness captures. All other
-> harness observations below were established on Windows or Linux.
+> **macOS has unit, fixture and live-probe coverage, but no playback lane in
+> CI.** Claude Code, Codex CLI, GitHub Copilot CLI, and both OpenCode families
+> have shell interpreter captures from GitHub macOS runners
+> (`.capture/shell-dialects`), and OpenCode v2 has a live-probe record from a
+> macOS arm64 runner (`.capture/opencode-v2`). Pi has no macOS harness
+> captures. The other observations below were established on Windows or
+> Linux.
 
 | Harness | Recommended target range | Validated ranges | Reference build | Fixtures |
 | --- | --- | --- | --- | --- |

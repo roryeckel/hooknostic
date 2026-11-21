@@ -171,12 +171,12 @@ it.each([
   {
     name: ".hooknostic/recovery.lock",
     message: (lock: string) =>
-      `another hooknostic recover may be running: ${lock} exists; rerun hooknostic recover, which removes a lock left by a process that has exited`,
+      `another hooknostic recover may be running: ${lock} exists; rerun hooknostic recover, which removes a lock whose recorded process ID has exited`,
   },
   {
     name: ".hooknostic/sync.lock",
     message: (lock: string) =>
-      `another hooknostic sync or recover may be running: ${lock} exists; if neither is, run hooknostic recover with the same configuration, which removes a lock left by a process that has exited`,
+      `another hooknostic sync or recover may be running: ${lock} exists; if neither is, run hooknostic recover with the same configuration, which removes a lock whose recorded process ID has exited`,
   },
 ])("leaves $name to a peer that claimed it first, and names the peer (#267)", async ({ name, message }) => {
   const { lock, untouched } = await deadLockAndJournal(name);

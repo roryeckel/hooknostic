@@ -359,7 +359,7 @@ describe("project reconciliation", () => {
     await writeFile(join(root, ".hooknostic/sync.lock"), String(process.pid));
     const lock = join(await realpath(root), ".hooknostic", "sync.lock");
     await expect(sync()).rejects.toMatchObject({
-      message: `another hooknostic sync or recover may be running: ${lock} exists; if neither is, run hooknostic recover with the same configuration, which removes a lock left by a process that has exited`,
+      message: `another hooknostic sync or recover may be running: ${lock} exists; if neither is, run hooknostic recover with the same configuration, which removes a lock whose recorded process ID has exited`,
       code: "EEXIST",
       path: lock,
       cause: { code: "EEXIST", path: lock },

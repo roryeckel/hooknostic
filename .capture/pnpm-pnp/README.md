@@ -358,8 +358,8 @@ Yarn 2 or 3, and a pnpm `node_modules` with only dot-entries
   of 0.13.0 or earlier still reads as `not found` there, and its builds also
   bundle the CLI's own SDK for the shims; plain
   `node node_modules/hooknostic/bin/hooknostic.mjs` avoids both.
-- pnpm's `nodeLinker: pnp` is **best effort**, as `yarn dlx` is for Yarn
-  (ADR-0041): `pnpm exec hooknostic` built and the artifact ran with pnpm
+- pnpm's `nodeLinker: pnp` is **best effort**, by the standard ADR-0041 sets
+  for `yarn dlx`: `pnpm exec hooknostic` built and the artifact ran with pnpm
   12.21.0's default `symlink`, but no suite runs it. `symlink: false` does not
   build at all, and pnpm 11's runtime silences HN110 and doctor's version
   line through the #216 gate.

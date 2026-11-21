@@ -81,7 +81,7 @@ import {
 } from "./sdk-resolution.js";
 import { type AuthoredProjectSkill, planProjectSkillPolicies } from "./skill-policy.js";
 
-export const HOOKNOSTIC_VERSION = "0.13.0";
+export const HOOKNOSTIC_VERSION = "0.14.0";
 
 export interface BuildOptions {
   configPath: string;

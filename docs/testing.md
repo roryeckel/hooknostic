@@ -378,14 +378,11 @@ on), not by CI.
   plugin, and the plugin drives fail.
 - **Not isolated.** harness-watch drift's llm transport, by design, and the
   manual macOS `shell-interpreter-capture.yml`.
-- **Rollback.** Each blocked job group has its own `ci:` commit, so each can
-  be reverted alone:
-  - the Linux lanes;
-  - the Windows lanes and Code Mode;
-  - the marketplace gate;
-  - harness-watch verify and drift.
-
-  After reverting all of them, also revert the hunks that describe
+- **Rollback.** The enforcement landed as one squashed commit (`4eaee9bd`),
+  so it cannot be reverted by job group: reverting that commit restores
+  network for every lane below, and the per-group commits exist only on the
+  pull request's branch. To keep some lanes isolated, remove their wrapper
+  steps by hand instead. After reverting, also revert the hunks that describe
   enforcement as current:
   - "Network isolation in CI" and the per-OS sections below it;
   - the "no network beyond loopback" clause in AGENTS.md;
