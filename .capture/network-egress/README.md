@@ -817,19 +817,61 @@ The design is in the owner's planning notes, should the threat model change.
 
 ## Option B CI evidence
 
-To be filled in by the green, mutant and dispatch runs.
+| Run | Tree | Outcome |
+| --- | --- | --- |
+| [44859999263](https://github.com/roryeckel/hooknostic/actions/runs/44859999263) | `8a704b75` | Every harness job green. The dependency policy failed: pnpm/action-setup's new `with:` block (`dest:`) made Renovate emit a versionless `pnpm` record. Fixed in `c1792a5e`, the same tolerance as for setup-node's `node`. |
+| [44860715850](https://github.com/roryeckel/hooknostic/actions/runs/44860715850) | `c1792a5e` | **Green.** Every Windows lane and Code Mode passed the canary (see below), with copilot 78, pi 83, opencode-v2 103 and Code Mode 3. That is the first measurement of Medium integrity with `dest:` together, and it equals the trial's counts. Cleanup reported "lane processes left after stopping: 0; firewall rules removed: 1; left: 0". Both marketplace jobs passed their namespace canary: claude 3 passed, codex 6. |
+| [44861473576](https://github.com/roryeckel/hooknostic/actions/runs/44861473576) | `ebd0f024`, Mutant A: `unshare` without `--net`, and no firewall rule | Every blocked job failed in the isolation check, and vitest never ran. Linux lanes and marketplace failed on `interfaces`, `public IPv4 connect` and `DNS lookup`. Windows lanes and Code Mode failed on `public IPv4 connect` only ("the command did not run"). The unit-test, policy and compatibility jobs stayed green. Reverted in `7e0adbcb`. |
+| [44861950218](https://github.com/roryeckel/hooknostic/actions/runs/44861950218) | `5483a250`, Mutant B: a test that fetches `https://github.com/`, titled to match the Code Mode and marketplace filters | In every blocked job the canary passed and exactly that test failed (`fetch failed`): `EAI_AGAIN` in the Linux namespace, `EACCES` behind the Windows rule. All other counts were unchanged. The ordinary test jobs, with network, passed it. Reverted in `8b678a75`. |
+| [44862544444](https://github.com/roryeckel/hooknostic/actions/runs/44862544444) | `8b678a75` | **Green**, with the same counts and canary lines. |
+| [44862570019](https://github.com/roryeckel/hooknostic/actions/runs/44862570019) | `8b678a75`, harness-watch `workflow_dispatch`, `harness=opencode-v2`, `dry_run=true` | See below. No record, report, publish or automerge job ran. |
+
+The harness-watch dispatch:
+- **drift**: phase 1 printed "ripgrep ready at /drift/ripgrep/rg". Phase 2's canary passed, with `HOOKNOSTIC_PLAYBACK_VERSION` and `HKN_RIPGREP_DIR` present, loopback only, `ENETUNREACH`, `EAI_AGAIN`, uid 1000, CapEff 0 and NoNewPrivs 1. The drive completed: verdict drift, exit 4, the prototype's bridge result. No drive failure means no refetch.
+- **verify**: the `--check-online` control and the namespace canary passed, with all three names present. Then 93 passed and 1 failed, both on the first attempt and on the retry. The failure is the pre-existing opencode-v2 2.3.2 test "reports each completion of a followed-up subagent as its own agent.stop" (`expected 1 to be 2`), which also fails with network (WSL: 1 of 5 runs with network, 2 of 5 without).
+
+The Windows canary, as every Windows lane printed it in the green runs:
+
+```
+assert-no-network --offline: ok   user: the wrapper's SID
+assert-no-network --offline: ok   administrators: not a member
+assert-no-network --offline: ok   public IPv4 connect: 1.1.1.1:443 -> EACCES, 8.8.8.8:443 -> EACCES, 9.9.9.9:443 -> EACCES
+assert-no-network --offline: ok   public IPv6 connect: [2606:4700:4700::1111]:443 -> ENETUNREACH
+assert-no-network --offline: ok   loopback round trip: round-trip
+assert-no-network --offline: ok   DNS lookup (allowed on Windows): github.com -> resolved
+assert-no-network --offline: ok   environment: HOOKNOSTIC_PLAYBACK_NETWORK=none set; present: HOOKNOSTIC_PLAYBACK, HKN_PLAYBACK_ARTIFACT_DIR, HKN_RIPGREP_DIR; no forbidden names
+```
+
+The allowlist passed 42–44 names and kept 116–120 out, including the
+`ACTIONS_*` names and the five file-command paths.
+
+**Time added against master**: step times, green run 44862544444 against
+master run 44679264511. Runner variance is about ±20 s on unchanged jobs.
+
+| Job | Option B | Master | Added |
+| --- | --- | --- | --- |
+| copilot, Windows: the lane step / cleanup | 84 s / 3 s | 70 s | ≈ +17 s |
+| pi, Windows | 69 s / 4 s | 56 s | ≈ +17 s |
+| opencode-v2, Windows | 205 s / 2 s | 285 s | within variance; the wrapper's own setup is 20–28 s in its log |
+| Code Mode gate / cleanup | 28 s / 3 s | 26 s | ≈ +5 s |
+| marketplace codex gate | 18 s | 8 s | ≈ +10 s (the plugin sync's resolver retries) |
+| marketplace claude gate | 4 s | 6 s | ≈ 0 |
+| harness-watch verify, opencode-v2 | prepare 0 s (ripgrep cached), playback 229 s | playback 132 s (2.3.0, an older build) | not attributable: another build, and a failing test that waits |
+| harness-watch drift, opencode-v2 | 54 s (job) | 3–88 s (jobs) | within the range |
+| Linux playback lanes | unchanged since #288's namespace | — | codex about +60 s (the plugin sync's retries, kept), the others within variance |
 
 ## Not measured
 
 - **macOS.** No macOS job drives a real harness except the manual
   `shell-interpreter-capture.yml`. The macOS unit-test entries leave
   `HOOKNOSTIC_PLAYBACK` and `HOOKNOSTIC_SMOKE` empty and install no harness.
-- **Before option B's CI runs**:
-  - the Windows lanes at Medium integrity with pnpm at `dest:` together;
-  - the drift two-phase container from the committed workflow (the
-    prototype's was measured);
+- **Left after option B's CI runs**:
+  - drift's two phases for harnesses other than opencode-v2. opencode-v1's
+    phase 2 relies on phase 1's warmed npm cache and the helper's
+    `--offline`, which is not run in a drift container yet. The prototype
+    ran pi and codex;
   - cancellation of a Windows job from the UI, where `always()` is not
-    guaranteed.
+    guaranteed (step and job timeouts were measured).
 - **Service-mediated Windows requests** other than DNS (for example WinHTTP
   proxy auto-discovery, or certificate revocation fetches made by a service).
   They are attributed to the service. `svchost.exe` fetched crl.microsoft.com
