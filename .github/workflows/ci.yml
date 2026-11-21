@@ -471,5 +471,15 @@ jobs:
             codex) package='@openai/codex' ;;
           esac
           npm install --global "$package@${{ steps.package.outputs.version }}"
-      - name: Verify installed example with loopback model
-        run: node scripts/verify-marketplaces.mjs '${{ matrix.harness }}'
+      - name: Prove the network probe works here
+        shell: bash
+        run: node --experimental-strip-types scripts/prepare-offline-playback.mjs '${{ matrix.harness }}' --version '${{ steps.package.outputs.version }}' --check-online
+      # In the playback lanes' loopback-only network namespace
+      # (scripts/without-network.sh), so a drive that needs the network fails.
+      - name: Verify installed example with loopback model, without network
+        shell: bash
+        run: scripts/without-network.sh node scripts/verify-marketplaces.mjs '${{ matrix.harness }}'
+        env:
+          # verify-marketplaces.mjs selects the harness itself; this is for the isolation check.
+          HOOKNOSTIC_PLAYBACK: ${{ matrix.harness }}
+          HKN_NO_NETWORK_REQUIRE_ENV: HOOKNOSTIC_PLAYBACK

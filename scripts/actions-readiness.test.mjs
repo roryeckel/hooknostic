@@ -234,6 +234,27 @@ it("runs the Code Mode gate without network, and removes the block afterwards", 
   expect(order).toEqual([...order].sort((a, b) => a - b));
 });
 
+it("runs the marketplace gate without network, after the positive control", () => {
+  const ci = readFileSync(new URL("../.github/workflows/ci.yml", import.meta.url), "utf8");
+  const job = ci.split("  marketplace:")[1].split(/\r?\n {2}\S/)[0];
+  const steps = job.split(/\r?\n {6}- /).slice(1);
+  const step = (name) => steps.find((candidate) => candidate.split(/\r?\n/)[0] === `name: ${name}`);
+  const field = (body, key) => body?.match(new RegExp(`^ {8}${key}: (.+?)\\r?$`, "m"))?.[1];
+  const control = step("Prove the network probe works here");
+  const gate = step("Verify installed example with loopback model, without network");
+  expect(field(control, "run")).toBe(
+    "node --experimental-strip-types scripts/prepare-offline-playback.mjs '${{ matrix.harness }}' --version '${{ steps.package.outputs.version }}' --check-online",
+  );
+  expect(field(gate, "run")).toBe(
+    "scripts/without-network.sh node scripts/verify-marketplaces.mjs '${{ matrix.harness }}'",
+  );
+  // The isolation check runs before verify-marketplaces.mjs sets the lane, so the step names it.
+  expect(field(gate, " {2}HOOKNOSTIC_PLAYBACK")).toBe("${{ matrix.harness }}");
+  expect(field(gate, " {2}HKN_NO_NETWORK_REQUIRE_ENV")).toBe("HOOKNOSTIC_PLAYBACK");
+  expect(steps.indexOf(control)).toBeGreaterThan(steps.indexOf(step("Install captured package baseline")));
+  expect(steps.indexOf(gate)).toBeGreaterThan(steps.indexOf(control));
+});
+
 function runWatchStep(name, expressions, prelude = "", workflow = "harness-watch", status = 0) {
   const source = readFileSync(new URL(`../.github/workflows/${workflow}.yml`, import.meta.url), "utf8");
   const step = source
