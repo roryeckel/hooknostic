@@ -1,5 +1,14 @@
 import type * as fs from "node:fs";
-import { fsync } from "node:fs";
+import {
+  closeSync,
+  constants as fsConstants,
+  existsSync,
+  fsync,
+  mkdirSync,
+  mkdtempSync,
+  openSync,
+  rmSync,
+} from "node:fs";
 import type * as fsPromises from "node:fs/promises";
 import { mkdir, mkdtemp, readdir, readFile, realpath, rename, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -10,6 +19,33 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { applyProject, fileHash, reconcileProject, recoverProject } from "./project-files.js";
 
 const win32 = process.platform === "win32";
+/** The platform and runtime really support a descriptor-relative directory walk, not just `/dev/fd` existing. */
+const descriptorWalk = (() => {
+  const prefix =
+    process.platform === "linux"
+      ? "/proc/self/fd"
+      : process.platform === "darwin" || process.platform === "freebsd"
+        ? "/dev/fd"
+        : undefined;
+  if (prefix === undefined || !existsSync(prefix)) return false;
+  if (process.platform === "linux") return true;
+  const probe = mkdtempSync(join(tmpdir(), "hooknostic-fd-probe-"));
+  try {
+    mkdirSync(join(probe, "child"));
+    const parent = openSync(probe, fsConstants.O_RDONLY | fsConstants.O_DIRECTORY);
+    try {
+      const child = openSync(`${prefix}/${parent}/child`, fsConstants.O_RDONLY | fsConstants.O_DIRECTORY);
+      closeSync(child);
+      return true;
+    } finally {
+      closeSync(parent);
+    }
+  } catch {
+    return false;
+  } finally {
+    rmSync(probe, { recursive: true, force: true });
+  }
+})();
 interface Flush {
   path: string;
   contents: string;
@@ -34,6 +70,8 @@ const io = vi.hoisted(() => ({
   failEveryDirectoryFlush: undefined as ((path: string) => NodeJS.ErrnoException | undefined) | undefined,
   /** Fail the next open chosen by its path, with the error it returns. */
   failOpen: undefined as ((path: string) => NodeJS.ErrnoException | undefined) | undefined,
+  /** Fail the next canonicalization chosen by its path, with the error it returns. */
+  failRealpath: undefined as ((path: string) => NodeJS.ErrnoException | undefined) | undefined,
   /** Fail the next rename chosen by its source and destination, with the error it returns. */
   failRename: undefined as ((from: string, to: string) => NodeJS.ErrnoException | undefined) | undefined,
   /** Fail the next removal chosen by its path, with the error it returns. */
@@ -56,6 +94,8 @@ const io = vi.hoisted(() => ({
   events: [] as IoEvent[],
   /** Every attempt to open a directory, completed or not; Windows must make none. */
   directoryOpenAttempts: [] as string[],
+  /** The actual resolved target of every completed directory open, for symlink assertions. */
+  directoryOpenTargets: [] as string[],
   /** Runs once, just before the file at the path it is given is opened. */
   beforeOpen: undefined as ((path: string) => Promise<void>) | undefined,
 }));
@@ -65,7 +105,14 @@ vi.mock("node:fs/promises", async (importOriginal) => {
   return {
     ...actual,
     async open(...args: Parameters<typeof actual.open>) {
-      const path = String(args[0]);
+      const requested = String(args[0]);
+      let path = requested;
+      const descriptor = /^(?:\/proc\/self\/fd|\/dev\/fd)\/(\d+)(?:\/(.*))?$/.exec(requested);
+      if (descriptor !== null) {
+        const parent = io.paths.get(Number(descriptor[1]));
+        if (parent !== undefined)
+          path = descriptor[2] === undefined ? parent : join(parent, ...descriptor[2].split("/"));
+      }
       const beforeOpen = io.beforeOpen;
       io.beforeOpen = undefined;
       await beforeOpen?.(path);
@@ -85,6 +132,10 @@ vi.mock("node:fs/promises", async (importOriginal) => {
         throw injected;
       }
       const handle = await actual.open(...args);
+      if (directory) {
+        const target = await actual.realpath(requested).catch(() => requested);
+        io.directoryOpenTargets.push(target);
+      }
       io.paths.set(handle.fd, path);
       io.written.set(path, "");
       io.events.push({ type: "open", path });
@@ -111,6 +162,15 @@ vi.mock("node:fs/promises", async (importOriginal) => {
         handle.datasync = notImplemented;
       }
       return handle;
+    },
+    async realpath(...args: Parameters<typeof actual.realpath>) {
+      const path = String(args[0]);
+      const injected = io.failRealpath?.(path);
+      if (injected) {
+        io.failRealpath = undefined;
+        throw injected;
+      }
+      return await actual.realpath(...args);
     },
     async rename(...args: Parameters<typeof actual.rename>) {
       const injected = io.failRename?.(String(args[0]), String(args[1]));
@@ -238,6 +298,7 @@ afterEach(async () => {
   io.failDirectoryFlush = undefined;
   io.failEveryDirectoryFlush = undefined;
   io.failOpen = undefined;
+  io.failRealpath = undefined;
   io.failRename = undefined;
   io.failRm = undefined;
   io.failClose = undefined;
@@ -248,6 +309,7 @@ afterEach(async () => {
   io.failedFlushes.length = 0;
   io.events.length = 0;
   io.directoryOpenAttempts.length = 0;
+  io.directoryOpenTargets.length = 0;
   io.rmAttempts.length = 0;
   io.beforeOpen = undefined;
   vi.mocked(fsync).mockClear();
@@ -262,6 +324,7 @@ function resetIo(): void {
   io.failedFlushes.length = 0;
   io.events.length = 0;
   io.directoryOpenAttempts.length = 0;
+  io.directoryOpenTargets.length = 0;
   io.rmAttempts.length = 0;
 }
 /** The native path of a root-relative project path, as `projectPath` spells it. */
@@ -348,28 +411,50 @@ it("synchronizes and recovers when FileHandle.sync() is not implemented, as unde
   expect(await staging()).toEqual([]);
 });
 
+it("resolves the canonical root before taking the sync lock", async () => {
+  const plan = await reconcileProject(root, owner, input("one"));
+  let rootCalls = 0;
+  io.failRealpath = (path) => {
+    if (path !== root) return undefined;
+    rootCalls += 1;
+    // The first call is applyProject's canonicalization in the fixed order;
+    // the second would be acquire's projectPath. After the mutation, the
+    // second is the canonicalization and the lock is already held.
+    return rootCalls === 2
+      ? Object.assign(new Error("injected realpath failure"), { code: "EIO", syscall: "realpath" })
+      : undefined;
+  };
+
+  await expect(applyProject(root, owner, plan)).rejects.toThrow("injected realpath failure");
+  expect(io.failRealpath).toBeUndefined();
+  expect(await exists(".hooknostic/sync.lock")).toBe(false);
+});
+
 describe("directory flushes make each rename durable before the next step", () => {
-  it.skipIf(win32)("flushes the journal directories, each destination directory, then the commit point", async () => {
-    const project = await realpath(root);
+  it.skipIf(!descriptorWalk)(
+    "flushes the journal directories, each destination directory, then the commit point",
+    async () => {
+      const project = await realpath(root);
 
-    await sync("one");
+      await sync("one");
 
-    expect(orderedEvents(project)).toEqual([
-      "flush journal contents",
-      "rename journal",
-      "flush .hooknostic",
-      "flush root",
-      "rename a.txt",
-      "rename z.txt",
-      "rename .hooknostic/integration.json",
-      "flush root",
-      "flush .hooknostic",
-      "remove journal",
-      "flush .hooknostic",
-    ]);
-    expect(await readFile(join(root, "a.txt"), "utf8")).toBe("one");
-    expect(await exists(".hooknostic/transaction.json")).toBe(false);
-  });
+      expect(orderedEvents(project)).toEqual([
+        "flush journal contents",
+        "rename journal",
+        "flush .hooknostic",
+        "flush root",
+        "rename a.txt",
+        "rename z.txt",
+        "rename .hooknostic/integration.json",
+        "flush root",
+        "flush .hooknostic",
+        "remove journal",
+        "flush .hooknostic",
+      ]);
+      expect(await readFile(join(root, "a.txt"), "utf8")).toBe("one");
+      expect(await exists(".hooknostic/transaction.json")).toBe(false);
+    },
+  );
 
   it.runIf(win32)("skips directory flushes on Windows, where fsync cannot flush a directory", async () => {
     await sync("one");
@@ -380,7 +465,7 @@ describe("directory flushes make each rename durable before the next step", () =
     expect(await exists(".hooknostic/transaction.json")).toBe(false);
   });
 
-  it.skipIf(win32)("rejects a failed journal-directory flush and rolls back", async () => {
+  it.skipIf(!descriptorWalk)("rejects a failed journal-directory flush and rolls back", async () => {
     const project = await realpath(root);
     await sync("before");
     resetIo();
@@ -399,7 +484,7 @@ describe("directory flushes make each rename durable before the next step", () =
     expect(await readFile(join(root, "z.txt"), "utf8")).toBe("after");
   });
 
-  it.skipIf(win32)("rejects a failed destination-directory flush after a rename and rolls back", async () => {
+  it.skipIf(!descriptorWalk)("rejects a failed destination-directory flush after a rename and rolls back", async () => {
     const project = await realpath(root);
     const renamed = () => io.events.some((event) => event.type === "rename" && event.to === at(project, "a.txt"));
     await sync("before");
@@ -432,35 +517,38 @@ describe("directory flushes make each rename durable before the next step", () =
     expect(await readFile(join(root, "z.txt"), "utf8")).toBe("after");
   });
 
-  it.skipIf(win32)("flushes restored directories before removing the journal, then the journal directory", async () => {
-    const project = await realpath(root);
-    await mkdir(join(root, ".hooknostic"), { recursive: true });
-    await writeFile(join(root, "a.txt"), "after");
-    await writeFile(
-      join(root, ".hooknostic/transaction.json"),
-      JSON.stringify({
-        schemaVersion: 1,
-        config: owner,
-        entries: [
-          {
-            path: "a.txt",
-            before: Buffer.from("before").toString("base64"),
-            afterHash: fileHash("after"),
-            mode: 0o644,
-          },
-        ],
-      }),
-    );
-    resetIo();
+  it.skipIf(!descriptorWalk)(
+    "flushes restored directories before removing the journal, then the journal directory",
+    async () => {
+      const project = await realpath(root);
+      await mkdir(join(root, ".hooknostic"), { recursive: true });
+      await writeFile(join(root, "a.txt"), "after");
+      await writeFile(
+        join(root, ".hooknostic/transaction.json"),
+        JSON.stringify({
+          schemaVersion: 1,
+          config: owner,
+          entries: [
+            {
+              path: "a.txt",
+              before: Buffer.from("before").toString("base64"),
+              afterHash: fileHash("after"),
+              mode: 0o644,
+            },
+          ],
+        }),
+      );
+      resetIo();
 
-    await recoverProject(root, owner);
+      await recoverProject(root, owner);
 
-    expect(orderedEvents(project)).toEqual(["rename a.txt", "flush root", "remove journal", "flush .hooknostic"]);
-    expect(await readFile(join(root, "a.txt"), "utf8")).toBe("before");
-    expect(await exists(".hooknostic/transaction.json")).toBe(false);
-  });
+      expect(orderedEvents(project)).toEqual(["rename a.txt", "flush root", "remove journal", "flush .hooknostic"]);
+      expect(await readFile(join(root, "a.txt"), "utf8")).toBe("before");
+      expect(await exists(".hooknostic/transaction.json")).toBe(false);
+    },
+  );
 
-  it.skipIf(win32)("flushes every newly created ancestor of a nested destination", async () => {
+  it.skipIf(!descriptorWalk)("flushes every newly created ancestor of a nested destination", async () => {
     const project = await realpath(root);
 
     await syncNested("one");
@@ -483,7 +571,7 @@ describe("directory flushes make each rename durable before the next step", () =
     expect(await exists(".hooknostic/transaction.json")).toBe(false);
   });
 
-  it.skipIf(win32)("flushes directories created while restoring a missing nested path", async () => {
+  it.skipIf(!descriptorWalk)("flushes directories created while restoring a missing nested path", async () => {
     const project = await realpath(root);
     await mkdir(join(root, ".hooknostic"), { recursive: true });
     await writeFile(
@@ -506,7 +594,7 @@ describe("directory flushes make each rename durable before the next step", () =
     expect(await exists(".hooknostic/transaction.json")).toBe(false);
   });
 
-  it.skipIf(win32)("repeats the parent flush on a retried recovery before removing the journal", async () => {
+  it.skipIf(!descriptorWalk)("repeats the parent flush on a retried recovery before removing the journal", async () => {
     const project = await realpath(root);
     await mkdir(join(root, ".hooknostic"), { recursive: true });
     await writeFile(join(root, "a.txt"), "after");
@@ -539,7 +627,7 @@ describe("directory flushes make each rename durable before the next step", () =
     expect(await exists(".hooknostic/transaction.json")).toBe(false);
   });
 
-  it.skipIf(win32)("flushes intermediate ancestors on a retry that replaces nothing", async () => {
+  it.skipIf(!descriptorWalk)("flushes intermediate ancestors on a retry that replaces nothing", async () => {
     const project = await realpath(root);
     await mkdir(join(root, ".hooknostic"), { recursive: true });
     await writeFile(
@@ -573,7 +661,44 @@ describe("directory flushes make each rename durable before the next step", () =
     expect(await exists(".hooknostic/transaction.json")).toBe(false);
   });
 
-  it.skipIf(win32)("rejects a directory replaced by a symlink before its flush", async () => {
+  it.skipIf(!descriptorWalk)(
+    "flushes the pinned directory when a parent is swapped after its descriptor opens",
+    async () => {
+      const project = await realpath(root);
+      const outside = await mkdtemp(join(tmpdir(), "hooknostic-outside-"));
+      try {
+        await mkdir(join(outside, "deep"), { recursive: true });
+        await mkdir(join(root, ".hooknostic"), { recursive: true });
+        await writeFile(
+          join(root, ".hooknostic/transaction.json"),
+          journalText([journalEntry("nested/deep/file.txt", "before", null)]),
+        );
+        resetIo();
+        const nested = at(project, "nested");
+        const nestedReal = at(project, "nested.real");
+        io.swapBeforeOpen = {
+          path: at(project, "nested/deep"),
+          run: async () => {
+            await rename(nested, nestedReal);
+            await symlink(outside, nested, "dir");
+          },
+        };
+
+        // The parent descriptor is already pinned, so the child resolves through
+        // it and the pinned directory is flushed rather than the symlink target.
+        await recoverProject(root, owner);
+        expect(io.flushes.some((flush) => flush.directory && flush.path === at(project, "nested/deep"))).toBe(true);
+        expect(io.directoryOpenTargets).not.toContain(outside);
+        expect(io.directoryOpenTargets.some((path) => path.startsWith(outside + sep))).toBe(false);
+        expect(await readFile(join(root, "nested.real/deep/file.txt"), "utf8")).toBe("before");
+        expect(await exists(".hooknostic/transaction.json")).toBe(false);
+      } finally {
+        await rm(outside, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it.skipIf(!descriptorWalk)("rejects a parent swapped for a symlink before its descriptor opens", async () => {
     const project = await realpath(root);
     const outside = await mkdtemp(join(tmpdir(), "hooknostic-outside-"));
     try {
@@ -587,7 +712,7 @@ describe("directory flushes make each rename durable before the next step", () =
       const nested = at(project, "nested");
       const nestedReal = at(project, "nested.real");
       io.swapBeforeOpen = {
-        path: at(project, "nested/deep"),
+        path: nested,
         run: async () => {
           await rename(nested, nestedReal);
           await symlink(outside, nested, "dir");
@@ -596,6 +721,9 @@ describe("directory flushes make each rename durable before the next step", () =
 
       await expect(recoverProject(root, owner)).rejects.toThrow("directory changed while flushing");
       expect(await exists(".hooknostic/transaction.json")).toBe(true);
+      expect(io.rmAttempts).not.toContain(at(project, ".hooknostic/transaction.json"));
+      expect(io.directoryOpenTargets).not.toContain(outside);
+      expect(io.directoryOpenTargets.some((path) => path.startsWith(outside + sep))).toBe(false);
       expect(await readFile(join(root, "nested.real/deep/file.txt"), "utf8")).toBe("before");
 
       await rm(nested, { force: true });
@@ -608,7 +736,7 @@ describe("directory flushes make each rename durable before the next step", () =
     }
   });
 
-  it.skipIf(win32)("skips a directory open the filesystem does not support", async () => {
+  it.skipIf(!descriptorWalk)("skips a directory open the filesystem does not support", async () => {
     const project = await realpath(root);
     io.failOpen = (path) =>
       path === at(project, ".hooknostic")
@@ -625,7 +753,7 @@ describe("directory flushes make each rename durable before the next step", () =
     expect(await exists(".hooknostic/transaction.json")).toBe(false);
   });
 
-  it.skipIf(win32)("rejects a real directory open failure and rolls back", async () => {
+  it.skipIf(!descriptorWalk)("rejects a real directory open failure and rolls back", async () => {
     const project = await realpath(root);
     await sync("before");
     resetIo();
@@ -643,7 +771,7 @@ describe("directory flushes make each rename durable before the next step", () =
     expect(await staging()).toEqual([]);
   });
 
-  it.skipIf(win32)("names both failures and keeps the journal when rollback fails", async () => {
+  it.skipIf(!descriptorWalk)("names both failures and keeps the journal when rollback fails", async () => {
     const project = await realpath(root);
     await sync("before");
     resetIo();
@@ -686,7 +814,7 @@ describe("directory flushes make each rename durable before the next step", () =
     expect(await exists(".hooknostic/transaction.json")).toBe(false);
   });
 
-  it.skipIf(win32)("ignores a failed commit flush after the journal is removed", async () => {
+  it.skipIf(!descriptorWalk)("ignores a failed commit flush after the journal is removed", async () => {
     const project = await realpath(root);
     await sync("before");
     resetIo();
@@ -703,7 +831,7 @@ describe("directory flushes make each rename durable before the next step", () =
     expect(await exists(".hooknostic/transaction.json")).toBe(false);
   });
 
-  it.skipIf(win32)("ignores a failed commit flush after recovery removes the journal", async () => {
+  it.skipIf(!descriptorWalk)("ignores a failed commit flush after recovery removes the journal", async () => {
     const project = await realpath(root);
     await mkdir(join(root, ".hooknostic"), { recursive: true });
     await writeFile(join(root, "a.txt"), "after");
@@ -754,7 +882,7 @@ describe("directory flushes make each rename durable before the next step", () =
     expect(await exists(".hooknostic/transaction.json")).toBe(false);
   });
 
-  it.skipIf(win32)("reports a restore failure, not a failed lock release", async () => {
+  it.skipIf(!descriptorWalk)("reports a restore failure, not a failed lock release", async () => {
     const project = await realpath(root);
     await mkdir(join(root, ".hooknostic"), { recursive: true });
     await writeFile(join(root, "a.txt"), "after");

@@ -191,44 +191,53 @@ because Codex has no equivalent native field.
   content-flushed, then the journal is renamed into place. The journal's
   directory (`.hooknostic`) is flushed, then the project root: a first sync may
   have just created `.hooknostic`, and flushing it alone does not persist its
-  entry in the root. Only then are destinations renamed. After all of them,
-  each touched destination directory — including every newly created ancestor
-  — is flushed once, sorted for determinism. The journal is removed, and
-  `.hooknostic` is flushed once more as the commit point.
+  entry in the root. Only then are destinations replaced or removed. After all
+  of them, each touched destination directory — including every newly created
+  ancestor — is flushed once, sorted for determinism. The journal is removed,
+  and `.hooknostic` is flushed once more as the commit point.
 - **A failure before the commit point attempts rollback only once the journal
   is installed.** If staging or the journal replacement fails before its
-  rename, nothing has changed and no rollback runs. Once the journal rename has
-  succeeded, a journal-directory flush failure leaves that rename unconfirmed,
-  while a project-root flush failure can lose a newly created `.hooknostic`
-  entry even though its own flush succeeded. Both abort before any destination
-  is replaced and attempt rollback from the in-process journal, which is
-  visible to the process but not known to be crash-durable. A
-  destination-directory flush failure aborts after the renames and attempts
-  rollback from the journal. Rollback is attempted, not guaranteed: if it
-  cannot complete, the journal remains and `hooknostic recover` must be run
-  with the same configuration. The final flush after the journal's removal is
-  best effort and swallowed: only a crash can bring the journal back, and
-  recovery rolls it back, so it must not turn an applied sync into a reported
-  failure.
+  rename, no destination file has changed (state and staging directories may
+  exist) and no rollback runs. Once the journal rename has succeeded, a
+  journal-directory flush failure leaves that rename unconfirmed, while a
+  project-root flush failure can lose a newly created `.hooknostic` entry even
+  though its own flush succeeded. Both abort before any destination is replaced
+  or removed and attempt rollback from the in-process journal, which is visible
+  to the process but not known to be crash-durable. A destination-directory
+  flush failure aborts after the destinations are replaced or removed and
+  attempts rollback. Rollback is attempted, not guaranteed: a recovery
+  conflict, or any other failure to complete it, leaves the journal and
+  `hooknostic recover` must be run with the same configuration. The final flush
+  after the journal's removal is best effort and swallowed: only a crash can
+  bring the journal back, and recovery rolls it back, so it must not turn an
+  applied sync into a reported failure.
 - **Recovery flushes before it forgets.** It flushes every existing ancestor,
   through the project root, of every validated journal entry — including
   entries already at their preimage, which a retried recovery skips replacing
   — plus every directory created while restoring, once each and sorted, before
   removing the journal. It then flushes `.hooknostic` best effort after the
   unlink. Without this, a crash during recovery, or a retry after a failed
-  flush, could persist the journal's removal while losing a restore rename.
-- **Windows has a weaker boundary, and says so.** There `fs.open` can open a
-  directory but `fs.fsync` on it fails with EPERM, because `FlushFileBuffers`
-  refuses a directory handle. Win32 has `MOVEFILE_WRITE_THROUGH`, but Node does
-  not expose it through `fs.rename`. Directory flushes are therefore skipped on
-  Windows. Filesystems that cannot flush a directory at all (`EINVAL`,
-  `EISDIR`, `ENOTSUP`, `EOPNOTSUPP`, `ENOSYS`) are skipped the same way, whether
-  the open or the flush answers with one; every other error remains fatal
-  before the journal is removed, while the post-unlink commit flush is best
-  effort. Network and FUSE filesystems may honour these calls differently or
-  not at all, so power-loss durability there is the filesystem's guarantee, not
-  Hooknostic's. Recovery still checks every file against the journal before
-  restoring anything; directory flushing never weakens that check.
+  flush, could persist the journal's removal while losing a restored
+  replacement.
+- **Directory flushes are descriptor-relative where available, and skipped
+  elsewhere.** On Linux the walk goes through `/proc/self/fd`; on macOS and
+  FreeBSD through `/dev/fd` where that traversal works. The root and each
+  component are opened relative to the pinned parent descriptor with
+  `O_NOFOLLOW | O_DIRECTORY`, so a component swapped for a symlink fails closed
+  instead of being followed. Where descriptor traversal is unavailable, or the
+  filesystem cannot flush a directory at all (`EINVAL`, `EISDIR`, `ENOTSUP`,
+  `EOPNOTSUPP`, `ENOSYS`), flushing is skipped and durability is weaker; there
+  is no absolute-path fallback and no universal POSIX guarantee. Every other
+  error remains fatal before the journal is removed, while the post-unlink
+  commit flush is best effort.
+- **Windows has no directory flush.** `fs.open` can open a directory there, but
+  `fs.fsync` on it fails with EPERM because `FlushFileBuffers` refuses a
+  directory handle. Win32 has `MOVEFILE_WRITE_THROUGH`, but Node does not expose
+  it through `fs.rename`. Network and FUSE filesystems may honour descriptor
+  flushes differently or not at all, so power-loss durability there is the
+  filesystem's guarantee, not Hooknostic's. Recovery still checks every file
+  against the journal before restoring anything; directory flushing never
+  weakens that check.
 
 ## Boundaries
 

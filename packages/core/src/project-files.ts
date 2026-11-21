@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { type BigIntStats, constants, fsync } from "node:fs";
+import { type BigIntStats, constants, existsSync, fsync } from "node:fs";
 import { type FileHandle, lstat, mkdir, open, readFile, realpath, rename, rm } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, sep } from "node:path";
 
@@ -699,68 +699,126 @@ function unsupportedDirectoryFlush(error: unknown): boolean {
 function changedDirectory(path: string): Error {
   return new Error(`directory changed while flushing: ${path}`);
 }
+const DIRECTORY_OPEN_FLAGS = constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW;
+/**
+ * The descriptor-relative path prefix this host offers, checked once. Without
+ * one, directory flushing is skipped rather than falling back to an absolute
+ * path whose parents can be swapped after validation.
+ */
+const DESCRIPTOR_WALK_PREFIX =
+  process.platform === "linux"
+    ? existsSync("/proc/self/fd")
+      ? "/proc/self/fd"
+      : undefined
+    : process.platform === "darwin" || process.platform === "freebsd"
+      ? existsSync("/dev/fd")
+        ? "/dev/fd"
+        : undefined
+      : undefined;
+/** Whether `/dev/fd/<fd>/<child>` traversal works; probed once and cached. */
+let devFdTraversal: boolean | undefined;
+/**
+ * The prefix to walk through, or `undefined` when this host cannot. Linux's
+ * `/proc/self/fd` is known to traverse; `/dev/fd` is probed because a
+ * descriptor-only `fdescfs` entry may not.
+ */
+async function descriptorWalkPrefix(handle: FileHandle): Promise<string | undefined> {
+  if (DESCRIPTOR_WALK_PREFIX === undefined) return undefined;
+  if (DESCRIPTOR_WALK_PREFIX === "/proc/self/fd") return DESCRIPTOR_WALK_PREFIX;
+  if (devFdTraversal === undefined) {
+    try {
+      const probe = await open(`${DESCRIPTOR_WALK_PREFIX}/${handle.fd}/.`, DIRECTORY_OPEN_FLAGS);
+      await probe.close();
+      devFdTraversal = true;
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code === "ENOTDIR" || code === "EINVAL" || code === "ENOENT") devFdTraversal = false;
+      else throw error;
+    }
+  }
+  return devFdTraversal ? DESCRIPTOR_WALK_PREFIX : undefined;
+}
+/**
+ * Opens one directory of the walk. `ELOOP`/`ENOTDIR` mean a component was
+ * swapped for a symlink or a non-directory after its parent was pinned, so the
+ * flush fails closed. The unsupported-filesystem allowlist skips the flush.
+ */
+async function openWalkedDirectory(path: string, displayPath: string): Promise<FileHandle | null> {
+  try {
+    return await open(path, DIRECTORY_OPEN_FLAGS);
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === "ELOOP" || code === "ENOTDIR") throw changedDirectory(displayPath);
+    if (unsupportedDirectoryFlush(error)) return null;
+    throw error;
+  }
+}
 /**
  * Flushes a directory's own entries, making a completed rename into it durable
  * across a power loss or kernel crash.
  *
- * `root` is the canonical project root. The path must stay inside it lexically,
- * and every component below the root is revalidated with `lstat` as a real
- * directory before the open. On POSIX the descriptor is opened with
- * `O_NOFOLLOW | O_DIRECTORY`, and its `fstat` identity must match the validated
- * directory. That narrows a replacement race to the gap between validation and
- * open and fails closed on a mismatch: the journal stays for recovery. A
- * filesystem that reports `ino` 0 weakens the identity comparison, as the
- * lock-identity check notes.
+ * `root` is the canonical project root. On a host with descriptor-relative
+ * traversal (`/proc/self/fd` on Linux, `/dev/fd` on macOS and FreeBSD) the walk
+ * opens the root and then each component through the pinned parent descriptor
+ * with `O_NOFOLLOW | O_DIRECTORY`; no absolute-path `lstat` walk or identity
+ * check is involved. A component swapped for a symlink therefore fails with
+ * `ELOOP`/`ENOTDIR` instead of being followed, and the journal stays. Hosts
+ * without descriptor traversal skip directory flushing entirely rather than
+ * fall back to absolute paths, so their durability is weaker.
+ *
+ * A filesystem that cannot flush a directory answers with one of
+ * `UNSUPPORTED_DIRECTORY_FLUSH`, which is skipped; every other failure is real
+ * and propagated. The flush is `fs.fsync` on the descriptor, not
+ * `FileHandle.sync()`, for the Yarn Plug'n'Play reason `createFlushed` records
+ * (#229).
  *
  * Windows returns immediately: `fs.open` can open a directory there, but
  * `fs.fsync` on that descriptor fails with EPERM, because `FlushFileBuffers`
  * refuses a directory handle. Win32 has `MOVEFILE_WRITE_THROUGH`, but Node does
  * not expose it through `fs.rename`. Rename durability there stays with the
  * filesystem.
- *
- * Elsewhere the flush is `fs.fsync` on the descriptor, not `FileHandle.sync()`,
- * for the Yarn Plug'n'Play reason `createFlushed` records (#229). A filesystem
- * that cannot flush a directory answers with one of
- * `UNSUPPORTED_DIRECTORY_FLUSH`, whether from the open or the flush, which is
- * skipped; every other failure is real and propagated.
  */
 async function flushDirectory(root: string, path: string): Promise<void> {
-  if (process.platform === "win32") return;
+  if (process.platform === "win32" || DESCRIPTOR_WALK_PREFIX === undefined || devFdTraversal === false) return;
   const relation = relative(root, path);
   if (isAbsolute(relation) || relation === ".." || relation.startsWith(`..${sep}`))
     throw new Error(`refusing to flush a directory outside the project root: ${path}`);
-  let current = root;
-  let identity: BigIntStats = await lstat(current, { bigint: true });
-  if (!identity.isDirectory()) throw changedDirectory(path);
-  if (relation !== "")
-    for (const part of relation.split(sep)) {
-      current = join(current, part);
-      identity = await lstat(current, { bigint: true });
-      if (identity.isSymbolicLink() || !identity.isDirectory()) throw changedDirectory(path);
+  const openedRoot = await openWalkedDirectory(root, path);
+  if (openedRoot === null) return;
+  let current: FileHandle | undefined = openedRoot;
+  try {
+    const prefix = await descriptorWalkPrefix(current);
+    if (prefix === undefined) {
+      await current.close().catch(() => undefined);
+      return;
     }
-  let handle: FileHandle;
-  try {
-    handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_DIRECTORY);
-  } catch (error) {
-    const code = (error as NodeJS.ErrnoException).code;
-    if (code === "ELOOP" || code === "ENOTDIR") throw changedDirectory(path);
-    if (unsupportedDirectoryFlush(error)) return;
-    throw error;
-  }
-  try {
-    const opened = await handle.stat({ bigint: true });
-    if (opened.dev !== identity.dev || opened.ino !== identity.ino) throw changedDirectory(path);
+    if (relation !== "")
+      for (const part of relation.split(sep)) {
+        const parent = current;
+        if (parent === undefined) return;
+        current = undefined;
+        let child: FileHandle | null;
+        try {
+          child = await openWalkedDirectory(`${prefix}/${parent.fd}/${part}`, path);
+        } finally {
+          await parent.close().catch(() => undefined);
+        }
+        if (child === null) return;
+        current = child;
+      }
+    const final = current;
+    if (final === undefined) return;
     try {
-      await new Promise<void>((resolve, reject) => fsync(handle.fd, (error) => (error ? reject(error) : resolve())));
+      await new Promise<void>((resolve, reject) => fsync(final.fd, (error) => (error ? reject(error) : resolve())));
     } catch (error) {
       if (!unsupportedDirectoryFlush(error)) throw error;
     }
   } catch (error) {
     // Never mask the first error with a failed close.
-    await handle.close().catch(() => undefined);
+    if (current !== undefined) await current.close().catch(() => undefined);
     throw error;
   }
-  await handle.close();
+  if (current !== undefined) await current.close();
 }
 /**
  * Creates `path` exclusively, writes `value`, flushes it to disk and closes
@@ -859,8 +917,8 @@ function rollbackFailure(original: unknown, rollback: unknown): Error {
   );
 }
 export async function applyProject(root: string, config: string, plan: Reconciliation): Promise<void> {
-  const release = await acquire(root);
   const canonicalRoot = await realpath(root);
+  const release = await acquire(root);
   let journalWritten = false;
   const staged = new Map<string, string>();
   let failure: unknown;
