@@ -228,8 +228,10 @@ because Codex has no equivalent native field.
   parent descriptor with `O_NOFOLLOW | O_DIRECTORY`. The guarantee starts below
   the opened root, assumes its ancestors stay stable, and does not extend to
   path-based recovery metadata checks, renames or removals. A component swapped
-  for a symlink below the root fails with `ELOOP`/`ENOTDIR` and the journal
-  stays. Filesystems that cannot flush a directory at all (`EINVAL`, `EISDIR`,
+  for a symlink below the root fails with `ELOOP`/`ENOTDIR`. On a pre-unlink
+  flush that prevents normal journal removal, though sync can still attempt
+  rollback (which may remove it); a post-unlink commit flush has no journal to
+  retain. Filesystems that cannot flush a directory at all (`EINVAL`, `EISDIR`,
   `ENOTSUP`, `EOPNOTSUPP`, `ENOSYS`) are skipped too; there is no absolute-path
   fallback and no universal POSIX guarantee. Every other error remains fatal
   before the journal is removed, while the post-unlink commit flush is best

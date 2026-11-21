@@ -1,7 +1,19 @@
 import type * as fs from "node:fs";
-import { type BigIntStats, fsync } from "node:fs";
+import { fsync } from "node:fs";
 import type * as fsPromises from "node:fs/promises";
-import { mkdir, mkdtemp, readdir, readFile, realpath, rename, rm, stat, symlink, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  open,
+  readdir,
+  readFile,
+  realpath,
+  rename,
+  rm,
+  stat,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, relative, sep } from "node:path";
 
@@ -36,6 +48,8 @@ const io = vi.hoisted(() => ({
   failEveryDirectoryFlush: undefined as ((path: string) => NodeJS.ErrnoException | undefined) | undefined,
   /** Fail the next open chosen by its path, with the error it returns. */
   failOpen: undefined as ((path: string) => NodeJS.ErrnoException | undefined) | undefined,
+  /** Fail the next open chosen by its raw requested path, with the error it returns. */
+  failRawOpen: undefined as ((path: string) => NodeJS.ErrnoException | undefined) | undefined,
   /** Fail the next canonicalization chosen by its path, with the error it returns. */
   failRealpath: undefined as ((path: string) => NodeJS.ErrnoException | undefined) | undefined,
   /** Fail the next rename chosen by its source and destination, with the error it returns. */
@@ -46,8 +60,14 @@ const io = vi.hoisted(() => ({
   swapBeforeOpen: undefined as { path: string; run: () => Promise<void> } | undefined,
   /** Every removal attempt, including failed ones. */
   rmAttempts: [] as string[],
+  /** Every raw open request, before any mapping, failure hook or actual open. */
+  openRequests: [] as string[],
+  /** Every close attempt, in order. */
+  closeAttempts: [] as string[],
   /** Close the file chosen by its path, then fail that close once with EIO. */
   failClose: undefined as ((path: string) => boolean) | undefined,
+  /** Return a custom close error for the path chosen; every close is considered. */
+  failCloseWith: undefined as ((path: string) => NodeJS.ErrnoException | undefined) | undefined,
   /** The path each open descriptor belongs to. */
   paths: new Map<number, string>(),
   /** What each handle wrote, by path. */
@@ -72,6 +92,12 @@ vi.mock("node:fs/promises", async (importOriginal) => {
     ...actual,
     async open(...args: Parameters<typeof actual.open>) {
       const requested = String(args[0]);
+      io.openRequests.push(requested);
+      const rawInjected = io.failRawOpen?.(requested);
+      if (rawInjected) {
+        io.failRawOpen = undefined;
+        throw rawInjected;
+      }
       let path = requested;
       const descriptor = /^\/proc\/self\/fd\/(\d+)(?:\/(.*))?$/.exec(requested);
       if (descriptor !== null) {
@@ -109,12 +135,14 @@ vi.mock("node:fs/promises", async (importOriginal) => {
       };
       const close = handle.close.bind(handle);
       handle.close = async () => {
+        io.closeAttempts.push(path);
         // The descriptor really is closed first, so nothing holds the file open afterwards.
         await close();
-        if (io.failClose?.(path)) {
-          io.failClose = undefined;
-          throw Object.assign(new Error("EIO: i/o error, close"), { code: "EIO", syscall: "close" });
-        }
+        const failOnce = io.failClose?.(path) ?? false;
+        if (failOnce) io.failClose = undefined;
+        const custom = io.failCloseWith?.(path);
+        if (failOnce || custom !== undefined)
+          throw custom ?? Object.assign(new Error("EIO: i/o error, close"), { code: "EIO", syscall: "close" });
       };
       if (io.notImplemented) {
         // Not async: Yarn's methods throw before any promise exists.
@@ -173,19 +201,14 @@ vi.mock("node:fs", async (importOriginal) => {
       const path = io.paths.get(fd) ?? `<fd ${fd}>`;
       // A directory is never read as a file; its identity and directory-ness
       // come from the descriptor, not a pathname that a swap can change.
-      let stats: BigIntStats | undefined;
-      try {
-        stats = actual.fstatSync(fd, { bigint: true });
-      } catch {
-        stats = undefined;
-      }
-      const directory = stats?.isDirectory() ?? false;
+      const stats = actual.fstatSync(fd, { bigint: true });
+      const directory = stats.isDirectory();
       const flush: Flush = {
         path,
         contents: directory ? "" : actual.readFileSync(path, "utf8"),
         directory,
-        dev: stats?.dev ?? 0n,
-        ino: stats?.ino ?? 0n,
+        dev: stats.dev,
+        ino: stats.ino,
       };
       let failure: NodeJS.ErrnoException | undefined;
       if (directory) {
@@ -267,10 +290,12 @@ afterEach(async () => {
   io.failDirectoryFlush = undefined;
   io.failEveryDirectoryFlush = undefined;
   io.failOpen = undefined;
+  io.failRawOpen = undefined;
   io.failRealpath = undefined;
   io.failRename = undefined;
   io.failRm = undefined;
   io.failClose = undefined;
+  io.failCloseWith = undefined;
   io.swapBeforeOpen = undefined;
   io.paths.clear();
   io.written.clear();
@@ -280,6 +305,8 @@ afterEach(async () => {
   io.directoryOpenAttempts.length = 0;
   io.directoryOpenIdentities.length = 0;
   io.rmAttempts.length = 0;
+  io.openRequests.length = 0;
+  io.closeAttempts.length = 0;
   io.beforeOpen = undefined;
   vi.mocked(fsync).mockClear();
   await rm(root, { recursive: true, force: true });
@@ -295,6 +322,8 @@ function resetIo(): void {
   io.directoryOpenAttempts.length = 0;
   io.directoryOpenIdentities.length = 0;
   io.rmAttempts.length = 0;
+  io.openRequests.length = 0;
+  io.closeAttempts.length = 0;
 }
 /** The native path of a root-relative project path, as `projectPath` spells it. */
 const at = (project: string, path: string) => join(project, ...path.split("/"));
@@ -399,21 +428,53 @@ it("resolves the canonical root before taking the sync lock", async () => {
   expect(await exists(".hooknostic/sync.lock")).toBe(false);
 });
 
-it.skipIf(!descriptorWalk)("skips directory flushing when Linux descriptor traversal is masked", async () => {
+it.runIf(process.platform === "linux")("requires a working Linux descriptor traversal probe", () => {
+  expect(
+    descriptorWalk,
+    "Linux /proc/self/fd descriptor traversal is unavailable; refusing to skip the directory-flush regressions silently",
+  ).toBe(true);
+});
+
+it.skipIf(!descriptorWalk)("skips directory flushing when only descriptor traversal is masked", async () => {
   vi.resetModules();
   const fresh = await import("./project-files.js");
   const plan = await fresh.reconcileProject(root, owner, input("one"));
-  io.failOpen = (path) =>
-    path === "/proc/self/fd" || path.startsWith("/proc/self/fd/")
+  io.openRequests.length = 0;
+  io.failRawOpen = (requested) =>
+    requested.startsWith("/proc/self/fd/")
       ? Object.assign(new Error("ENOENT: no such file or directory, open"), { code: "ENOENT", syscall: "open" })
       : undefined;
 
   expect(await fresh.supportsDirectoryFlush()).toBe(false);
+  // The failed result is cached: a second call does not probe again.
+  expect(await fresh.supportsDirectoryFlush()).toBe(false);
+  expect(io.failRawOpen).toBeUndefined();
+  expect(io.openRequests.filter((path) => path === "/proc/self/fd")).toHaveLength(1);
+  expect(io.openRequests.filter((path) => path.startsWith("/proc/self/fd/"))).toHaveLength(1);
   await fresh.applyProject(root, owner, plan);
 
-  expect(io.failOpen).toBeUndefined();
   expect(io.flushes.filter((flush) => flush.directory)).toEqual([]);
   expect(await readFile(join(root, "a.txt"), "utf8")).toBe("one");
+});
+
+it.skipIf(!descriptorWalk)("rejects ENOENT for a component after a successful probe", async () => {
+  const project = await realpath(root);
+  await mkdir(join(root, ".hooknostic"), { recursive: true });
+  await writeFile(
+    join(root, ".hooknostic/transaction.json"),
+    journalText([journalEntry("nested/deep/file.txt", "before", null)]),
+  );
+  resetIo();
+  expect(await supportsDirectoryFlush()).toBe(true);
+  io.failOpen = (path) =>
+    path === at(project, "nested")
+      ? Object.assign(new Error("ENOENT: no such file or directory, open"), { code: "ENOENT", syscall: "open" })
+      : undefined;
+
+  await expect(recoverProject(root, owner)).rejects.toMatchObject({ code: "ENOENT" });
+  expect(io.failOpen).toBeUndefined();
+  expect(await exists(".hooknostic/transaction.json")).toBe(true);
+  expect(io.rmAttempts).not.toContain(at(project, ".hooknostic/transaction.json"));
 });
 
 describe("directory flushes make each rename durable before the next step", () => {
@@ -443,9 +504,16 @@ describe("directory flushes make each rename durable before the next step", () =
   );
 
   it.runIf(win32)("skips directory flushes on Windows, where fsync cannot flush a directory", async () => {
+    // The recorder must see failed opens too, or a failed probe attempt would
+    // be invisible below.
+    await expect(open(join(root, "missing"), "r")).rejects.toMatchObject({ code: "ENOENT" });
+    expect(io.openRequests).toContain(join(root, "missing"));
+    resetIo();
+
     await sync("one");
 
     expect(io.directoryOpenAttempts).toEqual([]);
+    expect(io.openRequests.filter((path) => path === "/proc/self/fd" || path.startsWith("/proc/self/fd/"))).toEqual([]);
     expect(io.flushes.filter((flush) => flush.directory)).toEqual([]);
     expect(await readFile(join(root, "a.txt"), "utf8")).toBe("one");
     expect(await exists(".hooknostic/transaction.json")).toBe(false);
@@ -747,17 +815,28 @@ describe("directory flushes make each rename durable before the next step", () =
     );
     resetIo();
     let rootCloses = 0;
-    io.failClose = (path) => {
-      if (path !== project) return false;
-      rootCloses += 1;
-      // The root's own final close succeeds; its close as the intermediate
-      // parent of `nested` fails.
-      return rootCloses === 2;
+    io.failCloseWith = (path) => {
+      if (path === project) {
+        rootCloses += 1;
+        // The root's own final close succeeds; its close as the intermediate
+        // parent of `nested` fails.
+        if (rootCloses === 2)
+          return Object.assign(new Error("injected parent close failure"), { code: "EIO", syscall: "close" });
+      }
+      if (path === at(project, "nested"))
+        return Object.assign(new Error("injected child close failure"), { code: "EIO", syscall: "close" });
+      return undefined;
     };
 
-    await expect(recoverProject(root, owner)).rejects.toMatchObject({ code: "EIO", syscall: "close" });
+    const failure = await recoverProject(root, owner).then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+    expect(failure).toBeInstanceOf(Error);
+    expect((failure as Error).message).toContain("injected parent close failure");
+    expect((failure as Error).message).not.toContain("injected child close failure");
+    expect(io.closeAttempts).toContain(at(project, "nested"));
     expect(await exists(".hooknostic/transaction.json")).toBe(true);
-    expect(io.failClose).toBeUndefined();
   });
 
   it.skipIf(!descriptorWalk)("skips a directory open the filesystem does not support", async () => {
