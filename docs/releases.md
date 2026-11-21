@@ -26,6 +26,9 @@ Key safety property: **a draft release materializes no tag.** Until decision
 
 ## Launch readiness before changing visibility
 
+**Completed.** The first public release was 0.10.0; this section records what
+launch required. Its instructions are not steps for a routine release.
+
 See [local launch verification](launch-verification.md) for completed checks and
 the publication review's remaining limits.
 
@@ -176,12 +179,14 @@ fails the duplicate-branch guard.
 
 ## The publish guard
 
-While unreleased, `packages/agent-plugin`, `packages/sdk`, and `packages/cli` carry `"private": true` —
-an executable never-publish guard. The release flow **cooperates** with it:
-`release-draft` and `release-publish` both fail while the fields exist,
-naming the checklist item. The first release PR removes them (and adds
-`publishConfig: { access: "public", provenance: true }`) as a deliberate,
-reviewed step tied to the release that consumes it.
+Until the first public release, `packages/agent-plugin`, `packages/sdk`, and
+`packages/cli` carried `"private": true` — an executable never-publish guard.
+The release flow **cooperates** with it: `release-draft` and `release-publish`
+both fail while the fields exist, naming the checklist item. The first public
+release PR removed them and added
+`publishConfig: { access: "public", provenance: true }` as a deliberate,
+reviewed step tied to the release that consumed it; 0.10.0 was that release.
+Reintroduce the fields only if publication must be blocked again.
 
 What protects against accidental publish after the fields are gone, in
 descending order of strength:

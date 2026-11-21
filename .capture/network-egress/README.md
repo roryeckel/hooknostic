@@ -1022,6 +1022,7 @@ wrapper. It gets the same setting from Docker's `--dns-option timeout:0
 - **Writes that strace does not show.** Node writes TCP data with `write` and
   `writev`, which were not traced, so SNI is missing for Node clients. Every
   connection is still recorded through its `connect` and DNS query.
-- **Packed-consumer and Yarn PnP jobs.** These are separate CI jobs, not
-  playback lanes, and drive no harness. Marketplace and Code Mode are in
-  "Windows" above.
+- **Packed-consumer and Yarn Plug'n'Play checks.** These are separate gates,
+  not playback lanes, and drive no harness. The packed-consumer marketplace
+  job runs in CI; the Yarn Plug'n'Play suite runs only by hand
+  (`docs/testing.md`). Marketplace and Code Mode are in "Windows" above.

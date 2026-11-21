@@ -9,7 +9,8 @@ skill before editing this file, `CLAUDE.md`, or anything under
 ## Repository
 
 hooknostic compiles portable agent hooks — one TypeScript source — into native
-artifacts per harness, one `packages/adapter-*` each (the generated
+artifacts per harness, from one `packages/adapter-*` package per harness family
+(OpenCode's v1 and v2 families share one; the generated
 `docs/harness-support.md` lists them). pnpm workspace: library packages in
 `packages/`, runnable examples in `examples/`, captured harness payloads in
 `fixtures/`, capture projects in `.capture/`.
