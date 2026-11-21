@@ -25,7 +25,8 @@
 //         wrapper's allowlist must keep out (ACTIONS_*, GITHUB_TOKEN, the
 //         file-command paths, INPUT_*) reached the lane.
 //     DNS is reported, not required to fail: the DNS Client service resolves
-//     names on the lane's behalf (the documented limitation).
+//     names on the lane's behalf (one of the documented limitations,
+//     docs/testing.md, "Network isolation in CI").
 //   node scripts/assert-no-network.mjs --online
 //     The positive control, run outside the namespace. At least one IPv4
 //     probe and the DNS lookup must succeed, so --offline cannot pass because

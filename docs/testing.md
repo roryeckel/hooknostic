@@ -217,9 +217,18 @@ a non-goal: these jobs run our own tests against harness builds pinned by
 version, and the threat being guarded against is drift and carelessness,
 not a hostile harness.
 
-The one documented limitation: on Windows, hostnames still resolve through
-the system DNS Client service. A lane can look a name up, but cannot connect
-to it.
+The block covers what the lane's own processes do. The documented
+limitations are what something outside them does on its behalf:
+- **Windows DNS**, measured: hostnames still resolve through the system DNS
+  Client service. A lane can look a name up, but cannot connect to it.
+- **Other Windows service-mediated requests**, not measured: a service such
+  as the one fetching certificate revocation lists (`svchost.exe` fetched
+  crl.microsoft.com during the copilot and opencode-v2 jobs) makes its
+  requests outside the lane user's rule. Whether a lane triggered that fetch
+  is not known.
+- **Linux unix sockets**: the namespace cuts IP only, so a host daemon that a
+  unix socket reaches could reach the network for the lane ("IP only"
+  below).
 
 | Job | Block |
 | --- | --- |
@@ -228,10 +237,12 @@ to it.
 | ci.yml `marketplace` (claude, codex), harness-watch `verify` | the Linux namespace |
 | harness-watch `drift`, playback transport | the drive's container runs with `--network none` (`docs/harness-watch.md`) |
 | harness-watch `drift`, llm transport | none: online by design, through the LiteLLM sidecar |
+| `shell-interpreter-capture.yml` (manual, macOS) | none: a capture, online by design |
 
-No macOS job drives a real harness. A future macOS lane would run as a
-dedicated user behind a `pf` rule on that user, the counterpart of the
-Windows rule.
+No macOS gate drives a real harness. The one macOS job that does, the manual
+`shell-interpreter-capture.yml`, is a capture and stays online by design. A
+future macOS gate would run as a dedicated user behind a `pf` rule on that
+user, the counterpart of the Windows rule.
 
 ## Network isolation on Linux
 
@@ -402,8 +413,8 @@ run in CI as a dedicated standard user, whose outbound traffic one Windows
 Firewall rule blocks. There is no network namespace on Windows; the block is
 per user.
 
-- **The wrapper.** `scripts/without-network.ps1 -RequireEnv A,B -Run
-  '<command line>'` does the following:
+- **The wrapper.** `scripts/without-network.ps1 -StepTimeoutMinutes N
+  -RequireEnv A,B -Run '<command line>'` does the following:
   - refuses unless on a GitHub-hosted runner, elevated, with the firewall
     service running and every profile enabled;
   - creates the user `hknoffline` (a random password held only in memory, a
@@ -414,8 +425,13 @@ per user.
   - points the lane's profile, temp and app-data variables at a scratch
     directory it may write;
   - starts `scripts/without-network-lane.mjs` as that user, through
-    `Start-Process -Credential`, with output streamed into the log and the
-    lane's exit code kept.
+    `Start-Process -Credential -UseNewEnvironment` (it logs which path ran
+    if that switch fails), with output streamed into the log and the lane's
+    exit code kept;
+  - stops the lane itself 60 s before `-StepTimeoutMinutes`, counted from
+    its own start, printing that it did, and exits 124. The step passes its
+    own `timeout-minutes` there, so this stop comes before the runner's
+    kill. `scripts/actions-readiness.test.mjs` pins that the two agree.
 - **The environment is an allowlist**:
   - passed: Windows' own variables; `CI`, `GITHUB_ACTIONS` and
     `RUNNER_OS`/`ARCH`/`ENVIRONMENT`/`TRACKING_ID`; `HOOKNOSTIC_*` and

@@ -671,9 +671,16 @@ The goal is **accidental** egress. Stopping a deliberate escape is a
 non-goal: these are our own tests against harness builds pinned by version.
 "Hardening findings" below records what that would have taken.
 
-The one documented limitation: on Windows, hostnames still resolve through
-the system DNS Client service. A lane can look a name up, but cannot connect
-to it.
+The block covers what a lane's own processes do. The documented limitations
+are what something outside them does on its behalf (`docs/testing.md`,
+"Network isolation in CI"):
+- on Windows, hostnames still resolve through the system DNS Client service
+  (measured: a lane can look a name up, but cannot connect to it);
+- other Windows service-mediated requests, such as certificate revocation
+  fetches, are made outside the lane user's rule (not measured; see "Not
+  measured");
+- on Linux, a host daemon reachable over a unix socket could reach the
+  network for the lane (`docs/testing.md`, "IP only").
 
 | Job | Block | Where |
 | --- | --- | --- |
@@ -741,8 +748,8 @@ CI at 0.148.0 and gone at 0.171.0.
 
 ### Windows lanes as a dedicated user (windows-latest)
 
-The prototype these measurements used is in git history (`3e4430e6` and
-before; see "Hardening findings").
+The prototype these measurements used is on PR #288's branch, not in
+master's history (see "Hardening findings").
 
 **As the lane user at Medium integrity**, which is option B's level (run
 44845678483):
@@ -811,8 +818,11 @@ against pinned builds. Closing these took:
 
 Both were measured working: runs 44845678483, 44846805022, 44847702464,
 44848733702, 44851379004, 44852516193 and 44853112456. The evidence is those
-run URLs. The prototype scripts are not kept in the tree; they are in git
-history up to `3e4430e6` (`.capture/network-egress/linux/`, `windows/lane-*`).
+run URLs. The prototype scripts are not kept in the tree. PR #288 is squash-merged,
+so they are not in master's history either: they are on the PR's ref,
+`refs/pull/288/head`, at commit `3e4430e6` and before
+(`.capture/network-egress/linux/`, `windows/lane-*`). Fetch them with
+`git fetch origin pull/288/head` and `git show 3e4430e6:<path>`.
 The design is in the owner's planning notes, should the threat model change.
 
 ## Option B CI evidence
@@ -829,6 +839,35 @@ The design is in the owner's planning notes, should the threat model change.
 The harness-watch dispatch:
 - **drift**: phase 1 printed "ripgrep ready at /drift/ripgrep/rg". Phase 2's canary passed, with `HOOKNOSTIC_PLAYBACK_VERSION` and `HKN_RIPGREP_DIR` present, loopback only, `ENETUNREACH`, `EAI_AGAIN`, uid 1000, CapEff 0 and NoNewPrivs 1. The drive completed: verdict drift, exit 4, the prototype's bridge result. No drive failure means no refetch.
 - **verify**: the `--check-online` control and the namespace canary passed, with all three names present. Then 93 passed and 1 failed, both on the first attempt and on the retry. The failure is the pre-existing opencode-v2 2.3.2 test "reports each completion of a followed-up subagent as its own agent.stop" (`expected 1 to be 2`), which also fails with network (WSL: 1 of 5 runs with network, 2 of 5 without).
+
+### Drift's two phases, every harness, locally (2026-11-21)
+
+The dispatch ran drift for opencode-v2 only. To check that phase 2 needs
+nothing fetched for the others, the committed step ("Run the drift
+capture-compare", after `7d023fdc`) was run as it stands, with its `${{ }}`
+expressions filled in:
+- with Docker Desktop's Linux engine on Windows and the same
+  `node:24.22.3-bookworm` image;
+- on a workspace built from `HEAD` in a Linux container (`pnpm install
+  --frozen-lockfile`, `pnpm run bundle`);
+- at each harness's newest build, playback transport.
+
+Every phase 2 passed the isolation check (loopback only, `ENETUNREACH`,
+`EAI_AGAIN`, uid 1000, CapEff 0, NoNewPrivs 1), and every drive completed:
+
+| Harness | Phase 1 | Phase 2 drive | Verdict (code) |
+| --- | --- | --- | --- |
+| claude 2.1.330 | install, `install.cjs`, prepare | harness exit 0, 6 payloads | clean (0) |
+| opencode-v1 1.19.6 | install, bootstrap, npm cache for `@opencode-ai/plugin@1.19.6`, proved offline for both prefixes | plugin installed `--offline` in scratch; harness exit 0, 91 payloads | clean (0) |
+| codex 0.171.0 | install, prepare | harness exit 0, 6 payloads | clean (0) |
+| copilot 1.0.114 | install, prepare | harness exit 0, 7 payloads | drift (4) |
+| pi 1.6.0 | install, prepare | harness exit 0, 37 payloads | clean (0) |
+
+copilot's drift is the comparator's, not the block's: run again with phase 2
+on the bridge and without the check, it gave drift (4) with an identical
+report. So Claude's bootstrap keeps nothing outside `/drift/prefix` that
+phase 2 needs, which was the reviewed risk, and with opencode-v2's dispatch
+every harness has now run the split.
 
 The Windows canary, as every Windows lane printed it in the green runs:
 
@@ -866,10 +905,9 @@ master run 44679264511. Runner variance is about ±20 s on unchanged jobs.
   `shell-interpreter-capture.yml`. The macOS unit-test entries leave
   `HOOKNOSTIC_PLAYBACK` and `HOOKNOSTIC_SMOKE` empty and install no harness.
 - **Left after option B's CI runs**:
-  - drift's two phases for harnesses other than opencode-v2. opencode-v1's
-    phase 2 relies on phase 1's warmed npm cache and the helper's
-    `--offline`, which is not run in a drift container yet. The prototype
-    ran pi and codex;
+  - drift's two phases on a GitHub-hosted runner for harnesses other than
+    opencode-v2. The committed step ran locally for the other five
+    ("Drift's two phases, every harness, locally" above);
   - cancellation of a Windows job from the UI, where `always()` is not
     guaranteed (step and job timeouts were measured).
 - **Service-mediated Windows requests** other than DNS (for example WinHTTP

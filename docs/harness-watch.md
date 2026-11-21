@@ -116,22 +116,40 @@ Per harness (matrix from detect's `--matrix` output):
    none. Keeping those steps explicit preserves a secret-free failure boundary
    and makes a missing harness binary an `install-failure`, not behavior drift.
    Checkout still uses `persist-credentials: false`.
-3. SDK + CLI bundles, then the playback suite with
-   `HOOKNOSTIC_PLAYBACK=<harness>` and `HOOKNOSTIC_PLAYBACK_VERSION=<latest>`
-   (`docs/testing.md`) — identical to CI's own playback job except for the
-   version override.
+3. SDK + CLI bundles. For opencode-v2, the pinned ripgrep's cache, keyed as
+   in ci.yml.
+4. **Prepare** (`id: prepare`), while the job still has network:
+   `prepare-offline-playback.mjs <harness> --version <latest>
+   --check-online`. It first proves the network probe sees the network here
+   (the positive control), then fetches what the playback would otherwise
+   fetch: the pinned ripgrep for opencode-v2, and for opencode-v1 the npm
+   cache for `@opencode-ai/plugin@<latest>`.
+5. **The playback suite without network**: `scripts/without-network.sh pnpm
+   exec vitest run …`, with `HOOKNOSTIC_PLAYBACK=<harness>`,
+   `HOOKNOSTIC_PLAYBACK_VERSION=<latest>` and `HKN_RIPGREP_DIR`, all three
+   required by the isolation check that runs first ("Network isolation in
+   CI" in `docs/testing.md`). It is CI's own playback job, in the same
+   loopback-only namespace, except for the version override.
    OpenCode additionally receives a scratch-only `XDG_CONFIG_HOME`; before
    each drive, the exact-version `@opencode-ai/plugin` dependency is installed
-   into both its project `.opencode/` directory and redirected config
-   directory. This avoids OpenCode's non-interactive dependency wait without
-   changing the user's global harness installation or config.
-4. Model credentials blanked; checkout runs `persist-credentials: false` so
+   `--offline`, from the prepared cache, into both its project `.opencode/`
+   directory and redirected config directory. This avoids OpenCode's
+   non-interactive dependency wait without changing the user's global
+   harness installation or config.
+6. Model credentials blanked; checkout runs `persist-credentials: false` so
    the installed package can never read a token.
 
-The outcome (`pass` / `playback-failure` / `install-failure`) flows downstream
-via an uploaded artifact (`watch-outcome-<harness>.json`), because GitHub
-matrix jobs share one `outputs` map. The distinction matters: install failure
-is a packaging problem; playback failure is behavior drift.
+The outcome flows downstream via an uploaded artifact
+(`watch-outcome-<harness>.json`), because GitHub matrix jobs share one
+`outputs` map. Every consumer compares it only with `pass`, but the class
+tells the reader where to look:
+
+| Outcome | Meaning |
+| --- | --- |
+| `pass` | the playback passed without network |
+| `playback-failure` | the playback failed: behavior drift, **or a newer build that now needs the network**. That is the intended early warning: under the block such a build fails here, before a reference bump would make ci.yml fail. The log's failing test and the isolation check's lines tell which. |
+| `prepare-failure` | the prepare step failed with network: the positive control, the ripgrep fetch, or the plugin dependency at this version |
+| `install-failure` | the build did not install or bootstrap: a packaging problem |
 
 Known driver limitations are separate from that pass/fail outcome. The suite
 writes each applicable limitation and capability-cell list to the verify job's
@@ -252,13 +270,19 @@ job's steps:
        npm's cache in `/drift/npm-cache`. It runs the bootstrap, then
        `prepare-offline-playback.mjs <harness> --version <latest>
        --check-online`, which fetches the pinned ripgrep into
-       `/drift/ripgrep` and warms OpenCode v1's npm cache.
+       `/drift/ripgrep` and warms OpenCode v1's npm cache. If it fails, no
+       drive runs, and the verdict is `install-failure`, whatever its code.
      - Phase 2 runs with `--network none`, so only loopback, where the
        driver's model server is. It gets the same prefix (on `PATH`), cache
        and `HKN_RIPGREP_DIR`, and `HOOKNOSTIC_PLAYBACK_NETWORK=none`, so the
        plugin dependency installs `--offline`. It runs
        `scripts/assert-no-network.mjs --offline` first, so a drive that needs
        the network fails ("Network isolation in CI" in `docs/testing.md`).
+       That phase 2 needs nothing fetched is measured, not assumed: each of
+       the six harnesses completed its drive this way at its newest build
+       (`.capture/network-egress`, "Drift's two phases, every harness,
+       locally"). A later build that does need the network shows as a drive
+       failure here.
    - **llm** (online by design) runs one bridge container that installs and
      drives, because the harness talks to the owner's model through the
      LiteLLM sidecar. LiteLLM stays outside that container, so its upstream
@@ -267,7 +291,8 @@ job's steps:
    scripts/drive-capture-session.mjs <harness> --transport playback|llm
    --scratch ...`; its exit code is captured, never propagated: 0 clean,
    **4 drift**, **5 inconclusive**, and 6 (drive failure) are all reportable
-   outcomes. Under `always()` the job uploads `drift-verdict-<harness>.json`,
+   outcomes, and so is phase 1's `install-failure`. Every consumer compares
+   the verdict only with `clean`. Under `always()` the job uploads `drift-verdict-<harness>.json`,
    the complete driver report, and the raw captures.
 4. The driver reuses `startModelPlayback` from
    `packages/cli/test/harness-playback.ts` outside vitest via module-loader
@@ -367,12 +392,18 @@ proxy translation, not a live harness session or the owner's upstream credential
 
 ## Failure runbook
 
-1. Read the issue's outcome class: `install-failure` (packaging/toolchain) vs
-   `playback-failure` (behavior drift).
+1. Read the issue's outcome class ("The verify leg, in detail"):
+   `install-failure` (packaging/toolchain), `prepare-failure` (the network
+   check or an offline prerequisite, with network), or `playback-failure`
+   (behavior drift, or a build that now needs the network).
 2. Reproduce locally:
    `pnpm run bundle`
    then
    `HOOKNOSTIC_PLAYBACK=<harness> HOOKNOSTIC_PLAYBACK_VERSION=<version> pnpm exec vitest run packages/cli/test/harness-playback.test.ts`.
+   That runs with network. If it passes there, run it as verify does, in
+   `scripts/without-network.sh` after the prepare step (`docs/testing.md`,
+   "Network isolation on Linux"): passing with network and failing without
+   is a build that needs the network.
 3. Playback failure → follow the harness-capture skill; the failing
    scenario's driver names the capability family. Fixtures and ranges extend
    only with captured evidence; a failing scenario that pins an
