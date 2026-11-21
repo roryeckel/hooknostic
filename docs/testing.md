@@ -634,7 +634,9 @@ launcher's output; a launcher that does not answer, or a `sync` step that
 fails, prints its output regardless. This output and the table of observed
 outcomes go straight to stderr (#263): they show on a passing run, `--silent`
 does not hide them, a `junit` report does not record them, and capturing them
-in a file needs `2>&1`.
+in a file needs `2>&1`. The opt-in suites write progress only through
+`report()`; a per-file ESLint block bans `console` in the files that print it,
+so the regression cannot return silently (#291).
 
 The normal suite covers HN504 without Yarn, through a synthetic layout: a
 hand-written `.pnp.data.json` and stored zip archives that esbuild resolves
