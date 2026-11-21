@@ -39,6 +39,8 @@ $wfp = '{0CCE9226-69AE-11D9-BED3-505054503030}'
 $proc = '{0CCE922B-69AE-11D9-BED3-505054503030}'
 auditpol /set /subcategory:$wfp /success:enable /failure:enable | Out-Null
 auditpol /set /subcategory:$proc /success:enable | Out-Null
+# Filtering Platform Packet Drop (5152): where a block may be logged instead of 5157.
+auditpol /set /subcategory:'{0CCE9225-69AE-11D9-BED3-505054503030}' /failure:enable | Out-Null
 reg add 'HKLM\Software\Microsoft\Windows\CurrentVersion\Policies\System\Audit' /v ProcessCreationIncludeCmdLine_Enabled /t REG_DWORD /d 1 /f | Out-Null
 wevtutil sl Security /ms:2147483648
 $set = auditpol /get /subcategory:$wfp /r | ConvertFrom-Csv

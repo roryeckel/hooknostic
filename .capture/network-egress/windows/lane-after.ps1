@@ -58,9 +58,14 @@ foreach ($e in $creations) {
 }
 "lane-after ${Label}: 4688 process creations since setup: $($creations.Count)"
 $blocked = [Collections.Generic.List[object]]::new(); $allowed = [Collections.Generic.List[object]]::new(); $loop = 0; $all = 0
+$debug5157 = @{}
 foreach ($e in @(Get-WinEvent -FilterHashtable @{ LogName = 'Security'; Id = 5156, 5157; StartTime = $since } -ErrorAction SilentlyContinue)) {
   $all++
   $d = Get-Data $e
+  if ($e.Id -eq 5157) {
+    $key = "$(Split-Path -Leaf $d.Application) dir=$($d.Direction) lanePid=$($lanePids.ContainsKey([int]$d.ProcessID)) layer=$($d.LayerName) filter=$($d.FilterRTID)"
+    $debug5157[$key] = 1 + [int]$debug5157[$key]
+  }
   if ($d.Direction -notmatch '14593') { continue }
   $procId = [int]$d.ProcessID
   if (-not $lanePids.ContainsKey($procId) -or $lanePids[$procId] -gt $e.TimeCreated) { continue }
@@ -69,6 +74,12 @@ foreach ($e in @(Get-WinEvent -FilterHashtable @{ LogName = 'Security'; Id = 515
   if ($e.Id -eq 5157) { $blocked.Add($row) } else { $allowed.Add($row) }
 }
 "lane-after ${Label}: $all connection events since setup; lane processes created: $($lanePids.Count); lane loopback allowed: $loop"
+"lane-after ${Label}: every 5157 since setup, any process: $(($debug5157.Values | Measure-Object -Sum).Sum)"
+$debug5157.GetEnumerator() | Sort-Object Value -Descending | Select-Object -First 12 | ForEach-Object { "  5157 $($_.Key) x$($_.Value)" }
+$drops = @(Get-WinEvent -FilterHashtable @{ LogName = 'Security'; Id = 5152; StartTime = $since } -ErrorAction SilentlyContinue)
+"lane-after ${Label}: 5152 packet drops since setup: $($drops.Count)"
+$drops | ForEach-Object { $d = Get-Data $_; "$(Split-Path -Leaf $d.Application) dir=$($d.Direction) lanePid=$($lanePids.ContainsKey([int]$d.ProcessId))" } |
+  Group-Object | Sort-Object Count -Descending | Select-Object -First 8 | ForEach-Object { "  5152 $($_.Name) x$($_.Count)" }
 "lane-after ${Label}: lane blocked (5157): $($blocked.Count)"
 $blocked | Group-Object app, dest | Sort-Object Count -Descending | Select-Object -First 25 | ForEach-Object { "  blocked $($_.Name) x$($_.Count)" }
 "lane-after ${Label}: lane ALLOWED non-loopback (5156): $($allowed.Count)"

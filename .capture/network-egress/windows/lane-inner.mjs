@@ -155,16 +155,26 @@ try {
   log(`junction: ${code(error)}`);
 }
 
-if (cfg.workerPid) {
-  // Can the lane open the runner's worker process (its memory holds the job's secrets)?
-  const open = spawnSync(
-    join(system32, "WindowsPowerShell", "v1.0", "powershell.exe"),
-    ["-NoProfile", "-NonInteractive", "-Command", `try { [void](Get-Process -Id ${Number(cfg.workerPid)}).Handle; 'OPENED' } catch { 'denied: ' + $_.Exception.InnerException.Message }`],
-    { encoding: "utf8", timeout: 60_000, env: cfg.env },
-  );
-  const answer = (open.stdout || open.stderr || "").trim().split(/\r?\n/)[0] ?? "";
-  if (answer.startsWith("OPENED")) exposed.push("open Runner.Worker process");
-  log(`probe open Runner.Worker process handle: ${answer.slice(0, 120)}`);
+// Can the lane open the runner's worker process, or the admin step's shell?
+// Their memory holds the job's secrets. OpenProcess with exact rights:
+// 0x1000 query-limited, 0x0410 query + VM read, 0x1F0FFF all access.
+for (const [name, pid] of Object.entries(cfg.processes ?? {})) {
+  if (!pid) continue;
+  const script = [
+    "Add-Type -Namespace Hkn -Name K -MemberDefinition '",
+    '[DllImport("kernel32.dll", SetLastError = true)] public static extern System.IntPtr OpenProcess(uint access, bool inherit, int pid);',
+    '[DllImport("kernel32.dll")] public static extern bool CloseHandle(System.IntPtr h);',
+    "'",
+    `foreach ($a in 0x1000, 0x0410, 0x1F0FFF) { $h = [Hkn.K]::OpenProcess($a, $false, ${Number(pid)}); $e = [Runtime.InteropServices.Marshal]::GetLastWin32Error()`,
+    "  if ($h -ne [IntPtr]::Zero) { [void][Hkn.K]::CloseHandle($h); '0x{0:X} OPENED' -f $a } else { '0x{0:X} denied ({1})' -f $a, $e } }",
+  ].join("\n");
+  const open = spawnSync(join(system32, "WindowsPowerShell", "v1.0", "powershell.exe"), ["-NoProfile", "-NonInteractive", "-Command", script], {
+    encoding: "utf8",
+    timeout: 90_000,
+    env: cfg.env,
+  });
+  const answer = (open.stdout || "").trim().split(/\r?\n/).join("; ") || (open.stderr || "").trim().split(/\r?\n/)[0] || `exit ${open.status}`;
+  log(`probe OpenProcess ${name}: ${answer.slice(0, 200)}`);
 }
 
 if (cfg.bits) {

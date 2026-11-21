@@ -21,6 +21,7 @@ param(
   [switch]$Bits,
   [switch]$DenyRead,
   [switch]$WorkspaceCacheDirs,
+  [switch]$CopyNpmPrefix,
   [int]$TimeoutSec = 0,
   [string]$Cwd = (Get-Location).Path
 )
@@ -70,6 +71,20 @@ if ($pnpmCmd) {
     $laneEnv['Path'] = (@($laneBin) + @($laneEnv['Path'] -split ';' | Where-Object { $_ -and $_ -ne $dir })) -join ';'
     "lane-run ${Label}: pnpm copied for the lane in $([int]$t.Elapsed.TotalMilliseconds) ms"
   }
+}
+# Optional: the lane's own copy of the global npm prefix (the installed
+# harness). At Low integrity a process cannot hard-link a Medium-labelled
+# file, and Codex links its own binaries ("could not create PATH aliases").
+if ($CopyNpmPrefix) {
+  $prefix = (npm config get prefix) | Select-Object -First 1
+  $copy = Join-Path $Scratch 'tools\npm-prefix'
+  $t = [Diagnostics.Stopwatch]::StartNew()
+  New-Item -ItemType Directory -Force -Path (Split-Path -Parent $copy) | Out-Null
+  Copy-Item -Recurse -Force $prefix $copy
+  $laneEnv['Path'] = (@($copy) + @($laneEnv['Path'] -split ';' | Where-Object { $_ -and $_.TrimEnd('\') -ne $prefix.TrimEnd('\') })) -join ';'
+  $laneEnv['npm_config_prefix'] = $copy
+  $mb = [math]::Round(((Get-ChildItem -Recurse -File $copy | Measure-Object Length -Sum).Sum / 1MB), 1)
+  "lane-run ${Label}: npm prefix copied for the lane ($mb MB) in $([int]$t.Elapsed.TotalMilliseconds) ms"
 }
 # Optional: vitest's own cache directories in the workspace, pre-created so
 # only they are lane-writable (and Low-labelled for a Low lane).
@@ -145,7 +160,7 @@ Add-Target 'toolcache node.exe' write (Get-Command node).Source
 $require = @($RequireEnv -split ',' | Where-Object { $_ })
 [ordered]@{
   label = $Label; integrity = $state.integrity; command = $Command; cwd = $Cwd; require = $require; bits = [bool]$Bits
-  workerPid = (Get-CimInstance Win32_Process -Filter "Name = 'Runner.Worker.exe'" | Select-Object -First 1).ProcessId
+  processes = [ordered]@{ 'Runner.Worker' = (Get-CimInstance Win32_Process -Filter "Name = 'Runner.Worker.exe'" | Select-Object -First 1).ProcessId; 'admin step pwsh' = $PID }
   scratch = $Scratch; targets = $targets; env = $laneEnv
 } | ConvertTo-Json -Depth 5 | Set-Content -Encoding utf8 "$Scratch\bin\lane.json"
 
