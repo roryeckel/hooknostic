@@ -362,7 +362,7 @@ export async function reconcileProject(
     if (collision !== undefined) throw new Error(`unowned component collision: ${check.path}:${collision.join(".")}`);
   }
   if (await bytes(await projectPath(root, JOURNAL)))
-    throw new Error("unfinished integration transaction; run hooknostic recover");
+    throw new Error("unfinished integration transaction; run hooknostic recover with the same configuration");
   const manifestState = await fileState(await projectPath(root, STATE));
   const manifestBytes = manifestState.contents;
   const prior = readManifest(manifestBytes, config);
@@ -722,8 +722,8 @@ async function acquire(root: string, name: LockName = LOCK): Promise<() => Promi
       throw Object.assign(
         new Error(
           name === LOCK
-            ? `another hooknostic sync or recover may be running: ${lock} exists; if neither is, run hooknostic recover with the same configuration, which removes a lock left by a process that has exited`
-            : `another hooknostic recover may be running: ${lock} exists; rerun hooknostic recover, which removes a lock left by a process that has exited`,
+            ? `another hooknostic sync or recover may be running: ${lock} exists; if neither is, run hooknostic recover with the same configuration, which removes a lock whose recorded process ID has exited`
+            : `another hooknostic recover may be running: ${lock} exists; rerun hooknostic recover, which removes a lock whose recorded process ID has exited`,
           { cause: error },
         ),
         { code: "EEXIST", path: lock },

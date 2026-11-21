@@ -200,7 +200,7 @@ it("names the other recover when one takes the recovery lock first (#267)", asyn
   };
 
   await expect(recoverProject(root, owner)).rejects.toMatchObject({
-    message: `another hooknostic recover may be running: ${lock} exists; rerun hooknostic recover, which removes a lock left by a process that has exited`,
+    message: `another hooknostic recover may be running: ${lock} exists; rerun hooknostic recover, which removes a lock whose recorded process ID has exited`,
     code: "EEXIST",
     path: lock,
     cause: { code: "EEXIST", path: lock },
