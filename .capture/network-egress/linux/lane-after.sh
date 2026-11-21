@@ -18,8 +18,9 @@ export PATH=/usr/sbin:/usr/bin:/sbin:/bin
 admin="$(cd -P -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck disable=SC1091
 . "$admin/state"
-label=""
+label="" where="always() step"
 [ "${1:-}" = --label ] && label="${2:-}"
+[ "${3:-}" = --in-step ] && where="in the lane step"
 [[ "$label" =~ ^[A-Za-z0-9._-]+$ ]] || { echo "lane-after: --label L" >&2; exit 2; }
 problems=()
 redact() { sed -e "s#$ws#%GITHUB_WORKSPACE%#g" -e "s#$rt#%RUNNER_TEMP%#g" -e "s#$rhome#~runner#g"; }
@@ -35,29 +36,26 @@ echo "lane-after $label: lane processes after stopping: $left"
 if [ ! -f "$admin/stamp.$label" ]; then
   problems+=("no stamp: lane-run did not reach its snapshot")
 else
-  t0=$(date +%s%N)
   runner_root="$(dirname "$(dirname "$runner_bin")")"
-  changed="$(find "$rhome" /opt/hostedtoolcache -xdev -path "$scratch" -prune -o -cnewer "$admin/stamp.$label" -print 2>/dev/null)"
-  secs=$(( ($(date +%s%N) - t0) / 1000000 ))
+  t0=$(date +%s%N)
+  changed_home="$(find "$rhome" -xdev -cnewer "$admin/stamp.$label" -print 2>/dev/null)"
+  t1=$(date +%s%N)
+  changed_tc="$(find /opt/hostedtoolcache -xdev -cnewer "$admin/stamp.$label" -print 2>/dev/null)"
+  t2=$(date +%s%N)
+  changed="$(printf '%s\n%s\n' "$changed_home" "$changed_tc" | grep . || true)"
   noise="$(printf '%s\n' "$changed" | grep -E "^($runner_root|$(dirname "$runner_root"))/(.*/)?_diag(/|$)" || true)"
-  trial="$(printf '%s\n' "$changed" | grep -E "^$ws/node_modules(/\.hooknostic-ripgrep-test-[^/]*(/.*)?)?$" || true)"
-  real="$(printf '%s\n' "$changed" | grep . | grep -v -x -F -f <(printf '%s\n' "$noise" "$trial" | grep .) || true)"
-  echo "lane-after $label: changed since the stamp (find -cnewer, $secs ms): $(printf '%s\n' "$changed" | grep -c .) paths; runner _diag $(printf '%s\n' "$noise" | grep -c .); trial-only node_modules $(printf '%s\n' "$trial" | grep -c .); OTHER $(printf '%s\n' "$real" | grep -c .)"
+  # What the runner writes for the steps after this one: their scripts, their
+  # file-command files, the event payload. Only possible across a step boundary.
+  churn="$(printf '%s\n' "$changed" | grep -E "^$rt(/[0-9a-f-]{36}\.sh|/_github_workflow(/event\.json)?|/_runner_file_commands(/[a-z_]+_[0-9a-f-]{36})?)?$" || true)"
+  real="$(printf '%s\n' "$changed" | grep . | grep -v -x -F -f <(printf '%s\n' "$noise" "$churn" | grep .) || true)"
+  echo "lane-after $label ($where): changed since the stamp (find -cnewer: ~runner $(( (t1 - t0) / 1000000 )) ms, toolcache $(( (t2 - t1) / 1000000 )) ms): $(printf '%s\n' "$changed" | grep -c .) paths; runner _diag $(printf '%s\n' "$noise" | grep -c .); runner step churn $(printf '%s\n' "$churn" | grep -c .); OTHER $(printf '%s\n' "$real" | grep -c .)"
   printf '%s\n' "$real" | grep . | head -n 20 | redact | sed 's/^/   CHANGED /'
   [ -z "$(printf '%s\n' "$real" | grep .)" ] || problems+=("trusted paths changed")
-  after="$(
-    {
-      find "$rt/_runner_file_commands" -maxdepth 1 -type f -print0 2>/dev/null
-      for f in .gitconfig .bashrc .profile .npmrc .bash_profile; do [ -f "$rhome/$f" ] && printf '%s\0' "$rhome/$f"; done
-      printf '%s\0' "$ws/.git/config" "$admin/lane-run.sh" "$admin/lane-after.sh" "$admin/state"
-      find "$ws/scripts" -maxdepth 1 -type f -print0
-    } | sort -z | xargs -0 sha256sum
-  )"
-  if [ "$after" = "$(cat "$admin/before.$label")" ]; then
-    echo "lane-after $label: $(wc -l < "$admin/before.$label") trusted files hash the same"
+  # The recorded files only: file-command files of later steps are new, not changed.
+  if (cd / && sha256sum --check --quiet --status "$admin/before.$label"); then
+    echo "lane-after $label: $(wc -l < "$admin/before.$label") recorded trusted files hash the same"
   else
-    echo "lane-after $label: TRUSTED FILES DIFFER:"
-    diff <(cat "$admin/before.$label") <(printf '%s\n' "$after") | redact | head -n 20
+    echo "lane-after $label: RECORDED TRUSTED FILES DIFFER: $( (cd / && sha256sum --check --quiet "$admin/before.$label" 2>&1) | redact | head -n 10 | paste -sd ';' -)"
     problems+=("trusted file hashes differ")
   fi
 fi
