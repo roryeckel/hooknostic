@@ -253,8 +253,15 @@ jobs:
             os: windows-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          # No job token on disk for a lane to pick up by accident.
+          persist-credentials: false
 
+      # In the toolcache, not ~/setup-pnpm: the Windows lane's user cannot
+      # reach the runner user's profile, and the tests run pnpm.
       - uses: pnpm/action-setup@v6
+        with:
+          dest: ${{ runner.tool_cache }}/hkn-pnpm-setup
 
       - uses: actions/setup-node@v7
         with:
@@ -291,11 +298,11 @@ jobs:
 
       # Everything a lane fetches happens here, while the job still has network:
       # the pinned ripgrep (opencode-v2, #264) and the npm cache for the
-      # OpenCode v1 plugin dependency. On Linux it first proves that the probe
-      # the next step uses to show isolation does see the network here.
+      # OpenCode v1 plugin dependency. It first proves that the probe the next
+      # step uses to show isolation does see the network here.
       - name: Prepare offline playback prerequisites
         shell: bash
-        run: node --experimental-strip-types scripts/prepare-offline-playback.mjs '${{ matrix.harness }}' --version '${{ steps.harness.outputs.version }}' ${{ runner.os == 'Linux' && '--check-online' || '' }}
+        run: node --experimental-strip-types scripts/prepare-offline-playback.mjs '${{ matrix.harness }}' --version '${{ steps.harness.outputs.version }}' --check-online
         env:
           HKN_RIPGREP_DIR: ${{ runner.temp }}/hooknostic-ripgrep
 
@@ -320,11 +327,15 @@ jobs:
           # Fail the isolation check if any of these did not survive sudo.
           HKN_NO_NETWORK_REQUIRE_ENV: HOOKNOSTIC_PLAYBACK,HKN_PLAYBACK_ARTIFACT_DIR,HKN_RIPGREP_DIR
 
-      # Windows has no network namespace; these lanes keep the network.
-      - name: Run model-free playback (Windows)
+      # As a dedicated standard user whose outbound traffic one firewall rule
+      # blocks; loopback is exempt. The wrapper proves the block before the
+      # tests start (scripts/assert-no-network.mjs). Names still resolve
+      # through the DNS Client service: the documented limitation.
+      - name: Run model-free playback without network (Windows)
         id: playback
         if: runner.os != 'Linux'
-        run: pnpm exec vitest run packages/cli/test/harness-playback.test.ts packages/cli/test/opencode-v2-playback.test.ts scripts/pi-drift-driver.test.mjs
+        shell: pwsh
+        run: ./scripts/without-network.ps1 -TimeoutMinutes 13 -RequireEnv 'HOOKNOSTIC_PLAYBACK,HKN_PLAYBACK_ARTIFACT_DIR,HKN_RIPGREP_DIR' -Run 'pnpm exec vitest run packages/cli/test/harness-playback.test.ts packages/cli/test/opencode-v2-playback.test.ts scripts/pi-drift-driver.test.mjs'
         env:
           HOOKNOSTIC_PLAYBACK: ${{ matrix.harness }}
           HKN_PLAYBACK_ARTIFACT_DIR: ${{ runner.temp }}/opencode-v2-playback
@@ -334,6 +345,14 @@ jobs:
           ANTHROPIC_AUTH_TOKEN: ""
           OPENAI_API_KEY: ""
           OPENROUTER_API_KEY: ""
+
+      # Also after a failure or a timeout: lane processes outlive the
+      # runner's kill of the step, so they are stopped by owner SID before
+      # the rule goes.
+      - name: Remove the Windows network block
+        if: ${{ always() && runner.os != 'Linux' }}
+        shell: pwsh
+        run: ./scripts/without-network.ps1 -Cleanup
 
       # job.status, not a step's outcome: a failure in the prepare step, the
       # isolation check or sudo leaves no failed playback step, and those are
@@ -401,8 +420,21 @@ jobs:
       - name: Install Code Mode baseline
         shell: bash
         run: npm install --global "@openai/codex@${{ steps.baseline.outputs.version }}"
-      - name: Verify Code Mode guard dispatch with loopback model
-        run: node scripts/verify-code-mode.mjs
+      - name: Prove the network probe works here
+        shell: bash
+        run: node --experimental-strip-types scripts/prepare-offline-playback.mjs codex --version '${{ steps.baseline.outputs.version }}' --check-online
+      # As the playback lanes do on Windows: a dedicated user, its outbound
+      # traffic blocked (scripts/without-network.ps1).
+      - name: Verify Code Mode guard dispatch with loopback model, without network
+        shell: pwsh
+        run: ./scripts/without-network.ps1 -TimeoutMinutes 13 -RequireEnv HOOKNOSTIC_PLAYBACK -Run 'node scripts/verify-code-mode.mjs'
+        env:
+          # verify-code-mode.mjs selects codex itself; this is for the isolation check.
+          HOOKNOSTIC_PLAYBACK: codex
+      - name: Remove the network block
+        if: ${{ always() }}
+        shell: pwsh
+        run: ./scripts/without-network.ps1 -Cleanup
 
   marketplace:
     needs: renovate-ready

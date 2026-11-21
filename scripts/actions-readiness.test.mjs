@@ -156,7 +156,7 @@ it("requires a deduped lockfile in the dependency policy lane", () => {
   );
 });
 
-it("runs the Linux playback lanes without network, after every step that needs it", () => {
+it("runs the Linux and Windows playback lanes without network, after every step that needs it", () => {
   const ci = readFileSync(new URL("../.github/workflows/ci.yml", import.meta.url), "utf8");
   const job = ci.split("  harness-playback:")[1].split(/\r?\n {2}\S/)[0];
   const steps = job.split(/\r?\n {6}- /).slice(1);
@@ -165,13 +165,17 @@ it("runs the Linux playback lanes without network, after every step that needs i
   const vitest =
     "pnpm exec vitest run packages/cli/test/harness-playback.test.ts packages/cli/test/opencode-v2-playback.test.ts scripts/pi-drift-driver.test.mjs";
   const offline = step("Run model-free playback without network (Linux)");
-  const online = step("Run model-free playback (Windows)");
+  const windows = step("Run model-free playback without network (Windows)");
   const prepare = step("Prepare offline playback prerequisites");
+  const cleanup = step("Remove the Windows network block");
   // Matching the executable field, so a commented-out or prefixed form fails.
   expect(field(offline, "if")).toBe("runner.os == 'Linux'");
   expect(field(offline, "run")).toBe(`scripts/without-network.sh ${vitest}`);
-  expect(field(online, "if")).toBe("runner.os != 'Linux'");
-  expect(field(online, "run")).toBe(vitest);
+  expect(field(windows, "if")).toBe("runner.os != 'Linux'");
+  expect(field(windows, "shell")).toBe("pwsh");
+  expect(field(windows, "run")).toBe(
+    `./scripts/without-network.ps1 -TimeoutMinutes 13 -RequireEnv 'HOOKNOSTIC_PLAYBACK,HKN_PLAYBACK_ARTIFACT_DIR,HKN_RIPGREP_DIR' -Run '${vitest}'`,
+  );
   // The isolation check must also see that the step's variables crossed sudo.
   expect(field(offline, " {2}HKN_NO_NETWORK_REQUIRE_ENV")).toBe(
     "HOOKNOSTIC_PLAYBACK,HKN_PLAYBACK_ARTIFACT_DIR,HKN_RIPGREP_DIR",
@@ -181,17 +185,23 @@ it("runs the Linux playback lanes without network, after every step that needs i
       .split(/\r?\n {8}env:\r?\n/)[1]
       .split(/\r?\n/)
       .filter((line) => /^ {10}\w+:/.test(line));
-  expect(env(offline)).toEqual(expect.arrayContaining(env(online)));
+  expect(env(offline)).toEqual(expect.arrayContaining(env(windows)));
+  // The positive control runs on every OS: the probe must see the network here.
   expect(field(prepare, "run")).toBe(
-    "node --experimental-strip-types scripts/prepare-offline-playback.mjs '${{ matrix.harness }}' --version '${{ steps.harness.outputs.version }}' ${{ runner.os == 'Linux' && '--check-online' || '' }}",
+    "node --experimental-strip-types scripts/prepare-offline-playback.mjs '${{ matrix.harness }}' --version '${{ steps.harness.outputs.version }}' --check-online",
   );
-  // Everything that needs the network runs before the namespaced step.
+  // The block is removed even after a failure or a timeout.
+  expect(field(cleanup, "if")).toBe("${{ always() && runner.os != 'Linux' }}");
+  expect(field(cleanup, "run")).toBe("./scripts/without-network.ps1 -Cleanup");
+  // Everything that needs the network runs before the blocked steps.
   const order = [
     "Install captured harness version",
     "Bundle compiler and dependencies",
     "Cache the OpenCode v2 tools drive's pinned ripgrep",
     "Prepare offline playback prerequisites",
     "Run model-free playback without network (Linux)",
+    "Run model-free playback without network (Windows)",
+    "Remove the Windows network block",
   ].map((name) => steps.indexOf(step(name)));
   expect(order.every((index) => index >= 0)).toBe(true);
   expect(order).toEqual([...order].sort((a, b) => a - b));
@@ -199,6 +209,29 @@ it("runs the Linux playback lanes without network, after every step that needs i
   expect(field(step("Upload OpenCode v2 failure diagnostics"), "if")).toBe(
     "${{ always() && matrix.harness == 'opencode-v2' && job.status == 'failure' }}",
   );
+});
+
+it("runs the Code Mode gate without network, and removes the block afterwards", () => {
+  const ci = readFileSync(new URL("../.github/workflows/ci.yml", import.meta.url), "utf8");
+  const job = ci.split("  code-mode:")[1].split(/\r?\n {2}\S/)[0];
+  const steps = job.split(/\r?\n {6}- /).slice(1);
+  const step = (name) => steps.find((candidate) => candidate.split(/\r?\n/)[0] === `name: ${name}`);
+  const field = (body, key) => body?.match(new RegExp(`^ {8}${key}: (.+?)\\r?$`, "m"))?.[1];
+  const control = step("Prove the network probe works here");
+  const gate = step("Verify Code Mode guard dispatch with loopback model, without network");
+  const cleanup = step("Remove the network block");
+  expect(field(control, "run")).toBe(
+    "node --experimental-strip-types scripts/prepare-offline-playback.mjs codex --version '${{ steps.baseline.outputs.version }}' --check-online",
+  );
+  expect(field(gate, "run")).toBe(
+    "./scripts/without-network.ps1 -TimeoutMinutes 13 -RequireEnv HOOKNOSTIC_PLAYBACK -Run 'node scripts/verify-code-mode.mjs'",
+  );
+  expect(field(gate, " {2}HOOKNOSTIC_PLAYBACK")).toBe("codex");
+  expect(field(cleanup, "if")).toBe("${{ always() }}");
+  expect(field(cleanup, "run")).toBe("./scripts/without-network.ps1 -Cleanup");
+  const order = [control, gate, cleanup].map((body) => steps.indexOf(body));
+  expect(order.every((index) => index >= 0)).toBe(true);
+  expect(order).toEqual([...order].sort((a, b) => a - b));
 });
 
 function runWatchStep(name, expressions, prelude = "", workflow = "harness-watch", status = 0) {
