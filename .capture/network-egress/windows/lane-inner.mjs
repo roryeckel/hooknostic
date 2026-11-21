@@ -155,6 +155,18 @@ try {
   log(`junction: ${code(error)}`);
 }
 
+if (cfg.workerPid) {
+  // Can the lane open the runner's worker process (its memory holds the job's secrets)?
+  const open = spawnSync(
+    join(system32, "WindowsPowerShell", "v1.0", "powershell.exe"),
+    ["-NoProfile", "-NonInteractive", "-Command", `try { [void](Get-Process -Id ${Number(cfg.workerPid)}).Handle; 'OPENED' } catch { 'denied: ' + $_.Exception.InnerException.Message }`],
+    { encoding: "utf8", timeout: 60_000, env: cfg.env },
+  );
+  const answer = (open.stdout || open.stderr || "").trim().split(/\r?\n/)[0] ?? "";
+  if (answer.startsWith("OPENED")) exposed.push("open Runner.Worker process");
+  log(`probe open Runner.Worker process handle: ${answer.slice(0, 120)}`);
+}
+
 if (cfg.bits) {
   const dest = join(scratch, "work", "bits-robots.txt");
   const bits = spawnSync(

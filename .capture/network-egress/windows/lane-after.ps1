@@ -47,12 +47,16 @@ $since = [datetime]::Parse($state.started, $null, [Globalization.DateTimeStyles]
 Start-Sleep -Seconds 3 # let the last events land
 function Get-Data($event) { $h = @{}; foreach ($d in ([xml]$event.ToXml()).Event.EventData.Data) { $h[$d.Name] = [string]$d.'#text' }; $h }
 $lanePids = @{}
-foreach ($e in @(Get-WinEvent -FilterHashtable @{ LogName = 'Security'; Id = 4688; StartTime = $since } -ErrorAction SilentlyContinue)) {
+$creations = @(Get-WinEvent -FilterHashtable @{ LogName = 'Security'; Id = 4688; StartTime = $since } -ErrorAction SilentlyContinue)
+foreach ($e in $creations) {
   $d = Get-Data $e
-  if ($d.TargetUserSid -eq $state.sid -or ($d.SubjectUserSid -eq $state.sid -and -not $d.TargetUserSid)) {
+  # The first lane process is created by seclogon (Subject SYSTEM, Target the
+  # lane); its descendants have the lane as Subject and Target S-1-0-0.
+  if ($d.TargetUserSid -eq $state.sid -or $d.SubjectUserSid -eq $state.sid) {
     $lanePids[[Convert]::ToInt32($d.NewProcessId, 16)] = $e.TimeCreated
   }
 }
+"lane-after ${Label}: 4688 process creations since setup: $($creations.Count)"
 $blocked = [Collections.Generic.List[object]]::new(); $allowed = [Collections.Generic.List[object]]::new(); $loop = 0; $all = 0
 foreach ($e in @(Get-WinEvent -FilterHashtable @{ LogName = 'Security'; Id = 5156, 5157; StartTime = $since } -ErrorAction SilentlyContinue)) {
   $all++

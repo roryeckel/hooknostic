@@ -19,6 +19,8 @@ param(
   [Parameter(Mandatory)][string]$Command,
   [string]$RequireEnv = '',
   [switch]$Bits,
+  [switch]$DenyRead,
+  [switch]$WorkspaceCacheDirs,
   [int]$TimeoutSec = 0,
   [string]$Cwd = (Get-Location).Path
 )
@@ -52,6 +54,44 @@ if ($laneEnv.Contains('HKN_RIPGREP_DIR')) {
   $laneEnv['HKN_RIPGREP_DIR'] = $rg
 }
 if ($laneEnv.Contains('HKN_PLAYBACK_ARTIFACT_DIR')) { $laneEnv['HKN_PLAYBACK_ARTIFACT_DIR'] = Join-Path $Scratch 'work\playback-artifacts' }
+# pnpm/action-setup installs pnpm under the runner user's profile, which the
+# lane cannot traverse. The lane gets its own copy; the admin never runs it.
+$pnpmCmd = Get-Command pnpm -ErrorAction SilentlyContinue
+if ($pnpmCmd) {
+  $dir = Split-Path -Parent $pnpmCmd.Source
+  $root = $dir
+  while ($root -and (Split-Path -Leaf $root) -ne 'setup-pnpm') { $root = Split-Path -Parent $root }
+  if ($root) {
+    $copy = Join-Path $Scratch 'tools\setup-pnpm'
+    $t = [Diagnostics.Stopwatch]::StartNew()
+    New-Item -ItemType Directory -Force -Path (Split-Path -Parent $copy) | Out-Null
+    Copy-Item -Recurse -Force $root $copy
+    $laneBin = Join-Path $copy $dir.Substring($root.Length).TrimStart('\')
+    $laneEnv['Path'] = (@($laneBin) + @($laneEnv['Path'] -split ';' | Where-Object { $_ -and $_ -ne $dir })) -join ';'
+    "lane-run ${Label}: pnpm copied for the lane in $([int]$t.Elapsed.TotalMilliseconds) ms"
+  }
+}
+# Optional: vitest's own cache directories in the workspace, pre-created so
+# only they are lane-writable (and Low-labelled for a Low lane).
+if ($WorkspaceCacheDirs) {
+  foreach ($d in '.vite-temp', '.vite', '.vitest-cache') {
+    $p = Join-Path $Cwd "node_modules\$d"
+    New-Item -ItemType Directory -Force -Path $p | Out-Null
+    icacls $p /grant "*$($state.sid):(OI)(CI)M" | Out-Null
+    if ($state.integrity -eq 'Low') { icacls $p /setintegritylevel '(OI)(CI)low' | Out-Null }
+  }
+  "lane-run ${Label}: workspace cache dirs made lane-writable: node_modules\.vite-temp, .vite, .vitest-cache"
+}
+# Optional: deny the lane read access to what it can otherwise read but must
+# not: RUNNER_TEMP (file-command files, checkout credentials, step scripts)
+# and the runner's own directory (.credentials, .runner, _diag).
+if ($DenyRead) {
+  foreach ($p in $env:RUNNER_TEMP, 'C:\actions-runner') {
+    $t = [Diagnostics.Stopwatch]::StartNew()
+    $result = icacls $p /deny "*$($state.sid):(OI)(CI)(R)" /C /Q 2>&1 | Select-Object -Last 1
+    "lane-run ${Label}: read denied on $(if ($p -eq $env:RUNNER_TEMP) { 'RUNNER_TEMP' } else { $p }) in $([int]$t.Elapsed.TotalMilliseconds) ms: $result"
+  }
+}
 "lane-run ${Label}: step environment $($laneEnv.Count + $dropped.Count) names; passed $($laneEnv.Count); dropped $($dropped.Count)"
 "lane-run ${Label}: dropped names that look sensitive: $((@($dropped | Where-Object { $_ -match $sensitive }) | Sort-Object) -join ', ')"
 
@@ -105,6 +145,7 @@ Add-Target 'toolcache node.exe' write (Get-Command node).Source
 $require = @($RequireEnv -split ',' | Where-Object { $_ })
 [ordered]@{
   label = $Label; integrity = $state.integrity; command = $Command; cwd = $Cwd; require = $require; bits = [bool]$Bits
+  workerPid = (Get-CimInstance Win32_Process -Filter "Name = 'Runner.Worker.exe'" | Select-Object -First 1).ProcessId
   scratch = $Scratch; targets = $targets; env = $laneEnv
 } | ConvertTo-Json -Depth 5 | Set-Content -Encoding utf8 "$Scratch\bin\lane.json"
 
