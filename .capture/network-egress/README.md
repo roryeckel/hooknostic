@@ -247,8 +247,12 @@ agent.stop": `expected 1 to be 2` at `opencode-v2-playback.test.ts:689`. With
 the whole lane rerun, it failed in one more run with network (no strace) and
 passed in a second traced run. Repeated alone, through `HN_TEST_FILTER` in
 `lane-inner.sh`, it failed in 1 of 5 runs with network and 2 of 5 without.
-Every failure was the same assertion. It is intermittent on 2.3.2 in both
-modes and is left for harness-watch.
+Every failure was the same assertion, intermittent on 2.3.2 in both modes.
+Cause, found later: the drive's follow-up raced the background child.
+A follow-up that reached the child mid-execution was folded into that
+execution, so there was one completion where the test counts two. Fixed by a
+constructed ordering (`aebf9de5`; `.capture/opencode-v2/README.md`,
+"subagent-followup").
 
 The standalone knob probes ran only against the reference versions.
 
@@ -728,9 +732,10 @@ CI at 0.148.0 and gone at 0.171.0.
 **verify**: a prepare step with `--version <latest> --check-online`, then
 `without-network.sh`.
 - opencode-v1 1.19.6: 64 passed.
-- opencode-v2 2.3.2: 93 passed, 1 failed. The failure is the known
-  "followed-up subagent agent.stop" flake, seen before with and without
-  network.
+- opencode-v2 2.3.2: 93 passed, 1 failed. The failure is the
+  "followed-up subagent agent.stop" test, seen before with and without
+  network: the drive's race, fixed in `aebf9de5` (see "Results at the latest
+  versions" above).
 
 **drift, playback transport**:
 - Phase 1, `--network bridge`, installs the harness into the mounted `/drift`
@@ -838,7 +843,7 @@ The design is in the owner's planning notes, should the threat model change.
 
 The harness-watch dispatch:
 - **drift**: phase 1 printed "ripgrep ready at /drift/ripgrep/rg". Phase 2's canary passed, with `HOOKNOSTIC_PLAYBACK_VERSION` and `HKN_RIPGREP_DIR` present, loopback only, `ENETUNREACH`, `EAI_AGAIN`, uid 1000, CapEff 0 and NoNewPrivs 1. The drive completed: verdict drift, exit 4, the prototype's bridge result. No drive failure means no refetch.
-- **verify**: the `--check-online` control and the namespace canary passed, with all three names present. Then 93 passed and 1 failed, both on the first attempt and on the retry. The failure is the pre-existing opencode-v2 2.3.2 test "reports each completion of a followed-up subagent as its own agent.stop" (`expected 1 to be 2`), which also fails with network (WSL: 1 of 5 runs with network, 2 of 5 without).
+- **verify**: the `--check-online` control and the namespace canary passed, with all three names present. Then 93 passed and 1 failed, both on the first attempt and on the retry. The failure is the pre-existing opencode-v2 2.3.2 test "reports each completion of a followed-up subagent as its own agent.stop" (`expected 1 to be 2`), which also fails with network (WSL: 1 of 5 runs with network, 2 of 5 without; master's own dispatch 44865794385 failed it on attempt 2). Cause: the drive's follow-up raced the background child; fixed by a constructed ordering (`aebf9de5`, `.capture/opencode-v2/README.md`, "subagent-followup").
 
 ### Drift's two phases, every harness, locally (2026-11-21)
 
