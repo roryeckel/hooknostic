@@ -308,10 +308,79 @@ function runWatchStep(name, expressions, prelude = "", workflow = "harness-watch
 it.each(["", "skipped"])("reports an unrun playback step (%s) as an install failure", (outcome) => {
   const result = runWatchStep("Capture outcome", {
     "steps.playback.outcome": outcome,
+    "steps.prepare.outcome": outcome,
     "matrix.harness": "claude",
     "matrix.latest": "2.1.250",
   });
   expect(JSON.parse(result.stdout).outcome).toBe("install-failure");
+});
+
+it("reports a failed prepare step as a prepare failure, not an install failure", () => {
+  const capture = (prepare, playback) =>
+    JSON.parse(
+      runWatchStep("Capture outcome", {
+        "steps.playback.outcome": playback,
+        "steps.prepare.outcome": prepare,
+        "matrix.harness": "opencode-v1",
+        "matrix.latest": "1.19.6",
+      }).stdout,
+    ).outcome;
+  expect(capture("failure", "skipped")).toBe("prepare-failure");
+  // A build that needs the network fails in the blocked step: playback-failure.
+  expect(capture("success", "failure")).toBe("playback-failure");
+  expect(capture("success", "success")).toBe("pass");
+});
+
+// The drift step's real body, with docker replaced by a stub that records
+// each call and exits with the code given for its network mode.
+function runDriftDrive({ bridge = 0, none = 0, forceLlm = "false" }) {
+  const result = runWatchStep(
+    "Run the drift capture-compare",
+    {
+      "inputs.force_llm": forceLlm,
+      "matrix.harness": "claude",
+      "matrix.pkg": "@anthropic-ai/claude-code",
+      "matrix.latest": "2.1.330",
+      "matrix.bootstrap": "install.cjs",
+    },
+    `mkdir -p .github/node/playback && echo 24.22.3 > .github/node/playback/.node-version
+    GITHUB_WORKSPACE="$PWD"
+    docker() {
+      case "$*" in
+        *"--network bridge"*) echo "docker: bridge" >> calls.txt; return ${bridge} ;;
+        *"--network none"*) echo "docker: none" >> calls.txt; return ${none} ;;
+      esac
+    }
+    trap 'cat calls.txt "$GITHUB_OUTPUT"' EXIT`,
+  );
+  return result.stdout.split(/\r?\n/).filter((line) => /^(docker: |code=|failed_phase=)/.test(line));
+}
+
+it("records a failed drift phase 1 as the failed phase, and runs no drive", () => {
+  expect(runDriftDrive({ bridge: 1 })).toEqual(["docker: bridge", "code=1", "failed_phase=install"]);
+  // A drive failure in phase 2 is the drive's, as before.
+  expect(runDriftDrive({ none: 6 })).toEqual(["docker: bridge", "docker: none", "code=6", "failed_phase="]);
+  expect(runDriftDrive({ none: 4 })).toEqual(["docker: bridge", "docker: none", "code=4", "failed_phase="]);
+  // The llm transport installs and drives in one container, so it names no phase.
+  expect(runDriftDrive({ bridge: 6, forceLlm: "true" })).toEqual(["docker: bridge", "code=6", "failed_phase="]);
+});
+
+it.each([
+  ["install", "1", "install-failure"],
+  ["install", "4", "install-failure"],
+  ["", "0", "clean"],
+  ["", "4", "drift"],
+  ["", "5", "inconclusive"],
+  ["", "6", "drive-failure"],
+])("writes drift's verdict (failed phase %j, code %s) as %s", (phase, code, verdict) => {
+  const result = runWatchStep("Write the verdict artifact", {
+    "steps.drive.outputs.code": code,
+    "steps.drive.outputs.failed_phase": phase,
+    "matrix.harness": "claude",
+    "matrix.latest": "2.1.330",
+    "inputs.force_llm": "false",
+  });
+  expect(JSON.parse(result.stdout)).toMatchObject({ exitCode: code, verdict });
 });
 
 it("does not suppress validation because a closed PR names the same version", () => {

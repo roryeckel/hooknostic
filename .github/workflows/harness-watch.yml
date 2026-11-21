@@ -184,7 +184,11 @@ jobs:
       # Everything the playback fetches happens here, while the job still has
       # network: the pinned ripgrep (opencode-v2) and the npm cache for the
       # OpenCode v1 plugin dependency, after the probe's positive control.
+      # Its failure is a prepare-failure, not an install-failure: the build
+      # installed, but the network check or a prerequisite (ripgrep, the
+      # plugin dependency at this version) did not.
       - name: Prepare offline playback prerequisites
+        id: prepare
         shell: bash
         run: node --experimental-strip-types scripts/prepare-offline-playback.mjs '${{ matrix.harness }}' --version '${{ matrix.latest }}' --check-online
         env:
@@ -236,11 +240,14 @@ jobs:
         shell: bash
         run: |
           # A skipped or absent step never exercised playback. Preserve that
-          # distinction when an earlier installation/toolchain step failed.
+          # distinction when an earlier installation/toolchain step failed,
+          # and name a failed prepare step as itself.
           if [ "${{ steps.playback.outcome }}" = "success" ]; then
             outcome=pass
           elif [ "${{ steps.playback.outcome }}" = "failure" ]; then
             outcome=playback-failure
+          elif [ "${{ steps.prepare.outcome }}" = "failure" ]; then
+            outcome=prepare-failure
           else
             outcome=install-failure
           fi
@@ -548,7 +555,7 @@ jobs:
           gh issue create --label harness-watch --title "$TITLE" --body "$(cat <<EOF
           The scheduled model-free playback failed for \`${{ matrix.harness }} ${{ matrix.latest }}\`.
 
-          Outcome: \`$(jq -r .outcome watch-outcome-${{ matrix.harness }}.json)\` (install-failure vs playback-failure matters — install failure is a packaging problem, playback failure is behavior drift).
+          Outcome: \`$(jq -r .outcome watch-outcome-${{ matrix.harness }}.json)\` (install-failure vs prepare-failure vs playback-failure matters — install failure is a packaging problem, prepare failure is the network check or an offline prerequisite failing with network, playback failure is behavior drift or a build that now needs the network).
 
           Run: $LINK
 
@@ -764,9 +771,14 @@ jobs:
               ' sh "${{ matrix.pkg }}" "${{ matrix.latest }}" "${{ matrix.harness }}" \
               > "drift-report-${{ matrix.harness }}.log" 2>&1
             CODE=$?
+            # No drive ran: the verdict is an install failure, not a drive's.
+            if [ "$CODE" != 0 ]; then FAILED_PHASE=install; fi
             # Phase 2, with --network none: only loopback, where the drive's
             # model server runs in-process. The same prefix, cache and
-            # ripgrep, so nothing needs fetching; the isolation check first.
+            # ripgrep; the isolation check first. That the drive then needs
+            # nothing fetched is measured for the harnesses listed in
+            # .capture/network-egress ("Option B CI evidence"); a harness
+            # that does need it fails here as a drive failure.
             if [ "$CODE" = 0 ]; then
               docker run --network none "${COMMON[@]}" "${DRIFT_ENVS[@]}" \
                 -e HKN_NO_NETWORK_UID=1000 -e HOOKNOSTIC_PLAYBACK_NETWORK=none \
@@ -783,6 +795,7 @@ jobs:
           fi
           set -e
           echo "code=$CODE" >> "$GITHUB_OUTPUT"
+          echo "failed_phase=${FAILED_PHASE:-}" >> "$GITHUB_OUTPUT"
           cat "drift-report-${{ matrix.harness }}.log"
           # Copy capture + report next to the workspace for artifact upload.
           if [ -d "$SCRATCH_HOST/.opencode/plugins/captured" ]; then
@@ -798,8 +811,11 @@ jobs:
           # Exit contract (drive-capture-session.mjs): 0 clean, 4 drift,
           # 5 inconclusive, 6 drive failure. 4/5 are reportable outcomes;
           # 6 (no capture or a failed harness process) is also non-clean.
+          # The playback transport's phase 1 (install and prepare) runs before
+          # any drive: its failure is install-failure, whatever its code.
           CODE="${{ steps.drive.outputs.code }}"
-          if [ "$CODE" = "0" ]; then VERDICT=clean
+          if [ "${{ steps.drive.outputs.failed_phase }}" = "install" ]; then VERDICT=install-failure
+          elif [ "$CODE" = "0" ]; then VERDICT=clean
           elif [ "$CODE" = "4" ]; then VERDICT=drift
           elif [ "$CODE" = "5" ]; then VERDICT=inconclusive
           else VERDICT=drive-failure; fi
