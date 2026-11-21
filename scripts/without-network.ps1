@@ -97,7 +97,10 @@ function Invoke-LaneCleanup {
   $left = 0
   $rules = 0
   try {
-    $user = Get-LocalUser -Name $LaneUser -ErrorAction SilentlyContinue
+    # Enumerate and filter: a missing user is an empty result, while a
+    # provider or access failure terminates. Get-LocalUser -Name cannot tell
+    # those apart.
+    $user = @(Get-LocalUser -ErrorAction Stop) | Where-Object { $_.Name -eq $LaneUser } | Select-Object -First 1
     if ($user) {
       $left = Stop-LaneProcesses $user.SID.Value
       [Console]::Out.WriteLine("without-network: lane processes left after stopping: $left")
@@ -110,10 +113,13 @@ function Invoke-LaneCleanup {
     Write-Warning "without-network: could not stop the lane processes or disable ${LaneUser}: $($_.Exception.Message)"
   }
   try {
-    $existing = @(Get-NetFirewallRule -Group $RuleGroup -ErrorAction SilentlyContinue)
+    # Genuine absence returns no objects; a provider or access failure
+    # terminates, rather than reading as "no rules".
+    $existing = @(Get-NetFirewallRule -Group $RuleGroup -ErrorAction Stop)
     # Out-Null: the cmdlet's CIM objects must not join the helper's return value.
     if ($existing.Count) { $existing | Remove-NetFirewallRule -ErrorAction Stop | Out-Null }
-    $rules = @(Get-NetFirewallRule -Group $RuleGroup -ErrorAction SilentlyContinue).Count
+    # The recheck is discovery too: a failure must not read as "no rules".
+    $rules = @(Get-NetFirewallRule -Group $RuleGroup -ErrorAction Stop).Count
     [Console]::Out.WriteLine("without-network: firewall rules removed: $($existing.Count); left: $rules")
   } catch {
     $clean = $false

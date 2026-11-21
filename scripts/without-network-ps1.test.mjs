@@ -98,6 +98,124 @@ ${body}
   return JSON.parse(result.stdout.trim());
 };
 
+// Runs only Invoke-LaneCleanup, or the real -Cleanup branch, with the
+// firewall and local-user cmdlets stubbed. A guard aborts before either runs
+// if a stub does not shadow the real cmdlet, so no firewall rule or user is
+// touched on this host.
+const cleanupHarness = join(dir, "cleanup-harness.ps1");
+writeFileSync(
+  cleanupHarness,
+  `param(
+  [Parameter(Mandatory)][ValidateSet('helper', 'branch')][string]$Mode,
+  [Parameter(Mandatory)][string]$Scenario,
+  [Parameter(Mandatory)][string]$Script
+)
+$ErrorActionPreference = 'Continue'
+$WarningPreference = 'SilentlyContinue'
+$global:HknScenario = $Scenario
+$global:HknRuleCalls = 0
+
+function global:Stop-LaneProcesses { param([string]$sid) 0 }
+function global:Get-LocalUser {
+  [CmdletBinding()] param([string]$Name)
+  if ($global:HknScenario -eq 'user-discovery') {
+    Write-Error 'local user provider unavailable'
+    return
+  }
+  @()
+}
+function global:Get-NetFirewallRule {
+  [CmdletBinding()] param([string]$Group)
+  $global:HknRuleCalls++
+  if ($global:HknScenario -eq 'rules-discovery' -and $global:HknRuleCalls -eq 1) {
+    Write-Error 'firewall rule provider unavailable'
+    return
+  }
+  if ($global:HknScenario -eq 'rules-recheck') {
+    if ($global:HknRuleCalls -eq 1) { return [pscustomobject]@{ Name = 'hkn-offline outbound' } }
+    Write-Error 'firewall rule provider unavailable'
+    return
+  }
+}
+function global:Remove-NetFirewallRule {
+  [CmdletBinding()]
+  param([Parameter(ValueFromPipeline = $true)]$InputObject)
+  process { }
+}
+function global:Disable-LocalUser {
+  [CmdletBinding()] param([string]$Name)
+}
+
+# A provider/access failure is a nonterminating error, so SilentlyContinue
+# hides it while Stop terminates. That is the distinction the helper must keep.
+foreach ($name in 'Get-LocalUser', 'Get-NetFirewallRule', 'Remove-NetFirewallRule', 'Disable-LocalUser') {
+  $command = Get-Command $name -ErrorAction Stop
+  if ($command.CommandType -ne 'Function') { throw "not stubbed: $name" }
+}
+
+if ($Mode -eq 'helper') {
+  $tokens = $null
+  $errors = $null
+  $ast = [System.Management.Automation.Language.Parser]::ParseFile($Script, [ref]$tokens, [ref]$errors)
+  if ($errors.Count) { throw 'parse errors' }
+  $definition = $ast.FindAll({
+    param($n)
+    $n -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq 'Invoke-LaneCleanup'
+  }, $true) | Select-Object -First 1
+  if (-not $definition) { throw 'missing Invoke-LaneCleanup' }
+  . ([scriptblock]::Create($definition.Extent.Text))
+  $LaneUser = 'hknoffline'
+  $RuleGroup = 'hkn-offline'
+  $capture = New-Object IO.StringWriter
+  $original = [Console]::Out
+  try {
+    [Console]::SetOut($capture)
+    $result = Invoke-LaneCleanup
+  } finally {
+    [Console]::SetOut($original)
+  }
+  [ordered]@{ clean = [bool]$result; output = $capture.ToString(); ruleCalls = $global:HknRuleCalls } | ConvertTo-Json -Compress
+  exit 0
+}
+
+& $Script -Cleanup
+exit $LASTEXITCODE
+`,
+);
+const cleanup = (mode, scenario) =>
+  spawnSync(
+    shell,
+    ["-NoProfile", "-NonInteractive", "-File", cleanupHarness, "-Mode", mode, "-Scenario", scenario, "-Script", script],
+    { encoding: "utf8", timeout: 60_000 },
+  );
+// Both the helper's return value and the -Cleanup branch's exit code, so a
+// helper that returns false but exits 0 cannot pass.
+const expectCleanup = (scenario, clean) => {
+  const helper = cleanup("helper", scenario);
+  expect(helper.error).toBeUndefined();
+  expect(helper.status, helper.stdout + helper.stderr).toBe(0);
+  expect(JSON.parse(helper.stdout.trim()), scenario).toMatchObject({ clean });
+  const branch = cleanup("branch", scenario);
+  expect(branch.error).toBeUndefined();
+  expect(branch.status, branch.stdout + branch.stderr).toBe(clean ? 0 : 1);
+};
+
+it.skipIf(!shell)("keeps -Cleanup idempotent when there is no lane user and no rule", () => {
+  expectCleanup("absent", true);
+});
+
+it.skipIf(!shell)("fails -Cleanup closed when the lane-user provider fails", () => {
+  expectCleanup("user-discovery", false);
+});
+
+it.skipIf(!shell)("fails -Cleanup closed when the initial rule-group discovery fails", () => {
+  expectCleanup("rules-discovery", false);
+});
+
+it.skipIf(!shell)("fails -Cleanup closed when the post-removal rule-group recheck fails", () => {
+  expectCleanup("rules-recheck", false);
+});
+
 it.skipIf(!shell)("keeps the user, rule, scratch and lane setup under one try/finally", () => {
   const parsed = parse(
     "try-finally",
