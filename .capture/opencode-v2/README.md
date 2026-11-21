@@ -554,6 +554,23 @@ What was probed, each on Windows with isolated state and the loopback model
 - `subagent-followup`: a second `subagent` call sends a follow-up to the same
   child by its `sessionID`. Two `agent.stop`s, same `agent.id`, each with its
   own execution's text, on 2.0.17 and 2.3.0.
+  - Constructed ordering: the tool model answers the parent's follow-up call
+    only once the capture has recorded the child's first
+    `session.execution.succeeded`. A background child (2.3.0 and later) can
+    still be running when its parent asks again. Without the ordering, the
+    playback test failed intermittently on 2.3.2 (`expected 1 to be 2`) in
+    harness-watch verify on master and on the branch.
+  - Observed, not claimed (WSL, 2026-11-21): a follow-up that reaches a
+    child while its first execution runs is queued into that execution's
+    inbox (`session.inbox.enqueued`, then `session.inbox.delivered` with no
+    new `session.execution.started`), and the execution succeeds once. The
+    adapter then dispatches one `turn.stop` and one `agent.stop`, whose
+    `lastMessage` is the follow-up's text. This happened in 3 of 3 runs on
+    2.3.0 and on 2.3.2 when the child's first answer was delayed 3 s. Unforced,
+    the follow-up arrived early in 0 of 10 runs on 2.3.0, 2 of 10 on 2.3.2
+    (filtered), and 7 of 15 whole-file runs on 2.3.2, whether on master or
+    the branch, with or without network. The same mechanism on both builds,
+    so a timing change, not a behavior change.
 - `subagent-opt-in`: the opt-in `background: true` argument on 2.0.17 and
   2.2.6. On 2.0.17, a child that finished while `run` was still going
   dispatched `agent.stop`, and its result started a second parent execution

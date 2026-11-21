@@ -236,7 +236,7 @@ if (effect === "components" || effect === "tools" || effect.startsWith("mcp-")) 
   }
 }
 const model = effect.startsWith("sessions") || effect === "stop" || effect === "nested" ? await (await import("./session-model.mjs")).startSessionModel() : effect === "tools" || effect === "tools-patch" || effect.startsWith("mcp-") || remote || effect.startsWith("results") || effect.startsWith("subagent")
-  ? await (await import("./tool-model.mjs")).startToolModel(project, effect.startsWith("mcp-"), remote ? effect : false, effect.startsWith("subagent") ? effect : effect === "tools-patch" ? "patch" : effect.startsWith("results"))
+  ? await (await import("./tool-model.mjs")).startToolModel(project, effect.startsWith("mcp-"), remote ? effect : false, effect.startsWith("subagent") ? effect : effect === "tools-patch" ? "patch" : effect.startsWith("results"), join(root, "captured"))
   : await startModelPlayback(effect === "provider-anthropic" ? "anthropic-messages" : effect === "provider-responses" ? "openai-responses" : "openai-chat", effect === "fail" ? "fail" : "rewrite", effect === "lifecycle" || effect.startsWith("provider-") ? [
       { kind: "tool", disposition: "rewrite" },
       { kind: "text", text: "## Objective\n- Exercise offline hooks.\n## Requirements\n- Use the loopback model.\n## Decisions\n- Keep the probe isolated.\n## Work State\n### Completed\n- Ran the shell probe.\n### Active\n- None.\n### Blocked\n- None.\n## Next Move\n1. Finish the probe.\n## Relevant Files\n- hooknostic-tool.txt\n## Important Context\n- hooknostic-valid-compaction-summary" },
