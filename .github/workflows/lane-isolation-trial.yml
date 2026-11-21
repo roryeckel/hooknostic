@@ -1,0 +1,297 @@
+# TEMPORARY: evidence for the Windows plan's review response (PR #288).
+# Removed by a revert commit once the runs are recorded. Not a gate.
+# Job ids reuse the playback ones so check-dependencies applies the playback
+# Node version file to them.
+name: Lane isolation trial (temporary)
+
+on:
+  push:
+    branches: [ci/offline-playback]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lane-isolation-trial-${{ github.sha }}
+  cancel-in-progress: false
+
+jobs:
+  harness-playback:
+    name: windows ${{ matrix.label }}
+    runs-on: windows-latest
+    timeout-minutes: ${{ matrix.jobTimeout }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { label: opencode-v2-medium, kind: lane, harness: opencode-v2, integrity: Medium, jobTimeout: 30 }
+          - { label: opencode-v2-low, kind: lane, harness: opencode-v2, integrity: Low, jobTimeout: 30 }
+          - { label: copilot-medium, kind: lane, harness: copilot, integrity: Medium, jobTimeout: 30 }
+          - { label: copilot-low, kind: lane, harness: copilot, integrity: Low, jobTimeout: 30 }
+          - { label: pi-medium, kind: lane, harness: pi, integrity: Medium, jobTimeout: 30 }
+          - { label: pi-low, kind: lane, harness: pi, integrity: Low, jobTimeout: 30 }
+          - { label: code-mode-medium, kind: code-mode, harness: codex, integrity: Medium, jobTimeout: 30 }
+          - { label: code-mode-low, kind: code-mode, harness: codex, integrity: Low, jobTimeout: 30 }
+          - { label: probes, kind: probes, harness: pi, integrity: Medium, jobTimeout: 20 }
+          - { label: step-timeout, kind: step-timeout, harness: pi, integrity: Medium, jobTimeout: 20 }
+          - { label: job-timeout, kind: job-timeout, harness: pi, integrity: Medium, jobTimeout: 4 }
+    steps:
+      # Default persist-credentials, as ci.yml's harness-playback has: the
+      # checkout's credentials file is one of the read probes.
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+        if: ${{ matrix.kind == 'lane' || matrix.kind == 'code-mode' || matrix.kind == 'probes' }}
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .github/node/playback/.node-version
+          cache: ${{ (matrix.kind == 'lane' || matrix.kind == 'code-mode' || matrix.kind == 'probes') && 'pnpm' || '' }}
+      - name: Install repository dependencies
+        if: ${{ matrix.kind == 'lane' || matrix.kind == 'code-mode' || matrix.kind == 'probes' }}
+        run: pnpm install --frozen-lockfile
+      - name: Bundle
+        if: ${{ matrix.kind == 'lane' || matrix.kind == 'code-mode' }}
+        run: pnpm run bundle
+      - name: Install the harness at the CI version
+        id: harness
+        if: ${{ matrix.kind == 'lane' || matrix.kind == 'code-mode' }}
+        shell: bash
+        run: |
+          if [ '${{ matrix.kind }}' = code-mode ]; then
+            pkg=@openai/codex; version="$(node scripts/verify-code-mode.mjs --print-version)"
+          else
+            pkg="$(node --input-type=module -e 'import { harnessLanes } from "./scripts/harness-lanes.mjs"; console.log(harnessLanes[process.argv[1]].pkg)' '${{ matrix.harness }}')"
+            version="$(node --experimental-strip-types scripts/harness-playback-version.mjs '${{ matrix.harness }}')"
+          fi
+          echo "pkg=$pkg version=$version"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          npm install --global "$pkg@$version"
+      - name: Prepare offline prerequisites (admin, with network)
+        if: ${{ matrix.kind == 'lane' || matrix.kind == 'code-mode' }}
+        shell: bash
+        run: node --experimental-strip-types scripts/prepare-offline-playback.mjs '${{ matrix.harness }}' --version '${{ steps.harness.outputs.version }}' --check-online
+        env:
+          HKN_RIPGREP_DIR: ${{ runner.temp }}/hooknostic-ripgrep
+      - name: Runner facts (admin; names and redacted paths only)
+        if: ${{ matrix.kind == 'probes' }}
+        shell: pwsh
+        run: |
+          function Redact([string]$s) {
+            foreach ($n in 'GITHUB_WORKSPACE', 'RUNNER_TEMP', 'USERPROFILE') { $v = [Environment]::GetEnvironmentVariable($n); if ($v) { $s = $s.Replace($v, "%$n%") } }
+            $s
+          }
+          "pwsh $($PSVersionTable.PSVersion)"
+          $sensitive = '^(ACTIONS_|GITHUB_TOKEN$|GITHUB_(ENV|PATH|OUTPUT|STATE|STEP_SUMMARY)$|INPUT_)|(TOKEN|SECRET|PASSWORD|_KEY)$'
+          "step env names that look sensitive: $((Get-ChildItem env: | Where-Object Name -match $sensitive | ForEach-Object Name | Sort-Object) -join ', ')"
+          "Developer Mode (AllowDevelopmentWithoutDevLicense): $((Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\AppModelUnlock' -ErrorAction SilentlyContinue).AllowDevelopmentWithoutDevLicense)"
+          foreach ($s in 'BITS', 'WinHttpAutoProxySvc', 'seclogon') { $svc = Get-Service $s -ErrorAction SilentlyContinue; "service ${s}: $($svc.Status) $($svc.StartType)" }
+          "pnpm command: $(Redact (Get-Command pnpm).Source)"
+          "npm prefix: $(Redact ((npm config get prefix) | Select-Object -First 1))"
+          "pnpm store: $(Redact ((pnpm store path) | Select-Object -First 1))"
+          $work = Split-Path -Parent (Split-Path -Parent $env:GITHUB_WORKSPACE)
+          foreach ($p in 'C:\', 'D:\', $work, $env:GITHUB_WORKSPACE, $env:RUNNER_TEMP, "$env:RUNNER_TEMP\_runner_file_commands", ((npm config get prefix) | Select-Object -First 1), 'C:\hostedtoolcache\windows', 'C:\actions-runner', (Split-Path -Parent (Get-Command pnpm).Source)) {
+            "== icacls $(Redact $p)"
+            icacls $p | Select-Object -Skip 1 | Where-Object { $_.Trim() -and $_ -notmatch 'Successfully processed' } | ForEach-Object { "   $(Redact $_.Trim())" }
+          }
+          "== admin positive control (IPv6 is reported)"
+          node scripts/assert-no-network.mjs --online
+      - name: Set up the lane user (prototype)
+        id: setup
+        shell: pwsh
+        run: '& .capture/network-egress/windows/lane-setup.ps1 -Integrity ${{ matrix.integrity }}'
+
+      - name: Lane as the dedicated user
+        if: ${{ matrix.kind == 'lane' }}
+        continue-on-error: true
+        shell: pwsh
+        env:
+          HOOKNOSTIC_PLAYBACK: ${{ matrix.harness }}
+          HKN_PLAYBACK_ARTIFACT_DIR: ${{ runner.temp }}/opencode-v2-playback
+          HKN_RIPGREP_DIR: ${{ runner.temp }}/hooknostic-ripgrep
+          ANTHROPIC_API_KEY: ""
+          ANTHROPIC_AUTH_TOKEN: ""
+          OPENAI_API_KEY: ""
+          OPENROUTER_API_KEY: ""
+        run: |
+          & C:\hkn-admin\lane-run.ps1 -Label '${{ matrix.label }}' -RequireEnv 'HOOKNOSTIC_PLAYBACK,HKN_PLAYBACK_ARTIFACT_DIR,HKN_RIPGREP_DIR' -Command 'node node_modules/vitest/vitest.mjs run packages/cli/test/harness-playback.test.ts packages/cli/test/opencode-v2-playback.test.ts scripts/pi-drift-driver.test.mjs'
+          "wrapper exit code: $LASTEXITCODE"
+          exit $LASTEXITCODE
+      - name: Code Mode as the dedicated user
+        if: ${{ matrix.kind == 'code-mode' }}
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          & C:\hkn-admin\lane-run.ps1 -Label '${{ matrix.label }}' -Command 'node scripts/verify-code-mode.mjs'
+          "wrapper exit code: $LASTEXITCODE"
+          exit $LASTEXITCODE
+      - name: Probes as the dedicated user (exit code, BITS, certutil)
+        if: ${{ matrix.kind == 'probes' }}
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          & C:\hkn-admin\lane-run.ps1 -Label exit-code -Bits -Command 'node -e "process.exit(7)"'
+          "wrapper exit code: $LASTEXITCODE (the lane command exits 7)"
+          exit 0
+      - name: BITS with the service stopped and disabled
+        if: ${{ matrix.kind == 'probes' }}
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          Stop-Service BITS -Force -ErrorAction SilentlyContinue
+          Set-Service BITS -StartupType Disabled
+          "BITS now: $((Get-Service BITS).Status) $((Get-Service BITS).StartType)"
+          & C:\hkn-admin\lane-run.ps1 -Label bits-disabled -Bits -Command 'exit 0'
+          "wrapper exit code: $LASTEXITCODE"
+          Set-Service BITS -StartupType Manual
+          exit 0
+      - name: A lane that outlives a step timeout
+        if: ${{ matrix.kind == 'step-timeout' }}
+        timeout-minutes: 1
+        shell: pwsh
+        run: '& C:\hkn-admin\lane-run.ps1 -Label step-timeout -Command ''node -e "setInterval(() => {}, 1000)"'''
+      - name: A lane that outlives the job timeout
+        if: ${{ matrix.kind == 'job-timeout' }}
+        shell: pwsh
+        run: '& C:\hkn-admin\lane-run.ps1 -Label job-timeout -Command ''node -e "setInterval(() => {}, 1000)"'''
+
+      - name: After (always; staged admin copy)
+        if: always()
+        shell: pwsh
+        run: |
+          "job status so far: ${{ job.status }}"
+          if (-not (Test-Path C:\hkn-admin\state.json)) { 'no setup state'; exit 1 }
+          & C:\hkn-admin\lane-after.ps1 -Label '${{ matrix.label }}'
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: lane-trial-${{ matrix.label }}
+          retention-days: 14
+          if-no-files-found: warn
+          path: C:/hkn-admin/*-after.json
+
+  verify:
+    name: ubuntu verify wrapped ${{ matrix.harness }} (latest)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { harness: opencode-v1, pkg: opencode-ai, bootstrap: postinstall.mjs }
+          - { harness: opencode-v2, pkg: "@opencode/cli", bootstrap: postinstall.mjs }
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .github/node/playback/.node-version
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Install the newest build, as harness-watch verify does
+        id: latest
+        shell: bash
+        run: |
+          latest="$(npm view '${{ matrix.pkg }}' dist-tags.latest)"
+          echo "latest=$latest"; echo "latest=$latest" >> "$GITHUB_OUTPUT"
+          npm install --global --ignore-scripts --no-fund --no-audit "${{ matrix.pkg }}@$latest"
+          node "$(npm root --global)/${{ matrix.pkg }}/${{ matrix.bootstrap }}"
+      - run: pnpm run bundle
+      - name: Prepare (the step finding 4 adds)
+        run: node --experimental-strip-types scripts/prepare-offline-playback.mjs '${{ matrix.harness }}' --version '${{ steps.latest.outputs.latest }}' --check-online
+        env:
+          HKN_RIPGREP_DIR: ${{ runner.temp }}/hooknostic-ripgrep
+      - name: Verify's playback, wrapped
+        shell: bash
+        run: scripts/without-network.sh pnpm exec vitest run packages/cli/test/harness-playback.test.ts packages/cli/test/opencode-v2-playback.test.ts
+        env:
+          HOOKNOSTIC_PLAYBACK: ${{ matrix.harness }}
+          HOOKNOSTIC_PLAYBACK_VERSION: ${{ steps.latest.outputs.latest }}
+          HOOKNOSTIC_PLAYBACK_INCONCLUSIVE_PATH: ${{ github.workspace }}/harness-inconclusive-${{ matrix.harness }}.json
+          HKN_RIPGREP_DIR: ${{ runner.temp }}/hooknostic-ripgrep
+          ANTHROPIC_API_KEY: ""
+          ANTHROPIC_AUTH_TOKEN: ""
+          OPENAI_API_KEY: ""
+          OPENROUTER_API_KEY: ""
+          HKN_NO_NETWORK_REQUIRE_ENV: HOOKNOSTIC_PLAYBACK,HOOKNOSTIC_PLAYBACK_VERSION,HKN_RIPGREP_DIR
+
+  drift:
+    name: ubuntu drift container ${{ matrix.harness }} (latest)
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { harness: pi, pkg: "@earendil-works/pi-coding-agent", bootstrap: "" }
+          - { harness: codex, pkg: "@openai/codex", bootstrap: "" }
+          - { harness: opencode-v2, pkg: "@opencode/cli", bootstrap: postinstall.mjs }
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .github/node/playback/.node-version
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run bundle
+      - name: Drift container, today's shape (bridge), as the control
+        id: bridge
+        continue-on-error: true
+        shell: bash
+        env:
+          PKG: ${{ matrix.pkg }}
+          HARNESS: ${{ matrix.harness }}
+          BOOTSTRAP: ${{ matrix.bootstrap }}
+        run: |
+          LATEST="$(npm view "$PKG" dist-tags.latest)"; echo "latest=$LATEST"
+          ROOT="$RUNNER_TEMP/drift-bridge"; mkdir -p "$ROOT"; chmod 777 "$ROOT"
+          IMAGE="node:$(cat .github/node/playback/.node-version)-bookworm"
+          set +e
+          docker run --rm --network bridge --init --user node --cap-drop ALL --security-opt no-new-privileges --pids-limit 256 \
+            --mount "type=bind,src=$GITHUB_WORKSPACE,dst=/workspace,readonly" --mount "type=bind,src=$ROOT,dst=/drift" \
+            --workdir /workspace "$IMAGE" sh -ec '
+              export npm_config_prefix=/tmp/hooknostic-harness PATH="/tmp/hooknostic-harness/bin:$PATH"
+              npm install --global --ignore-scripts --no-fund --no-audit "$1@$2"
+              if [ -n "$4" ]; then node "$(npm root --global)/$1/$4"; fi
+              HOOKNOSTIC_PLAYBACK_VERSION="$2" exec node --experimental-strip-types scripts/drive-capture-session.mjs "$3" --transport playback --scratch "/drift/$3"
+            ' sh "$PKG" "$LATEST" "$HARNESS" "$BOOTSTRAP" > bridge.log 2>&1
+          code=$?
+          tail -n 25 bridge.log
+          echo "drift exit (bridge): $code"
+      - name: Drift container in two phases, the drive with --network none
+        id: none
+        continue-on-error: true
+        shell: bash
+        env:
+          PKG: ${{ matrix.pkg }}
+          HARNESS: ${{ matrix.harness }}
+          BOOTSTRAP: ${{ matrix.bootstrap }}
+        run: |
+          LATEST="$(npm view "$PKG" dist-tags.latest)"; echo "latest=$LATEST"
+          ROOT="$RUNNER_TEMP/drift-none"; mkdir -p "$ROOT"; chmod 777 "$ROOT"
+          IMAGE="node:$(cat .github/node/playback/.node-version)-bookworm"
+          COMMON=(--rm --init --user node --cap-drop ALL --security-opt no-new-privileges --pids-limit 256
+            --mount "type=bind,src=$GITHUB_WORKSPACE,dst=/workspace,readonly" --mount "type=bind,src=$ROOT,dst=/drift"
+            --workdir /workspace -e npm_config_prefix=/drift/prefix -e npm_config_cache=/drift/npm-cache -e HKN_RIPGREP_DIR=/drift/ripgrep)
+          set +e
+          start=$(date +%s)
+          docker run "${COMMON[@]}" --network bridge "$IMAGE" sh -ec '
+              export PATH="/drift/prefix/bin:$PATH"
+              npm install --global --ignore-scripts --no-fund --no-audit "$1@$2"
+              if [ -n "$4" ]; then node "$(npm root --global)/$1/$4"; fi
+              node --experimental-strip-types scripts/prepare-offline-playback.mjs "$3" --version "$2" --check-online
+            ' sh "$PKG" "$LATEST" "$HARNESS" "$BOOTSTRAP" > none-phase1.log 2>&1
+          echo "phase 1 (install + prepare, bridge): exit $? after $(( $(date +%s) - start )) s"; tail -n 8 none-phase1.log
+          start=$(date +%s)
+          docker run "${COMMON[@]}" --network none -e HKN_NO_NETWORK_UID=1000 -e HOOKNOSTIC_PLAYBACK_NETWORK=none -e HOOKNOSTIC_PLAYBACK_VERSION="$LATEST" "$IMAGE" sh -ec '
+              export PATH="/drift/prefix/bin:$PATH"
+              node scripts/assert-no-network.mjs --offline --require-env HOOKNOSTIC_PLAYBACK_VERSION
+              exec node --experimental-strip-types scripts/drive-capture-session.mjs "$1" --transport playback --scratch "/drift/$1"
+            ' sh "$HARNESS" > none.log 2>&1
+          code=$?
+          grep 'assert-no-network' none.log
+          tail -n 25 none.log
+          echo "drift exit (phase 2, --network none): $code after $(( $(date +%s) - start )) s"
