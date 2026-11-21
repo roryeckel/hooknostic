@@ -649,36 +649,42 @@ async function replace(
   expected?: FileState,
   staged?: string,
 ): Promise<Replaced> {
-  const destination = await projectPath(root, path);
-  if (expected !== undefined && !sameState(await fileState(destination), expected))
-    throw new Error(`write precondition changed: ${path}`);
-  if (value === null) {
-    await rm(destination, { force: true });
-    return { destination, directories: [dirname(destination)] };
-  }
-  const parent = dirname(destination);
-  const created = await mkdir(parent, { recursive: true });
-  const temp = staged ?? (await stage(root, value, mode));
+  // `replace` owns a caller's staged file from here on. Its own cleanup is best
+  // effort, so a failed replacement is never reported as a failed cleanup.
+  let temp = staged;
   try {
+    const destination = await projectPath(root, path);
+    if (expected !== undefined && !sameState(await fileState(destination), expected))
+      throw new Error(`write precondition changed: ${path}`);
+    if (value === null) {
+      await rm(destination, { force: true });
+      return { destination, directories: [dirname(destination)] };
+    }
+    const parent = dirname(destination);
+    const created = await mkdir(parent, { recursive: true });
+    const source = temp ?? (await stage(root, value, mode));
+    temp = source;
     await projectPath(root, path);
     if (expected !== undefined && !sameState(await fileState(destination), expected))
       throw new Error(`write precondition changed: ${path}`);
-    await rename(temp, destination);
-  } finally {
-    await rm(temp, { force: true });
-  }
-  const directories = new Set([parent]);
-  if (created !== undefined) {
-    directories.add(created);
-    // The new directory's own entry in its parent changed too, as did every
-    // intermediate directory between the first one created and the destination.
-    for (let cursor = parent; cursor !== created && cursor !== dirname(cursor);) {
-      cursor = dirname(cursor);
-      directories.add(cursor);
+    await rename(source, destination);
+    // The rename consumed the staged file; there is nothing left to clean up.
+    temp = undefined;
+    const directories = new Set([parent]);
+    if (created !== undefined) {
+      directories.add(created);
+      // The new directory's own entry in its parent changed too, as did every
+      // intermediate directory between the first one created and the destination.
+      for (let cursor = parent; cursor !== created && cursor !== dirname(cursor);) {
+        cursor = dirname(cursor);
+        directories.add(cursor);
+      }
+      directories.add(dirname(created));
     }
-    directories.add(dirname(created));
+    return { destination, directories: [...directories] };
+  } finally {
+    if (temp !== undefined) await rm(temp, { force: true }).catch(() => undefined);
   }
-  return { destination, directories: [...directories] };
 }
 /**
  * Every error that means the filesystem cannot flush a directory at all,
@@ -863,7 +869,11 @@ export async function applyProject(root: string, config: string, plan: Reconcili
       const expected = beforeState(change);
       if (!sameState(await fileState(await projectPath(root, change.path)), expected))
         throw new Error(`project changed during synchronization: ${change.path}`);
-      const replaced = await replace(root, change.path, change.after, change.mode, expected, staged.get(change.path));
+      // `replace` takes ownership of a staged file and removes it best effort
+      // if the replacement fails, so the caller's cleanup must forget it.
+      const stagedPath = staged.get(change.path);
+      staged.delete(change.path);
+      const replaced = await replace(root, change.path, change.after, change.mode, expected, stagedPath);
       for (const directory of replaced.directories) directories.add(directory);
     }
     // A rename is durable only once its directory is; flush after them all so
@@ -909,12 +919,36 @@ export async function applyProject(root: string, config: string, plan: Reconcili
   }
   if (failure !== undefined) throw failure;
 }
+/**
+ * The existing ancestors of `start`, from `start` up to `root` inclusive, for
+ * a recovery that must flush every directory a restored rename could have
+ * changed. A missing ancestor is skipped; every other failure is real. The walk
+ * stops before leaving the project root.
+ */
+async function existingAncestors(root: string, start: string): Promise<string[]> {
+  const directories: string[] = [];
+  let cursor = start;
+  while (true) {
+    const relation = relative(root, cursor);
+    if (isAbsolute(relation) || relation === ".." || relation.startsWith(`..${sep}`)) break;
+    try {
+      await lstat(cursor);
+      directories.push(cursor);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    }
+    if (cursor === root || cursor === dirname(cursor)) break;
+    cursor = dirname(cursor);
+  }
+  return directories;
+}
 async function restore(root: string, config: string): Promise<void> {
   const raw = await bytes(await projectPath(root, JOURNAL));
   if (!raw) return;
   const journal = JSON.parse(raw.toString()) as Journal;
   if (journal.schemaVersion !== 1 || journal.config !== config || !Array.isArray(journal.entries))
     throw new Error("invalid recovery journal");
+  const canonicalRoot = await realpath(root);
   const actions: { entry: JournalEntry; before: FileState; current: FileState; parent: string }[] = [];
   const seen = new Set<string>();
   for (const entry of journal.entries) {
@@ -962,17 +996,11 @@ async function restore(root: string, config: string): Promise<void> {
     }
   }
   // A retry can find a path already at its preimage, so no replacement adds its
-  // parent below. Flush every validated entry's existing parent anyway: an
-  // earlier attempt may have restored the bytes without persisting the rename,
-  // and removing the journal now would discard the only record of that.
+  // parent below. Flush every existing ancestor of every validated entry
+  // anyway: an earlier attempt may have restored the bytes without persisting a
+  // rename, and removing the journal now would discard the only record of that.
   for (const { parent } of actions) {
-    try {
-      await lstat(parent);
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === "ENOENT") continue;
-      throw error;
-    }
-    directories.add(parent);
+    for (const directory of await existingAncestors(canonicalRoot, parent)) directories.add(directory);
   }
   // Without this, a crash during recovery can persist the journal's removal
   // while losing a restore's rename.
@@ -1139,15 +1167,31 @@ export async function recoverProject(root: string, config: string): Promise<void
   validatePath(config);
   await clearDeadLock(root, RECOVERY_LOCK);
   const recoveryRelease = await acquire(root, RECOVERY_LOCK);
+  let failure: unknown;
   try {
     await clearDeadLock(root, LOCK);
     const release = await acquire(root);
     try {
       await restore(root, config);
+    } catch (error) {
+      failure = error;
     } finally {
-      await release();
+      try {
+        await release();
+      } catch (error) {
+        // A release error is secondary to a restore error; surface it only when
+        // recovery itself succeeded.
+        failure ??= error;
+      }
     }
+  } catch (error) {
+    failure ??= error;
   } finally {
-    await recoveryRelease();
+    try {
+      await recoveryRelease();
+    } catch (error) {
+      failure ??= error;
+    }
   }
+  if (failure !== undefined) throw failure;
 }

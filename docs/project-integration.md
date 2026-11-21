@@ -305,20 +305,23 @@ directory and then the project root after the journal rename, renames every
 destination, flushes each touched destination directory once — including every
 newly created ancestor of a nested output — removes the journal, and flushes
 the journal's directory once more as the commit point. A failure before the
-journal is removed aborts and attempts rollback; if the journal's own directory
-flush failed, its durability is not established, so rollback relies on the
-in-process journal. If rollback cannot complete, the journal remains and
-`recover` must be run with the same configuration. The final flush is best
-effort, because only a crash can bring the journal back, and recovery rolls
-that back. Windows skips directory flushes: Node can open a directory there but
-cannot fsync it, and although Win32 has `MOVEFILE_WRITE_THROUGH`, Node does not
-expose it through `fs.rename`. Filesystems that cannot flush a directory
-(`EINVAL`, `EISDIR`, `ENOTSUP`, `EOPNOTSUPP`, `ENOSYS`) are skipped the same way,
-whether the open or the flush reports it; every other error is fatal. Before
-removing the journal, recovery flushes the existing parent directory of every
-validated entry — including entries already at their preimage — plus every
-directory it created while restoring. It still checks every file against the
-journal before restoring anything.
+journal is removed aborts and attempts rollback; if either the journal's
+directory flush or the project-root flush failed, no destination has changed
+yet, but the journal is only visible to in-process rollback, not known to be
+crash-durable, because `.hooknostic` itself may not survive. If rollback cannot
+complete, the journal remains and `recover` must be run with the same
+configuration. The final flush is best effort, because only a crash can bring
+the journal back, and recovery rolls that back. Windows skips directory
+flushes: Node can open a directory there but cannot fsync it, and although
+Win32 has `MOVEFILE_WRITE_THROUGH`, Node does not expose it through `fs.rename`.
+Filesystems that cannot flush a directory (`EINVAL`, `EISDIR`, `ENOTSUP`,
+`EOPNOTSUPP`, `ENOSYS`) are skipped the same way, whether the open or the flush
+reports it; every other error before the journal is removed is fatal, while the
+post-unlink commit flush is best effort. Before removing the journal, recovery
+flushes every existing ancestor, through the project root, of every validated
+entry — including entries already at their preimage — plus every directory it
+created while restoring. It still checks every file against the journal before
+restoring anything.
 
 `doctor` never executes hooks or connects to MCP servers. A clean result means
 configuration and wiring checks passed; execution remains unobserved, and restart

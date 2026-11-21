@@ -34,6 +34,10 @@ const io = vi.hoisted(() => ({
   failEveryDirectoryFlush: undefined as ((path: string) => NodeJS.ErrnoException | undefined) | undefined,
   /** Fail the next open chosen by its path, with the error it returns. */
   failOpen: undefined as ((path: string) => NodeJS.ErrnoException | undefined) | undefined,
+  /** Fail the next rename chosen by its source and destination, with the error it returns. */
+  failRename: undefined as ((from: string, to: string) => NodeJS.ErrnoException | undefined) | undefined,
+  /** Fail the next removal chosen by its path, with the error it returns. */
+  failRm: undefined as ((path: string) => NodeJS.ErrnoException | undefined) | undefined,
   /** Close the file chosen by its path, then fail that close once with EIO. */
   failClose: undefined as ((path: string) => boolean) | undefined,
   /** The path each open descriptor belongs to. */
@@ -100,11 +104,21 @@ vi.mock("node:fs/promises", async (importOriginal) => {
       return handle;
     },
     async rename(...args: Parameters<typeof actual.rename>) {
+      const injected = io.failRename?.(String(args[0]), String(args[1]));
+      if (injected) {
+        io.failRename = undefined;
+        throw injected;
+      }
       const result = await actual.rename(...args);
       io.events.push({ type: "rename", from: String(args[0]), to: String(args[1]) });
       return result;
     },
     async rm(...args: Parameters<typeof actual.rm>) {
+      const injected = io.failRm?.(String(args[0]));
+      if (injected) {
+        io.failRm = undefined;
+        throw injected;
+      }
       const result = await actual.rm(...args);
       io.events.push({ type: "rm", path: String(args[0]) });
       return result;
@@ -213,6 +227,8 @@ afterEach(async () => {
   io.failDirectoryFlush = undefined;
   io.failEveryDirectoryFlush = undefined;
   io.failOpen = undefined;
+  io.failRename = undefined;
+  io.failRm = undefined;
   io.failClose = undefined;
   io.paths.clear();
   io.written.clear();
@@ -283,10 +299,17 @@ async function expectFlushedAfterWriting(): Promise<void> {
     expect(flush, `the staged ${path} was flushed`).toBeDefined();
     expect(flush?.contents, path).toBe(await readFile(join(root, path), "utf8"));
   }
-  // The journal, staged and flushed before it was renamed into place.
-  const journal = io.flushes.find((flush) => !flush.directory && isJournal(flush.contents));
-  expect(journal, "the journal content was flushed").toBeDefined();
-  expect(isStaged(journal!.path)).toBe(true);
+  // The journal, staged and flushed exactly once before it was renamed into place.
+  const journalRename = io.events.find(
+    (event) => event.type === "rename" && event.to === at(project, ".hooknostic/transaction.json"),
+  );
+  if (journalRename?.type !== "rename") throw new Error("no journal rename recorded");
+  const journalFlushes = io.events.filter((event) => event.type === "fsync" && event.path === journalRename.from);
+  expect(journalFlushes, "the staged journal was flushed exactly once").toHaveLength(1);
+  const journalFlush = journalFlushes[0];
+  if (journalFlush?.type !== "fsync") throw new Error("no journal content flush recorded");
+  expect(isJournal(journalFlush.contents)).toBe(true);
+  expect(io.events.indexOf(journalFlush)).toBeLessThan(io.events.indexOf(journalRename));
 }
 
 it("flushes the lock and every staged file after writing it", async () => {
@@ -502,6 +525,40 @@ describe("directory flushes make each rename durable before the next step", () =
     expect(await exists(".hooknostic/transaction.json")).toBe(false);
   });
 
+  it.skipIf(win32)("flushes intermediate ancestors on a retry that replaces nothing", async () => {
+    const project = await realpath(root);
+    await mkdir(join(root, ".hooknostic"), { recursive: true });
+    await writeFile(
+      join(root, ".hooknostic/transaction.json"),
+      journalText([journalEntry("nested/deep/a.txt", "before", null)]),
+    );
+    resetIo();
+    let nestedFlushes = 0;
+    io.failEveryDirectoryFlush = (path) => {
+      if (path !== at(project, "nested")) return undefined;
+      nestedFlushes += 1;
+      return Object.assign(new Error("EIO: i/o error, fsync"), { code: "EIO", syscall: "fsync" });
+    };
+
+    await expect(recoverProject(root, owner)).rejects.toMatchObject({ code: "EIO" });
+    expect(nestedFlushes).toBe(1);
+    expect(await readFile(join(root, "nested/deep/a.txt"), "utf8")).toBe("before");
+    expect(await exists(".hooknostic/transaction.json")).toBe(true);
+
+    // The retry replaces nothing, because the file is already at its preimage.
+    // It must still walk back up through `nested`, not only flush `deep`.
+    resetIo();
+    await expect(recoverProject(root, owner)).rejects.toMatchObject({ code: "EIO" });
+    expect(nestedFlushes).toBe(2);
+    expect(io.events.some((event) => event.type === "rename")).toBe(false);
+    expect(await exists(".hooknostic/transaction.json")).toBe(true);
+
+    io.failEveryDirectoryFlush = undefined;
+    await recoverProject(root, owner);
+    expect(await readFile(join(root, "nested/deep/a.txt"), "utf8")).toBe("before");
+    expect(await exists(".hooknostic/transaction.json")).toBe(false);
+  });
+
   it.skipIf(win32)("skips a directory open the filesystem does not support", async () => {
     const project = await realpath(root);
     io.failOpen = (path) =>
@@ -617,6 +674,63 @@ describe("directory flushes make each rename durable before the next step", () =
     expect(io.failedFlushes.filter((flush) => flush.directory && flush.path === state)).toHaveLength(1);
     expect(await readFile(join(root, "a.txt"), "utf8")).toBe("before");
     expect(await exists(".hooknostic/transaction.json")).toBe(false);
+  });
+
+  it("reports a failed replacement, not a failed staged cleanup", async () => {
+    const project = await realpath(root);
+    await sync("before");
+    resetIo();
+    io.failRename = (_from, to) =>
+      to === at(project, "a.txt")
+        ? Object.assign(new Error("injected replacement rename failure"), { code: "EIO", syscall: "rename" })
+        : undefined;
+    io.failRm = (path) =>
+      isStaged(path)
+        ? Object.assign(new Error("injected staged cleanup failure"), { code: "EIO", syscall: "unlink" })
+        : undefined;
+
+    const failure = await sync("after").then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+    expect(failure).toBeInstanceOf(Error);
+    expect((failure as Error).message).toContain("injected replacement rename failure");
+    expect((failure as Error).message).not.toContain("injected staged cleanup failure");
+    expect(io.failRm).toBeUndefined();
+    expect(await readFile(join(root, "a.txt"), "utf8")).toBe("before");
+    expect(await exists(".hooknostic/transaction.json")).toBe(false);
+  });
+
+  it.skipIf(win32)("reports a restore failure, not a failed lock release", async () => {
+    const project = await realpath(root);
+    await mkdir(join(root, ".hooknostic"), { recursive: true });
+    await writeFile(join(root, "a.txt"), "after");
+    await writeFile(
+      join(root, ".hooknostic/transaction.json"),
+      journalText([journalEntry("a.txt", "before", "after")]),
+    );
+    resetIo();
+    io.failEveryDirectoryFlush = (path) =>
+      path === project
+        ? Object.assign(new Error("injected restore flush failure"), { code: "EIO", syscall: "fsync" })
+        : undefined;
+    io.failRm = (path) =>
+      path.endsWith(join(".hooknostic", "sync.lock"))
+        ? Object.assign(new Error("injected sync lock removal failure"), { code: "EIO", syscall: "unlink" })
+        : undefined;
+
+    const failure = await recoverProject(root, owner).then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+    expect(failure).toBeInstanceOf(Error);
+    expect((failure as Error).message).toContain("injected restore flush failure");
+    expect((failure as Error).message).not.toContain("injected sync lock removal failure");
+    expect(io.failRm).toBeUndefined();
+    expect(await readFile(join(root, "a.txt"), "utf8")).toBe("before");
+    expect(await exists(".hooknostic/transaction.json")).toBe(true);
+    expect(await exists(".hooknostic/sync.lock")).toBe(true);
+    expect(await exists(".hooknostic/recovery.lock")).toBe(false);
   });
 });
 
