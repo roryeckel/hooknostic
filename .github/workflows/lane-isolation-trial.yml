@@ -1,7 +1,10 @@
-# TEMPORARY: evidence for the plan's Linux lane-user section and the cheaper
-# Windows options (PR #288). Removed by a revert commit once the runs are
-# recorded. Not a gate. Job ids reuse playback ones so check-dependencies
-# applies the playback Node version file to them.
+# TEMPORARY: evidence for the plan's Linux lane-user section (PR #288).
+# Removed by a revert commit once the runs are recorded. Not a gate. The job
+# id reuses a playback one so check-dependencies applies the playback Node
+# version file to it.
+# Round 2 of the Linux trial: network, mount and PID namespaces, everything
+# read-only but the scratch tree, the workspace as an overlay; plus a plant
+# attempt with and without the read-only remount.
 name: Lane isolation trial (temporary)
 
 on:
@@ -17,13 +20,21 @@ concurrency:
 
 jobs:
   verify:
-    name: ubuntu lane user ${{ matrix.harness }}
+    name: ubuntu ${{ matrix.label }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
-        harness: [claude, codex, copilot, pi, opencode-v1, opencode-v2]
+        include:
+          - { label: claude, harness: claude, kind: lane }
+          - { label: codex, harness: codex, kind: lane }
+          - { label: copilot, harness: copilot, kind: lane }
+          - { label: pi, harness: pi, kind: lane }
+          - { label: opencode-v1, harness: opencode-v1, kind: lane }
+          - { label: opencode-v2, harness: opencode-v2, kind: lane }
+          - { label: plant-blocked, harness: pi, kind: plant }
+          - { label: plant-mutant, harness: pi, kind: plant-mutant }
     steps:
       # Default persist-credentials, as ci.yml's harness-playback has: the
       # checkout's credentials file is one of the read probes.
@@ -38,6 +49,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: Install the harness at the CI version
         id: harness
+        if: ${{ matrix.kind == 'lane' }}
         shell: bash
         run: |
           version="$(node --experimental-strip-types scripts/harness-playback-version.mjs '${{ matrix.harness }}')"
@@ -46,16 +58,19 @@ jobs:
           echo "version=$version" >> "$GITHUB_OUTPUT"
           npm install --global "$package@$version"
       - run: pnpm run bundle
+        if: ${{ matrix.kind == 'lane' }}
       - name: Set up the lane user (prototype)
         shell: bash
         run: sudo -n bash .capture/network-egress/linux/lane-setup.sh "$GITHUB_WORKSPACE" "$RUNNER_TEMP" "$HOME" "$PATH" --grant-traverse
       - name: Prepare offline prerequisites (runner, with network)
+        if: ${{ matrix.kind == 'lane' }}
         shell: bash
         run: node --experimental-strip-types scripts/prepare-offline-playback.mjs '${{ matrix.harness }}' --version '${{ steps.harness.outputs.version }}' --check-online
         env:
           HKN_RIPGREP_DIR: ${{ runner.temp }}/hooknostic-ripgrep
-          npm_config_cache: /var/tmp/hkn-lane/npm-cache
-      - name: Lane as hknlane, without network
+          npm_config_cache: /var/lib/hkn-lane/npm-cache
+      - name: Lane as hknlane, in its namespaces
+        if: ${{ matrix.kind == 'lane' }}
         shell: bash
         env:
           HOOKNOSTIC_PLAYBACK: ${{ matrix.harness }}
@@ -66,84 +81,20 @@ jobs:
           OPENAI_API_KEY: ""
           OPENROUTER_API_KEY: ""
         run: >-
-          bash .capture/network-egress/linux/lane-trial.sh --label '${{ matrix.harness }}'
+          bash .capture/network-egress/linux/lane-trial.sh --label '${{ matrix.label }}'
           --require HOOKNOSTIC_PLAYBACK,HKN_PLAYBACK_ARTIFACT_DIR,HKN_RIPGREP_DIR --node-modules-grant --
           node node_modules/vitest/vitest.mjs run packages/cli/test/harness-playback.test.ts packages/cli/test/opencode-v2-playback.test.ts scripts/pi-drift-driver.test.mjs
-          --configLoader runner --no-cache --fsModuleCachePath /var/tmp/hkn-lane/work/vitest-cache
+      - name: Plant a file beside node in the toolcache, as the lane
+        if: ${{ matrix.kind != 'lane' }}
+        continue-on-error: true
+        shell: bash
+        env:
+          HOOKNOSTIC_PLAYBACK: ${{ matrix.harness }}
+        run: >-
+          bash .capture/network-egress/linux/lane-trial.sh --label '${{ matrix.label }}' --require HOOKNOSTIC_PLAYBACK
+          ${{ matrix.kind == 'plant-mutant' && '--mutant-no-readonly' || '' }} --
+          bash -c 'p="$(dirname "$(command -v node)")/hkn-planted"; if touch "$p" 2>/tmp/err; then echo "plant: CREATED"; else echo "plant: refused: $(cat /tmp/err)"; fi'
       - name: After (always; staged root copy)
         if: always()
         shell: bash
-        run: sudo -n /bin/bash /var/lib/hkn-admin/lane-after.sh --label '${{ matrix.harness }}'
-
-  harness-playback:
-    name: windows ${{ matrix.label }}
-    runs-on: windows-latest
-    timeout-minutes: 30
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - { label: code-mode-codexhome, kind: code-mode, harness: codex }
-          - { label: opencode-v2-dest, kind: lane, harness: opencode-v2 }
-          - { label: pi-dest, kind: lane, harness: pi }
-    steps:
-      - uses: actions/checkout@v7
-      - uses: pnpm/action-setup@v6
-        with:
-          dest: ${{ runner.tool_cache }}/hkn-pnpm-setup
-      - uses: actions/setup-node@v7
-        with:
-          node-version-file: .github/node/playback/.node-version
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm run bundle
-      - name: Install the harness at the CI version
-        id: harness
-        shell: bash
-        run: |
-          if [ '${{ matrix.kind }}' = code-mode ]; then
-            pkg=@openai/codex; version="$(node scripts/verify-code-mode.mjs --print-version)"
-          else
-            pkg="$(node --input-type=module -e 'import { harnessLanes } from "./scripts/harness-lanes.mjs"; console.log(harnessLanes[process.argv[1]].pkg)' '${{ matrix.harness }}')"
-            version="$(node --experimental-strip-types scripts/harness-playback-version.mjs '${{ matrix.harness }}')"
-          fi
-          echo "pkg=$pkg version=$version"
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-          npm install --global "$pkg@$version"
-      - name: Prepare offline prerequisites (admin, with network)
-        shell: bash
-        run: node --experimental-strip-types scripts/prepare-offline-playback.mjs '${{ matrix.harness }}' --version '${{ steps.harness.outputs.version }}' --check-online
-        env:
-          HKN_RIPGREP_DIR: ${{ runner.temp }}/hooknostic-ripgrep
-      - name: Set up the lane user (prototype, Low integrity, no profile label)
-        shell: pwsh
-        run: "& .capture/network-egress/windows/lane-setup.ps1 -Integrity Low"
-      - name: Lane as the dedicated user
-        if: ${{ matrix.kind == 'lane' }}
-        shell: pwsh
-        env:
-          HOOKNOSTIC_PLAYBACK: ${{ matrix.harness }}
-          HKN_PLAYBACK_ARTIFACT_DIR: ${{ runner.temp }}/opencode-v2-playback
-          HKN_RIPGREP_DIR: ${{ runner.temp }}/hooknostic-ripgrep
-          ANTHROPIC_API_KEY: ""
-          ANTHROPIC_AUTH_TOKEN: ""
-          OPENAI_API_KEY: ""
-          OPENROUTER_API_KEY: ""
-        run: |
-          $files = 'packages/cli/test/harness-playback.test.ts packages/cli/test/opencode-v2-playback.test.ts scripts/pi-drift-driver.test.mjs'
-          & C:\hkn-admin\lane-run.ps1 -Label '${{ matrix.label }}' -DenyRead -NodeModulesCreate -RequireEnv 'HOOKNOSTIC_PLAYBACK,HKN_PLAYBACK_ARTIFACT_DIR,HKN_RIPGREP_DIR' -Command "node node_modules/vitest/vitest.mjs run $files --configLoader runner --no-cache --fsModuleCachePath D:\hkn-lane\work\vitest-cache"
-          "wrapper exit code: $LASTEXITCODE"
-          exit $LASTEXITCODE
-      - name: Code Mode as the dedicated user, CODEX_HOME instead of a Low profile
-        if: ${{ matrix.kind == 'code-mode' }}
-        shell: pwsh
-        run: |
-          & C:\hkn-admin\lane-run.ps1 -Label '${{ matrix.label }}' -DenyRead -WorkspaceCacheDirs -CodexHome -Command 'node scripts/verify-code-mode.mjs'
-          "wrapper exit code: $LASTEXITCODE"
-          exit $LASTEXITCODE
-      - name: After (always; staged admin copy)
-        if: always()
-        shell: pwsh
-        run: |
-          if (-not (Test-Path C:\hkn-admin\state.json)) { 'no setup state'; exit 1 }
-          & C:\hkn-admin\lane-after.ps1 -Label '${{ matrix.label }}'
+        run: sudo -n /bin/bash /var/lib/hkn-admin/lane-after.sh --label '${{ matrix.label }}'
