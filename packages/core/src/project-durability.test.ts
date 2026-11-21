@@ -3,7 +3,7 @@ import { fsync } from "node:fs";
 import type * as fsPromises from "node:fs/promises";
 import { mkdir, mkdtemp, readdir, readFile, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, relative, sep } from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -30,16 +30,24 @@ const io = vi.hoisted(() => ({
   failFlush: undefined as ((path: string, written: string) => boolean) | undefined,
   /** Fail the next directory flush chosen by its path with EIO, once. */
   failDirectoryFlush: undefined as ((path: string) => boolean) | undefined,
+  /** Fail every directory flush chosen by its path, with the error it returns. */
+  failEveryDirectoryFlush: undefined as ((path: string) => NodeJS.ErrnoException | undefined) | undefined,
+  /** Fail the next open chosen by its path, with the error it returns. */
+  failOpen: undefined as ((path: string) => NodeJS.ErrnoException | undefined) | undefined,
   /** Close the file chosen by its path, then fail that close once with EIO. */
   failClose: undefined as ((path: string) => boolean) | undefined,
   /** The path each open descriptor belongs to. */
   paths: new Map<number, string>(),
   /** What each handle wrote, by path. */
   written: new Map<string, string>(),
-  /** Each flush, in order: the file's path, its contents on disk at that moment, and whether it is a directory. */
+  /** Each completed flush, in order: the file's path, its contents on disk then, and whether it is a directory. */
   flushes: [] as Flush[],
-  /** Every open, flush, rename, removal and link, in completion order. */
+  /** Flushes that failed, so a test can prove the failure was reached without counting it as completed. */
+  failedFlushes: [] as Flush[],
+  /** Every completed open, flush, rename, removal and link, in order. */
   events: [] as IoEvent[],
+  /** Every attempt to open a directory, completed or not; Windows must make none. */
+  directoryOpenAttempts: [] as string[],
   /** Runs once, just before the file at the path it is given is opened. */
   beforeOpen: undefined as ((path: string) => Promise<void>) | undefined,
 }));
@@ -53,6 +61,16 @@ vi.mock("node:fs/promises", async (importOriginal) => {
       const beforeOpen = io.beforeOpen;
       io.beforeOpen = undefined;
       await beforeOpen?.(path);
+      const directory = await actual.stat(path).then(
+        (entry) => entry.isDirectory(),
+        () => false,
+      );
+      if (directory) io.directoryOpenAttempts.push(path);
+      const injected = io.failOpen?.(path);
+      if (injected) {
+        io.failOpen = undefined;
+        throw injected;
+      }
       const handle = await actual.open(...args);
       io.paths.set(handle.fd, path);
       io.written.set(path, "");
@@ -113,20 +131,38 @@ vi.mock("node:fs", async (importOriginal) => {
       } catch {
         directory = false;
       }
-      const contents = directory ? "" : actual.readFileSync(path, "utf8");
-      io.flushes.push({ path, contents, directory });
-      io.events.push({ type: "fsync", path, contents, directory });
+      const flush: Flush = {
+        path,
+        contents: directory ? "" : actual.readFileSync(path, "utf8"),
+        directory,
+      };
+      let failure: NodeJS.ErrnoException | undefined;
       if (directory) {
         if (io.failDirectoryFlush?.(path)) {
           io.failDirectoryFlush = undefined;
-          callback(Object.assign(new Error("EIO: i/o error, fsync"), { code: "EIO", syscall: "fsync" }));
-          return;
+          failure = Object.assign(new Error("EIO: i/o error, fsync"), { code: "EIO", syscall: "fsync" });
         }
+        failure ??= io.failEveryDirectoryFlush?.(path);
       } else if (io.failFlush?.(path, io.written.get(path) ?? "")) {
-        callback(Object.assign(new Error("EIO: i/o error, fsync"), { code: "EIO", syscall: "fsync" }));
+        failure = Object.assign(new Error("EIO: i/o error, fsync"), { code: "EIO", syscall: "fsync" });
+      }
+      if (failure) {
+        io.failedFlushes.push(flush);
+        callback(failure);
         return;
       }
-      actual.fsync(fd, callback);
+      actual.fsync(fd, (error) => {
+        if (error) {
+          io.failedFlushes.push(flush);
+          callback(error);
+          return;
+        }
+        // Completed, so the ordering assertions below describe flushes that
+        // really finished; a failed one must not appear among them.
+        io.flushes.push(flush);
+        io.events.push({ type: "fsync", ...flush });
+        callback(null);
+      });
     }),
   };
 });
@@ -142,6 +178,21 @@ const input = (value: string) => ({
   guidance: [],
 });
 const sync = async (value: string) => applyProject(root, owner, await reconcileProject(root, owner, input(value)));
+const nestedInput = (value: string) => ({
+  files: [{ path: "nested/deep/a.txt", contents: value }],
+  entries: [],
+  guidance: [],
+});
+const syncNested = async (value: string) =>
+  applyProject(root, owner, await reconcileProject(root, owner, nestedInput(value)));
+const journalEntry = (path: string, before: string | null, after: string | null) => ({
+  path,
+  before: before === null ? null : Buffer.from(before).toString("base64"),
+  afterHash: after === null ? null : fileHash(after),
+  mode: 0o644,
+});
+const journalText = (entries: ReturnType<typeof journalEntry>[]) =>
+  JSON.stringify({ schemaVersion: 1, config: owner, entries });
 const exists = (path: string) =>
   stat(join(root, path)).then(
     () => true,
@@ -160,11 +211,15 @@ afterEach(async () => {
   io.notImplemented = false;
   io.failFlush = undefined;
   io.failDirectoryFlush = undefined;
+  io.failEveryDirectoryFlush = undefined;
+  io.failOpen = undefined;
   io.failClose = undefined;
   io.paths.clear();
   io.written.clear();
   io.flushes.length = 0;
+  io.failedFlushes.length = 0;
   io.events.length = 0;
+  io.directoryOpenAttempts.length = 0;
   io.beforeOpen = undefined;
   vi.mocked(fsync).mockClear();
   await rm(root, { recursive: true, force: true });
@@ -175,34 +230,32 @@ function resetIo(): void {
   io.paths.clear();
   io.written.clear();
   io.flushes.length = 0;
+  io.failedFlushes.length = 0;
   io.events.length = 0;
+  io.directoryOpenAttempts.length = 0;
 }
 /** The native path of a root-relative project path, as `projectPath` spells it. */
 const at = (project: string, path: string) => join(project, ...path.split("/"));
 
 /**
- * The flush, rename, removal and link events of interest, in order and labelled
- * by the project path they concern. Opens and unrelated operations are dropped.
+ * The completed flush, rename and removal events of interest, in order and
+ * labelled by the project path they concern. Opens, failed flushes and
+ * unrelated operations are dropped.
  */
 function orderedEvents(project: string): string[] {
   const state = at(project, ".hooknostic");
   const journal = at(project, ".hooknostic/transaction.json");
-  const destinations: [string, string][] = [
-    ["a.txt", at(project, "a.txt")],
-    ["z.txt", at(project, "z.txt")],
-    [".hooknostic/integration.json", at(project, ".hooknostic/integration.json")],
-  ];
+  const name = (path: string) => relative(project, path).split(sep).join("/");
   return io.events.flatMap((event) => {
     if (event.type === "fsync") {
       if (!event.directory) return isJournal(event.contents) ? ["flush journal contents"] : [];
       if (event.path === state) return ["flush .hooknostic"];
       if (event.path === project) return ["flush root"];
-      return [`flush ${event.path}`];
+      return [`flush ${name(event.path)}`];
     }
     if (event.type === "rename") {
       if (event.to === journal) return ["rename journal"];
-      const destination = destinations.find(([, path]) => path === event.to);
-      return destination === undefined ? [] : [`rename ${destination[0]}`];
+      return event.to.startsWith(project + sep) ? [`rename ${name(event.to)}`] : [];
     }
     if (event.type === "rm" && event.path === journal) return ["remove journal"];
     return [];
@@ -222,11 +275,18 @@ async function expectFlushedAfterWriting(): Promise<void> {
   expect(
     io.flushes.filter((flush) => !flush.directory && isLock("sync.lock")(flush.path)).map((flush) => flush.contents),
   ).toEqual([String(process.pid)]);
-  const staged = io.flushes.filter((flush) => !flush.directory && isStaged(flush.path)).map((flush) => flush.contents);
-  for (const path of ["a.txt", "z.txt", ".hooknostic/integration.json"])
-    expect(staged).toContain(await readFile(join(root, path), "utf8"));
+  const project = await realpath(root);
+  for (const path of ["a.txt", "z.txt", ".hooknostic/integration.json"]) {
+    const rename = io.events.find((event) => event.type === "rename" && event.to === at(project, path));
+    if (rename?.type !== "rename") throw new Error(`no rename recorded for ${path}`);
+    const flush = io.flushes.find((entry) => !entry.directory && entry.path === rename.from);
+    expect(flush, `the staged ${path} was flushed`).toBeDefined();
+    expect(flush?.contents, path).toBe(await readFile(join(root, path), "utf8"));
+  }
   // The journal, staged and flushed before it was renamed into place.
-  expect(staged.filter(isJournal)).toHaveLength(1);
+  const journal = io.flushes.find((flush) => !flush.directory && isJournal(flush.contents));
+  expect(journal, "the journal content was flushed").toBeDefined();
+  expect(isStaged(journal!.path)).toBe(true);
 }
 
 it("flushes the lock and every staged file after writing it", async () => {
@@ -239,7 +299,7 @@ it("synchronizes and recovers when FileHandle.sync() is not implemented, as unde
 
   await sync("one");
   await expectFlushedAfterWriting();
-  io.flushes.length = 0;
+  resetIo();
   await sync("two");
   await expectFlushedAfterWriting();
   expect(await readFile(join(root, "a.txt"), "utf8")).toBe("two");
@@ -277,6 +337,7 @@ describe("directory flushes make each rename durable before the next step", () =
   it.runIf(win32)("skips directory flushes on Windows, where fsync cannot flush a directory", async () => {
     await sync("one");
 
+    expect(io.directoryOpenAttempts).toEqual([]);
     expect(io.flushes.filter((flush) => flush.directory)).toEqual([]);
     expect(await readFile(join(root, "a.txt"), "utf8")).toBe("one");
     expect(await exists(".hooknostic/transaction.json")).toBe(false);
@@ -322,6 +383,12 @@ describe("directory flushes make each rename durable before the next step", () =
     expect(await staging()).toEqual([]);
     expect(await readFile(join(root, "a.txt"), "utf8")).toBe("before");
     expect(await readFile(join(root, "z.txt"), "utf8")).toBe("before");
+    // Only completed flushes count: the failed post-rename flush is absent,
+    // while the journal's earlier root flush and rollback's completed one are.
+    expect(
+      io.events.filter((event) => event.type === "fsync" && event.directory && event.path === project),
+    ).toHaveLength(2);
+    expect(io.failedFlushes.filter((flush) => flush.directory && flush.path === project)).toHaveLength(1);
 
     await sync("after");
     expect(await readFile(join(root, "a.txt"), "utf8")).toBe("after");
@@ -355,6 +422,202 @@ describe("directory flushes make each rename durable before the next step", () =
     expect(await readFile(join(root, "a.txt"), "utf8")).toBe("before");
     expect(await exists(".hooknostic/transaction.json")).toBe(false);
   });
+
+  it.skipIf(win32)("flushes every newly created ancestor of a nested destination", async () => {
+    const project = await realpath(root);
+
+    await syncNested("one");
+
+    expect(orderedEvents(project)).toEqual([
+      "flush journal contents",
+      "rename journal",
+      "flush .hooknostic",
+      "flush root",
+      "rename nested/deep/a.txt",
+      "rename .hooknostic/integration.json",
+      "flush root",
+      "flush .hooknostic",
+      "flush nested",
+      "flush nested/deep",
+      "remove journal",
+      "flush .hooknostic",
+    ]);
+    expect(await readFile(join(root, "nested/deep/a.txt"), "utf8")).toBe("one");
+    expect(await exists(".hooknostic/transaction.json")).toBe(false);
+  });
+
+  it.skipIf(win32)("flushes directories created while restoring a missing nested path", async () => {
+    const project = await realpath(root);
+    await mkdir(join(root, ".hooknostic"), { recursive: true });
+    await writeFile(
+      join(root, ".hooknostic/transaction.json"),
+      journalText([journalEntry("nested/deep/a.txt", "before", null)]),
+    );
+    resetIo();
+
+    await recoverProject(root, owner);
+
+    expect(orderedEvents(project)).toEqual([
+      "rename nested/deep/a.txt",
+      "flush root",
+      "flush nested",
+      "flush nested/deep",
+      "remove journal",
+      "flush .hooknostic",
+    ]);
+    expect(await readFile(join(root, "nested/deep/a.txt"), "utf8")).toBe("before");
+    expect(await exists(".hooknostic/transaction.json")).toBe(false);
+  });
+
+  it.skipIf(win32)("repeats the parent flush on a retried recovery before removing the journal", async () => {
+    const project = await realpath(root);
+    await mkdir(join(root, ".hooknostic"), { recursive: true });
+    await writeFile(join(root, "a.txt"), "after");
+    await writeFile(
+      join(root, ".hooknostic/transaction.json"),
+      journalText([journalEntry("a.txt", "before", "after")]),
+    );
+    resetIo();
+    let rootFlushes = 0;
+    io.failEveryDirectoryFlush = (path) => {
+      if (path !== project) return undefined;
+      rootFlushes += 1;
+      return Object.assign(new Error("EIO: i/o error, fsync"), { code: "EIO", syscall: "fsync" });
+    };
+
+    await expect(recoverProject(root, owner)).rejects.toMatchObject({ code: "EIO" });
+    expect(rootFlushes).toBe(1);
+    expect(await readFile(join(root, "a.txt"), "utf8")).toBe("before");
+    expect(await exists(".hooknostic/transaction.json")).toBe(true);
+
+    // The file is already at its preimage, so nothing is replaced this time;
+    // the parent must still be flushed before the journal can be removed.
+    await expect(recoverProject(root, owner)).rejects.toMatchObject({ code: "EIO" });
+    expect(rootFlushes).toBe(2);
+    expect(await exists(".hooknostic/transaction.json")).toBe(true);
+
+    io.failEveryDirectoryFlush = undefined;
+    await recoverProject(root, owner);
+    expect(await readFile(join(root, "a.txt"), "utf8")).toBe("before");
+    expect(await exists(".hooknostic/transaction.json")).toBe(false);
+  });
+
+  it.skipIf(win32)("skips a directory open the filesystem does not support", async () => {
+    const project = await realpath(root);
+    io.failOpen = (path) =>
+      path === at(project, ".hooknostic")
+        ? Object.assign(new Error("EOPNOTSUPP: operation not supported, open"), {
+            code: "EOPNOTSUPP",
+            syscall: "open",
+          })
+        : undefined;
+
+    await sync("one");
+
+    expect(io.failOpen).toBeUndefined();
+    expect(await readFile(join(root, "a.txt"), "utf8")).toBe("one");
+    expect(await exists(".hooknostic/transaction.json")).toBe(false);
+  });
+
+  it.skipIf(win32)("rejects a real directory open failure and rolls back", async () => {
+    const project = await realpath(root);
+    await sync("before");
+    resetIo();
+    io.failOpen = (path) =>
+      path === at(project, ".hooknostic")
+        ? Object.assign(new Error("EIO: i/o error, open"), { code: "EIO", syscall: "open" })
+        : undefined;
+
+    await expect(sync("after")).rejects.toMatchObject({ code: "EIO", syscall: "open" });
+    expect(io.failOpen).toBeUndefined();
+    expect(await readFile(join(root, "a.txt"), "utf8")).toBe("before");
+    expect(await readFile(join(root, "z.txt"), "utf8")).toBe("before");
+    expect(await exists(".hooknostic/transaction.json")).toBe(false);
+    expect(await exists(".hooknostic/sync.lock")).toBe(false);
+    expect(await staging()).toEqual([]);
+  });
+
+  it.skipIf(win32)("names both failures and keeps the journal when rollback fails", async () => {
+    const project = await realpath(root);
+    await sync("before");
+    resetIo();
+    let rootFlushes = 0;
+    io.failEveryDirectoryFlush = (path) => {
+      if (path !== project) return undefined;
+      rootFlushes += 1;
+      if (rootFlushes === 1)
+        return Object.assign(new Error("injected journal-directory flush failure"), {
+          code: "EIO",
+          syscall: "fsync",
+        });
+      if (rootFlushes === 2)
+        return Object.assign(new Error("injected rollback-directory flush failure"), {
+          code: "EIO",
+          syscall: "fsync",
+        });
+      return undefined;
+    };
+
+    const failure = await sync("after").then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+    expect(failure).toBeInstanceOf(Error);
+    const error = failure as Error;
+    expect(error.message).toContain("injected journal-directory flush failure");
+    expect(error.message).toContain("injected rollback-directory flush failure");
+    expect(error.message).toContain("transaction journal remains");
+    expect(error.message).toContain("hooknostic recover with the same configuration");
+    expect(error.cause).toBeInstanceOf(AggregateError);
+    expect((error.cause as AggregateError).errors).toHaveLength(2);
+    expect(await exists(".hooknostic/transaction.json")).toBe(true);
+    expect(await exists(".hooknostic/sync.lock")).toBe(false);
+    expect(await staging()).toEqual([]);
+
+    io.failEveryDirectoryFlush = undefined;
+    await recoverProject(root, owner);
+    expect(await readFile(join(root, "a.txt"), "utf8")).toBe("before");
+    expect(await exists(".hooknostic/transaction.json")).toBe(false);
+  });
+
+  it.skipIf(win32)("ignores a failed commit flush after the journal is removed", async () => {
+    const project = await realpath(root);
+    await sync("before");
+    resetIo();
+    const state = at(project, ".hooknostic");
+    const journal = at(project, ".hooknostic/transaction.json");
+    io.failDirectoryFlush = (path) =>
+      path === state && io.events.some((event) => event.type === "rm" && event.path === journal);
+
+    await sync("after");
+
+    expect(io.failDirectoryFlush).toBeUndefined();
+    expect(io.failedFlushes.filter((flush) => flush.directory && flush.path === state)).toHaveLength(1);
+    expect(await readFile(join(root, "a.txt"), "utf8")).toBe("after");
+    expect(await exists(".hooknostic/transaction.json")).toBe(false);
+  });
+
+  it.skipIf(win32)("ignores a failed commit flush after recovery removes the journal", async () => {
+    const project = await realpath(root);
+    await mkdir(join(root, ".hooknostic"), { recursive: true });
+    await writeFile(join(root, "a.txt"), "after");
+    await writeFile(
+      join(root, ".hooknostic/transaction.json"),
+      journalText([journalEntry("a.txt", "before", "after")]),
+    );
+    resetIo();
+    const state = at(project, ".hooknostic");
+    const journal = at(project, ".hooknostic/transaction.json");
+    io.failDirectoryFlush = (path) =>
+      path === state && io.events.some((event) => event.type === "rm" && event.path === journal);
+
+    await recoverProject(root, owner);
+
+    expect(io.failDirectoryFlush).toBeUndefined();
+    expect(io.failedFlushes.filter((flush) => flush.directory && flush.path === state)).toHaveLength(1);
+    expect(await readFile(join(root, "a.txt"), "utf8")).toBe("before");
+    expect(await exists(".hooknostic/transaction.json")).toBe(false);
+  });
 });
 
 describe("a failed flush aborts and leaves nothing behind", () => {
@@ -367,7 +630,7 @@ describe("a failed flush aborts and leaves nothing behind", () => {
     io.failFlush = fail;
 
     await expect(sync("after")).rejects.toMatchObject({ code: "EIO" });
-    expect(io.flushes.some((flush) => fail(flush.path, io.written.get(flush.path) ?? ""))).toBe(true);
+    expect(io.failedFlushes.some((flush) => fail(flush.path, io.written.get(flush.path) ?? ""))).toBe(true);
     expect(await exists(".hooknostic/sync.lock")).toBe(false);
     expect(await staging()).toEqual([]);
     expect(await exists(".hooknostic/transaction.json")).toBe(false);

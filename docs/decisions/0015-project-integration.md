@@ -192,30 +192,36 @@ because Codex has no equivalent native field.
   directory (`.hooknostic`) is flushed, then the project root: a first sync may
   have just created `.hooknostic`, and flushing it alone does not persist its
   entry in the root. Only then are destinations renamed. After all of them,
-  each touched destination directory is flushed once, sorted for determinism.
-  The journal is removed, and `.hooknostic` is flushed once more as the commit
-  point.
-- **Failures before the commit point are fatal.** A failed journal-directory,
-  root or destination-directory flush fails the sync and rolls back: the
-  journal is durable, so rollback can restore every changed destination. The
-  final flush after the journal's removal is best effort and swallowed: only a
-  crash can bring the journal back, and recovery rolls it back, so it must not
-  turn an applied sync into a reported failure.
-- **Recovery mirrors the rule.** It flushes the directory of every path it
-  actually replaced, once each and sorted, before removing the journal, then
-  flushes `.hooknostic` best effort after the unlink. Without this, a crash
-  during recovery could persist the journal's removal while losing a restore
-  rename.
+  each touched destination directory — including every newly created ancestor
+  — is flushed once, sorted for determinism. The journal is removed, and
+  `.hooknostic` is flushed once more as the commit point.
+- **A failure before the commit point aborts and attempts rollback.** A failed
+  journal-directory, root or destination-directory flush fails the sync before
+  it removes the journal. If the journal's own directory flush failed, its
+  durability is not established; rollback reads the in-process journal and
+  restores what changed. Rollback is attempted, not guaranteed: if it cannot
+  complete, the journal remains and `hooknostic recover` must be run with the
+  same configuration. The final flush after the journal's removal is best
+  effort and swallowed: only a crash can bring the journal back, and recovery
+  rolls it back, so it must not turn an applied sync into a reported failure.
+- **Recovery flushes before it forgets.** It flushes the existing parent
+  directory of every validated journal entry — including entries already at
+  their preimage, which a retried recovery skips replacing — plus every
+  directory created while restoring, once each and sorted, before removing the
+  journal. It then flushes `.hooknostic` best effort after the unlink. Without
+  this, a crash during recovery, or a retry after a failed flush, could persist
+  the journal's removal while losing a restore rename.
 - **Windows has a weaker boundary, and says so.** There `fs.open` can open a
-  directory but `fs.fsync` on it fails with EPERM, because Windows refuses
-  `FlushFileBuffers` on a directory and exposes no `MOVEFILE_WRITE_THROUGH`.
-  Directory flushes are therefore skipped on Windows. Filesystems that cannot
-  flush a directory at all (`EINVAL`, `EISDIR`, `ENOTSUP`, `EOPNOTSUPP`,
-  `ENOSYS`) are skipped the same way; every other error remains fatal. Network
-  and FUSE filesystems may honour these calls differently or not at all, so
-  power-loss durability there is the filesystem's guarantee, not Hooknostic's.
-  Recovery still checks every file against the journal before restoring
-  anything; directory flushing never weakens that check.
+  directory but `fs.fsync` on it fails with EPERM, because `FlushFileBuffers`
+  refuses a directory handle. Win32 has `MOVEFILE_WRITE_THROUGH`, but Node does
+  not expose it through `fs.rename`. Directory flushes are therefore skipped on
+  Windows. Filesystems that cannot flush a directory at all (`EINVAL`,
+  `EISDIR`, `ENOTSUP`, `EOPNOTSUPP`, `ENOSYS`) are skipped the same way, whether
+  the open or the flush answers with one; every other error remains fatal.
+  Network and FUSE filesystems may honour these calls differently or not at
+  all, so power-loss durability there is the filesystem's guarantee, not
+  Hooknostic's. Recovery still checks every file against the journal before
+  restoring anything; directory flushing never weakens that check.
 
 ## Boundaries
 
