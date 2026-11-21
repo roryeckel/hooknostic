@@ -271,7 +271,10 @@ job's steps:
        `prepare-offline-playback.mjs <harness> --version <latest>
        --check-online`, which fetches the pinned ripgrep into
        `/drift/ripgrep` and warms OpenCode v1's npm cache. If it fails, no
-       drive runs, and the verdict is `install-failure`, whatever its code.
+       drive runs. The verdict uses verify's labels, whatever the code:
+       `install-failure` if the install or bootstrap failed,
+       `prepare-failure` if the prepare did (phase 1 marks
+       `/drift/installed` between the two).
      - Phase 2 runs with `--network none`, so only loopback, where the
        driver's model server is. It gets the same prefix (on `PATH`), cache
        and `HKN_RIPGREP_DIR`, and `HOOKNOSTIC_PLAYBACK_NETWORK=none`, so the
@@ -291,7 +294,8 @@ job's steps:
    scripts/drive-capture-session.mjs <harness> --transport playback|llm
    --scratch ...`; its exit code is captured, never propagated: 0 clean,
    **4 drift**, **5 inconclusive**, and 6 (drive failure) are all reportable
-   outcomes, and so is phase 1's `install-failure`. Every consumer compares
+   outcomes, and so are phase 1's `install-failure` and `prepare-failure`.
+   Every consumer compares
    the verdict only with `clean`. Under `always()` the job uploads `drift-verdict-<harness>.json`,
    the complete driver report, and the raw captures.
 4. The driver reuses `startModelPlayback` from
