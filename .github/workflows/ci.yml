@@ -313,6 +313,7 @@ jobs:
       - name: Run model-free playback without network (Linux)
         id: playback_offline
         if: runner.os == 'Linux'
+        timeout-minutes: 8
         shell: bash
         run: scripts/without-network.sh pnpm exec vitest run packages/cli/test/harness-playback.test.ts packages/cli/test/opencode-v2-playback.test.ts scripts/pi-drift-driver.test.mjs
         env:

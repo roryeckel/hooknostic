@@ -170,6 +170,17 @@ function expectWindowsLaneBudget(job, body) {
   expect(jobTimeout - stepTimeout).toBeGreaterThanOrEqual(3);
 }
 
+// The Linux wrapper has no lane-side stop, so the step's own timeout bounds
+// it. The slowest observed lane took 214 s (opencode-v1, run 44932275086):
+// 8 minutes is 2.24x, and leaves 7 of the 15-minute job for setup and
+// diagnostics.
+function expectLinuxLaneBudget(job, body) {
+  const stepTimeout = Number(body?.match(/^ {8}timeout-minutes: (\d+)\r?$/m)?.[1]);
+  const jobTimeout = Number(job.match(/^ {4}timeout-minutes: (\d+)\r?$/m)?.[1]);
+  expect(stepTimeout).toBeGreaterThanOrEqual(7);
+  expect(jobTimeout - stepTimeout).toBeGreaterThanOrEqual(5);
+}
+
 it("runs the Linux and Windows playback lanes without network, after every step that needs it", () => {
   const ci = readFileSync(new URL("../.github/workflows/ci.yml", import.meta.url), "utf8");
   const job = ci.split("  harness-playback:")[1].split(/\r?\n {2}\S/)[0];
@@ -184,6 +195,8 @@ it("runs the Linux and Windows playback lanes without network, after every step 
   const cleanup = step("Remove the Windows network block");
   // Matching the executable field, so a commented-out or prefixed form fails.
   expect(field(offline, "if")).toBe("runner.os == 'Linux'");
+  expect(field(offline, "timeout-minutes")).toBe("8");
+  expectLinuxLaneBudget(job, offline);
   expect(field(offline, "run")).toBe(`scripts/without-network.sh ${vitest}`);
   expect(field(windows, "if")).toBe("runner.os != 'Linux'");
   expect(field(windows, "shell")).toBe("pwsh");
