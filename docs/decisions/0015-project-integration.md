@@ -219,17 +219,21 @@ because Codex has no equivalent native field.
   unlink. Without this, a crash during recovery, or a retry after a failed
   flush, could persist the journal's removal while losing a restored
   replacement.
-- **Directory flushes are descriptor-relative where available, and skipped
-  elsewhere.** On Linux the walk goes through `/proc/self/fd`; on macOS and
-  FreeBSD through `/dev/fd` where that traversal works. The root and each
-  component are opened relative to the pinned parent descriptor with
-  `O_NOFOLLOW | O_DIRECTORY`, so a component swapped for a symlink fails closed
-  instead of being followed. Where descriptor traversal is unavailable, or the
-  filesystem cannot flush a directory at all (`EINVAL`, `EISDIR`, `ENOTSUP`,
-  `EOPNOTSUPP`, `ENOSYS`), flushing is skipped and durability is weaker; there
-  is no absolute-path fallback and no universal POSIX guarantee. Every other
-  error remains fatal before the journal is removed, while the post-unlink
-  commit flush is best effort.
+- **Directory flushes are Linux descriptor-relative, or skipped.** Linux's
+  `/proc/self/fd` is used only when a cached traversal probe succeeds. Windows,
+  macOS, FreeBSD and Linux hosts without working `/proc/self/fd` traversal skip
+  directory flushing and take the weaker boundary; fdescfs `/dev/fd` is not used
+  because it resolves the descriptor to a pathname. The root is opened by
+  absolute path, then each component below it is opened relative to the pinned
+  parent descriptor with `O_NOFOLLOW | O_DIRECTORY`. The guarantee starts below
+  the opened root, assumes its ancestors stay stable, and does not extend to
+  path-based recovery metadata checks, renames or removals. A component swapped
+  for a symlink below the root fails with `ELOOP`/`ENOTDIR` and the journal
+  stays. Filesystems that cannot flush a directory at all (`EINVAL`, `EISDIR`,
+  `ENOTSUP`, `EOPNOTSUPP`, `ENOSYS`) are skipped too; there is no absolute-path
+  fallback and no universal POSIX guarantee. Every other error remains fatal
+  before the journal is removed, while the post-unlink commit flush is best
+  effort.
 - **Windows has no directory flush.** `fs.open` can open a directory there, but
   `fs.fsync` on it fails with EPERM because `FlushFileBuffers` refuses a
   directory handle. Win32 has `MOVEFILE_WRITE_THROUGH`, but Node does not expose

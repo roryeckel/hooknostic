@@ -320,17 +320,22 @@ configuration. The final flush is best effort, because only a crash can bring
 the journal back, and recovery rolls that back. Windows has no directory
 flush: Node can open a directory there but cannot fsync it, and although Win32
 has `MOVEFILE_WRITE_THROUGH`, Node does not expose it through `fs.rename`.
-Directory flushes elsewhere use a descriptor-relative no-symlink walk through
-`/proc/self/fd` on Linux, or `/dev/fd` on macOS and FreeBSD where that traversal
-works. Where descriptor traversal is unavailable, or the filesystem cannot
-flush a directory (`EINVAL`, `EISDIR`, `ENOTSUP`, `EOPNOTSUPP`, `ENOSYS`),
-flushing is skipped and durability is weaker; there is no absolute-path
-fallback and no universal POSIX guarantee. Every other error before the journal
-is removed is fatal, while the post-unlink commit flush is best effort. Before
-removing the journal, recovery flushes every existing ancestor, through the
-project root, of every validated entry — including entries already at their
-preimage — plus every directory it created while restoring. It still checks
-every file against the journal before restoring anything.
+Directory flushing is Linux-only and descriptor-relative: `/proc/self/fd` is
+used only when a cached traversal probe succeeds. Windows, macOS, FreeBSD and
+Linux hosts without working `/proc/self/fd` traversal, plus filesystems that
+cannot flush a directory (`EINVAL`, `EISDIR`, `ENOTSUP`, `EOPNOTSUPP`,
+`ENOSYS`), skip flushing and take the weaker boundary; fdescfs `/dev/fd` is not
+used because it resolves the descriptor to a pathname. The root is opened by
+absolute path and each component below it through the pinned parent descriptor;
+the guarantee starts below the opened root, assumes its ancestors stay stable,
+and does not extend to path-based recovery metadata checks, renames or
+removals. There is no absolute-path fallback and no universal POSIX guarantee.
+Every other error before the journal is removed is fatal, while the post-unlink
+commit flush is best effort. Before removing the journal, recovery flushes
+every existing ancestor, through the project root, of every validated entry —
+including entries already at their preimage — plus every directory it created
+while restoring. It still checks every file against the journal before
+restoring anything.
 
 `doctor` never executes hooks or connects to MCP servers. A clean result means
 configuration and wiring checks passed; execution remains unobserved, and restart

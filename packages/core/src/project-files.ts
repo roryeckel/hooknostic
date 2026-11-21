@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { type BigIntStats, constants, existsSync, fsync } from "node:fs";
+import { type BigIntStats, constants, fsync } from "node:fs";
 import { type FileHandle, lstat, mkdir, open, readFile, realpath, rename, rm } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, sep } from "node:path";
 
@@ -700,43 +700,40 @@ function changedDirectory(path: string): Error {
   return new Error(`directory changed while flushing: ${path}`);
 }
 const DIRECTORY_OPEN_FLAGS = constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW;
+const LINUX_DESCRIPTOR_ROOT = "/proc/self/fd";
+let descriptorTraversal: Promise<boolean> | undefined;
 /**
- * The descriptor-relative path prefix this host offers, checked once. Without
- * one, directory flushing is skipped rather than falling back to an absolute
- * path whose parents can be swapped after validation.
+ * Whether directory flushing has a real descriptor-relative primitive. Linux's
+ * `/proc/self/fd` is the only one used; fdescfs `/dev/fd` resolves the
+ * descriptor to a pathname, so macOS and FreeBSD take the weaker boundary.
+ * The Linux traversal probe is cached. Its open failures mean "unavailable";
+ * close failures are best effort and do not make an otherwise usable probe
+ * fail.
  */
-const DESCRIPTOR_WALK_PREFIX =
-  process.platform === "linux"
-    ? existsSync("/proc/self/fd")
-      ? "/proc/self/fd"
-      : undefined
-    : process.platform === "darwin" || process.platform === "freebsd"
-      ? existsSync("/dev/fd")
-        ? "/dev/fd"
-        : undefined
-      : undefined;
-/** Whether `/dev/fd/<fd>/<child>` traversal works; probed once and cached. */
-let devFdTraversal: boolean | undefined;
-/**
- * The prefix to walk through, or `undefined` when this host cannot. Linux's
- * `/proc/self/fd` is known to traverse; `/dev/fd` is probed because a
- * descriptor-only `fdescfs` entry may not.
- */
-async function descriptorWalkPrefix(handle: FileHandle): Promise<string | undefined> {
-  if (DESCRIPTOR_WALK_PREFIX === undefined) return undefined;
-  if (DESCRIPTOR_WALK_PREFIX === "/proc/self/fd") return DESCRIPTOR_WALK_PREFIX;
-  if (devFdTraversal === undefined) {
-    try {
-      const probe = await open(`${DESCRIPTOR_WALK_PREFIX}/${handle.fd}/.`, DIRECTORY_OPEN_FLAGS);
-      await probe.close();
-      devFdTraversal = true;
-    } catch (error) {
-      const code = (error as NodeJS.ErrnoException).code;
-      if (code === "ENOTDIR" || code === "EINVAL" || code === "ENOENT") devFdTraversal = false;
-      else throw error;
-    }
+export async function supportsDirectoryFlush(): Promise<boolean> {
+  if (process.platform !== "linux") return false;
+  descriptorTraversal ??= probeLinuxDescriptorTraversal();
+  return await descriptorTraversal;
+}
+async function probeLinuxDescriptorTraversal(): Promise<boolean> {
+  let root: FileHandle | undefined;
+  try {
+    root = await open(LINUX_DESCRIPTOR_ROOT, DIRECTORY_OPEN_FLAGS);
+  } catch {
+    return false;
   }
-  return devFdTraversal ? DESCRIPTOR_WALK_PREFIX : undefined;
+  let child: FileHandle | undefined;
+  try {
+    try {
+      child = await open(`${LINUX_DESCRIPTOR_ROOT}/${root.fd}/.`, DIRECTORY_OPEN_FLAGS);
+      return true;
+    } catch {
+      return false;
+    }
+  } finally {
+    if (child !== undefined) await child.close().catch(() => undefined);
+    await root.close().catch(() => undefined);
+  }
 }
 /**
  * Opens one directory of the walk. `ELOOP`/`ENOTDIR` mean a component was
@@ -757,20 +754,23 @@ async function openWalkedDirectory(path: string, displayPath: string): Promise<F
  * Flushes a directory's own entries, making a completed rename into it durable
  * across a power loss or kernel crash.
  *
- * `root` is the canonical project root. On a host with descriptor-relative
- * traversal (`/proc/self/fd` on Linux, `/dev/fd` on macOS and FreeBSD) the walk
- * opens the root and then each component through the pinned parent descriptor
- * with `O_NOFOLLOW | O_DIRECTORY`; no absolute-path `lstat` walk or identity
- * check is involved. A component swapped for a symlink therefore fails with
- * `ELOOP`/`ENOTDIR` instead of being followed, and the journal stays. Hosts
- * without descriptor traversal skip directory flushing entirely rather than
- * fall back to absolute paths, so their durability is weaker.
+ * `root` is the canonical project root. On Linux, where `/proc/self/fd` gives a
+ * real descriptor-relative primitive, the walk opens the root and then each
+ * component through the pinned parent descriptor with
+ * `O_NOFOLLOW | O_DIRECTORY`; no absolute-path `lstat` walk or identity check
+ * is involved. A component swapped for a symlink therefore fails with
+ * `ELOOP`/`ENOTDIR` instead of being followed, and the journal stays. The root
+ * itself is opened by absolute path: the guarantee starts below it and assumes
+ * its ancestors stay stable. Path-based recovery metadata checks, renames and
+ * removals are outside this guarantee.
  *
- * A filesystem that cannot flush a directory answers with one of
- * `UNSUPPORTED_DIRECTORY_FLUSH`, which is skipped; every other failure is real
- * and propagated. The flush is `fs.fsync` on the descriptor, not
- * `FileHandle.sync()`, for the Yarn Plug'n'Play reason `createFlushed` records
- * (#229).
+ * Windows, macOS, FreeBSD and any Linux host where `/proc/self/fd` traversal
+ * does not work skip directory flushing entirely rather than fall back to
+ * absolute paths, so their durability is weaker. A filesystem that cannot
+ * flush a directory answers with one of `UNSUPPORTED_DIRECTORY_FLUSH`, which
+ * is skipped; every other failure is real and propagated. The flush is
+ * `fs.fsync` on the descriptor, not `FileHandle.sync()`, for the Yarn
+ * Plug'n'Play reason `createFlushed` records (#229).
  *
  * Windows returns immediately: `fs.open` can open a directory there, but
  * `fs.fsync` on that descriptor fails with EPERM, because `FlushFileBuffers`
@@ -779,7 +779,7 @@ async function openWalkedDirectory(path: string, displayPath: string): Promise<F
  * filesystem.
  */
 async function flushDirectory(root: string, path: string): Promise<void> {
-  if (process.platform === "win32" || DESCRIPTOR_WALK_PREFIX === undefined || devFdTraversal === false) return;
+  if (!(await supportsDirectoryFlush())) return;
   const relation = relative(root, path);
   if (isAbsolute(relation) || relation === ".." || relation.startsWith(`..${sep}`))
     throw new Error(`refusing to flush a directory outside the project root: ${path}`);
@@ -787,11 +787,6 @@ async function flushDirectory(root: string, path: string): Promise<void> {
   if (openedRoot === null) return;
   let current: FileHandle | undefined = openedRoot;
   try {
-    const prefix = await descriptorWalkPrefix(current);
-    if (prefix === undefined) {
-      await current.close().catch(() => undefined);
-      return;
-    }
     if (relation !== "")
       for (const part of relation.split(sep)) {
         const parent = current;
@@ -799,9 +794,18 @@ async function flushDirectory(root: string, path: string): Promise<void> {
         current = undefined;
         let child: FileHandle | null;
         try {
-          child = await openWalkedDirectory(`${prefix}/${parent.fd}/${part}`, path);
-        } finally {
+          child = await openWalkedDirectory(`${LINUX_DESCRIPTOR_ROOT}/${parent.fd}/${part}`, path);
+        } catch (error) {
+          // The child failed first; its error is the one to report.
           await parent.close().catch(() => undefined);
+          throw error;
+        }
+        try {
+          await parent.close();
+        } catch (error) {
+          // A standalone close failure must surface; clean up the child first.
+          if (child !== null) await child.close().catch(() => undefined);
+          throw error;
         }
         if (child === null) return;
         current = child;

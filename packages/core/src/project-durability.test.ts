@@ -1,14 +1,5 @@
 import type * as fs from "node:fs";
-import {
-  closeSync,
-  constants as fsConstants,
-  existsSync,
-  fsync,
-  mkdirSync,
-  mkdtempSync,
-  openSync,
-  rmSync,
-} from "node:fs";
+import { type BigIntStats, fsync } from "node:fs";
 import type * as fsPromises from "node:fs/promises";
 import { mkdir, mkdtemp, readdir, readFile, realpath, rename, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -16,40 +7,15 @@ import { join, relative, sep } from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { applyProject, fileHash, reconcileProject, recoverProject } from "./project-files.js";
+import { applyProject, fileHash, reconcileProject, recoverProject, supportsDirectoryFlush } from "./project-files.js";
 
 const win32 = process.platform === "win32";
-/** The platform and runtime really support a descriptor-relative directory walk, not just `/dev/fd` existing. */
-const descriptorWalk = (() => {
-  const prefix =
-    process.platform === "linux"
-      ? "/proc/self/fd"
-      : process.platform === "darwin" || process.platform === "freebsd"
-        ? "/dev/fd"
-        : undefined;
-  if (prefix === undefined || !existsSync(prefix)) return false;
-  if (process.platform === "linux") return true;
-  const probe = mkdtempSync(join(tmpdir(), "hooknostic-fd-probe-"));
-  try {
-    mkdirSync(join(probe, "child"));
-    const parent = openSync(probe, fsConstants.O_RDONLY | fsConstants.O_DIRECTORY);
-    try {
-      const child = openSync(`${prefix}/${parent}/child`, fsConstants.O_RDONLY | fsConstants.O_DIRECTORY);
-      closeSync(child);
-      return true;
-    } finally {
-      closeSync(parent);
-    }
-  } catch {
-    return false;
-  } finally {
-    rmSync(probe, { recursive: true, force: true });
-  }
-})();
 interface Flush {
   path: string;
   contents: string;
   directory: boolean;
+  dev: bigint;
+  ino: bigint;
 }
 /** One io operation, in the order it completed, for the ordering assertions below. */
 type IoEvent =
@@ -94,8 +60,8 @@ const io = vi.hoisted(() => ({
   events: [] as IoEvent[],
   /** Every attempt to open a directory, completed or not; Windows must make none. */
   directoryOpenAttempts: [] as string[],
-  /** The actual resolved target of every completed directory open, for symlink assertions. */
-  directoryOpenTargets: [] as string[],
+  /** Every completed directory open, with the descriptor's resolved identity. */
+  directoryOpenIdentities: [] as { path: string; dev: bigint; ino: bigint }[],
   /** Runs once, just before the file at the path it is given is opened. */
   beforeOpen: undefined as ((path: string) => Promise<void>) | undefined,
 }));
@@ -107,7 +73,7 @@ vi.mock("node:fs/promises", async (importOriginal) => {
     async open(...args: Parameters<typeof actual.open>) {
       const requested = String(args[0]);
       let path = requested;
-      const descriptor = /^(?:\/proc\/self\/fd|\/dev\/fd)\/(\d+)(?:\/(.*))?$/.exec(requested);
+      const descriptor = /^\/proc\/self\/fd\/(\d+)(?:\/(.*))?$/.exec(requested);
       if (descriptor !== null) {
         const parent = io.paths.get(Number(descriptor[1]));
         if (parent !== undefined)
@@ -121,20 +87,17 @@ vi.mock("node:fs/promises", async (importOriginal) => {
         io.swapBeforeOpen = undefined;
         await swap.run();
       }
-      const directory = await actual.stat(path).then(
-        (entry) => entry.isDirectory(),
-        () => false,
-      );
-      if (directory) io.directoryOpenAttempts.push(path);
       const injected = io.failOpen?.(path);
       if (injected) {
         io.failOpen = undefined;
         throw injected;
       }
       const handle = await actual.open(...args);
+      const opened = await handle.stat({ bigint: true });
+      const directory = opened.isDirectory();
       if (directory) {
-        const target = await actual.realpath(requested).catch(() => requested);
-        io.directoryOpenTargets.push(target);
+        io.directoryOpenAttempts.push(path);
+        io.directoryOpenIdentities.push({ path, dev: opened.dev, ino: opened.ino });
       }
       io.paths.set(handle.fd, path);
       io.written.set(path, "");
@@ -208,18 +171,21 @@ vi.mock("node:fs", async (importOriginal) => {
     ...actual,
     fsync: vi.fn((fd: number, callback: (error: NodeJS.ErrnoException | null) => void) => {
       const path = io.paths.get(fd) ?? `<fd ${fd}>`;
-      // A directory is never read as a file; its contents are the entries a
-      // filesystem flush persists, not bytes to compare.
-      let directory = false;
+      // A directory is never read as a file; its identity and directory-ness
+      // come from the descriptor, not a pathname that a swap can change.
+      let stats: BigIntStats | undefined;
       try {
-        directory = actual.statSync(path).isDirectory();
+        stats = actual.fstatSync(fd, { bigint: true });
       } catch {
-        directory = false;
+        stats = undefined;
       }
+      const directory = stats?.isDirectory() ?? false;
       const flush: Flush = {
         path,
         contents: directory ? "" : actual.readFileSync(path, "utf8"),
         directory,
+        dev: stats?.dev ?? 0n,
+        ino: stats?.ino ?? 0n,
       };
       let failure: NodeJS.ErrnoException | undefined;
       if (directory) {
@@ -251,6 +217,9 @@ vi.mock("node:fs", async (importOriginal) => {
     }),
   };
 });
+
+const descriptorWalk = await supportsDirectoryFlush();
+resetIo();
 
 let root: string;
 const owner = "config.ts";
@@ -309,7 +278,7 @@ afterEach(async () => {
   io.failedFlushes.length = 0;
   io.events.length = 0;
   io.directoryOpenAttempts.length = 0;
-  io.directoryOpenTargets.length = 0;
+  io.directoryOpenIdentities.length = 0;
   io.rmAttempts.length = 0;
   io.beforeOpen = undefined;
   vi.mocked(fsync).mockClear();
@@ -324,7 +293,7 @@ function resetIo(): void {
   io.failedFlushes.length = 0;
   io.events.length = 0;
   io.directoryOpenAttempts.length = 0;
-  io.directoryOpenTargets.length = 0;
+  io.directoryOpenIdentities.length = 0;
   io.rmAttempts.length = 0;
 }
 /** The native path of a root-relative project path, as `projectPath` spells it. */
@@ -428,6 +397,23 @@ it("resolves the canonical root before taking the sync lock", async () => {
   await expect(applyProject(root, owner, plan)).rejects.toThrow("injected realpath failure");
   expect(io.failRealpath).toBeUndefined();
   expect(await exists(".hooknostic/sync.lock")).toBe(false);
+});
+
+it.skipIf(!descriptorWalk)("skips directory flushing when Linux descriptor traversal is masked", async () => {
+  vi.resetModules();
+  const fresh = await import("./project-files.js");
+  const plan = await fresh.reconcileProject(root, owner, input("one"));
+  io.failOpen = (path) =>
+    path === "/proc/self/fd" || path.startsWith("/proc/self/fd/")
+      ? Object.assign(new Error("ENOENT: no such file or directory, open"), { code: "ENOENT", syscall: "open" })
+      : undefined;
+
+  expect(await fresh.supportsDirectoryFlush()).toBe(false);
+  await fresh.applyProject(root, owner, plan);
+
+  expect(io.failOpen).toBeUndefined();
+  expect(io.flushes.filter((flush) => flush.directory)).toEqual([]);
+  expect(await readFile(join(root, "a.txt"), "utf8")).toBe("one");
 });
 
 describe("directory flushes make each rename durable before the next step", () => {
@@ -687,9 +673,21 @@ describe("directory flushes make each rename durable before the next step", () =
         // The parent descriptor is already pinned, so the child resolves through
         // it and the pinned directory is flushed rather than the symlink target.
         await recoverProject(root, owner);
-        expect(io.flushes.some((flush) => flush.directory && flush.path === at(project, "nested/deep"))).toBe(true);
-        expect(io.directoryOpenTargets).not.toContain(outside);
-        expect(io.directoryOpenTargets.some((path) => path.startsWith(outside + sep))).toBe(false);
+        const moved = await stat(join(root, "nested.real/deep"), { bigint: true });
+        const outsideDeep = await stat(join(outside, "deep"), { bigint: true });
+        const flush = io.flushes.find((entry) => entry.directory && entry.path === at(project, "nested/deep"));
+        expect(flush, "the pinned directory was flushed").toBeDefined();
+        expect(flush?.dev).toBe(moved.dev);
+        expect(flush?.ino).toBe(moved.ino);
+        expect({ dev: flush?.dev, ino: flush?.ino }).not.toEqual({
+          dev: outsideDeep.dev,
+          ino: outsideDeep.ino,
+        });
+        expect(
+          io.directoryOpenIdentities.some(
+            (identity) => identity.dev === outsideDeep.dev && identity.ino === outsideDeep.ino,
+          ),
+        ).toBe(false);
         expect(await readFile(join(root, "nested.real/deep/file.txt"), "utf8")).toBe("before");
         expect(await exists(".hooknostic/transaction.json")).toBe(false);
       } finally {
@@ -722,8 +720,12 @@ describe("directory flushes make each rename durable before the next step", () =
       await expect(recoverProject(root, owner)).rejects.toThrow("directory changed while flushing");
       expect(await exists(".hooknostic/transaction.json")).toBe(true);
       expect(io.rmAttempts).not.toContain(at(project, ".hooknostic/transaction.json"));
-      expect(io.directoryOpenTargets).not.toContain(outside);
-      expect(io.directoryOpenTargets.some((path) => path.startsWith(outside + sep))).toBe(false);
+      const outsideDeep = await stat(join(outside, "deep"), { bigint: true });
+      expect(
+        io.directoryOpenIdentities.some(
+          (identity) => identity.dev === outsideDeep.dev && identity.ino === outsideDeep.ino,
+        ),
+      ).toBe(false);
       expect(await readFile(join(root, "nested.real/deep/file.txt"), "utf8")).toBe("before");
 
       await rm(nested, { force: true });
@@ -734,6 +736,28 @@ describe("directory flushes make each rename durable before the next step", () =
     } finally {
       await rm(outside, { recursive: true, force: true });
     }
+  });
+
+  it.skipIf(!descriptorWalk)("surfaces an intermediate parent close failure", async () => {
+    const project = await realpath(root);
+    await mkdir(join(root, ".hooknostic"), { recursive: true });
+    await writeFile(
+      join(root, ".hooknostic/transaction.json"),
+      journalText([journalEntry("nested/deep/file.txt", "before", null)]),
+    );
+    resetIo();
+    let rootCloses = 0;
+    io.failClose = (path) => {
+      if (path !== project) return false;
+      rootCloses += 1;
+      // The root's own final close succeeds; its close as the intermediate
+      // parent of `nested` fails.
+      return rootCloses === 2;
+    };
+
+    await expect(recoverProject(root, owner)).rejects.toMatchObject({ code: "EIO", syscall: "close" });
+    expect(await exists(".hooknostic/transaction.json")).toBe(true);
+    expect(io.failClose).toBeUndefined();
   });
 
   it.skipIf(!descriptorWalk)("skips a directory open the filesystem does not support", async () => {
