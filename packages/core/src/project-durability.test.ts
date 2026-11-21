@@ -80,7 +80,7 @@ const io = vi.hoisted(() => ({
   fstatFailures: [] as unknown[],
   /** Every completed open, flush, rename, removal and link, in order. */
   events: [] as IoEvent[],
-  /** Every attempt to open a directory, completed or not; Windows must make none. */
+  /** Every successful directory open; the Windows test uses `openRequests` for failed attempts too. */
   directoryOpenAttempts: [] as string[],
   /** Every completed directory open, with the descriptor's resolved identity. */
   directoryOpenIdentities: [] as { path: string; dev: bigint; ino: bigint }[],
