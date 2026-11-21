@@ -37,6 +37,7 @@ import {
   codexFailedHooks,
   codexHookTimeouts,
   expectOpenCodeShellDialect,
+  freePort,
   hookProcessRecorderEnv,
   hookProcessReport,
   openCodePlaybackConfigHome,
@@ -1463,19 +1464,6 @@ async function runOpenCodeServePlayback(
     await stopServer();
     await server.close();
   }
-}
-
-/** A free TCP port the OS is not holding (bind-and-close race is acceptable here). */
-async function freePort(): Promise<number> {
-  const net = await import("node:net");
-  return new Promise((resolvePromise, rejectPromise) => {
-    const srv = net.createServer();
-    srv.listen(0, "127.0.0.1", () => {
-      const address = srv.address() as { port: number };
-      srv.close(() => resolvePromise(address.port));
-    });
-    srv.on("error", rejectPromise);
-  });
 }
 
 /**

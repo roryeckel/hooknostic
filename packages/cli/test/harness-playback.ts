@@ -737,6 +737,19 @@ export const playbackQuiet = {
   opencodeV2Env: { OPENCODE_DISABLE_MODELS_FETCH: "1", OPENCODE_DISABLE_AUTOUPDATE: "1" },
 } as const;
 
+/** A free TCP port the OS is not holding (bind-and-close race is acceptable here). */
+export async function freePort(): Promise<number> {
+  const net = await import("node:net");
+  return new Promise((resolvePromise, rejectPromise) => {
+    const srv = net.createServer();
+    srv.listen(0, "127.0.0.1", () => {
+      const address = srv.address() as { port: number };
+      srv.close(() => resolvePromise(address.port));
+    });
+    srv.on("error", rejectPromise);
+  });
+}
+
 export async function prepareOpenCodePluginDependency(projectDir: string, harnessVersion: string): Promise<void> {
   const dependencyDirs = [join(projectDir, ".opencode"), join(openCodePlaybackConfigHome(projectDir), "opencode")];
   for (const dependencyDir of dependencyDirs) {
