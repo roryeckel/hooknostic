@@ -22,6 +22,7 @@ param(
   [switch]$DenyRead,
   [switch]$WorkspaceCacheDirs,
   [switch]$CopyNpmPrefix,
+  [switch]$NodeModulesCreate,
   [int]$TimeoutSec = 0,
   [string]$Cwd = (Get-Location).Path
 )
@@ -96,6 +97,14 @@ if ($WorkspaceCacheDirs) {
     if ($state.integrity -eq 'Low') { icacls $p /setintegritylevel '(OI)(CI)low' | Out-Null }
   }
   "lane-run ${Label}: workspace cache dirs made lane-writable: node_modules\.vite-temp, .vite, .vitest-cache"
+}
+# Trial only: let the lane create (not change) entries directly in the
+# workspace's node_modules, where one test makes a temporary directory.
+if ($NodeModulesCreate) {
+  $nm = Join-Path $Cwd 'node_modules'
+  icacls $nm /grant "*$($state.sid):(AD)" | Out-Null
+  if ($state.integrity -eq 'Low') { icacls $nm /setintegritylevel low | Out-Null }
+  "lane-run ${Label}: TRIAL ONLY: the lane may create entries in workspace node_modules"
 }
 # Optional: deny the lane read access to what it can otherwise read but must
 # not: RUNNER_TEMP (file-command files, checkout credentials, step scripts)

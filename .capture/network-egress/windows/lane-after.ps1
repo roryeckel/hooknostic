@@ -57,13 +57,20 @@ foreach ($e in $creations) {
   }
 }
 "lane-after ${Label}: 4688 process creations since setup: $($creations.Count)"
+# Debug: how the lane's first processes are logged (SIDs classified, never printed raw).
+function SidClass([string]$s) { if ($s -eq $state.sid) { 'lane' } elseif ($s -eq 'S-1-5-18') { 'SYSTEM' } elseif ($s -eq 'S-1-0-0') { 'NULL' } elseif ($s) { 'other' } else { 'empty' } }
+$creations | Where-Object { $_.Message -match 'node\.exe|cmd\.exe' } | Select-Object -Last 400 | ForEach-Object {
+  $d = Get-Data $_
+  [pscustomobject]@{ name = Split-Path -Leaf $d.NewProcessName; subject = SidClass $d.SubjectUserSid; target = SidClass $d.TargetUserSid; parent = Split-Path -Leaf $d.ParentProcessName; pid = [Convert]::ToInt32($d.NewProcessId, 16) }
+} | Where-Object { $_.subject -eq 'lane' -or $_.target -eq 'lane' -or $_.parent -match 'svchost' } | Select-Object -First 6 |
+  ForEach-Object { "  4688 $($_.name) pid=$($_.pid) subject=$($_.subject) target=$($_.target) parent=$($_.parent)" }
 $blocked = [Collections.Generic.List[object]]::new(); $allowed = [Collections.Generic.List[object]]::new(); $loop = 0; $all = 0
 $debug5157 = @{}
 foreach ($e in @(Get-WinEvent -FilterHashtable @{ LogName = 'Security'; Id = 5156, 5157; StartTime = $since } -ErrorAction SilentlyContinue)) {
   $all++
   $d = Get-Data $e
   if ($e.Id -eq 5157) {
-    $key = "$(Split-Path -Leaf $d.Application) dir=$($d.Direction) lanePid=$($lanePids.ContainsKey([int]$d.ProcessID)) layer=$($d.LayerName) filter=$($d.FilterRTID)"
+    $key = "$(Split-Path -Leaf $d.Application) pid=$($d.ProcessID) dir=$($d.Direction) lanePid=$($lanePids.ContainsKey([int]$d.ProcessID)) layer=$($d.LayerName) filter=$($d.FilterRTID)"
     $debug5157[$key] = 1 + [int]$debug5157[$key]
   }
   if ($d.Direction -notmatch '14593') { continue }

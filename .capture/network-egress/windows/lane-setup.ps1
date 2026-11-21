@@ -71,6 +71,18 @@ if ($Integrity -eq 'Low') {
   $laneNode = "$Scratch\bin\node.exe"
 }
 Copy-Item -Force (Join-Path $PSScriptRoot 'lane-inner.mjs') "$Scratch\bin\lane-inner.mjs"
+if ($Integrity -eq 'Low') {
+  # Some harnesses find their home through the known-folder API, which ignores
+  # USERPROFILE and names the real profile. Create it with one logon, then
+  # label it Low, so a Low lane can write there too.
+  $cred = [pscredential]::new('hknoffline', $secure)
+  Start-Process -FilePath "$env:SystemRoot\System32\cmd.exe" -ArgumentList '/d /c exit 0' -Credential $cred -LoadUserProfile -Wait -NoNewWindow -WorkingDirectory $Scratch
+  $profilePath = (Get-CimInstance Win32_UserProfile | Where-Object SID -EQ $sid).LocalPath
+  if ($profilePath) {
+    $out = icacls $profilePath /setintegritylevel '(OI)(CI)low' /T /C /Q 2>&1 | Select-Object -Last 1
+    Mark "lane profile created and labelled Low ($($profilePath -replace '\\[^\\]+$', '\<user>')): $out"
+  } else { Mark 'lane profile: none created' }
+}
 Mark "scratch tree ($Integrity); label: $((icacls $Scratch | Select-String 'Mandatory Label') -replace '^\s+', '')"
 
 [ordered]@{ sid = $sid; user = 'hknoffline'; integrity = $Integrity; scratch = $Scratch; laneNode = $laneNode; started = $started.ToString('o') } |
