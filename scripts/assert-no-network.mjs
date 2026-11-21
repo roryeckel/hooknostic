@@ -11,6 +11,21 @@
 //       - the expected unprivileged user, with no supplementary groups, no
 //         capabilities and no_new_privs;
 //       - every required variable present and non-empty.
+//   node scripts/assert-no-network.mjs --offline --require-env A,B --expect-sid S
+//     On Windows, inside scripts/without-network.ps1, as its dedicated user.
+//     The block there is a firewall rule on that user's SID, not a
+//     namespace: the adapters stay, so there is no interface check, and the
+//     block is shown by effect. Fails unless:
+//       - every public IPv4 probe is refused by the firewall (EACCES), and the
+//         IPv6 probe refused or unroutable;
+//       - a loopback round trip works;
+//       - the process runs as exactly the SID the wrapper created, and not as
+//         an administrator;
+//       - every required variable is present and non-empty, and no name the
+//         wrapper's allowlist must keep out (ACTIONS_*, GITHUB_TOKEN, the
+//         file-command paths, INPUT_*) reached the lane.
+//     DNS is reported, not required to fail: the DNS Client service resolves
+//     names on the lane's behalf (the documented limitation).
 //   node scripts/assert-no-network.mjs --online
 //     The positive control, run outside the namespace. At least one IPv4
 //     probe and the DNS lookup must succeed, so --offline cannot pass because
@@ -20,10 +35,12 @@
 //
 // Prints one line per check, every check, then exits 1 if any failed. Prints
 // names of environment variables, never their values.
+import { execFileSync } from "node:child_process";
 import { lookup } from "node:dns/promises";
 import { readFileSync } from "node:fs";
-import { connect } from "node:net";
+import { connect, createServer } from "node:net";
 import { networkInterfaces } from "node:os";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 /** Public anycast resolvers that also listen on 443 (DNS over HTTPS). */
@@ -43,6 +60,11 @@ export function missingNames(required, env) {
   return required.filter((name) => !env[name]);
 }
 
+/** Names scripts/without-network.ps1's allowlist keeps out of a Windows lane. */
+export const FORBIDDEN_NAME = /^(ACTIONS_|GITHUB_TOKEN$|GITHUB_(ENV|PATH|OUTPUT|STATE|STEP_SUMMARY)$|INPUT_)/i;
+/** How a refused IPv6 connect may read on Windows: blocked, or no route at all. */
+const REFUSED_IPV6 = ["EACCES", "ENETUNREACH", "EHOSTUNREACH"];
+
 /**
  * Judge what was observed. Pure, so the decision is unit-tested apart from
  * the probes; only the --online control proves the probes themselves.
@@ -53,17 +75,34 @@ export function missingNames(required, env) {
  *   ipv6: string,
  *   dns: string,
  *   linux?: { uid: number, expectedUid?: number, gid: number, groups: number[], capEff: string, capPrm: string, noNewPrivs: string },
- *   env?: { required: string[], missing: string[], offlineMarker: boolean },
+ *   windows?: { sid: string, expectedSid?: string, admin: boolean, loopback: string },
+ *   env?: { required: string[], missing: string[], offlineMarker: boolean, forbidden?: string[] },
  * }} seen `ipv4` holds one result per PROBE_IPV4 address, and `ipv6` one
  *   result: "connected" or an error code. `dns` is "resolved" or an error
- *   code. `interfaces` names those with a non-internal address.
+ *   code. `interfaces` names those with a non-internal address. `windows`
+ *   marks a Windows lane: `loopback` is "round-trip" or an error code.
  * @returns {{ name: string, ok: boolean, detail: string }[]}
  */
 export function evaluate(mode, seen) {
   const checks = [];
   const check = (name, ok, detail) => checks.push({ name, ok, detail });
   const v4 = seen.ipv4.map((result, index) => `${PROBE_IPV4[index] ?? "?"}:443 -> ${result}`).join(", ");
-  if (mode === "offline") {
+  if (mode === "offline" && seen.windows) {
+    // A firewall rule on the lane user's SID: the adapters stay, so the block
+    // is shown by effect, never by the interface list.
+    const { sid, expectedSid, admin, loopback } = seen.windows;
+    check(
+      "user",
+      Boolean(expectedSid) && sid === expectedSid,
+      expectedSid ? (sid === expectedSid ? "the wrapper's SID" : "not the wrapper's SID") : "no expected SID given",
+    );
+    check("administrators", !admin, admin ? "member" : "not a member");
+    check("public IPv4 connect", seen.ipv4.length > 0 && seen.ipv4.every((result) => result === "EACCES"), v4);
+    check("public IPv6 connect", REFUSED_IPV6.includes(seen.ipv6), `[${PROBE_IPV6}]:443 -> ${seen.ipv6}`);
+    check("loopback round trip", loopback === "round-trip", loopback);
+    // The DNS Client service resolves for the lane; documented, not enforced.
+    check("DNS lookup (allowed on Windows)", true, `${PROBE_HOST} -> ${seen.dns}`);
+  } else if (mode === "offline") {
     check(
       "interfaces",
       seen.interfaces.length === 0,
@@ -72,6 +111,8 @@ export function evaluate(mode, seen) {
     check("public IPv4 connect", seen.ipv4.length > 0 && seen.ipv4.every((result) => result === "ENETUNREACH"), v4);
     check("public IPv6 connect", seen.ipv6 === "ENETUNREACH", `[${PROBE_IPV6}]:443 -> ${seen.ipv6}`);
     check("DNS lookup", seen.dns !== "resolved", `${PROBE_HOST} -> ${seen.dns}`);
+  }
+  if (mode === "offline") {
     if (seen.linux) {
       const { uid, expectedUid, gid, groups, capEff, capPrm, noNewPrivs } = seen.linux;
       check(
@@ -89,15 +130,21 @@ export function evaluate(mode, seen) {
       check("no_new_privs", noNewPrivs === "1", `NoNewPrivs ${noNewPrivs}`);
     }
     if (seen.env) {
+      // Only a Windows lane's environment is an allowlist, so only there is a
+      // forbidden name a failure.
+      const forbidden = seen.env.forbidden ?? [];
       check(
         "environment",
-        seen.env.offlineMarker && seen.env.missing.length === 0,
+        seen.env.offlineMarker && seen.env.missing.length === 0 && forbidden.length === 0,
         `HOOKNOSTIC_PLAYBACK_NETWORK=none ${seen.env.offlineMarker ? "set" : "missing"}; ` +
           (seen.env.required.length === 0
             ? "no required names"
             : seen.env.missing.length === 0
               ? `present: ${seen.env.required.join(", ")}`
-              : `missing or empty: ${seen.env.missing.join(", ")}`),
+              : `missing or empty: ${seen.env.missing.join(", ")}`) +
+          (seen.env.forbidden === undefined
+            ? ""
+            : `; ${forbidden.length === 0 ? "no forbidden names" : `forbidden names present: ${forbidden.join(", ")}`}`),
       );
     }
   } else {
@@ -140,6 +187,51 @@ function status(field) {
   return readFileSync("/proc/self/status", "utf8").match(new RegExp(`^${field}:\\s*(\\S+)`, "m"))?.[1] ?? "?";
 }
 
+/** A loopback round trip through a server in this process. */
+async function loopbackRoundTrip() {
+  const server = createServer((socket) => socket.end("pong"));
+  try {
+    await new Promise((resolve, reject) => server.once("error", reject).listen(0, "127.0.0.1", resolve));
+    return await new Promise((resolve) => {
+      const socket = connect({ host: "127.0.0.1", port: server.address().port });
+      let data = "";
+      const timer = globalThis.setTimeout(() => {
+        socket.destroy();
+        resolve("TIMEOUT");
+      }, TIMEOUT_MS);
+      socket.on("data", (chunk) => (data += chunk));
+      socket.once("end", () => {
+        globalThis.clearTimeout(timer);
+        resolve(data === "pong" ? "round-trip" : "unexpected reply");
+      });
+      socket.once("error", (error) => {
+        globalThis.clearTimeout(timer);
+        resolve(error.code ?? error.message);
+      });
+    });
+  } catch (error) {
+    return error.code ?? error.message;
+  } finally {
+    server.close();
+  }
+}
+
+/** The current token's user SID and Administrators membership, from whoami. */
+function windowsIdentity() {
+  const whoami = join(process.env["SystemRoot"] ?? "C:\\Windows", "System32", "whoami.exe");
+  const user = execFileSync(whoami, ["/user", "/fo", "csv", "/nh"], { encoding: "utf8" });
+  const groups = execFileSync(whoami, ["/groups", "/fo", "csv", "/nh"], { encoding: "utf8" });
+  return {
+    sid: user.trim().split(",").pop()?.replace(/"/g, "") ?? "",
+    admin: groups.split(/\r?\n/).some((line) => line.includes('"S-1-5-32-544"')),
+  };
+}
+
+function argument(name) {
+  const flag = process.argv.indexOf(name);
+  return flag === -1 ? undefined : (process.argv[flag + 1] ?? "");
+}
+
 async function observe(mode) {
   const [ipv4, ipv6, resolved] = await Promise.all([Promise.all(PROBE_IPV4.map(tcp)), tcp(PROBE_IPV6), dns()]);
   const seen = {
@@ -162,9 +254,18 @@ async function observe(mode) {
       noNewPrivs: status("NoNewPrivs"),
     };
   }
+  if (mode === "offline" && process.platform === "win32") {
+    const expectedSid = argument("--expect-sid");
+    seen.windows = {
+      ...windowsIdentity(),
+      ...(expectedSid ? { expectedSid } : {}),
+      loopback: await loopbackRoundTrip(),
+    };
+  }
   if (mode === "offline") {
-    // From scripts/without-network.sh, which read the list before the sudo
-    // hop, so a list lost in that hop cannot pass for "nothing required".
+    // From scripts/without-network.sh or without-network.ps1, which read the
+    // list before handing over, so a list lost on the way cannot pass for
+    // "nothing required".
     const flag = process.argv.indexOf("--require-env");
     const list = flag === -1 ? (process.env["HKN_NO_NETWORK_REQUIRE_ENV"] ?? "") : (process.argv[flag + 1] ?? "");
     const required = list.split(",").filter(Boolean);
@@ -172,6 +273,9 @@ async function observe(mode) {
       required,
       missing: missingNames(required, process.env),
       offlineMarker: process.env["HOOKNOSTIC_PLAYBACK_NETWORK"] === "none",
+      ...(process.platform === "win32"
+        ? { forbidden: Object.keys(process.env).filter((name) => FORBIDDEN_NAME.test(name)) }
+        : {}),
     };
   }
   return seen;
@@ -180,7 +284,9 @@ async function observe(mode) {
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   const mode = process.argv[2] === "--offline" ? "offline" : process.argv[2] === "--online" ? "online" : undefined;
   if (!mode) {
-    console.error("usage: node scripts/assert-no-network.mjs --offline [--require-env A,B] | --online");
+    console.error(
+      "usage: node scripts/assert-no-network.mjs --offline [--require-env A,B] [--expect-sid S] | --online",
+    );
     process.exit(2);
   }
   const checks = evaluate(mode, await observe(mode));
