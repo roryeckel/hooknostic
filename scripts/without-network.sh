@@ -40,10 +40,11 @@
 #     so no name in it can end the load.
 #   - On the sudo path no environment value appears in argv or output.
 #
-# HKN_NO_NETWORK_REQUIRE_ENV (comma-separated names) is read before the sudo
-# hop and handed on as an argument. The isolation check then fails if any of
-# those variables is missing or empty, and the list itself cannot silently
-# vanish.
+# HKN_NO_NETWORK_REQUIRE_ENV (comma-separated names) is required: name the
+# variables the command needs. It is read before the sudo hop and handed on
+# as an argument. The isolation check then fails if any of those variables is
+# missing or empty, and the list itself cannot silently vanish. An empty list
+# is refused, because it would check nothing.
 #
 # The checks on --as and --env-file run before the root check, so a normal
 # user can test them (scripts/without-network.test.mjs).
@@ -141,6 +142,7 @@ case "${1:-}" in
       esac
     done
     [ -n "$as" ] && [ "$#" -gt 0 ] || usage
+    [ -n "$require" ] || die "no required variables: set HKN_NO_NETWORK_REQUIRE_ENV or pass --require-env (an empty list checks nothing)"
     uid="${as%%:*}" gid="${as#*:}"
     [[ "$uid" =~ ^[0-9]+$ && "$gid" =~ ^[0-9]+$ ]] || die "--as takes numeric UID:GID"
     [ "$uid" != 0 ] || die "refusing to run the command as root"
@@ -177,6 +179,7 @@ case "${1:-}" in
     ;;
   *)
     [ "$(id -u)" != 0 ] || die "as root, pass --as UID:GID --path PATH --home HOME"
+    [ -n "${HKN_NO_NETWORK_REQUIRE_ENV:-}" ] || die "no required variables: set HKN_NO_NETWORK_REQUIRE_ENV (an empty list checks nothing)"
     envfile="$(umask 077 && mktemp "${TMPDIR:-/tmp}/without-network-env.XXXXXX")"
     trap 'rm -f -- "$envfile"' EXIT
     env -0 > "$envfile"

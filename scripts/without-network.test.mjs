@@ -25,12 +25,23 @@ const envFile = (name, mode = 0o600) => {
   return path;
 };
 // As sudo would enter the root hop for this user: SUDO_UID/SUDO_GID set.
-const asRoot = (as, envfile) =>
-  spawnSync("/bin/bash", [script, "--as", as, "--env-file", envfile, "--", "true"], {
+const asRoot = (as, envfile, require = ["--require-env", "HOOKNOSTIC_PLAYBACK"]) =>
+  spawnSync("/bin/bash", [script, "--as", as, "--env-file", envfile, ...require, "--", "true"], {
     encoding: "utf8",
     env: { PATH: "/usr/bin:/bin", SUDO_UID: String(me.uid), SUDO_GID: String(me.gid) },
   });
 const refusal = (result) => `${result.status} ${result.stderr.trim()}`;
+
+it.skipIf(!linux || me.uid === 0)("refuses an empty required list on both entries, before sudo", () => {
+  // The caller's entry: refused before it would reach sudo, so nothing runs.
+  const caller = spawnSync("/bin/bash", [script, "true"], { encoding: "utf8", env: { PATH: "/usr/bin:/bin" } });
+  expect(refusal(caller)).toBe(
+    "2 without-network: no required variables: set HKN_NO_NETWORK_REQUIRE_ENV (an empty list checks nothing)",
+  );
+  expect(refusal(asRoot(`${me.uid}:${me.gid}`, envFile("without-network-env.empty"), ["--require-env", ""]))).toBe(
+    "2 without-network: no required variables: set HKN_NO_NETWORK_REQUIRE_ENV or pass --require-env (an empty list checks nothing)",
+  );
+});
 
 it.skipIf(!linux || me.uid === 0)("refuses --as for anyone but the user who invoked sudo", () => {
   const file = envFile("without-network-env.as");
