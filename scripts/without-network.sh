@@ -171,7 +171,7 @@ case "${1:-}" in
       env -0 > "$envfile"
       chown "$uid:$gid" -- "$envfile"
     fi
-    exec unshare -- env -i PATH="$_hkn_syspath" \
+    exec unshare --net -- env -i PATH="$_hkn_syspath" \
       bash "$_hkn_self" --netns "$uid" "$gid" "$envfile" "$owner" "$path" "$home" "$require" -- "$@"
     ;;
   "" | -*)
