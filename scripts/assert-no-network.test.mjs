@@ -1,16 +1,18 @@
 // These tests pin the judgement in evaluate() and missingNames(). The probes
-// themselves (tcp, DNS) are proven by the --online positive control in CI's
-// prepare step: a probe that always reported ENETUNREACH would pass these
-// tests and fail there.
+// themselves (tcp, DNS, loopback) are proven by the --online positive control
+// and the offline lanes in CI: a probe that always reported ENETUNREACH would
+// pass these tests and fail there.
 import { expect, it } from "vitest";
 
 import { DNS_FAST_MS, evaluate, missingNames, resolverTimeout } from "./assert-no-network.mjs";
 
 const unreachable = ["ENETUNREACH", "ENETUNREACH", "ENETUNREACH"];
+const unreachable6 = ["ENETUNREACH", "ENETUNREACH"];
 const isolated = {
   interfaces: [],
   ipv4: unreachable,
-  ipv6: "ENETUNREACH",
+  ipv6: unreachable6,
+  loopback: "round-trip",
   dns: "ECONNREFUSED",
   dnsMs: 12,
   resolver: { timeout: 0, expected: 0 },
@@ -39,7 +41,14 @@ it.each([
   ["public IPv4 connect", { ipv4: ["ENETUNREACH", "ENETUNREACH", "TIMEOUT"] }],
   ["public IPv4 connect", { ipv4: ["ENETUNREACH", "ECONNREFUSED", "ENETUNREACH"] }],
   ["public IPv4 connect", { ipv4: [] }],
-  ["public IPv6 connect", { ipv6: "connected" }],
+  // Every IPv6 probe must be refused, and by the namespace's missing route.
+  ["public IPv6 connect", { ipv6: ["connected", "ENETUNREACH"] }],
+  ["public IPv6 connect", { ipv6: ["ENETUNREACH", "connected"] }],
+  ["public IPv6 connect", { ipv6: ["ENETUNREACH", "TIMEOUT"] }],
+  ["public IPv6 connect", { ipv6: ["ENETUNREACH"] }],
+  ["public IPv6 connect", { ipv6: ["EACCES", "ENETUNREACH"] }],
+  ["public IPv6 connect", { ipv6: ["ENETUNREACH", "EADDRNOTAVAIL"] }],
+  ["loopback round trip", { loopback: "EACCES" }],
   ["DNS lookup", { dns: "resolved" }],
   // A miss that takes musl's 5 s wait, or one whose time was never taken.
   ["DNS lookup", { dnsMs: 5003 }],
@@ -66,7 +75,7 @@ it("names a dropped --net by both the interface and the connect checks", () => {
     ...isolated,
     interfaces: ["eth0"],
     ipv4: ["connected", "connected", "connected"],
-    ipv6: "ENETUNREACH",
+    ipv6: unreachable6,
     dns: "resolved",
   };
   expect(failing(evaluate("offline", hostNamespace))).toEqual(["interfaces", "public IPv4 connect", "DNS lookup"]);
@@ -76,7 +85,7 @@ it("requires one reachable IPv4 target and DNS for --online, never IPv6", () => 
   const online = {
     interfaces: ["eth0"],
     ipv4: ["connected", "connected", "connected"],
-    ipv6: "ENETUNREACH",
+    ipv6: unreachable6,
     dns: "resolved",
   };
   expect(failing(evaluate("online", online))).toEqual([]);
@@ -84,6 +93,8 @@ it("requires one reachable IPv4 target and DNS for --online, never IPv6", () => 
   expect(failing(evaluate("online", { ...online, ipv4: ["TIMEOUT", "connected", "ECONNREFUSED"] }))).toEqual([]);
   expect(failing(evaluate("online", { ...online, ipv4: unreachable }))).toEqual(["public IPv4 connect (any)"]);
   expect(failing(evaluate("online", { ...online, dns: "EAI_AGAIN" }))).toEqual(["DNS lookup"]);
+  // Every IPv6 result is reported, and any of them is still online.
+  expect(failing(evaluate("online", { ...online, ipv6: ["connected", "TIMEOUT"] }))).toEqual([]);
 });
 
 // A Windows lane: scripts/without-network.ps1's dedicated user behind a
@@ -91,16 +102,31 @@ it("requires one reachable IPv4 target and DNS for --online, never IPv6", () => 
 const windowsLane = {
   interfaces: ["Ethernet"],
   ipv4: ["EACCES", "EACCES", "EACCES"],
-  ipv6: "ENETUNREACH",
+  ipv6: unreachable6,
+  loopback: "round-trip",
   dns: "resolved",
-  windows: { sid: "S-1-5-21-1-2-3-1003", expectedSid: "S-1-5-21-1-2-3-1003", admin: false, loopback: "round-trip" },
+  windows: { sid: "S-1-5-21-1-2-3-1003", expectedSid: "S-1-5-21-1-2-3-1003", admin: false },
   env: { required: ["HOOKNOSTIC_PLAYBACK"], missing: [], offlineMarker: true, forbidden: [] },
 };
 
 it("accepts a Windows lane by effect: adapters up and names resolving, every public connect refused", () => {
   expect(failing(evaluate("offline", windowsLane))).toEqual([]);
   // A runner image with an IPv6 route: the rule refuses it as it does IPv4.
-  expect(failing(evaluate("offline", { ...windowsLane, ipv6: "EACCES" }))).toEqual([]);
+  expect(failing(evaluate("offline", { ...windowsLane, ipv6: ["EACCES", "EACCES"] }))).toEqual([]);
+  expect(failing(evaluate("offline", { ...windowsLane, ipv6: ["EACCES", "ENETUNREACH"] }))).toEqual([]);
+});
+
+it("shows every IPv6 probe, and says all-unroutable does not prove the firewall", () => {
+  const detail = evaluate("offline", windowsLane).find((check) => check.name === "public IPv6 connect").detail;
+  expect(detail).toContain("[2606:4700:4700::1111]:443 -> ENETUNREACH");
+  expect(detail).toContain("[2001:4860:4860::8888]:443 -> ENETUNREACH");
+  expect(detail).toContain("no IPv6 route");
+  expect(detail).toContain("does not prove the firewall");
+  // One probe refused by the rule is a different claim: no caveat is needed.
+  const refused = evaluate("offline", { ...windowsLane, ipv6: ["EACCES", "ENETUNREACH"] }).find(
+    (check) => check.name === "public IPv6 connect",
+  ).detail;
+  expect(refused).not.toContain("does not prove the firewall");
 });
 
 it.each([
@@ -109,9 +135,12 @@ it.each([
   ["public IPv4 connect", { ipv4: ["EACCES", "EACCES", "TIMEOUT"] }],
   ["public IPv4 connect", { ipv4: ["EACCES", "ENETUNREACH", "EACCES"] }],
   ["public IPv4 connect", { ipv4: [] }],
-  ["public IPv6 connect", { ipv6: "connected" }],
-  ["public IPv6 connect", { ipv6: "TIMEOUT" }],
-  ["loopback round trip", { windows: { ...windowsLane.windows, loopback: "EACCES" } }],
+  ["public IPv6 connect", { ipv6: ["connected", "EACCES"] }],
+  ["public IPv6 connect", { ipv6: ["EACCES", "connected"] }],
+  ["public IPv6 connect", { ipv6: ["EACCES", "TIMEOUT"] }],
+  ["public IPv6 connect", { ipv6: ["EACCES"] }],
+  ["public IPv6 connect", { ipv6: ["EACCES", "EADDRNOTAVAIL"] }],
+  ["loopback round trip", { loopback: "EACCES" }],
   ["user", { windows: { ...windowsLane.windows, sid: "S-1-5-21-1-2-3-500" } }],
   ["user", { windows: { ...windowsLane.windows, expectedSid: undefined } }],
   ["administrators", { windows: { ...windowsLane.windows, admin: true } }],
@@ -124,7 +153,7 @@ it.each([
 
 it("names a missing rule on Windows by the connect checks, never by interfaces or DNS", () => {
   // What scripts/without-network.ps1 without its firewall rule looks like from inside.
-  const noRule = { ...windowsLane, ipv4: ["connected", "connected", "connected"], ipv6: "ENETUNREACH" };
+  const noRule = { ...windowsLane, ipv4: ["connected", "connected", "connected"], ipv6: unreachable6 };
   expect(failing(evaluate("offline", noRule))).toEqual(["public IPv4 connect"]);
 });
 

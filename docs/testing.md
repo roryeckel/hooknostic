@@ -326,8 +326,10 @@ on), not by CI.
 - **The proof.** Before the command, `scripts/assert-no-network.mjs --offline`
   fails the step unless:
   - only `lo` exists;
-  - each public IPv4 probe (1.1.1.1, 8.8.8.8, 9.9.9.9) and the IPv6 probe
-    fails with `ENETUNREACH`;
+  - each public IPv4 probe (1.1.1.1, 8.8.8.8, 9.9.9.9) and every public IPv6
+    probe (Cloudflare's `2606:4700:4700::1111` and Google's
+    `2001:4860:4860::8888`) fails with `ENETUNREACH`;
+  - a loopback round trip works;
   - DNS fails, and within 1 s (`DNS_FAST_MS`);
   - the namespace's `/etc/resolv.conf` sets a resolver timeout of 0 (the
     wrapper passes `--dns-timeout 0`; `resolverTimeout()` reads it as glibc
@@ -344,7 +346,7 @@ on), not by CI.
   one line per item and never prints values. Its positive control,
   `--online`, runs in the prepare step outside the namespace: one IPv4 probe
   and the lookup must succeed there, so one filtered address does not fail a
-  lane. IPv6 is reported, not required; hosted runners have none.
+  lane. Every IPv6 result is reported, not required; hosted runners have none.
 - **No lane, no pass.** Under `HOOKNOSTIC_PLAYBACK_NETWORK=none`,
   `harness-playback.test.ts` requires `HOOKNOSTIC_PLAYBACK` to name a known
   lane, so a namespaced run that selects nothing fails instead of skipping
@@ -462,8 +464,11 @@ per user.
   `scripts/assert-no-network.mjs --offline` fails the run unless:
   - the process is exactly the SID the wrapper created, and not an
     administrator;
-  - each public IPv4 probe is refused by the firewall (`EACCES`), and the
-    IPv6 probe is refused or unroutable;
+  - each public IPv4 probe is refused by the firewall (`EACCES`), and every
+    public IPv6 probe is refused or unroutable. All `ENETUNREACH` passes, but
+    the check says so: a host with no IPv6 route cannot distinguish the
+    firewall from the missing route, so that result alone does not prove the
+    block;
   - a loopback round trip works;
   - the required names (passed as an argument, never read from the lane's
     own environment) are present;
@@ -471,7 +476,8 @@ per user.
 
   There is no interface check (the adapters stay up), and DNS is reported
   but not required to fail. The prepare step's `--check-online` is the
-  positive control, as on Linux.
+  positive control, as on Linux; it reports every IPv6 probe and requires
+  none.
 - **Cleanup.** Steps 3 to 6 run under one `finally` that stops every process
   the user owns, found by owner SID, with a bounded recheck, then removes the
   rule group and disables the user. It prints what remains; its own failures

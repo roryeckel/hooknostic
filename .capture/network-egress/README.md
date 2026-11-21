@@ -487,6 +487,11 @@ Hosted runners had no IPv6 even outside the namespace
 (`[2606:4700:4700::1111]:443 -> ENETUNREACH` in `--online`), which confirms
 the review's point that the positive control must not require IPv6.
 
+**2026-11-21:** the IPv6 check now probes both Cloudflare's
+`2606:4700:4700::1111` and Google's `2001:4860:4860::8888`, and offline
+requires every one to be refused (on Windows, refused or unroutable). The
+sample above predates that change and names the single probe of the time.
+
 Linux playback step, seconds. Master is run 44679264511 at 766f2370, with the
 plain step. The wrapped runs are 44693790195 and 44695948182.
 
