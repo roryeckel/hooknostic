@@ -296,7 +296,9 @@ on), not by CI.
     pinning `PATH` to the system directories.
   - Every later hop starts from `env -i PATH=<system>`, and `ip`, `setpriv`
     and `unshare` are found only there.
-  - `--as` must name the user that invoked sudo (`SUDO_UID`/`SUDO_GID`).
+  - `--as` is numeric `UID:GID` only, and must name the user that invoked
+    sudo (`SUDO_UID`/`SUDO_GID`). uid 0 and gid 0 are refused, so the command
+    runs neither as root nor with root's group.
   - These refusals, and the ones on the env file below, run before the root
     check. That way `scripts/without-network.test.mjs` exercises them as a
     normal user in the Ubuntu test job.

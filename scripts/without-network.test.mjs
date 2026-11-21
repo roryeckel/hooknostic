@@ -52,6 +52,19 @@ it.skipIf(!linux || me.uid === 0)("refuses --as for anyone but the user who invo
   expect(refusal(asRoot("0:0", file))).toBe("2 without-network: refusing to run the command as root");
 });
 
+it.skipIf(!linux || me.uid === 0)("takes --as as numeric UID:GID, never as root or with root's group", () => {
+  const file = envFile("without-network-env.numeric");
+  // 00:00 is root written with leading zeros.
+  expect(refusal(asRoot("00:00", file))).toBe("2 without-network: refusing to run the command as root");
+  expect(refusal(asRoot(`${me.uid}:0`, file))).toBe("2 without-network: refusing to run the command with root's group");
+  // A missing colon is not UID:UID, and a second colon is malformed.
+  expect(refusal(asRoot(String(me.uid), file))).toBe("2 without-network: --as takes numeric UID:GID");
+  expect(refusal(asRoot(`${me.uid}:${me.gid}:0`, file))).toBe("2 without-network: --as takes numeric UID:GID");
+  // Leading zeros are decimal, not a different request: the leading-zero
+  // form reaches the same check as the canonical one.
+  expect(refusal(asRoot(`0${me.uid}:0${me.gid}`, file))).toBe("2 without-network: --as needs root");
+});
+
 it.skipIf(!linux || me.uid === 0)("refuses an --env-file that is not the caller's own 0600 file", () => {
   const as = `${me.uid}:${me.gid}`;
   expect(refusal(asRoot(as, envFile("without-network-env.wide", 0o644)))).toBe(
