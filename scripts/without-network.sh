@@ -131,13 +131,16 @@ case "${1:-}" in
     # makes it fail at once. glibc and c-ares did already, but musl (codex's
     # static build) waited its 5 s timeout per lookup after a send that had
     # already failed: about 5 s for every codex process. The host's file is
-    # untouched; the bind lives and dies with this namespace.
+    # untouched; the bind lives and dies with this namespace. A host that
+    # replaces the file by rename mid-run detaches the bind here, which only
+    # brings the 5 s waits back (docs/testing.md).
     resolv="$(readlink -f /etc/resolv.conf)"
     if [ -f "$resolv" ]; then
       fast="$(mktemp /tmp/without-network-resolv.XXXXXX)"
       { cat -- "$resolv"; echo "options timeout:0 attempts:1"; } > "$fast"
       chmod 644 -- "$fast"
-      mount --bind "$fast" "$resolv"
+      # The copy is removed on failure too; the bind keeps it alive otherwise.
+      mount --bind "$fast" "$resolv" || { rm -f -- "$fast"; die "could not bind the namespace's resolver file over $resolv"; }
       rm -f -- "$fast"
     fi
     exec setpriv --reuid="$uid" --regid="$gid" --clear-groups --inh-caps=-all --no-new-privs -- \
