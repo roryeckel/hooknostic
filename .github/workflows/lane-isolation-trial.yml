@@ -1,7 +1,7 @@
 # TEMPORARY: evidence for the Windows plan's review response (PR #288).
 # Removed by a revert commit once the runs are recorded. Not a gate.
-# Round 3: the Low-integrity lanes, with read denies and lane copies of pnpm
-# and the npm prefix.
+# Round 4: the Low-integrity lanes, with read denies, a lane copy of pnpm, a
+# Low-labelled lane profile, and (trial only) entry creation in node_modules.
 # The job id reuses the playback one so check-dependencies applies the
 # playback Node version file to it.
 name: Lane isolation trial (temporary)
@@ -76,9 +76,9 @@ jobs:
         run: |
           $files = 'packages/cli/test/harness-playback.test.ts packages/cli/test/opencode-v2-playback.test.ts scripts/pi-drift-driver.test.mjs'
           if ('${{ matrix.cacheDirs }}' -eq 'true') {
-            & C:\hkn-admin\lane-run.ps1 -Label '${{ matrix.label }}' -DenyRead -CopyNpmPrefix -WorkspaceCacheDirs -RequireEnv 'HOOKNOSTIC_PLAYBACK,HKN_PLAYBACK_ARTIFACT_DIR,HKN_RIPGREP_DIR' -Command "node node_modules/vitest/vitest.mjs run $files"
+            & C:\hkn-admin\lane-run.ps1 -Label '${{ matrix.label }}' -DenyRead -NodeModulesCreate -WorkspaceCacheDirs -RequireEnv 'HOOKNOSTIC_PLAYBACK,HKN_PLAYBACK_ARTIFACT_DIR,HKN_RIPGREP_DIR' -Command "node node_modules/vitest/vitest.mjs run $files"
           } else {
-            & C:\hkn-admin\lane-run.ps1 -Label '${{ matrix.label }}' -DenyRead -CopyNpmPrefix -RequireEnv 'HOOKNOSTIC_PLAYBACK,HKN_PLAYBACK_ARTIFACT_DIR,HKN_RIPGREP_DIR' -Command "node node_modules/vitest/vitest.mjs run $files --configLoader runner --no-cache --fsModuleCachePath D:\hkn-lane\work\vitest-cache"
+            & C:\hkn-admin\lane-run.ps1 -Label '${{ matrix.label }}' -DenyRead -NodeModulesCreate -RequireEnv 'HOOKNOSTIC_PLAYBACK,HKN_PLAYBACK_ARTIFACT_DIR,HKN_RIPGREP_DIR' -Command "node node_modules/vitest/vitest.mjs run $files --configLoader runner --no-cache --fsModuleCachePath D:\hkn-lane\work\vitest-cache"
           }
           "wrapper exit code: $LASTEXITCODE"
           exit $LASTEXITCODE
@@ -86,7 +86,7 @@ jobs:
         if: ${{ matrix.kind == 'code-mode' }}
         shell: pwsh
         run: |
-          & C:\hkn-admin\lane-run.ps1 -Label '${{ matrix.label }}' -DenyRead -CopyNpmPrefix -WorkspaceCacheDirs -Command 'node scripts/verify-code-mode.mjs'
+          & C:\hkn-admin\lane-run.ps1 -Label '${{ matrix.label }}' -DenyRead -WorkspaceCacheDirs -Command 'node scripts/verify-code-mode.mjs'
           "wrapper exit code: $LASTEXITCODE"
           exit $LASTEXITCODE
       - name: After (always; staged admin copy)
@@ -100,7 +100,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: lane-trial-r3-${{ matrix.label }}
+          name: lane-trial-r4-${{ matrix.label }}
           retention-days: 14
           if-no-files-found: warn
           path: C:/hkn-admin/*-after.json
