@@ -199,9 +199,308 @@ places a pinned ripgrep, checked against its SHA-256, in the harness's cache,
 where it looks after `PATH` and before downloading. It fails the run if the
 harness log shows a download (#264). That copy
 is itself fetched from GitHub once per machine into a per-user cache, and CI
-caches it. A cached copy is used only if it matches the pinned executable's
+caches it. In CI the fetch happens in the prepare step, before the lane loses
+its network (see below), and the test's own `ensureRipgrep()` then finds the
+verified copy. A cached copy is used only if it matches the pinned executable's
 SHA-256. Set `HKN_RIPGREP_DIR` to a directory that holds, or should receive,
 that build. See `.capture/opencode-v2/README.md`, "ripgrep pre-seed".
+
+## Network isolation in CI
+
+One rule on every OS: every CI job that drives a real harness and is meant
+to be offline runs with non-loopback IP blocked. A lane that needs a new
+download, or a harness build that starts calling home, then fails loudly
+instead of passing with network.
+
+The goal is catching **accidental** egress. Stopping a deliberate escape is
+a non-goal: these jobs run our own tests against harness builds pinned by
+version, and the threat being guarded against is drift and carelessness,
+not a hostile harness.
+
+The block covers what the lane's own processes do. The documented
+limitations are what something outside them does on its behalf:
+- **Windows DNS**, measured: hostnames still resolve through the system DNS
+  Client service. A lane can look a name up, but cannot connect to it.
+- **Other Windows service-mediated requests**, not measured: a service such
+  as the one fetching certificate revocation lists (`svchost.exe` fetched
+  crl.microsoft.com during the copilot and opencode-v2 jobs) makes its
+  requests outside the lane user's rule. Whether a lane triggered that fetch
+  is not known.
+- **Linux unix sockets**: the namespace cuts IP only, so a host daemon that a
+  unix socket reaches could reach the network for the lane ("IP only"
+  below).
+
+| Job | Block |
+| --- | --- |
+| ci.yml `harness-playback`, Linux (claude, codex, copilot, pi, opencode-v1, opencode-v2) | a loopback-only network namespace ("Network isolation on Linux") |
+| ci.yml `harness-playback`, Windows (copilot, pi, opencode-v2), and `code-mode` | a dedicated user whose outbound traffic a firewall rule blocks ("Network isolation on Windows") |
+| ci.yml `marketplace` (claude, codex), harness-watch `verify` | the Linux namespace |
+| harness-watch `drift`, playback transport | the drive's container runs with `--network none` (`docs/harness-watch.md`) |
+| harness-watch `drift`, llm transport | none: online by design, through the LiteLLM sidecar |
+| `shell-interpreter-capture.yml` (manual, macOS) | none: a capture, online by design |
+
+No macOS gate drives a real harness. The one macOS job that does, the manual
+`shell-interpreter-capture.yml`, is a capture and stays online by design. A
+future macOS gate would run as a dedicated user behind a `pf` rule on that
+user, the counterpart of the Windows rule.
+
+## Network isolation on Linux
+
+The six Linux playback lanes, the marketplace gate and harness-watch's
+verification of newer builds run in CI with no IP network but loopback.
+
+What this establishes:
+- A lane that **needs** the IP network fails.
+- Nothing a lane runs can reach an IP network directly. A daemon on the host
+  that a unix socket still reaches could reach it on the lane's behalf (see
+  "IP only").
+
+It does not detect new egress. A call that a lane does not depend on fails
+silently and the lane still passes. Codex's plugin sync is an example: its
+lookups fail at once and the sync gives up. New egress is found by a traced
+inventory (`.capture/network-egress`, the procedure and the record this rests
+on), not by CI.
+
+- **The namespace.** `scripts/without-network.sh <command>` does the
+  following:
+  - re-runs itself as root through `sudo -n /bin/bash`;
+  - enters a new network namespace with `unshare --net`. This is root, so no
+    unprivileged user namespace and no AppArmor userns restriction is
+    involved;
+  - brings `lo` up;
+  - in a private mount namespace (`unshare --mount`), binds the namespace's
+    own `/etc/resolv.conf`: the host's file with `options timeout:0
+    attempts:1` appended. No nameserver is reachable there, so a lookup can
+    only fail, and this makes it fail at once. glibc and c-ares already did;
+    musl, which codex is built against, waited its 5 s timeout after a send
+    that had failed, so every codex process lost about 5 s (about a minute a
+    codex lane, 10 s for the codex marketplace gate). The host's file is
+    untouched. If the host replaces that file by an atomic rename during a
+    run (systemd-resolved does, on a DNS change), the bind is detached inside
+    the namespace, and musl's 5 s waits silently return for the rest of the
+    run: slower, but nothing becomes reachable, and the isolation check,
+    which runs only at the start, does not notice;
+  - drops back to the calling user with no supplementary groups, no
+    capabilities and `no_new_privs`;
+  - sets `HOOKNOSTIC_PLAYBACK_NETWORK=none` inside.
+- **IP only.** A network namespace does not cut unix sockets, which are
+  reached through the filesystem. That is why the user keeps no supplementary
+  groups: on GitHub's images `runner` is in `docker`, whose socket would let
+  a process ask dockerd, in the host namespace, to reach the network. A
+  daemon reachable without a group (D-Bus, for one) is still reachable. No
+  harness was seen to do this.
+- **The root hops trust nothing from the caller.**
+  - The sudo entry runs `/bin/bash` under sudo's `env_reset`. With the default
+    policy (no `PATH`, `BASH_ENV` or `LD_*` in `env_keep`), that leaves no
+    caller `PATH`, `BASH_ENV` or `LD_*`. It runs no external command before
+    pinning `PATH` to the system directories.
+  - Every later hop starts from `env -i PATH=<system>`, and `ip`, `setpriv`
+    and `unshare` are found only there.
+  - `--as` must name the user that invoked sudo (`SUDO_UID`/`SUDO_GID`).
+  - These refusals, and the ones on the env file below, run before the root
+    check. That way `scripts/without-network.test.mjs` exercises them as a
+    normal user in the Ubuntu test job.
+  - The caller's environment crosses sudo in a file, because the hosted
+    runners' sudo ignores `--preserve-env` ("preserving the entire
+    environment is not supported"). On the first CI run that ignored option
+    silently emptied the environment: every playback test skipped and the
+    step passed. The file is created 0600 by `mktemp`. Root only checks that
+    it is a regular file of the caller's with that mode, and never reads or
+    removes it. It is loaded and removed after the drop, as the user. The
+    script's own variables are named `_hkn_*` and readonly, and the file's
+    `_hkn_*` names are skipped, so no caller variable can replace the
+    required list or the isolation check.
+  - On this path no environment value reaches argv or output.
+- **Trust boundary.** The wrapper is a test harness, not a privilege boundary.
+  - It needs **unrestricted** passwordless sudo, as `runner` has on
+    GitHub-hosted runners, or `sudo -v` beforehand.
+  - It runs a file from your checkout as root, so use it only on a runner or
+    a single-user machine.
+  - Never give it a sudoers rule of its own. A rule can name it
+    (`NOPASSWD: /bin/bash /path/to/scripts/without-network.sh *` matches the
+    wrapper's own call), but the script is a file in your checkout that you
+    can edit. Such a rule is therefore a root shell for anything running as
+    you.
+- **The proof.** Before the command, `scripts/assert-no-network.mjs --offline`
+  fails the step unless:
+  - only `lo` exists;
+  - each public IPv4 probe (1.1.1.1, 8.8.8.8, 9.9.9.9) and the IPv6 probe
+    fails with `ENETUNREACH`;
+  - DNS fails, and within 1 s (`DNS_FAST_MS`);
+  - the namespace's `/etc/resolv.conf` sets a resolver timeout of 0 (the
+    wrapper passes `--dns-timeout 0`; `resolverTimeout()` reads it as glibc
+    and musl do). The check's own lookup goes through glibc, which fails at
+    once either way, so this configuration check is the one that catches
+    musl's wait;
+  - the user is the expected one, with no supplementary groups, no
+    capabilities and `no_new_privs`;
+  - every name in `HKN_NO_NETWORK_REQUIRE_ENV` is present and non-empty.
+
+  The wrapper reads that list before the sudo hop and passes it on as an
+  argument, so a lost environment cannot also lose the list. It refuses an
+  empty list, which would check nothing. The check prints
+  one line per item and never prints values. Its positive control,
+  `--online`, runs in the prepare step outside the namespace: one IPv4 probe
+  and the lookup must succeed there, so one filtered address does not fail a
+  lane. IPv6 is reported, not required; hosted runners have none.
+- **No lane, no pass.** Under `HOOKNOSTIC_PLAYBACK_NETWORK=none`,
+  `harness-playback.test.ts` requires `HOOKNOSTIC_PLAYBACK` to name a known
+  lane, so a namespaced run that selects nothing fails instead of skipping
+  every test. `prepare-offline-playback.mjs` likewise rejects an unknown
+  lane. Both use `isKnownLane` (`scripts/harness-lanes.mjs`).
+  `scripts/harness-lanes.test.mjs` unit-tests it, and also runs that one guard
+  the way a namespaced lane would, with no lane, so the ordinary test job
+  fails if the guard is removed.
+- **What the lanes fetch beforehand.**
+  `node --experimental-strip-types scripts/prepare-offline-playback.mjs <lane>`
+  does it, with network:
+  - ripgrep for `opencode-v2`;
+  - for `opencode-v1`, the npm cache for `@opencode-ai/plugin@<version>`,
+    proven by a second, `--offline` install through the test's own helper.
+    Inside the namespace that helper installs with `--offline`, so a gap fails
+    at once with `ENOTCACHED`. Outside it, it resolves online as before.
+- **What the harnesses no longer try.** The `playbackQuiet` settings in
+  `packages/cli/test/harness-playback.ts`:
+  - Codex `analytics.enabled=false`;
+  - OpenCode's model-catalog fetch and v2's update check;
+  - Claude's `plugin validate` gets the drives' environment.
+
+  Nothing asserts on these; inside the namespace the calls would fail
+  harmlessly anyway. The traced inventory is what shows each one works. The
+  marketplace gate's install calls get the same treatment: Claude's API on a
+  refused loopback port, and Codex's analytics off.
+
+  Two calls remain and fail harmlessly: Codex's curated plugin sync
+  (github.com, chatgpt.com, api.github.com) and Claude's official marketplace
+  fetch (downloads.claude.ai). Their lookups fail at once (see "The
+  namespace"). Turning the sync off with `-c features.plugins=false` was
+  measured and is not used: newer Codex builds then load no installed
+  plugin, and the plugin drives fail.
+- **Not isolated.** harness-watch drift's llm transport, by design, and the
+  manual macOS `shell-interpreter-capture.yml`.
+- **Rollback.** Each blocked job group has its own `ci:` commit, so each can
+  be reverted alone:
+  - the Linux lanes;
+  - the Windows lanes and Code Mode;
+  - the marketplace gate;
+  - harness-watch verify and drift.
+
+  After reverting all of them, also revert the hunks that describe
+  enforcement as current:
+  - "Network isolation in CI" and the per-OS sections below it;
+  - the "no network beyond loopback" clause in AGENTS.md;
+  - the matching bullet in the harness-integration skill.
+
+  The switches, the npm `--offline` mode and the scripts stay harmless with
+  network.
+
+To reproduce a lane on Linux, install its harness and bundle as above. Then
+run CI's two commands:
+
+```bash
+node --experimental-strip-types scripts/prepare-offline-playback.mjs codex --check-online
+HOOKNOSTIC_PLAYBACK=codex HKN_NO_NETWORK_REQUIRE_ENV=HOOKNOSTIC_PLAYBACK scripts/without-network.sh \
+  pnpm exec vitest run packages/cli/test/harness-playback.test.ts packages/cli/test/opencode-v2-playback.test.ts scripts/pi-drift-driver.test.mjs
+```
+
+The marketplace gate and harness-watch's verification of a newer build use
+the same wrapper:
+
+```bash
+HOOKNOSTIC_PLAYBACK=codex HKN_NO_NETWORK_REQUIRE_ENV=HOOKNOSTIC_PLAYBACK scripts/without-network.sh \
+  node scripts/verify-marketplaces.mjs codex
+HOOKNOSTIC_PLAYBACK=opencode-v2 HOOKNOSTIC_PLAYBACK_VERSION=<version> HKN_RIPGREP_DIR=<dir> \
+  HKN_NO_NETWORK_REQUIRE_ENV=HOOKNOSTIC_PLAYBACK,HOOKNOSTIC_PLAYBACK_VERSION,HKN_RIPGREP_DIR \
+  scripts/without-network.sh pnpm exec vitest run packages/cli/test/harness-playback.test.ts packages/cli/test/opencode-v2-playback.test.ts
+```
+
+That needs unrestricted passwordless sudo (see the trust boundary above).
+Where sudo prompts (WSL's default user), run the wrapper from a root shell and
+name the user. That root shell's environment, with the playback variables,
+becomes the user's, and `PATH` and `HOME` come from the arguments:
+
+```bash
+scripts/without-network.sh --as "$(id -u user):$(id -g user)" --path "$PATH" --home /home/user -- <command>
+```
+
+## Network isolation on Windows
+
+The Windows playback lanes (copilot, pi, opencode-v2) and the Code Mode gate
+run in CI as a dedicated standard user, whose outbound traffic one Windows
+Firewall rule blocks. There is no network namespace on Windows; the block is
+per user.
+
+- **The wrapper.** `scripts/without-network.ps1 -StepTimeoutMinutes N
+  -RequireEnv A,B -Run '<command line>'` does the following:
+  - refuses unless on a GitHub-hosted runner, elevated, with the firewall
+    service running and every profile enabled;
+  - creates the user `hknoffline` (a random password held only in memory, a
+    member of `Users` only);
+  - adds one outbound block rule on its SID (rule group `hkn-offline`). A
+    block rule beats every allow rule, and loopback is exempt from firewall
+    rules, so the playback model servers still work;
+  - points the lane's profile, temp and app-data variables at a scratch
+    directory it may write;
+  - starts `scripts/without-network-lane.mjs` as that user, through
+    `Start-Process -Credential -UseNewEnvironment` (it logs which path ran
+    if that switch fails), with output streamed into the log and the lane's
+    exit code kept;
+  - stops the lane itself 60 s before `-StepTimeoutMinutes`, counted from
+    its own start, printing that it did, and exits 124. The step passes its
+    own `timeout-minutes` there, so this stop comes before the runner's
+    kill. `scripts/actions-readiness.test.mjs` pins that the two agree.
+- **The environment is an allowlist**:
+  - passed: Windows' own variables; `CI`, `GITHUB_ACTIONS` and
+    `RUNNER_OS`/`ARCH`/`ENVIRONMENT`/`TRACKING_ID`; `HOOKNOSTIC_*` and
+    `HKN_*`;
+  - set: `HOOKNOSTIC_PLAYBACK_NETWORK=none`, and `CODEX_HOME` in the scratch
+    directory, for harness paths that set none of their own;
+  - kept out: everything else, `ACTIONS_*` and the file-command paths
+    included.
+
+  It is cheap, and it keeps tokens out of the lane.
+- **The proof.** Before the command, as the lane user,
+  `scripts/assert-no-network.mjs --offline` fails the run unless:
+  - the process is exactly the SID the wrapper created, and not an
+    administrator;
+  - each public IPv4 probe is refused by the firewall (`EACCES`), and the
+    IPv6 probe is refused or unroutable;
+  - a loopback round trip works;
+  - the required names (passed as an argument, never read from the lane's
+    own environment) are present;
+  - no forbidden name reached the lane.
+
+  There is no interface check (the adapters stay up), and DNS is reported
+  but not required to fail. The prepare step's `--check-online` is the
+  positive control, as on Linux.
+- **Cleanup.** An `always()` step runs `without-network.ps1 -Cleanup`. It
+  stops every process the user owns, found by owner SID, with a bounded
+  recheck, then removes the rule group and disables the user. It needs no
+  precondition, so it is safe after a refusal. It deletes nothing.
+  - The step is needed: on windows-latest, lane processes survived the
+    runner's kill after a step timeout and after a job timeout, and the
+    `always()` step still ran both times.
+  - A workflow cancelled by hand may skip it. The runner is single-use.
+- **pnpm.** CI installs pnpm with pnpm/action-setup's `dest:` in the
+  toolcache. The default, `~/setup-pnpm`, is in the runner user's profile,
+  which the lane user cannot reach, and the tests run pnpm.
+- **Vacuous green.** Several guards keep a green run from meaning nothing:
+  - `HOOKNOSTIC_PLAYBACK_NETWORK=none` arms the known-lane guard, as on
+    Linux;
+  - an empty `-RequireEnv` is refused;
+  - the SID check means a lane that somehow ran as the runner user, and so
+    unblocked, fails;
+  - Code Mode keeps `requireGateCoverage`.
+- **Out of scope, by the goal above.** A standard user on windows-latest can
+  write much of the runner (the workspace, the toolcache, the npm prefix),
+  and can read the runner's own credentials. Closing that is not this
+  block's job; `.capture/network-egress`, "Hardening findings", records what
+  it took.
+
+It runs only on a GitHub-hosted runner, because it creates a user and a
+firewall rule. Locally, only its argument checks and refusals run:
+`scripts/without-network-ps1.test.mjs` uses `-DryRun`, which stops before
+anything is created.
 
 ## Marketplace release gates
 

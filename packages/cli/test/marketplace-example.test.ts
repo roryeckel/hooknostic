@@ -6,7 +6,7 @@ import { afterAll, describe, expect, it } from "vitest";
 
 import { runBuild } from "../src/build.js";
 import { defaultAdapterRegistry } from "../src/registry.js";
-import { runProcess, startModelPlayback } from "./harness-playback.js";
+import { freePort, playbackQuiet, runProcess, startModelPlayback } from "./harness-playback.js";
 
 const root = resolve(import.meta.dirname, "../../..");
 const cleanup: string[] = [];
@@ -114,10 +114,19 @@ describe("marketplace example", () => {
         CLAUDE_CODE_DISABLE_UNKNOWN_MODEL_WINDOW_ENFORCEMENT: "1",
         DISABLE_AUTOUPDATER: "1",
         DISABLE_TELEMETRY: "1",
+        // The install calls reached api.anthropic.com with the inherited
+        // environment; on a refused loopback port they fail that request at
+        // once, and pass (.capture/network-egress, "Marketplace").
+        ANTHROPIC_BASE_URL: `http://127.0.0.1:${await freePort()}`,
       };
       for (const args of [
-        ["plugin", "marketplace", "add", marketplace],
-        ["plugin", id === "claude" ? "install" : "add", "combined-example@hooknostic-example"],
+        ["plugin", "marketplace", "add", ...(id === "codex" ? playbackQuiet.codexArgs : []), marketplace],
+        [
+          "plugin",
+          id === "claude" ? "install" : "add",
+          ...(id === "codex" ? playbackQuiet.codexArgs : []),
+          "combined-example@hooknostic-example",
+        ],
       ]) {
         const result = await runProcess(id, args, { cwd: project, env, timeoutMs: 60_000 });
         expect(result.code, result.stdout + result.stderr).toBe(0);
@@ -146,6 +155,7 @@ describe("marketplace example", () => {
                 "Use the greet skill, then run the requested tools.",
                 "--skip-git-repo-check",
                 "--dangerously-bypass-hook-trust",
+                ...playbackQuiet.codexArgs,
                 "-c",
                 'model="hooknostic-playback"',
                 "-c",

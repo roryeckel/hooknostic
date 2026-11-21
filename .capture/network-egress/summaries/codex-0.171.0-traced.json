@@ -1,0 +1,283 @@
+{
+ "run": "codex-0.171.0-traced",
+ "meta": {
+  "lane": "codex",
+  "version": "0.171.0",
+  "mode": "traced",
+  "date_utc": "2026-11-20T04:50:40Z",
+  "playback_version_env": "0.171.0",
+  "extra_env": [],
+  "seed_home": "none",
+  "kernel": "Linux 5.15.167.4-microsoft-standard-WSL2",
+  "node": "v24.22.3",
+  "which": "/home/user/hn-egress/harness/codex-0.171.0/bin/codex",
+  "interfaces": [
+   "lo UNKNOWN 127.0.0.1/8 10.255.255.254/32 ::1/128",
+   "eth0 UP",
+   "br-8720e84bfcad DOWN",
+   "docker0 DOWN"
+  ],
+  "exit": "0",
+  "seconds": "51"
+ },
+ "tests": {
+  "passed": 69,
+  "skipped": 73
+ },
+ "failed": [],
+ "harness_processes": 35,
+ "harness_processes_with_egress": 21,
+ "destinations": [
+  {
+   "ip": "10.255.255.254",
+   "port": 53,
+   "kind": "dns-resolver",
+   "hostnames": [],
+   "tls_sni": [],
+   "exe": "/usr/lib/git-core/git-remote-https",
+   "chain": [
+    "git-remote-https",
+    "git",
+    "git",
+    "codex",
+    "node",
+    "node",
+    "pnpm"
+   ],
+   "results": [
+    "0"
+   ],
+   "count": 42,
+   "processes": 42,
+   "first_offset_s": 6.525,
+   "argv_examples": [
+    "/usr/lib/git-core/git-remote-https https://github.com/openai/plugins.git https://github.com/openai/plugins.git"
+   ]
+  },
+  {
+   "ip": "140.82.114.3",
+   "port": 443,
+   "kind": "tcp-or-udp",
+   "hostnames": [
+    "github.com"
+   ],
+   "tls_sni": [
+    "github.com"
+   ],
+   "exe": "/usr/lib/git-core/git-remote-https",
+   "chain": [
+    "git-remote-https",
+    "git",
+    "git",
+    "codex",
+    "node",
+    "node",
+    "pnpm"
+   ],
+   "results": [
+    "EINPROGRESS"
+   ],
+   "count": 42,
+   "processes": 42,
+   "first_offset_s": 6.548,
+   "argv_examples": [
+    "/usr/lib/git-core/git-remote-https https://github.com/openai/plugins.git https://github.com/openai/plugins.git"
+   ]
+  },
+  {
+   "ip": "2606:4700:4408::ac40:9bd1",
+   "port": 65535,
+   "kind": "udp-route-probe (musl getaddrinfo source-address selection, port 65535; sends no packet)",
+   "hostnames": [
+    "ab.chatgpt.com"
+   ],
+   "tls_sni": [],
+   "exe": "/home/user/hn-egress/harness/codex-0.171.0/lib/node_modules/@openai/codex/node_modules/@openai/codex-linux-x64/vendor/x86_64-unknown-linux-musl/bin/codex",
+   "chain": [
+    "codex",
+    "node",
+    "node",
+    "pnpm"
+   ],
+   "results": [
+    "ENETUNREACH"
+   ],
+   "count": 21,
+   "processes": 21,
+   "first_offset_s": 7.428,
+   "argv_examples": [
+    "/home/user/hn-egress/harness/codex-0.171.0/lib/node_modules/@openai/codex/node_modules/@openai/codex- exec - --dangerously-bypass-hook-trust",
+    "/home/user/hn-egress/harness/codex-0.171.0/lib/node_modules/@openai/codex/node_modules/@openai/codex- exec - --skip-git-repo-check",
+    "/home/user/hn-egress/harness/codex-0.171.0/lib/node_modules/@openai/codex/node_modules/@openai/codex- exec hello --skip-git-repo-check"
+   ]
+  },
+  {
+   "ip": "2a06:98c1:3101::6812:202f",
+   "port": 65535,
+   "kind": "udp-route-probe (musl getaddrinfo source-address selection, port 65535; sends no packet)",
+   "hostnames": [
+    "ab.chatgpt.com"
+   ],
+   "tls_sni": [],
+   "exe": "/home/user/hn-egress/harness/codex-0.171.0/lib/node_modules/@openai/codex/node_modules/@openai/codex-linux-x64/vendor/x86_64-unknown-linux-musl/bin/codex",
+   "chain": [
+    "codex",
+    "node",
+    "node",
+    "pnpm"
+   ],
+   "results": [
+    "ENETUNREACH"
+   ],
+   "count": 21,
+   "processes": 21,
+   "first_offset_s": 7.428,
+   "argv_examples": [
+    "/home/user/hn-egress/harness/codex-0.171.0/lib/node_modules/@openai/codex/node_modules/@openai/codex- exec - --dangerously-bypass-hook-trust",
+    "/home/user/hn-egress/harness/codex-0.171.0/lib/node_modules/@openai/codex/node_modules/@openai/codex- exec - --skip-git-repo-check",
+    "/home/user/hn-egress/harness/codex-0.171.0/lib/node_modules/@openai/codex/node_modules/@openai/codex- exec hello --skip-git-repo-check"
+   ]
+  },
+  {
+   "ip": "172.64.155.209",
+   "port": 65535,
+   "kind": "udp-route-probe (musl getaddrinfo source-address selection, port 65535; sends no packet)",
+   "hostnames": [
+    "ab.chatgpt.com"
+   ],
+   "tls_sni": [],
+   "exe": "/home/user/hn-egress/harness/codex-0.171.0/lib/node_modules/@openai/codex/node_modules/@openai/codex-linux-x64/vendor/x86_64-unknown-linux-musl/bin/codex",
+   "chain": [
+    "codex",
+    "node",
+    "node",
+    "pnpm"
+   ],
+   "results": [
+    "0"
+   ],
+   "count": 21,
+   "processes": 21,
+   "first_offset_s": 7.428,
+   "argv_examples": [
+    "/home/user/hn-egress/harness/codex-0.171.0/lib/node_modules/@openai/codex/node_modules/@openai/codex- exec - --dangerously-bypass-hook-trust",
+    "/home/user/hn-egress/harness/codex-0.171.0/lib/node_modules/@openai/codex/node_modules/@openai/codex- exec - --skip-git-repo-check",
+    "/home/user/hn-egress/harness/codex-0.171.0/lib/node_modules/@openai/codex/node_modules/@openai/codex- exec hello --skip-git-repo-check"
+   ]
+  },
+  {
+   "ip": "104.18.32.47",
+   "port": 65535,
+   "kind": "udp-route-probe (musl getaddrinfo source-address selection, port 65535; sends no packet)",
+   "hostnames": [
+    "ab.chatgpt.com"
+   ],
+   "tls_sni": [],
+   "exe": "/home/user/hn-egress/harness/codex-0.171.0/lib/node_modules/@openai/codex/node_modules/@openai/codex-linux-x64/vendor/x86_64-unknown-linux-musl/bin/codex",
+   "chain": [
+    "codex",
+    "node",
+    "node",
+    "pnpm"
+   ],
+   "results": [
+    "0"
+   ],
+   "count": 21,
+   "processes": 21,
+   "first_offset_s": 7.428,
+   "argv_examples": [
+    "/home/user/hn-egress/harness/codex-0.171.0/lib/node_modules/@openai/codex/node_modules/@openai/codex- exec - --dangerously-bypass-hook-trust",
+    "/home/user/hn-egress/harness/codex-0.171.0/lib/node_modules/@openai/codex/node_modules/@openai/codex- exec - --skip-git-repo-check",
+    "/home/user/hn-egress/harness/codex-0.171.0/lib/node_modules/@openai/codex/node_modules/@openai/codex- exec hello --skip-git-repo-check"
+   ]
+  },
+  {
+   "ip": "172.64.155.209",
+   "port": 443,
+   "kind": "tcp-or-udp",
+   "hostnames": [
+    "ab.chatgpt.com"
+   ],
+   "tls_sni": [
+    "ab.chatgpt.com"
+   ],
+   "exe": "/home/user/hn-egress/harness/codex-0.171.0/lib/node_modules/@openai/codex/node_modules/@openai/codex-linux-x64/vendor/x86_64-unknown-linux-musl/bin/codex",
+   "chain": [
+    "codex",
+    "node",
+    "node",
+    "pnpm"
+   ],
+   "results": [
+    "EINPROGRESS"
+   ],
+   "count": 21,
+   "processes": 21,
+   "first_offset_s": 7.428,
+   "argv_examples": [
+    "/home/user/hn-egress/harness/codex-0.171.0/lib/node_modules/@openai/codex/node_modules/@openai/codex- exec - --dangerously-bypass-hook-trust",
+    "/home/user/hn-egress/harness/codex-0.171.0/lib/node_modules/@openai/codex/node_modules/@openai/codex- exec - --skip-git-repo-check",
+    "/home/user/hn-egress/harness/codex-0.171.0/lib/node_modules/@openai/codex/node_modules/@openai/codex- exec hello --skip-git-repo-check"
+   ]
+  }
+ ],
+ "dns_queries": [
+  {
+   "name": "github.com",
+   "types": [
+    "A",
+    "AAAA"
+   ],
+   "procs": [
+    "git-remote-https"
+   ],
+   "answers": [
+    "A 140.82.114.3"
+   ],
+   "rcodes": [
+    0
+   ],
+   "first_offset_s": 6.525,
+   "querying_processes": 42,
+   "argv_examples": [
+    "/usr/lib/git-core/git-remote-https https://github.com/openai/plugins.git https://github.com/openai/plugins.git"
+   ],
+   "seconds_after_exec": [
+    0.003,
+    0.007
+   ]
+  },
+  {
+   "name": "ab.chatgpt.com",
+   "types": [
+    "A",
+    "AAAA"
+   ],
+   "procs": [
+    "codex"
+   ],
+   "answers": [
+    "A 104.18.32.47",
+    "A 172.64.155.209",
+    "AAAA 2606:4700:4408::ac40:9bd1",
+    "AAAA 2a06:98c1:3101::6812:202f"
+   ],
+   "rcodes": [
+    0
+   ],
+   "first_offset_s": 7.427,
+   "querying_processes": 21,
+   "argv_examples": [
+    "/home/user/hn-egress/harness/codex-0.171.0/lib/node_modules/@openai/codex/node_modules/@openai/codex- exec - --dangerously-bypass-hook-trust --color",
+    "/home/user/hn-egress/harness/codex-0.171.0/lib/node_modules/@openai/codex/node_modules/@openai/codex- exec - --skip-git-repo-check --dangerously-bypass-hook-trust",
+    "/home/user/hn-egress/harness/codex-0.171.0/lib/node_modules/@openai/codex/node_modules/@openai/codex- exec hello --skip-git-repo-check --color"
+   ],
+   "seconds_after_exec": [
+    0.692,
+    3.37
+   ]
+  }
+ ],
+ "trace_bytes": 74873512
+}

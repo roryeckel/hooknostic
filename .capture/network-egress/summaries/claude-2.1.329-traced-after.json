@@ -1,0 +1,162 @@
+{
+ "run": "claude-2.1.329-traced-after",
+ "meta": {
+  "lane": "claude",
+  "version": "2.1.329",
+  "mode": "traced",
+  "date_utc": "2026-11-20T07:06:30Z",
+  "playback_version_env": "2.1.329",
+  "extra_env": [],
+  "seed_home": "none",
+  "kernel": "Linux 5.15.167.4-microsoft-standard-WSL2",
+  "node": "v24.22.3",
+  "which": "/home/user/hn-egress/harness/claude-2.1.329/bin/claude",
+  "interfaces": [
+   "lo UNKNOWN 127.0.0.1/8 10.255.255.254/32 ::1/128",
+   "eth0 UP",
+   "br-8720e84bfcad DOWN",
+   "docker0 DOWN"
+  ],
+  "exit": "0",
+  "seconds": "58"
+ },
+ "tests": {
+  "passed": 72,
+  "skipped": 74
+ },
+ "failed": [],
+ "harness_processes": 22,
+ "harness_processes_with_egress": 2,
+ "destinations": [
+  {
+   "ip": "10.255.255.254",
+   "port": 53,
+   "kind": "dns-resolver",
+   "hostnames": [],
+   "tls_sni": [],
+   "exe": "/home/user/hn-egress/harness/claude-2.1.329/bin/claude",
+   "chain": [
+    "claude",
+    "node",
+    "node",
+    "pnpm"
+   ],
+   "results": [
+    "0"
+   ],
+   "count": 2,
+   "processes": 2,
+   "first_offset_s": 24.533,
+   "argv_examples": [
+    "/home/user/hn-egress/harness/claude-2.1.329/bin/claude --permission-mode manual --plugin-dir"
+   ]
+  },
+  {
+   "ip": "35.190.46.17",
+   "port": 0,
+   "kind": "udp-route-probe (glibc getaddrinfo source-address selection; sends no packet)",
+   "hostnames": [
+    "downloads.claude.ai"
+   ],
+   "tls_sni": [],
+   "exe": "/home/user/hn-egress/harness/claude-2.1.329/bin/claude",
+   "chain": [
+    "claude",
+    "node",
+    "node",
+    "pnpm"
+   ],
+   "results": [
+    "0"
+   ],
+   "count": 2,
+   "processes": 2,
+   "first_offset_s": 24.569,
+   "argv_examples": [
+    "/home/user/hn-egress/harness/claude-2.1.329/bin/claude --permission-mode manual --plugin-dir"
+   ]
+  },
+  {
+   "ip": "2600:1901:0:b25e::",
+   "port": 0,
+   "kind": "udp-route-probe (glibc getaddrinfo source-address selection; sends no packet)",
+   "hostnames": [
+    "downloads.claude.ai"
+   ],
+   "tls_sni": [],
+   "exe": "/home/user/hn-egress/harness/claude-2.1.329/bin/claude",
+   "chain": [
+    "claude",
+    "node",
+    "node",
+    "pnpm"
+   ],
+   "results": [
+    "ENETUNREACH"
+   ],
+   "count": 2,
+   "processes": 2,
+   "first_offset_s": 24.569,
+   "argv_examples": [
+    "/home/user/hn-egress/harness/claude-2.1.329/bin/claude --permission-mode manual --plugin-dir"
+   ]
+  },
+  {
+   "ip": "35.190.46.17",
+   "port": 443,
+   "kind": "tcp-or-udp",
+   "hostnames": [
+    "downloads.claude.ai"
+   ],
+   "tls_sni": [
+    "downloads.claude.ai"
+   ],
+   "exe": "/home/user/hn-egress/harness/claude-2.1.329/bin/claude",
+   "chain": [
+    "claude",
+    "node",
+    "node",
+    "pnpm"
+   ],
+   "results": [
+    "EINPROGRESS"
+   ],
+   "count": 2,
+   "processes": 2,
+   "first_offset_s": 24.58,
+   "argv_examples": [
+    "/home/user/hn-egress/harness/claude-2.1.329/bin/claude --permission-mode manual --plugin-dir"
+   ]
+  }
+ ],
+ "dns_queries": [
+  {
+   "name": "downloads.claude.ai",
+   "types": [
+    "A",
+    "AAAA"
+   ],
+   "procs": [
+    "claude"
+   ],
+   "answers": [
+    "A 35.190.46.17",
+    "AAAA 2600:1901:0:b25e::"
+   ],
+   "rcodes": [
+    0
+   ],
+   "first_offset_s": 24.533,
+   "querying_processes": 2,
+   "argv_examples": [
+    "/home/user/hn-egress/harness/claude-2.1.329/bin/claude --permission-mode manual --plugin-dir /home/user/hn-egress/runs/claude-2.1.329-traced-after/tmp/hooknostic-ptyapproval-claude-m1DcWe",
+    "/home/user/hn-egress/harness/claude-2.1.329/bin/claude --permission-mode manual --plugin-dir /home/user/hn-egress/runs/claude-2.1.329-traced-after/tmp/hooknostic-ptyperm-claude-4oI7f0"
+   ],
+   "seconds_after_exec": [
+    1.235,
+    1.245
+   ]
+  }
+ ],
+ "trace_bytes": 4016528
+}

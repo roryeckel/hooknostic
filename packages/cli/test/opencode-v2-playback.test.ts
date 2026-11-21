@@ -36,6 +36,7 @@ import {
   PLAYBACK_HANDLER_ERROR_LINE,
   PLAYBACK_INTERNAL_ERROR_LINE,
   PLAYBACK_STRAY_INTERNAL_ERROR_LINE,
+  playbackQuiet,
   runProcess,
   startModelPlayback,
   traceEvents,
@@ -1854,6 +1855,8 @@ describe.skipIf(!enabled)("OpenCode v2 offline playback", () => {
                     : "",
         };
         for (const key of Object.keys(env)) if (/API_KEY|AUTH_TOKEN|SECRET|TOKEN|^OPENCODE/.test(key)) delete env[key];
+        // As in drive.mjs: the drive's own settings go in after the strip (.capture/network-egress).
+        Object.assign(env, playbackQuiet.opencodeV2Env);
         const binary = process.env["HKN_OPENCODE_BINARY"] ?? "opencode";
         const detected = await runProcess(binary, ["--version"], { cwd: root, env });
         expect(detected.stdout.trim()).toBe(`opencode v${version}`);

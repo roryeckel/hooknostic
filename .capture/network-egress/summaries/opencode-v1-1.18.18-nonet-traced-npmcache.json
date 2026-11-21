@@ -1,0 +1,61 @@
+{
+ "run": "opencode-v1-1.18.18-nonet-traced-npmcache",
+ "meta": {
+  "lane": "opencode-v1",
+  "version": "1.18.18",
+  "mode": "nonet-traced",
+  "date_utc": "2026-11-20T04:29:18Z",
+  "playback_version_env": "unset",
+  "extra_env": [
+   "npm_config_offline=true"
+  ],
+  "seed_home": "/home/user/hn-egress/seed/npm-opencode-v1",
+  "kernel": "Linux 5.15.167.4-microsoft-standard-WSL2",
+  "node": "v24.22.3",
+  "which": "/home/user/hn-egress/harness/opencode-v1-1.18.18/bin/opencode",
+  "interfaces": [
+   "lo UNKNOWN 127.0.0.1/8 ::1/128"
+  ],
+  "exit": "0",
+  "seconds": "310"
+ },
+ "tests": {
+  "passed": 61,
+  "skipped": 81
+ },
+ "failed": [],
+ "harness_processes": 14,
+ "harness_processes_with_egress": 0,
+ "destinations": [
+  {
+   "ip": "10.255.255.254",
+   "port": 53,
+   "kind": "dns-resolver",
+   "hostnames": [],
+   "tls_sni": [],
+   "exe": "/home/user/hn-egress/harness/opencode-v1-1.18.18/bin/opencode",
+   "chain": [
+    "opencode",
+    "node",
+    "node",
+    "pnpm"
+   ],
+   "results": [
+    "ENETUNREACH"
+   ],
+   "count": 116,
+   "processes": 13,
+   "first_offset_s": 18.83,
+   "argv_examples": [
+    "opencode run Use the shell tool once to create hooknostic-blocked.txt, then stop. --model",
+    "opencode run Use the shell tool once to create hooknostic-tool.txt, then stop. --model",
+    "opencode run hello --model",
+    "opencode serve --port 40957",
+    "opencode serve --port 42495",
+    "opencode serve --port 45665"
+   ]
+  }
+ ],
+ "dns_queries": [],
+ "trace_bytes": 2749496
+}

@@ -1,8 +1,26 @@
 // Constructed model responses drive real hook-boundary captures. No external model.
+import { readFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { join } from "node:path";
 
-export async function startToolModel(project, mcpOnly = false, remote = false, audit = false) {
+// Resolves once the capture plugin has recorded a succeeded execution of the
+// given session, or after timeoutMs; true if it did.
+async function executionSucceeded(captureDir, sessionID, timeoutMs) {
+  const succeeded = line => {
+    try {
+      const { hook, event } = JSON.parse(line);
+      return hook === "event" && event?.type === "session.execution.succeeded" && event.data?.sessionID === sessionID;
+    } catch {
+      return false; // the line being appended
+    }
+  };
+  for (const deadline = Date.now() + timeoutMs; Date.now() < deadline; await new Promise(resolve => setTimeout(resolve, 50))) {
+    if ((await readFile(join(captureDir, "events.jsonl"), "utf8").catch(() => "")).split("\n").some(succeeded)) return true;
+  }
+  return false;
+}
+
+export async function startToolModel(project, mcpOnly = false, remote = false, audit = false, captureDir = join(project, "..", "captured")) {
   const requests = [], errors = [];
   let index = 0, callIndex = 0, registrationRetries = 0, baseUrl;
   const actions = audit === "patch" ? [
@@ -89,6 +107,18 @@ export async function startToolModel(project, mcpOnly = false, remote = false, a
         : said.includes("hooknostic-new-child-parent") ? ["subagent", { agent: "general", description: "Offline second child", prompt: "hooknostic-child-task: hooknostic-second-child." }]
         : undefined;
     } else action = tools.length && !child ? actions[index++] : undefined;
+    // Constructed ordering: the follow-up is sent only once the child's first
+    // execution has succeeded, as the harness reported it to the capture
+    // plugin. A background child (2.3.0 and later) still runs when the parent
+    // asks again, and a follow-up that reaches it then is queued into its
+    // running execution's inbox and answered there: one execution, so one
+    // agent.stop (README, "subagent-followup"). A foreground child (2.0.17)
+    // has finished before its parent asks, so this returns at once.
+    if (audit === "subagent-followup" && action && action === actions[1]) {
+      const first = JSON.stringify(request.messages?.findLast(message => message.role === "tool")?.content ?? "").match(/ses_[A-Za-z0-9]+/)?.[0];
+      if (!first || !(await executionSucceeded(captureDir, first, 30000)))
+        errors.push("The child's first execution did not succeed before its follow-up");
+    }
     // Constructed timing: the child answers 3 s late, so a background child
     // (2.3.0 and later) outlives its parent's first execution.
     if (child && audit === "subagent-late") await new Promise(resolve => setTimeout(resolve, 3000));

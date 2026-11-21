@@ -156,6 +156,121 @@ it("requires a deduped lockfile in the dependency policy lane", () => {
   );
 });
 
+// scripts/without-network.ps1 stops a lane a minute before the budget it is
+// told, so it must be told its step's own timeout-minutes, or the runner's
+// kill comes first and its message and stop never run. The job must keep at
+// least 3 minutes beyond the step: the steps before took up to 2.8 minutes
+// on windows-latest, and the always() cleanup runs after.
+function expectWindowsLaneBudget(job, body) {
+  const stepTimeout = Number(body?.match(/^ {8}timeout-minutes: (\d+)\r?$/m)?.[1]);
+  const told = Number(body?.match(/^ {8}run: \.\/scripts\/without-network\.ps1 -StepTimeoutMinutes (\d+) /m)?.[1]);
+  const jobTimeout = Number(job.match(/^ {4}timeout-minutes: (\d+)\r?$/m)?.[1]);
+  expect(stepTimeout).toBeGreaterThan(2);
+  expect(told).toBe(stepTimeout);
+  expect(jobTimeout - stepTimeout).toBeGreaterThanOrEqual(3);
+}
+
+it("runs the Linux and Windows playback lanes without network, after every step that needs it", () => {
+  const ci = readFileSync(new URL("../.github/workflows/ci.yml", import.meta.url), "utf8");
+  const job = ci.split("  harness-playback:")[1].split(/\r?\n {2}\S/)[0];
+  const steps = job.split(/\r?\n {6}- /).slice(1);
+  const step = (name) => steps.find((candidate) => candidate.split(/\r?\n/)[0] === `name: ${name}`);
+  const field = (body, key) => body?.match(new RegExp(`^ {8}${key}: (.+?)\\r?$`, "m"))?.[1];
+  const vitest =
+    "pnpm exec vitest run packages/cli/test/harness-playback.test.ts packages/cli/test/opencode-v2-playback.test.ts scripts/pi-drift-driver.test.mjs";
+  const offline = step("Run model-free playback without network (Linux)");
+  const windows = step("Run model-free playback without network (Windows)");
+  const prepare = step("Prepare offline playback prerequisites");
+  const cleanup = step("Remove the Windows network block");
+  // Matching the executable field, so a commented-out or prefixed form fails.
+  expect(field(offline, "if")).toBe("runner.os == 'Linux'");
+  expect(field(offline, "run")).toBe(`scripts/without-network.sh ${vitest}`);
+  expect(field(windows, "if")).toBe("runner.os != 'Linux'");
+  expect(field(windows, "shell")).toBe("pwsh");
+  expect(field(windows, "run")).toBe(
+    `./scripts/without-network.ps1 -StepTimeoutMinutes ${field(windows, "timeout-minutes")} -RequireEnv 'HOOKNOSTIC_PLAYBACK,HKN_PLAYBACK_ARTIFACT_DIR,HKN_RIPGREP_DIR' -Run '${vitest}'`,
+  );
+  expectWindowsLaneBudget(job, windows);
+  // The isolation check must also see that the step's variables crossed sudo.
+  expect(field(offline, " {2}HKN_NO_NETWORK_REQUIRE_ENV")).toBe(
+    "HOOKNOSTIC_PLAYBACK,HKN_PLAYBACK_ARTIFACT_DIR,HKN_RIPGREP_DIR",
+  );
+  const env = (body) =>
+    body
+      .split(/\r?\n {8}env:\r?\n/)[1]
+      .split(/\r?\n/)
+      .filter((line) => /^ {10}\w+:/.test(line));
+  expect(env(offline)).toEqual(expect.arrayContaining(env(windows)));
+  // The positive control runs on every OS: the probe must see the network here.
+  expect(field(prepare, "run")).toBe(
+    "node --experimental-strip-types scripts/prepare-offline-playback.mjs '${{ matrix.harness }}' --version '${{ steps.harness.outputs.version }}' --check-online",
+  );
+  // The block is removed even after a failure or a timeout.
+  expect(field(cleanup, "if")).toBe("${{ always() && runner.os != 'Linux' }}");
+  expect(field(cleanup, "run")).toBe("./scripts/without-network.ps1 -Cleanup");
+  // Everything that needs the network runs before the blocked steps.
+  const order = [
+    "Install captured harness version",
+    "Bundle compiler and dependencies",
+    "Cache the OpenCode v2 tools drive's pinned ripgrep",
+    "Prepare offline playback prerequisites",
+    "Run model-free playback without network (Linux)",
+    "Run model-free playback without network (Windows)",
+    "Remove the Windows network block",
+  ].map((name) => steps.indexOf(step(name)));
+  expect(order.every((index) => index >= 0)).toBe(true);
+  expect(order).toEqual([...order].sort((a, b) => a - b));
+  // Diagnostics survive a failure in any step: prepare, the isolation check, sudo, or the tests.
+  expect(field(step("Upload OpenCode v2 failure diagnostics"), "if")).toBe(
+    "${{ always() && matrix.harness == 'opencode-v2' && job.status == 'failure' }}",
+  );
+});
+
+it("runs the Code Mode gate without network, and removes the block afterwards", () => {
+  const ci = readFileSync(new URL("../.github/workflows/ci.yml", import.meta.url), "utf8");
+  const job = ci.split("  code-mode:")[1].split(/\r?\n {2}\S/)[0];
+  const steps = job.split(/\r?\n {6}- /).slice(1);
+  const step = (name) => steps.find((candidate) => candidate.split(/\r?\n/)[0] === `name: ${name}`);
+  const field = (body, key) => body?.match(new RegExp(`^ {8}${key}: (.+?)\\r?$`, "m"))?.[1];
+  const control = step("Prove the network probe works here");
+  const gate = step("Verify Code Mode guard dispatch with loopback model, without network");
+  const cleanup = step("Remove the network block");
+  expect(field(control, "run")).toBe(
+    "node --experimental-strip-types scripts/prepare-offline-playback.mjs codex --version '${{ steps.baseline.outputs.version }}' --check-online",
+  );
+  expect(field(gate, "run")).toBe(
+    `./scripts/without-network.ps1 -StepTimeoutMinutes ${field(gate, "timeout-minutes")} -RequireEnv HOOKNOSTIC_PLAYBACK -Run 'node scripts/verify-code-mode.mjs'`,
+  );
+  expectWindowsLaneBudget(job, gate);
+  expect(field(gate, " {2}HOOKNOSTIC_PLAYBACK")).toBe("codex");
+  expect(field(cleanup, "if")).toBe("${{ always() }}");
+  expect(field(cleanup, "run")).toBe("./scripts/without-network.ps1 -Cleanup");
+  const order = [control, gate, cleanup].map((body) => steps.indexOf(body));
+  expect(order.every((index) => index >= 0)).toBe(true);
+  expect(order).toEqual([...order].sort((a, b) => a - b));
+});
+
+it("runs the marketplace gate without network, after the positive control", () => {
+  const ci = readFileSync(new URL("../.github/workflows/ci.yml", import.meta.url), "utf8");
+  const job = ci.split("  marketplace:")[1].split(/\r?\n {2}\S/)[0];
+  const steps = job.split(/\r?\n {6}- /).slice(1);
+  const step = (name) => steps.find((candidate) => candidate.split(/\r?\n/)[0] === `name: ${name}`);
+  const field = (body, key) => body?.match(new RegExp(`^ {8}${key}: (.+?)\\r?$`, "m"))?.[1];
+  const control = step("Prove the network probe works here");
+  const gate = step("Verify installed example with loopback model, without network");
+  expect(field(control, "run")).toBe(
+    "node --experimental-strip-types scripts/prepare-offline-playback.mjs '${{ matrix.harness }}' --version '${{ steps.package.outputs.version }}' --check-online",
+  );
+  expect(field(gate, "run")).toBe(
+    "scripts/without-network.sh node scripts/verify-marketplaces.mjs '${{ matrix.harness }}'",
+  );
+  // The isolation check runs before verify-marketplaces.mjs sets the lane, so the step names it.
+  expect(field(gate, " {2}HOOKNOSTIC_PLAYBACK")).toBe("${{ matrix.harness }}");
+  expect(field(gate, " {2}HKN_NO_NETWORK_REQUIRE_ENV")).toBe("HOOKNOSTIC_PLAYBACK");
+  expect(steps.indexOf(control)).toBeGreaterThan(steps.indexOf(step("Install captured package baseline")));
+  expect(steps.indexOf(gate)).toBeGreaterThan(steps.indexOf(control));
+});
+
 function runWatchStep(name, expressions, prelude = "", workflow = "harness-watch", status = 0) {
   const source = readFileSync(new URL(`../.github/workflows/${workflow}.yml`, import.meta.url), "utf8");
   const step = source
@@ -193,10 +308,86 @@ function runWatchStep(name, expressions, prelude = "", workflow = "harness-watch
 it.each(["", "skipped"])("reports an unrun playback step (%s) as an install failure", (outcome) => {
   const result = runWatchStep("Capture outcome", {
     "steps.playback.outcome": outcome,
+    "steps.prepare.outcome": outcome,
     "matrix.harness": "claude",
     "matrix.latest": "2.1.250",
   });
   expect(JSON.parse(result.stdout).outcome).toBe("install-failure");
+});
+
+it("reports a failed prepare step as a prepare failure, not an install failure", () => {
+  const capture = (prepare, playback) =>
+    JSON.parse(
+      runWatchStep("Capture outcome", {
+        "steps.playback.outcome": playback,
+        "steps.prepare.outcome": prepare,
+        "matrix.harness": "opencode-v1",
+        "matrix.latest": "1.19.6",
+      }).stdout,
+    ).outcome;
+  expect(capture("failure", "skipped")).toBe("prepare-failure");
+  // A build that needs the network fails in the blocked step: playback-failure.
+  expect(capture("success", "failure")).toBe("playback-failure");
+  expect(capture("success", "success")).toBe("pass");
+});
+
+// The drift step's real body, with docker replaced by a stub that records
+// each call and exits with the code given for its network mode.
+function runDriftDrive({ bridge = 0, none = 0, forceLlm = "false", installed = false, stale = false }) {
+  const result = runWatchStep(
+    "Run the drift capture-compare",
+    {
+      "inputs.force_llm": forceLlm,
+      "matrix.harness": "claude",
+      "matrix.pkg": "@anthropic-ai/claude-code",
+      "matrix.latest": "2.1.330",
+      "matrix.bootstrap": "install.cjs",
+    },
+    `mkdir -p .github/node/playback && echo 24.22.3 > .github/node/playback/.node-version
+    ${stale ? "mkdir -p drift && : > drift/installed" : ""}
+    GITHUB_WORKSPACE="$PWD"
+    docker() {
+      case "$*" in
+        *"--network bridge"*) echo "docker: bridge" >> calls.txt; ${installed ? ': > "$SCRATCH_ROOT/installed";' : ""} return ${bridge} ;;
+        *"--network none"*) echo "docker: none" >> calls.txt; return ${none} ;;
+      esac
+    }
+    trap 'cat calls.txt "$GITHUB_OUTPUT"' EXIT`,
+  );
+  return result.stdout.split(/\r?\n/).filter((line) => /^(docker: |code=|failed_phase=)/.test(line));
+}
+
+it("records which part of drift's phase 1 failed, as verify's labels do, and runs no drive", () => {
+  expect(runDriftDrive({ bridge: 1 })).toEqual(["docker: bridge", "code=1", "failed_phase=install"]);
+  // The install and bootstrap left their marker, so the prepare failed.
+  expect(runDriftDrive({ bridge: 1, installed: true })).toEqual(["docker: bridge", "code=1", "failed_phase=prepare"]);
+  // A marker left from before the step cannot count: the step removes it first.
+  expect(runDriftDrive({ bridge: 1, stale: true })).toEqual(["docker: bridge", "code=1", "failed_phase=install"]);
+  // A drive failure in phase 2 is the drive's, as before.
+  expect(runDriftDrive({ none: 6 })).toEqual(["docker: bridge", "docker: none", "code=6", "failed_phase="]);
+  expect(runDriftDrive({ none: 4 })).toEqual(["docker: bridge", "docker: none", "code=4", "failed_phase="]);
+  // The llm transport installs and drives in one container, so it names no phase.
+  expect(runDriftDrive({ bridge: 6, forceLlm: "true" })).toEqual(["docker: bridge", "code=6", "failed_phase="]);
+});
+
+it.each([
+  ["install", "1", "install-failure"],
+  ["install", "4", "install-failure"],
+  ["prepare", "1", "prepare-failure"],
+  ["prepare", "5", "prepare-failure"],
+  ["", "0", "clean"],
+  ["", "4", "drift"],
+  ["", "5", "inconclusive"],
+  ["", "6", "drive-failure"],
+])("writes drift's verdict (failed phase %j, code %s) as %s", (phase, code, verdict) => {
+  const result = runWatchStep("Write the verdict artifact", {
+    "steps.drive.outputs.code": code,
+    "steps.drive.outputs.failed_phase": phase,
+    "matrix.harness": "claude",
+    "matrix.latest": "2.1.330",
+    "inputs.force_llm": "false",
+  });
+  expect(JSON.parse(result.stdout)).toMatchObject({ exitCode: code, verdict });
 });
 
 it("does not suppress validation because a closed PR names the same version", () => {

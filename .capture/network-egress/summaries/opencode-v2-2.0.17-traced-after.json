@@ -1,0 +1,33 @@
+{
+ "run": "opencode-v2-2.0.17-traced-after",
+ "meta": {
+  "lane": "opencode-v2",
+  "version": "2.0.17",
+  "mode": "traced",
+  "date_utc": "2026-11-20T07:02:56Z",
+  "playback_version_env": "unset",
+  "extra_env": [],
+  "seed_home": "none",
+  "kernel": "Linux 5.15.167.4-microsoft-standard-WSL2",
+  "node": "v24.22.3",
+  "which": "/home/user/hn-egress/harness/opencode-v2-2.0.17/bin/opencode",
+  "interfaces": [
+   "lo UNKNOWN 127.0.0.1/8 10.255.255.254/32 ::1/128",
+   "eth0 UP",
+   "br-8720e84bfcad DOWN",
+   "docker0 DOWN"
+  ],
+  "exit": "0",
+  "seconds": "214"
+ },
+ "tests": {
+  "passed": 95,
+  "skipped": 51
+ },
+ "failed": [],
+ "harness_processes": 122,
+ "harness_processes_with_egress": 0,
+ "destinations": [],
+ "dns_queries": [],
+ "trace_bytes": 3838922
+}
