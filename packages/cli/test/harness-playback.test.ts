@@ -186,14 +186,6 @@ if (selected !== "" && selected !== "opencode-v2" && adapter === undefined) {
   throw new Error(`unknown HOOKNOSTIC_PLAYBACK harness ${JSON.stringify(selected)}`);
 }
 
-// MUTANT B (evidence only, reverted next): a test that needs the network. The
-// title contains "uses exactly the captured reference harness version", so the
-// Code Mode and marketplace gates' -t filters select it too.
-it("egress mutant: uses exactly the captured reference harness version, after fetching a public host", async () => {
-  const response = await fetch("https://github.com/", { method: "HEAD", signal: AbortSignal.timeout(15_000) });
-  expect(response.ok).toBe(true);
-});
-
 describe("scriptedTool schema fidelity", () => {
   it("does not invent a description field absent from the declared shell schema", () => {
     const tool = scriptedTool(
