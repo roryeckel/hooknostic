@@ -213,14 +213,14 @@ function tcp(host) {
 
 let dnsMs;
 async function dns() {
-  const start = performance.now();
+  const start = globalThis.performance.now();
   try {
     await lookup(PROBE_HOST);
     return "resolved";
   } catch (error) {
     return error.code ?? error.message;
   } finally {
-    dnsMs = Math.round(performance.now() - start);
+    dnsMs = Math.round(globalThis.performance.now() - start);
   }
 }
 
