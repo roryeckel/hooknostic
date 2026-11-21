@@ -245,14 +245,18 @@ describe("harness-watch workflow structure", () => {
     const marker = phase1.indexOf(": > /drift/installed");
     expect(marker).toBeGreaterThan(phase1.indexOf('"$INSTALL"'));
     expect(marker).toBeLessThan(phase1.indexOf("scripts/prepare-offline-playback.mjs"));
-    expect(phase2).toContain('docker run --network none "${COMMON[@]}" "${DRIFT_ENVS[@]}"');
+    // A lookup fails at once, as in scripts/without-network.sh: musl (codex)
+    // otherwise waits 5 s a lookup.
+    expect(phase2).toContain("docker run --network none --dns-option timeout:0 --dns-option attempts:1 \\");
+    expect(phase2).toContain('"${COMMON[@]}" "${DRIFT_ENVS[@]}"');
     // The drive needs phase 1's prefix and ripgrep, or it would fetch them offline.
     expect(playback).toContain(
       "DRIFT_ENVS=(-e npm_config_prefix=/drift/prefix -e npm_config_cache=/drift/npm-cache -e HKN_RIPGREP_DIR=/drift/ripgrep)",
     );
     expect(phase2).toContain('export PATH="$npm_config_prefix/bin:$PATH"');
-    expect(phase2).toContain(
-      "node scripts/assert-no-network.mjs --offline --require-env HOOKNOSTIC_PLAYBACK_VERSION,HKN_RIPGREP_DIR",
+    // Docker writes a --dns-option unchecked, so the check proves it took effect.
+    expect(phase2).toMatch(
+      /node scripts\/assert-no-network\.mjs --offline --require-env HOOKNOSTIC_PLAYBACK_VERSION,HKN_RIPGREP_DIR --dns-timeout 0\r?\n/,
     );
     expect(phase2.indexOf("assert-no-network.mjs --offline")).toBeLessThan(phase2.indexOf("drive-capture-session.mjs"));
     expect(phase2).toContain("-e HKN_NO_NETWORK_UID=1000 -e HOOKNOSTIC_PLAYBACK_NETWORK=none");

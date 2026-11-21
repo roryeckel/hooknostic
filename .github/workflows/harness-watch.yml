@@ -787,13 +787,19 @@ jobs:
             # (.capture/network-egress, "Drift's two phases, every harness,
             # locally"); a build that does need it fails here as a drive
             # failure.
+            # The resolver options make every lookup fail at once, as
+            # scripts/without-network.sh does: nothing is reachable, and musl
+            # (codex) otherwise waits 5 s a lookup. Docker writes any option
+            # unchecked, so the isolation check's --dns-timeout 0 is what
+            # proves it took effect.
             if [ "$CODE" = 0 ]; then
-              docker run --network none "${COMMON[@]}" "${DRIFT_ENVS[@]}" \
+              docker run --network none --dns-option timeout:0 --dns-option attempts:1 \
+                "${COMMON[@]}" "${DRIFT_ENVS[@]}" \
                 -e HKN_NO_NETWORK_UID=1000 -e HOOKNOSTIC_PLAYBACK_NETWORK=none \
                 -e HOOKNOSTIC_PLAYBACK_VERSION="${{ matrix.latest }}" "$IMAGE" \
                 sh -ec '
                   export PATH="$npm_config_prefix/bin:$PATH"
-                  node scripts/assert-no-network.mjs --offline --require-env HOOKNOSTIC_PLAYBACK_VERSION,HKN_RIPGREP_DIR
+                  node scripts/assert-no-network.mjs --offline --require-env HOOKNOSTIC_PLAYBACK_VERSION,HKN_RIPGREP_DIR --dns-timeout 0
                   exec node --experimental-strip-types scripts/drive-capture-session.mjs \
                     "$1" --transport playback --scratch "/drift/$1"
                 ' sh "${{ matrix.harness }}" \
