@@ -1,7 +1,7 @@
 import type * as fs from "node:fs";
 import { fsync } from "node:fs";
 import type * as fsPromises from "node:fs/promises";
-import { mkdir, mkdtemp, readdir, readFile, realpath, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, realpath, rename, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, relative, sep } from "node:path";
 
@@ -38,6 +38,10 @@ const io = vi.hoisted(() => ({
   failRename: undefined as ((from: string, to: string) => NodeJS.ErrnoException | undefined) | undefined,
   /** Fail the next removal chosen by its path, with the error it returns. */
   failRm: undefined as ((path: string) => NodeJS.ErrnoException | undefined) | undefined,
+  /** Swap the tree once, just before the open of the path it names and after the flush revalidates it. */
+  swapBeforeOpen: undefined as { path: string; run: () => Promise<void> } | undefined,
+  /** Every removal attempt, including failed ones. */
+  rmAttempts: [] as string[],
   /** Close the file chosen by its path, then fail that close once with EIO. */
   failClose: undefined as ((path: string) => boolean) | undefined,
   /** The path each open descriptor belongs to. */
@@ -65,6 +69,11 @@ vi.mock("node:fs/promises", async (importOriginal) => {
       const beforeOpen = io.beforeOpen;
       io.beforeOpen = undefined;
       await beforeOpen?.(path);
+      const swap = io.swapBeforeOpen;
+      if (swap?.path === path) {
+        io.swapBeforeOpen = undefined;
+        await swap.run();
+      }
       const directory = await actual.stat(path).then(
         (entry) => entry.isDirectory(),
         () => false,
@@ -114,13 +123,15 @@ vi.mock("node:fs/promises", async (importOriginal) => {
       return result;
     },
     async rm(...args: Parameters<typeof actual.rm>) {
-      const injected = io.failRm?.(String(args[0]));
+      const path = String(args[0]);
+      io.rmAttempts.push(path);
+      const injected = io.failRm?.(path);
       if (injected) {
         io.failRm = undefined;
         throw injected;
       }
       const result = await actual.rm(...args);
-      io.events.push({ type: "rm", path: String(args[0]) });
+      io.events.push({ type: "rm", path });
       return result;
     },
     async link(...args: Parameters<typeof actual.link>) {
@@ -230,12 +241,14 @@ afterEach(async () => {
   io.failRename = undefined;
   io.failRm = undefined;
   io.failClose = undefined;
+  io.swapBeforeOpen = undefined;
   io.paths.clear();
   io.written.clear();
   io.flushes.length = 0;
   io.failedFlushes.length = 0;
   io.events.length = 0;
   io.directoryOpenAttempts.length = 0;
+  io.rmAttempts.length = 0;
   io.beforeOpen = undefined;
   vi.mocked(fsync).mockClear();
   await rm(root, { recursive: true, force: true });
@@ -249,6 +262,7 @@ function resetIo(): void {
   io.failedFlushes.length = 0;
   io.events.length = 0;
   io.directoryOpenAttempts.length = 0;
+  io.rmAttempts.length = 0;
 }
 /** The native path of a root-relative project path, as `projectPath` spells it. */
 const at = (project: string, path: string) => join(project, ...path.split("/"));
@@ -559,6 +573,41 @@ describe("directory flushes make each rename durable before the next step", () =
     expect(await exists(".hooknostic/transaction.json")).toBe(false);
   });
 
+  it.skipIf(win32)("rejects a directory replaced by a symlink before its flush", async () => {
+    const project = await realpath(root);
+    const outside = await mkdtemp(join(tmpdir(), "hooknostic-outside-"));
+    try {
+      await mkdir(join(outside, "deep"), { recursive: true });
+      await mkdir(join(root, ".hooknostic"), { recursive: true });
+      await writeFile(
+        join(root, ".hooknostic/transaction.json"),
+        journalText([journalEntry("nested/deep/file.txt", "before", null)]),
+      );
+      resetIo();
+      const nested = at(project, "nested");
+      const nestedReal = at(project, "nested.real");
+      io.swapBeforeOpen = {
+        path: at(project, "nested/deep"),
+        run: async () => {
+          await rename(nested, nestedReal);
+          await symlink(outside, nested, "dir");
+        },
+      };
+
+      await expect(recoverProject(root, owner)).rejects.toThrow("directory changed while flushing");
+      expect(await exists(".hooknostic/transaction.json")).toBe(true);
+      expect(await readFile(join(root, "nested.real/deep/file.txt"), "utf8")).toBe("before");
+
+      await rm(nested, { force: true });
+      await rename(nestedReal, nested);
+      await recoverProject(root, owner);
+      expect(await readFile(join(root, "nested/deep/file.txt"), "utf8")).toBe("before");
+      expect(await exists(".hooknostic/transaction.json")).toBe(false);
+    } finally {
+      await rm(outside, { recursive: true, force: true });
+    }
+  });
+
   it.skipIf(win32)("skips a directory open the filesystem does not support", async () => {
     const project = await realpath(root);
     io.failOpen = (path) =>
@@ -680,10 +729,12 @@ describe("directory flushes make each rename durable before the next step", () =
     const project = await realpath(root);
     await sync("before");
     resetIo();
-    io.failRename = (_from, to) =>
-      to === at(project, "a.txt")
-        ? Object.assign(new Error("injected replacement rename failure"), { code: "EIO", syscall: "rename" })
-        : undefined;
+    let failedSource = "";
+    io.failRename = (from, to) => {
+      if (to !== at(project, "a.txt")) return undefined;
+      failedSource = from;
+      return Object.assign(new Error("injected replacement rename failure"), { code: "EIO", syscall: "rename" });
+    };
     io.failRm = (path) =>
       isStaged(path)
         ? Object.assign(new Error("injected staged cleanup failure"), { code: "EIO", syscall: "unlink" })
@@ -697,6 +748,8 @@ describe("directory flushes make each rename durable before the next step", () =
     expect((failure as Error).message).toContain("injected replacement rename failure");
     expect((failure as Error).message).not.toContain("injected staged cleanup failure");
     expect(io.failRm).toBeUndefined();
+    expect(failedSource).not.toBe("");
+    expect(io.rmAttempts.filter((path) => path === failedSource)).toHaveLength(1);
     expect(await readFile(join(root, "a.txt"), "utf8")).toBe("before");
     expect(await exists(".hooknostic/transaction.json")).toBe(false);
   });

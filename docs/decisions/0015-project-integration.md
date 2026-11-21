@@ -195,17 +195,21 @@ because Codex has no equivalent native field.
   each touched destination directory — including every newly created ancestor
   — is flushed once, sorted for determinism. The journal is removed, and
   `.hooknostic` is flushed once more as the commit point.
-- **A failure before the commit point aborts and attempts rollback.** If the
-  journal-directory flush or the project-root flush fails, the sync aborts
-  before it changes any destination. Either failure leaves the journal visible
-  to in-process rollback but not known to be crash-durable: `.hooknostic`
-  itself may not survive if the root flush failed. A failed
-  destination-directory flush aborts after the renames and attempts rollback
-  from the journal. Rollback is attempted, not guaranteed: if it cannot
-  complete, the journal remains and `hooknostic recover` must be run with the
-  same configuration. The final flush after the journal's removal is best
-  effort and swallowed: only a crash can bring the journal back, and recovery
-  rolls it back, so it must not turn an applied sync into a reported failure.
+- **A failure before the commit point attempts rollback only once the journal
+  is installed.** If staging or the journal replacement fails before its
+  rename, nothing has changed and no rollback runs. Once the journal rename has
+  succeeded, a journal-directory flush failure leaves that rename unconfirmed,
+  while a project-root flush failure can lose a newly created `.hooknostic`
+  entry even though its own flush succeeded. Both abort before any destination
+  is replaced and attempt rollback from the in-process journal, which is
+  visible to the process but not known to be crash-durable. A
+  destination-directory flush failure aborts after the renames and attempts
+  rollback from the journal. Rollback is attempted, not guaranteed: if it
+  cannot complete, the journal remains and `hooknostic recover` must be run
+  with the same configuration. The final flush after the journal's removal is
+  best effort and swallowed: only a crash can bring the journal back, and
+  recovery rolls it back, so it must not turn an applied sync into a reported
+  failure.
 - **Recovery flushes before it forgets.** It flushes every existing ancestor,
   through the project root, of every validated journal entry — including
   entries already at their preimage, which a retried recovery skips replacing

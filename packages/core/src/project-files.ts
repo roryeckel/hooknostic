@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { type BigIntStats, fsync } from "node:fs";
+import { type BigIntStats, constants, fsync } from "node:fs";
 import { type FileHandle, lstat, mkdir, open, readFile, realpath, rename, rm } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, sep } from "node:path";
 
@@ -696,9 +696,21 @@ const UNSUPPORTED_DIRECTORY_FLUSH = new Set(["EINVAL", "EISDIR", "ENOTSUP", "EOP
 function unsupportedDirectoryFlush(error: unknown): boolean {
   return UNSUPPORTED_DIRECTORY_FLUSH.has((error as NodeJS.ErrnoException).code ?? "");
 }
+function changedDirectory(path: string): Error {
+  return new Error(`directory changed while flushing: ${path}`);
+}
 /**
  * Flushes a directory's own entries, making a completed rename into it durable
  * across a power loss or kernel crash.
+ *
+ * `root` is the canonical project root. The path must stay inside it lexically,
+ * and every component below the root is revalidated with `lstat` as a real
+ * directory before the open. On POSIX the descriptor is opened with
+ * `O_NOFOLLOW | O_DIRECTORY`, and its `fstat` identity must match the validated
+ * directory. That narrows a replacement race to the gap between validation and
+ * open and fails closed on a mismatch: the journal stays for recovery. A
+ * filesystem that reports `ino` 0 weakens the identity comparison, as the
+ * lock-identity check notes.
  *
  * Windows returns immediately: `fs.open` can open a directory there, but
  * `fs.fsync` on that descriptor fails with EPERM, because `FlushFileBuffers`
@@ -706,29 +718,47 @@ function unsupportedDirectoryFlush(error: unknown): boolean {
  * not expose it through `fs.rename`. Rename durability there stays with the
  * filesystem.
  *
- * Elsewhere the flush is `fs.fsync` on a descriptor from `fs.open(path, "r")`,
- * not `FileHandle.sync()`, for the Yarn Plug'n'Play reason `createFlushed`
- * records (#229). A filesystem that cannot flush a directory answers with one
- * of `UNSUPPORTED_DIRECTORY_FLUSH`, whether from the open or the flush, which
- * is skipped; every other failure is real and propagated.
+ * Elsewhere the flush is `fs.fsync` on the descriptor, not `FileHandle.sync()`,
+ * for the Yarn Plug'n'Play reason `createFlushed` records (#229). A filesystem
+ * that cannot flush a directory answers with one of
+ * `UNSUPPORTED_DIRECTORY_FLUSH`, whether from the open or the flush, which is
+ * skipped; every other failure is real and propagated.
  */
-async function flushDirectory(path: string): Promise<void> {
+async function flushDirectory(root: string, path: string): Promise<void> {
   if (process.platform === "win32") return;
+  const relation = relative(root, path);
+  if (isAbsolute(relation) || relation === ".." || relation.startsWith(`..${sep}`))
+    throw new Error(`refusing to flush a directory outside the project root: ${path}`);
+  let current = root;
+  let identity: BigIntStats = await lstat(current, { bigint: true });
+  if (!identity.isDirectory()) throw changedDirectory(path);
+  if (relation !== "")
+    for (const part of relation.split(sep)) {
+      current = join(current, part);
+      identity = await lstat(current, { bigint: true });
+      if (identity.isSymbolicLink() || !identity.isDirectory()) throw changedDirectory(path);
+    }
   let handle: FileHandle;
   try {
-    handle = await open(path, "r");
+    handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_DIRECTORY);
   } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === "ELOOP" || code === "ENOTDIR") throw changedDirectory(path);
     if (unsupportedDirectoryFlush(error)) return;
     throw error;
   }
   try {
-    await new Promise<void>((resolve, reject) => fsync(handle.fd, (error) => (error ? reject(error) : resolve())));
-  } catch (error) {
-    if (!unsupportedDirectoryFlush(error)) {
-      // Never mask the flush error with a failed close.
-      await handle.close().catch(() => undefined);
-      throw error;
+    const opened = await handle.stat({ bigint: true });
+    if (opened.dev !== identity.dev || opened.ino !== identity.ino) throw changedDirectory(path);
+    try {
+      await new Promise<void>((resolve, reject) => fsync(handle.fd, (error) => (error ? reject(error) : resolve())));
+    } catch (error) {
+      if (!unsupportedDirectoryFlush(error)) throw error;
     }
+  } catch (error) {
+    // Never mask the first error with a failed close.
+    await handle.close().catch(() => undefined);
+    throw error;
   }
   await handle.close();
 }
@@ -830,6 +860,7 @@ function rollbackFailure(original: unknown, rollback: unknown): Error {
 }
 export async function applyProject(root: string, config: string, plan: Reconciliation): Promise<void> {
   const release = await acquire(root);
+  const canonicalRoot = await realpath(root);
   let journalWritten = false;
   const staged = new Map<string, string>();
   let failure: unknown;
@@ -862,8 +893,8 @@ export async function applyProject(root: string, config: string, plan: Reconcili
     // Persist the journal's rename before any destination changes. The root is
     // flushed too because a first sync may have just created `.hooknostic`;
     // flushing it alone does not persist its entry in the root.
-    await flushDirectory(stateDirectory);
-    await flushDirectory(dirname(stateDirectory));
+    await flushDirectory(canonicalRoot, stateDirectory);
+    await flushDirectory(canonicalRoot, dirname(stateDirectory));
     const directories = new Set<string>();
     for (const change of plan.changes) {
       const expected = beforeState(change);
@@ -879,12 +910,12 @@ export async function applyProject(root: string, config: string, plan: Reconcili
     // A rename is durable only once its directory is; flush after them all so
     // each directory is flushed once, in a stable order. New ancestors count:
     // their own entries in their parents also changed.
-    for (const directory of [...directories].sort()) await flushDirectory(directory);
+    for (const directory of [...directories].sort()) await flushDirectory(canonicalRoot, directory);
     await rm(await projectPath(root, JOURNAL));
     // Best-effort commit point. Only a crash can bring the journal back now,
     // and recovery rolls that back, so this failure must not report an applied
     // synchronization as failed.
-    await flushDirectory(stateDirectory).catch(() => undefined);
+    await flushDirectory(canonicalRoot, stateDirectory).catch(() => undefined);
   };
 
   try {
@@ -1004,10 +1035,10 @@ async function restore(root: string, config: string): Promise<void> {
   }
   // Without this, a crash during recovery can persist the journal's removal
   // while losing a restore's rename.
-  for (const directory of [...directories].sort()) await flushDirectory(directory);
+  for (const directory of [...directories].sort()) await flushDirectory(canonicalRoot, directory);
   const journalDestination = await projectPath(root, JOURNAL);
   await rm(journalDestination);
-  await flushDirectory(dirname(journalDestination)).catch(() => undefined);
+  await flushDirectory(canonicalRoot, dirname(journalDestination)).catch(() => undefined);
 }
 /** Who may hold each lock, as the messages about it name them. */
 const LOCK_HOLDERS: Readonly<Record<LockName, string>> = { [LOCK]: "sync or recover", [RECOVERY_LOCK]: "recover" };
