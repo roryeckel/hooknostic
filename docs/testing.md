@@ -275,7 +275,11 @@ on), not by CI.
     musl, which codex is built against, waited its 5 s timeout after a send
     that had failed, so every codex process lost about 5 s (about a minute a
     codex lane, 10 s for the codex marketplace gate). The host's file is
-    untouched;
+    untouched. If the host replaces that file by an atomic rename during a
+    run (systemd-resolved does, on a DNS change), the bind is detached inside
+    the namespace, and musl's 5 s waits silently return for the rest of the
+    run: slower, but nothing becomes reachable, and the isolation check,
+    which runs only at the start, does not notice;
   - drops back to the calling user with no supplementary groups, no
     capabilities and `no_new_privs`;
   - sets `HOOKNOSTIC_PLAYBACK_NETWORK=none` inside.
