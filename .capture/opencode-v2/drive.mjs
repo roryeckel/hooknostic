@@ -15,7 +15,7 @@ console.log(JSON.stringify({ root, effect }));
 const { createPlaybackDiagnostics } = await import("../../packages/cli/test/playback-diagnostics.ts");
 const diagnostics = createPlaybackDiagnostics(root, effect);
 process.on("uncaughtExceptionMonitor", error => diagnostics.fail(error));
-const { startModelPlayback, buildPlaybackArtifact, runProcess, resolveNativeExecutable } = await diagnostics.run(
+const { startModelPlayback, buildPlaybackArtifact, runProcess, resolveNativeExecutable, playbackQuiet } = await diagnostics.run(
   "load-playback-helpers", () => import("../../packages/cli/test/harness-playback.ts"),
 );
 async function runCaptureProcess(phase, command, args, options) {
@@ -236,7 +236,7 @@ if (effect === "components" || effect === "tools" || effect.startsWith("mcp-")) 
   }
 }
 const model = effect.startsWith("sessions") || effect === "stop" || effect === "nested" ? await (await import("./session-model.mjs")).startSessionModel() : effect === "tools" || effect === "tools-patch" || effect.startsWith("mcp-") || remote || effect.startsWith("results") || effect.startsWith("subagent")
-  ? await (await import("./tool-model.mjs")).startToolModel(project, effect.startsWith("mcp-"), remote ? effect : false, effect.startsWith("subagent") ? effect : effect === "tools-patch" ? "patch" : effect.startsWith("results"))
+  ? await (await import("./tool-model.mjs")).startToolModel(project, effect.startsWith("mcp-"), remote ? effect : false, effect.startsWith("subagent") ? effect : effect === "tools-patch" ? "patch" : effect.startsWith("results"), join(root, "captured"))
   : await startModelPlayback(effect === "provider-anthropic" ? "anthropic-messages" : effect === "provider-responses" ? "openai-responses" : "openai-chat", effect === "fail" ? "fail" : "rewrite", effect === "lifecycle" || effect.startsWith("provider-") ? [
       { kind: "tool", disposition: "rewrite" },
       { kind: "text", text: "## Objective\n- Exercise offline hooks.\n## Requirements\n- Use the loopback model.\n## Decisions\n- Keep the probe isolated.\n## Work State\n### Completed\n- Ran the shell probe.\n### Active\n- None.\n### Blocked\n- None.\n## Next Move\n1. Finish the probe.\n## Relevant Files\n- hooknostic-tool.txt\n## Important Context\n- hooknostic-valid-compaction-summary" },
@@ -288,6 +288,11 @@ if (registry) {
 for (const name of Object.keys(env)) {
   if (/API_KEY|AUTH_TOKEN|SECRET|TOKEN|OPENCODE/.test(name) && name !== "HKN_PLAYBACK_KEY") delete env[name];
 }
+// The drive's own settings, after the strip that removes the host's: no model
+// catalog fetch and no update check (.capture/network-egress). Every harness
+// process below inherits this env: `run` here, `serve --stdio` in lifecycle.mjs
+// and nested.mjs, and the TUI in notification-drive.mjs.
+Object.assign(env, playbackQuiet.opencodeV2Env);
 // Applied after the strip, which removes every OPENCODE* name: a host layer that
 // switches one projected server off (or leaves it on at its own address).
 if (twoServers) {

@@ -717,6 +717,39 @@ export function openCodePlaybackConfigHome(projectDir: string): string {
   return join(projectDir, ".opencode-config");
 }
 
+/**
+ * Settings that stop each harness's avoidable network calls during playback.
+ * Each one was captured removing its destination, and none changes what a
+ * drive asserts (.capture/network-egress). On Linux CI the lanes run without
+ * network (scripts/without-network.sh), where these calls would fail
+ * harmlessly; with the settings, they are never made.
+ */
+export const playbackQuiet = {
+  /**
+   * Codex's built-in metrics exporter (ab.chatgpt.com). Only `exec` made the
+   * call on the captured builds; the `plugin` subcommands pass it too, and
+   * only `--version` goes without.
+   */
+  codexArgs: ["-c", "analytics.enabled=false"],
+  /** OpenCode v1's model catalog fetch (models.opencode.ai). */
+  opencodeV1Env: { OPENCODE_DISABLE_MODELS_FETCH: "1" },
+  /** OpenCode v2's model catalog fetch, and the TUI's update check (opencode.ai). */
+  opencodeV2Env: { OPENCODE_DISABLE_MODELS_FETCH: "1", OPENCODE_DISABLE_AUTOUPDATE: "1" },
+} as const;
+
+/** A free TCP port the OS is not holding (bind-and-close race is acceptable here). */
+export async function freePort(): Promise<number> {
+  const net = await import("node:net");
+  return new Promise((resolvePromise, rejectPromise) => {
+    const srv = net.createServer();
+    srv.listen(0, "127.0.0.1", () => {
+      const address = srv.address() as { port: number };
+      srv.close(() => resolvePromise(address.port));
+    });
+    srv.on("error", rejectPromise);
+  });
+}
+
 export async function prepareOpenCodePluginDependency(projectDir: string, harnessVersion: string): Promise<void> {
   const dependencyDirs = [join(projectDir, ".opencode"), join(openCodePlaybackConfigHome(projectDir), "opencode")];
   for (const dependencyDir of dependencyDirs) {
@@ -730,6 +763,12 @@ export async function prepareOpenCodePluginDependency(projectDir: string, harnes
         "--no-fund",
         "--no-audit",
         "--save-exact",
+        // Without network (scripts/without-network.sh sets this), install only
+        // from the cache that scripts/prepare-offline-playback.mjs filled just
+        // before, so a gap fails at once with ENOTCACHED instead of retrying
+        // into the timeout. Elsewhere npm resolves online as it always has, so
+        // a capture drive never records a dependency set from a stale cache.
+        ...(process.env["HOOKNOSTIC_PLAYBACK_NETWORK"] === "none" ? ["--offline"] : []),
         `@opencode-ai/plugin@${harnessVersion}`,
       ],
       { cwd: projectDir, env: process.env, timeoutMs: 60_000 },

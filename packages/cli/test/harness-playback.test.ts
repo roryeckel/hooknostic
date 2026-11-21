@@ -25,6 +25,8 @@ import { adapterFixturesDir, SCENARIOS } from "@hooknostic/testkit";
 
 // @ts-expect-error The shared read-only npm registry fixture is plain JavaScript.
 import { startRegistry } from "../../../.capture/opencode-v2/registry.mjs";
+// @ts-expect-error Repository lane metadata is plain JavaScript.
+import { isKnownLane } from "../../../scripts/harness-lanes.mjs";
 // @ts-expect-error Repository release tooling is plain JavaScript.
 import { codeModeReferenceVersion } from "../../../scripts/verify-code-mode.mjs";
 // @ts-expect-error Repository release tooling is plain JavaScript.
@@ -35,11 +37,13 @@ import {
   codexFailedHooks,
   codexHookTimeouts,
   expectOpenCodeShellDialect,
+  freePort,
   hookProcessRecorderEnv,
   hookProcessReport,
   openCodePlaybackConfigHome,
   openCodeShellDialectExpectation,
   playbackModelInfo,
+  playbackQuiet,
   type PlaybackScenario,
   prepareOpenCodePluginDependency,
   replayCommandFixtures,
@@ -743,24 +747,13 @@ async function runClaudePlayback(
       {
         cwd: options.harnessCwd ?? build.artifactDir,
         timeoutMs: 90_000,
-        env: {
-          ...withoutCredentials(),
-          CLAUDE_CONFIG_DIR: isolatedConfig,
-          ANTHROPIC_API_KEY: "hooknostic-playback",
-          ANTHROPIC_BASE_URL: server.baseUrl,
-          CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
-          CLAUDE_CODE_DISABLE_UNKNOWN_MODEL_WINDOW_ENFORCEMENT: "1",
-          DISABLE_AUTOUPDATER: "1",
-          DISABLE_TELEMETRY: "1",
-          // Past its skill-listing budget, Claude keeps its bundled skills'
-          // descriptions and lists every other skill by name alone. From
-          // 2.1.311 its own entries exceed the default budget for this model
-          // id (.capture/claude-skill-listing-budget), so a budget no listing
-          // reaches keeps a fixture skill's description model-visible.
-          SLASH_COMMAND_TOOL_CHAR_BUDGET: "100000",
-          HOOKNOSTIC_PLAYBACK_TRACE: build.tracePath,
-          ...(options.effects ? { HOOKNOSTIC_PLAYBACK_EFFECTS: options.effects.join(",") } : {}),
-        },
+        env: claudePlaybackEnv({
+          baseUrl: server.baseUrl,
+          configDir: isolatedConfig,
+          skillListingBudget: true,
+          tracePath: build.tracePath,
+          extra: options.effects ? { HOOKNOSTIC_PLAYBACK_EFFECTS: options.effects.join(",") } : {},
+        }),
       },
     );
     expect(
@@ -781,6 +774,40 @@ async function runClaudePlayback(
   } finally {
     await server.close();
   }
+}
+
+/**
+ * The environment of every Claude invocation in this file: the loopback model,
+ * a dummy key, and the settings that keep Claude off the network apart from
+ * the model (.capture/network-egress). `base` replaces the inherited
+ * environment; the pty drives first drop an enclosing session's variables.
+ */
+function claudePlaybackEnv(options: {
+  baseUrl: string;
+  base?: NodeJS.ProcessEnv;
+  configDir?: string;
+  tracePath?: string;
+  skillListingBudget?: boolean;
+  extra?: NodeJS.ProcessEnv;
+}): NodeJS.ProcessEnv {
+  return {
+    ...(options.base ?? withoutCredentials()),
+    ...(options.configDir === undefined ? {} : { CLAUDE_CONFIG_DIR: options.configDir }),
+    ANTHROPIC_API_KEY: "hooknostic-playback",
+    ANTHROPIC_BASE_URL: options.baseUrl,
+    CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
+    CLAUDE_CODE_DISABLE_UNKNOWN_MODEL_WINDOW_ENFORCEMENT: "1",
+    DISABLE_AUTOUPDATER: "1",
+    DISABLE_TELEMETRY: "1",
+    // Past its skill-listing budget, Claude keeps its bundled skills'
+    // descriptions and lists every other skill by name alone. From
+    // 2.1.311 its own entries exceed the default budget for this model
+    // id (.capture/claude-skill-listing-budget), so a budget no listing
+    // reaches keeps a fixture skill's description model-visible.
+    ...(options.skillListingBudget ? { SLASH_COMMAND_TOOL_CHAR_BUDGET: "100000" } : {}),
+    ...(options.tracePath === undefined ? {} : { HOOKNOSTIC_PLAYBACK_TRACE: options.tracePath }),
+    ...options.extra,
+  };
 }
 
 async function runCodexPlayback(
@@ -828,6 +855,7 @@ async function runCodexPlaybackDrive(
       "--dangerously-bypass-hook-trust",
       "--color",
       "never",
+      ...playbackQuiet.codexArgs,
       "-c",
       'model="hooknostic-playback"',
       "-c",
@@ -939,6 +967,7 @@ async function runOpenCodePlayback(
           timeoutMs: 90_000,
           env: {
             ...withoutCredentials(),
+            ...playbackQuiet.opencodeV1Env,
             PWD: build.artifactDir,
             XDG_CONFIG_HOME: openCodePlaybackConfigHome(build.artifactDir),
             HOOKNOSTIC_PLAYBACK_TRACE: build.tracePath,
@@ -1269,6 +1298,7 @@ async function runOpenCodeServePlayback(
   const servePassword = "hooknostic-playback-serve";
   const serveEnv: Record<string, string | undefined> = {
     ...withoutCredentials(),
+    ...playbackQuiet.opencodeV1Env,
     PWD: build.artifactDir,
     XDG_CONFIG_HOME: openCodePlaybackConfigHome(build.artifactDir),
     // Same env contract as the `opencode run` drive: the generated plugin
@@ -1434,19 +1464,6 @@ async function runOpenCodeServePlayback(
     await stopServer();
     await server.close();
   }
-}
-
-/** A free TCP port the OS is not holding (bind-and-close race is acceptable here). */
-async function freePort(): Promise<number> {
-  const net = await import("node:net");
-  return new Promise((resolvePromise, rejectPromise) => {
-    const srv = net.createServer();
-    srv.listen(0, "127.0.0.1", () => {
-      const address = srv.address() as { port: number };
-      srv.close(() => resolvePromise(address.port));
-    });
-    srv.on("error", rejectPromise);
-  });
 }
 
 /**
@@ -2380,9 +2397,17 @@ describe.skipIf(adapter === undefined)(`offline harness playback: ${selected || 
         await mkdir(join(path, ".."), { recursive: true });
         await writeFile(path, artifact.contents, { mode: artifact.mode });
       }
+      // The drives' environment, with the API on a refused loopback port. With
+      // the inherited environment the validator reached api.anthropic.com; on
+      // a refused port its one request fails at once, which no assertion here
+      // depends on (exit 0 in under a second on 2.1.238 and 2.1.329,
+      // .capture/network-egress). The scripted model server is not used: it
+      // would record the unscripted request as an error.
+      const validateConfig = join(dir, "validate-config");
+      await mkdir(validateConfig);
       const validation = await runProcess("claude", ["plugin", "validate", "--strict", pluginDir], {
         cwd: dir,
-        env: process.env,
+        env: claudePlaybackEnv({ baseUrl: `http://127.0.0.1:${await freePort()}`, configDir: validateConfig }),
         timeoutMs: 30_000,
       });
       expect(validation.code, validation.stdout + validation.stderr).toBe(0);
@@ -2410,16 +2435,7 @@ describe.skipIf(adapter === undefined)(`offline harness playback: ${selected || 
           {
             cwd: projectDir,
             timeoutMs: 90_000,
-            env: {
-              ...withoutCredentials(),
-              ANTHROPIC_API_KEY: "hooknostic-playback",
-              ANTHROPIC_BASE_URL: server.baseUrl,
-              CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
-              CLAUDE_CODE_DISABLE_UNKNOWN_MODEL_WINDOW_ENFORCEMENT: "1",
-              DISABLE_AUTOUPDATER: "1",
-              DISABLE_TELEMETRY: "1",
-              HOOKNOSTIC_PLAYBACK_TRACE: hookBuild.tracePath,
-            },
+            env: claudePlaybackEnv({ baseUrl: server.baseUrl, tracePath: hookBuild.tracePath }),
           },
         );
         expect(result.code, result.stdout + result.stderr).toBe(0);
@@ -2547,16 +2563,16 @@ describe.skipIf(adapter === undefined)(`offline harness playback: ${selected || 
       );
 
       const codexEnv = { ...process.env, CODEX_HOME: codexHome };
-      const added = await runProcess("codex", ["plugin", "marketplace", "add", marketplace], {
-        cwd: dir,
-        env: codexEnv,
-        timeoutMs: 60_000,
-      });
+      const added = await runProcess(
+        "codex",
+        ["plugin", "marketplace", "add", ...playbackQuiet.codexArgs, marketplace],
+        { cwd: dir, env: codexEnv, timeoutMs: 60_000 },
+      );
       expect(added.code, added.stdout + added.stderr).toBe(0);
       // The qualified form is mandatory: a bare name is rejected.
       const installed = await runProcess(
         "codex",
-        ["plugin", "add", "projection-playback@hooknostic-projection-playback"],
+        ["plugin", "add", ...playbackQuiet.codexArgs, "projection-playback@hooknostic-projection-playback"],
         { cwd: dir, env: codexEnv, timeoutMs: 60_000 },
       );
       expect(installed.code, installed.stdout + installed.stderr).toBe(0);
@@ -2580,6 +2596,7 @@ describe.skipIf(adapter === undefined)(`offline harness playback: ${selected || 
             "--skip-git-repo-check",
             "--color",
             "never",
+            ...playbackQuiet.codexArgs,
             "-c",
             'model="hooknostic-playback"',
             "-c",
@@ -2755,6 +2772,7 @@ describe.skipIf(adapter === undefined)(`offline harness playback: ${selected || 
           // the run links to whatever OpenCode launched the test.
           env: {
             ...withoutCredentials(),
+            ...playbackQuiet.opencodeV1Env,
             PWD: projectDir,
             XDG_CONFIG_HOME: openCodePlaybackConfigHome(projectDir),
             USERPROFILE: homeDir,
@@ -2853,17 +2871,17 @@ describe.skipIf(adapter === undefined)(`offline harness playback: ${selected || 
         }),
       );
       const codexEnv = { ...process.env, CODEX_HOME: codexHome };
-      const added = await runProcess("codex", ["plugin", "marketplace", "add", marketplace], {
-        cwd: dir,
-        env: codexEnv,
-        timeoutMs: 60_000,
-      });
+      const added = await runProcess(
+        "codex",
+        ["plugin", "marketplace", "add", ...playbackQuiet.codexArgs, marketplace],
+        { cwd: dir, env: codexEnv, timeoutMs: 60_000 },
+      );
       expect(added.code, added.stdout + added.stderr).toBe(0);
-      const installed = await runProcess("codex", ["plugin", "add", "harness-playback@hooknostic-effect-playback"], {
-        cwd: dir,
-        env: codexEnv,
-        timeoutMs: 60_000,
-      });
+      const installed = await runProcess(
+        "codex",
+        ["plugin", "add", ...playbackQuiet.codexArgs, "harness-playback@hooknostic-effect-playback"],
+        { cwd: dir, env: codexEnv, timeoutMs: 60_000 },
+      );
       expect(installed.code, installed.stdout + installed.stderr).toBe(0);
 
       const server = await startModelPlayback("openai-responses", scenario);
@@ -2878,6 +2896,7 @@ describe.skipIf(adapter === undefined)(`offline harness playback: ${selected || 
             "--dangerously-bypass-hook-trust",
             "--color",
             "never",
+            ...playbackQuiet.codexArgs,
             "-c",
             'model="hooknostic-playback"',
             "-c",
@@ -3507,6 +3526,18 @@ export default definePlugin({ name: "pi-sync-playback", hooks: [
     },
   );
 });
+
+// --- offline lane guard ------------------------------------------------------
+// Without network (scripts/without-network.sh), a run that selects no known
+// lane would skip every playback test and pass, as the first CI run of the
+// namespaced lanes did when its environment was lost. There, fail instead.
+// The predicate is unit-tested in scripts/harness-lanes.test.mjs.
+it.runIf(process.env["HOOKNOSTIC_PLAYBACK_NETWORK"] === "none")(
+  "selects a known playback lane when run without network",
+  () => {
+    expect(isKnownLane(selected), "HOOKNOSTIC_PLAYBACK names no known lane").toBe(true);
+  },
+);
 
 // --- registry gate (ADR-0010) ---------------------------------------------
 // The coverage audit in testkit only checks that a capability cell appears in
@@ -4207,15 +4238,12 @@ scenarioDrive(
         rows: 34,
         cwd: dir,
         env: {
-          ...withoutClaudeSession(withoutCredentials()),
-          CLAUDE_CONFIG_DIR: configDir,
-          ANTHROPIC_API_KEY: "hooknostic-playback",
-          ANTHROPIC_BASE_URL: server.baseUrl,
-          CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
-          CLAUDE_CODE_DISABLE_UNKNOWN_MODEL_WINDOW_ENFORCEMENT: "1",
-          DISABLE_AUTOUPDATER: "1",
-          DISABLE_TELEMETRY: "1",
-          HOOKNOSTIC_PLAYBACK_TRACE: build.tracePath,
+          ...claudePlaybackEnv({
+            baseUrl: server.baseUrl,
+            base: withoutClaudeSession(withoutCredentials()),
+            configDir,
+            tracePath: build.tracePath,
+          }),
           // permission-deny only: context-add would return first and the
           // permission block branch would never run (the denial is the
           // assertion, so the effect must not be shadowed).
@@ -4348,15 +4376,12 @@ scenarioDrive(
         rows: 34,
         cwd: dir,
         env: {
-          ...withoutClaudeSession(withoutCredentials()),
-          CLAUDE_CONFIG_DIR: configDir,
-          ANTHROPIC_API_KEY: "hooknostic-playback",
-          ANTHROPIC_BASE_URL: server.baseUrl,
-          CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
-          CLAUDE_CODE_DISABLE_UNKNOWN_MODEL_WINDOW_ENFORCEMENT: "1",
-          DISABLE_AUTOUPDATER: "1",
-          DISABLE_TELEMETRY: "1",
-          HOOKNOSTIC_PLAYBACK_TRACE: build.tracePath,
+          ...claudePlaybackEnv({
+            baseUrl: server.baseUrl,
+            base: withoutClaudeSession(withoutCredentials()),
+            configDir,
+            tracePath: build.tracePath,
+          }),
           HOOKNOSTIC_PLAYBACK_EFFECTS: "request-approval",
         } as NodeJS.ProcessEnv,
       } as never);

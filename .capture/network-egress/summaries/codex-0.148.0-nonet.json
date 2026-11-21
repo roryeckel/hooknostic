@@ -1,0 +1,23 @@
+{
+ "run": "codex-0.148.0-nonet",
+ "meta": {
+  "lane": "codex",
+  "version": "0.148.0",
+  "mode": "nonet",
+  "date_utc": "2026-11-20T04:04:32Z",
+  "kernel": "Linux 5.15.167.4-microsoft-standard-WSL2",
+  "node": "v24.22.3",
+  "which": "/home/user/hn-egress/harness/codex-0.148.0/bin/codex",
+  "interfaces": [
+   "lo UNKNOWN 127.0.0.1/8 ::1/128"
+  ],
+  "exit": "0",
+  "seconds": "101",
+  "extra_env": []
+ },
+ "tests": {
+  "passed": 67,
+  "skipped": 75
+ },
+ "failed": []
+}

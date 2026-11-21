@@ -173,12 +173,39 @@ jobs:
       - name: Bundle compiler and dependencies
         run: pnpm run bundle
 
+      - name: Cache the OpenCode v2 tools drive's pinned ripgrep
+        if: ${{ matrix.harness == 'opencode-v2' }}
+        uses: actions/cache@v6
+        with:
+          path: ${{ runner.temp }}/hooknostic-ripgrep
+          # As in ci.yml: the version and both SHA-256 pins are the key.
+          key: hooknostic-ripgrep-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.capture/opencode-v2/ripgrep.mjs') }}
+
+      # Everything the playback fetches happens here, while the job still has
+      # network: the pinned ripgrep (opencode-v2) and the npm cache for the
+      # OpenCode v1 plugin dependency, after the probe's positive control.
+      # Its failure is a prepare-failure, not an install-failure: the build
+      # installed, but the network check or a prerequisite (ripgrep, the
+      # plugin dependency at this version) did not.
+      - name: Prepare offline playback prerequisites
+        id: prepare
+        shell: bash
+        run: node --experimental-strip-types scripts/prepare-offline-playback.mjs '${{ matrix.harness }}' --version '${{ matrix.latest }}' --check-online
+        env:
+          HKN_RIPGREP_DIR: ${{ runner.temp }}/hooknostic-ripgrep
+
+      # In the playback lanes' loopback-only network namespace
+      # (scripts/without-network.sh): a newer build that needs the network
+      # fails here, before a reference bump would make ci.yml fail.
       - name: Model-free playback against the newer build
         id: playback
-        run: pnpm exec vitest run packages/cli/test/harness-playback.test.ts packages/cli/test/opencode-v2-playback.test.ts
+        shell: bash
+        run: scripts/without-network.sh pnpm exec vitest run packages/cli/test/harness-playback.test.ts packages/cli/test/opencode-v2-playback.test.ts
         env:
           HOOKNOSTIC_PLAYBACK: ${{ matrix.harness }}
           HOOKNOSTIC_PLAYBACK_VERSION: ${{ matrix.latest }}
+          HKN_RIPGREP_DIR: ${{ runner.temp }}/hooknostic-ripgrep
+          HKN_NO_NETWORK_REQUIRE_ENV: HOOKNOSTIC_PLAYBACK,HOOKNOSTIC_PLAYBACK_VERSION,HKN_RIPGREP_DIR
           # The suite writes declared driver limitations here. They are
           # published below as explicit inconclusive outcomes, never hidden
           # behind a passing/skipped Vitest case.
@@ -213,11 +240,14 @@ jobs:
         shell: bash
         run: |
           # A skipped or absent step never exercised playback. Preserve that
-          # distinction when an earlier installation/toolchain step failed.
+          # distinction when an earlier installation/toolchain step failed,
+          # and name a failed prepare step as itself.
           if [ "${{ steps.playback.outcome }}" = "success" ]; then
             outcome=pass
           elif [ "${{ steps.playback.outcome }}" = "failure" ]; then
             outcome=playback-failure
+          elif [ "${{ steps.prepare.outcome }}" = "failure" ]; then
+            outcome=prepare-failure
           else
             outcome=install-failure
           fi
@@ -525,7 +555,7 @@ jobs:
           gh issue create --label harness-watch --title "$TITLE" --body "$(cat <<EOF
           The scheduled model-free playback failed for \`${{ matrix.harness }} ${{ matrix.latest }}\`.
 
-          Outcome: \`$(jq -r .outcome watch-outcome-${{ matrix.harness }}.json)\` (install-failure vs playback-failure matters — install failure is a packaging problem, playback failure is behavior drift).
+          Outcome: \`$(jq -r .outcome watch-outcome-${{ matrix.harness }}.json)\` (install-failure vs prepare-failure vs playback-failure matters — install failure is a packaging problem, prepare failure is the network check or an offline prerequisite failing with network, playback failure is behavior drift or a build that now needs the network).
 
           Run: $LINK
 
@@ -665,10 +695,12 @@ jobs:
         if: steps.gate.outputs.run == 'true'
         id: drive
         # The third-party harness and its npm package run only inside the
-        # container below. The workspace is read-only, the sole writable mount
-        # is the throwaway capture directory, and no Docker socket is mounted;
-        # neither the LiteLLM process nor its upstream credential is in that
-        # process namespace.
+        # containers below. The workspace is read-only, the sole writable mount
+        # is the throwaway /drift directory (captures; for playback also the
+        # install prefix, npm cache and ripgrep), and no Docker socket is
+        # mounted; neither the LiteLLM process nor its upstream credential is
+        # in that process namespace. The playback drive itself runs with
+        # --network none.
         # Exits 4 (drift) and 5 (inconclusive) are expected reportable
         # outcomes; letting them fail the step would kill the job exactly
         # when reporting matters. The verdict artifact below records the code.
@@ -694,32 +726,84 @@ jobs:
           fi
           PLAYBACK_NODE="$(cat .github/node/playback/.node-version)"
           [[ "$PLAYBACK_NODE" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || exit 1
-          docker run --rm --network bridge --add-host host.docker.internal:host-gateway \
-            --init --user node \
-            --cap-drop ALL --security-opt no-new-privileges --pids-limit 256 \
-            --mount "type=bind,src=$GITHUB_WORKSPACE,dst=/workspace,readonly" \
-            --mount "type=bind,src=$SCRATCH_ROOT,dst=/drift" \
-            "${CONTAINER_ENVS[@]}" --workdir /workspace "node:${PLAYBACK_NODE}-bookworm" \
-            sh -ec '
-              # Claude refuses permission-bypassing sessions as root. Keep
-              # installation and execution under the unprivileged image user.
-              export npm_config_prefix=/tmp/hooknostic-harness
-              export PATH="$npm_config_prefix/bin:$PATH"
+          IMAGE="node:${PLAYBACK_NODE}-bookworm"
+          # Claude refuses permission-bypassing sessions as root. Keep
+          # installation and execution under the unprivileged image user.
+          COMMON=(--rm --init --user node
+            --cap-drop ALL --security-opt no-new-privileges --pids-limit 256
+            --mount "type=bind,src=$GITHUB_WORKSPACE,dst=/workspace,readonly"
+            --mount "type=bind,src=$SCRATCH_ROOT,dst=/drift" --workdir /workspace)
+          # The harness's install and its known bootstrap, for the inner sh.
+          INSTALL='
               npm install --global --ignore-scripts --no-fund --no-audit "$1@$2" \
                 || npm install --global --ignore-scripts --no-fund --no-audit "$1@$2"
               case "$3" in
                 claude) node "$(npm root --global)/@anthropic-ai/claude-code/install.cjs" ;;
                 opencode|opencode-v1|opencode-v2) node "$(npm root --global)/${{ matrix.pkg }}/${{ matrix.bootstrap }}" ;;
                 codex|copilot) : ;;
-              esac
-              HOOKNOSTIC_PLAYBACK_VERSION="$2" \
-                exec node --experimental-strip-types scripts/drive-capture-session.mjs \
-                "$3" --transport "$4" --scratch "/drift/$3"
-            ' sh "${{ matrix.pkg }}" "${{ matrix.latest }}" "${{ matrix.harness }}" "$TRANSPORT" \
-            > "drift-report-${{ matrix.harness }}.log" 2>&1
-          CODE=$?
+              esac'
+          if [ "$TRANSPORT" = "llm" ]; then
+            # Online by design: the harness talks to the owner's model through
+            # the LiteLLM sidecar, so one bridge container installs and drives.
+            docker run --rm --network bridge --add-host host.docker.internal:host-gateway "${COMMON[@]:1}" \
+              "${CONTAINER_ENVS[@]}" "$IMAGE" \
+              sh -ec '
+                export npm_config_prefix=/tmp/hooknostic-harness
+                export PATH="$npm_config_prefix/bin:$PATH"
+                '"$INSTALL"'
+                HOOKNOSTIC_PLAYBACK_VERSION="$2" \
+                  exec node --experimental-strip-types scripts/drive-capture-session.mjs \
+                  "$3" --transport "$4" --scratch "/drift/$3"
+              ' sh "${{ matrix.pkg }}" "${{ matrix.latest }}" "${{ matrix.harness }}" "$TRANSPORT" \
+              > "drift-report-${{ matrix.harness }}.log" 2>&1
+            CODE=$?
+          else
+            # The playback transport is offline by intent, so it runs in two
+            # containers. Phase 1, with network, installs the harness and
+            # fetches what the drive needs (the pinned ripgrep, OpenCode v1's
+            # npm cache) into the mounted /drift.
+            DRIFT_ENVS=(-e npm_config_prefix=/drift/prefix -e npm_config_cache=/drift/npm-cache -e HKN_RIPGREP_DIR=/drift/ripgrep)
+            # A marker after the install and bootstrap tells a failed prepare
+            # from a failed install, as verify's outcomes do.
+            rm -f "$SCRATCH_ROOT/installed"
+            docker run --network bridge "${COMMON[@]}" "${DRIFT_ENVS[@]}" "$IMAGE" \
+              sh -ec '
+                export PATH="$npm_config_prefix/bin:$PATH"
+                '"$INSTALL"'
+                : > /drift/installed
+                node --experimental-strip-types scripts/prepare-offline-playback.mjs "$3" --version "$2" --check-online
+              ' sh "${{ matrix.pkg }}" "${{ matrix.latest }}" "${{ matrix.harness }}" \
+              > "drift-report-${{ matrix.harness }}.log" 2>&1
+            CODE=$?
+            # No drive ran: the verdict is the install's or the prepare's, not
+            # a drive's.
+            if [ "$CODE" != 0 ]; then
+              if [ -f "$SCRATCH_ROOT/installed" ]; then FAILED_PHASE=prepare; else FAILED_PHASE=install; fi
+            fi
+            # Phase 2, with --network none: only loopback, where the drive's
+            # model server runs in-process. The same prefix, cache and
+            # ripgrep; the isolation check first. That the drive then needs
+            # nothing fetched is measured, at each harness's newest build
+            # (.capture/network-egress, "Drift's two phases, every harness,
+            # locally"); a build that does need it fails here as a drive
+            # failure.
+            if [ "$CODE" = 0 ]; then
+              docker run --network none "${COMMON[@]}" "${DRIFT_ENVS[@]}" \
+                -e HKN_NO_NETWORK_UID=1000 -e HOOKNOSTIC_PLAYBACK_NETWORK=none \
+                -e HOOKNOSTIC_PLAYBACK_VERSION="${{ matrix.latest }}" "$IMAGE" \
+                sh -ec '
+                  export PATH="$npm_config_prefix/bin:$PATH"
+                  node scripts/assert-no-network.mjs --offline --require-env HOOKNOSTIC_PLAYBACK_VERSION,HKN_RIPGREP_DIR
+                  exec node --experimental-strip-types scripts/drive-capture-session.mjs \
+                    "$1" --transport playback --scratch "/drift/$1"
+                ' sh "${{ matrix.harness }}" \
+                >> "drift-report-${{ matrix.harness }}.log" 2>&1
+              CODE=$?
+            fi
+          fi
           set -e
           echo "code=$CODE" >> "$GITHUB_OUTPUT"
+          echo "failed_phase=${FAILED_PHASE:-}" >> "$GITHUB_OUTPUT"
           cat "drift-report-${{ matrix.harness }}.log"
           # Copy capture + report next to the workspace for artifact upload.
           if [ -d "$SCRATCH_HOST/.opencode/plugins/captured" ]; then
@@ -735,8 +819,13 @@ jobs:
           # Exit contract (drive-capture-session.mjs): 0 clean, 4 drift,
           # 5 inconclusive, 6 drive failure. 4/5 are reportable outcomes;
           # 6 (no capture or a failed harness process) is also non-clean.
+          # The playback transport's phase 1 runs before any drive: a failed
+          # install or bootstrap is install-failure, a failed prepare is
+          # prepare-failure (the labels verify uses), whatever the code.
           CODE="${{ steps.drive.outputs.code }}"
-          if [ "$CODE" = "0" ]; then VERDICT=clean
+          if [ "${{ steps.drive.outputs.failed_phase }}" = "install" ]; then VERDICT=install-failure
+          elif [ "${{ steps.drive.outputs.failed_phase }}" = "prepare" ]; then VERDICT=prepare-failure
+          elif [ "$CODE" = "0" ]; then VERDICT=clean
           elif [ "$CODE" = "4" ]; then VERDICT=drift
           elif [ "$CODE" = "5" ]; then VERDICT=inconclusive
           else VERDICT=drive-failure; fi

@@ -1,0 +1,31 @@
+{
+ "run": "copilot-1.0.101-traced",
+ "meta": {
+  "lane": "copilot",
+  "version": "1.0.101",
+  "mode": "traced",
+  "date_utc": "2026-11-20T03:50:31Z",
+  "kernel": "Linux 5.15.167.4-microsoft-standard-WSL2",
+  "node": "v24.22.3",
+  "which": "/home/user/hn-egress/harness/copilot-1.0.101/bin/copilot",
+  "interfaces": [
+   "lo UNKNOWN 127.0.0.1/8 10.255.255.254/32 ::1/128",
+   "eth0 UP",
+   "br-8720e84bfcad DOWN",
+   "docker0 DOWN"
+  ],
+  "exit": "0",
+  "seconds": "52",
+  "extra_env": []
+ },
+ "tests": {
+  "passed": 66,
+  "skipped": 76
+ },
+ "failed": [],
+ "harness_processes": 20,
+ "harness_processes_with_egress": 0,
+ "destinations": [],
+ "dns_queries": [],
+ "trace_bytes": 3524981
+}

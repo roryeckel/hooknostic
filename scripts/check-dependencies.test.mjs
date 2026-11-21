@@ -112,6 +112,36 @@ it("tolerates the versionless setup-node placeholder but not a literal Node pin"
   );
 });
 
+it("tolerates the versionless pnpm/action-setup placeholder but not a literal pnpm pin", () => {
+  // pnpm/action-setup with a `with:` block (dest:) and no `version:`; the pnpm
+  // version is owned by package.json's packageManager.
+  const dep = {
+    manager: "npm",
+    packageFile: "package.json",
+    depName: "pnpm",
+    currentValue: "99.0.0",
+    depType: "packageManager",
+  };
+  const placeholder = {
+    depName: "pnpm",
+    packageName: "pnpm",
+    depType: "uses-with",
+    skipReason: "unspecified-version",
+    datasource: "npm",
+  };
+  const extract = (pnpm) => ({
+    npm: [{ packageFile: "package.json", deps: [dep] }],
+    "github-actions": [{ packageFile: "package.json", deps: [pnpm] }],
+  });
+  expect(() => checkExtraction([dep], extract(placeholder))).not.toThrow();
+  expect(() => checkExtraction([dep], extract({ ...placeholder, currentValue: "12" }))).toThrow(
+    "Unexpected extracted dependency",
+  );
+  expect(() => checkExtraction([dep], extract({ ...placeholder, skipReason: undefined }))).toThrow(
+    "Unexpected extracted dependency",
+  );
+});
+
 it("keeps intentional catalog lines and the manual Node floor outside automatic major migrations", () => {
   const config = JSON.parse(readFileSync(new URL("../renovate.json", import.meta.url), "utf8"));
   const ruleFor = (type) => config.packageRules.find((rule) => rule.matchDepTypes?.includes(type));

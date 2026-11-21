@@ -199,6 +199,66 @@ describe("harness-watch workflow structure", () => {
     expect(drift).toMatch(/inputs\.force_llm == 'true'/);
   });
 
+  it("verify runs the newer build's playback without network, after preparing what it fetches", () => {
+    const verify = jobSource("verify");
+    const steps = verify.split(/\r?\n {6}- /).slice(1);
+    const step = (name) => steps.find((candidate) => candidate.split(/\r?\n/)[0] === `name: ${name}`);
+    const field = (body, key) => body?.match(new RegExp(`^ {8}${key}: (.+?)\\r?$`, "m"))?.[1];
+    const prepare = step("Prepare offline playback prerequisites");
+    const playback = step("Model-free playback against the newer build");
+    expect(field(prepare, "run")).toBe(
+      "node --experimental-strip-types scripts/prepare-offline-playback.mjs '${{ matrix.harness }}' --version '${{ matrix.latest }}' --check-online",
+    );
+    expect(field(playback, "id")).toBe("playback");
+    expect(field(playback, "run")).toBe(
+      "scripts/without-network.sh pnpm exec vitest run packages/cli/test/harness-playback.test.ts packages/cli/test/opencode-v2-playback.test.ts",
+    );
+    expect(field(playback, " {2}HKN_NO_NETWORK_REQUIRE_ENV")).toBe(
+      "HOOKNOSTIC_PLAYBACK,HOOKNOSTIC_PLAYBACK_VERSION,HKN_RIPGREP_DIR",
+    );
+    expect(field(playback, " {2}HKN_RIPGREP_DIR")).toBe(field(prepare, " {2}HKN_RIPGREP_DIR"));
+    const order = [
+      "Install newer harness build",
+      "Bundle compiler and dependencies",
+      "Cache the OpenCode v2 tools drive's pinned ripgrep",
+      "Prepare offline playback prerequisites",
+      "Model-free playback against the newer build",
+    ].map((name) => steps.indexOf(step(name)));
+    expect(order.every((index) => index >= 0)).toBe(true);
+    expect(order).toEqual([...order].sort((a, b) => a - b));
+  });
+
+  it("drift's playback drive runs with --network none, with everything phase 1 fetched", () => {
+    const drift = jobSource("drift");
+    const drive = drift.slice(
+      drift.indexOf("Run the drift capture-compare"),
+      drift.indexOf("Write the verdict artifact"),
+    );
+    const playback = drive.slice(drive.indexOf("# The playback transport is offline by intent"));
+    const phase1 = playback.slice(0, playback.indexOf("# Phase 2"));
+    const phase2 = playback.slice(playback.indexOf("# Phase 2"));
+    expect(phase1).toContain('docker run --network bridge "${COMMON[@]}" "${DRIFT_ENVS[@]}"');
+    expect(phase1).toContain('scripts/prepare-offline-playback.mjs "$3" --version "$2" --check-online');
+    // The marker that tells a failed prepare from a failed install (run in
+    // the container, so the executed step tests stub it): after the install,
+    // before the prepare.
+    const marker = phase1.indexOf(": > /drift/installed");
+    expect(marker).toBeGreaterThan(phase1.indexOf('"$INSTALL"'));
+    expect(marker).toBeLessThan(phase1.indexOf("scripts/prepare-offline-playback.mjs"));
+    expect(phase2).toContain('docker run --network none "${COMMON[@]}" "${DRIFT_ENVS[@]}"');
+    // The drive needs phase 1's prefix and ripgrep, or it would fetch them offline.
+    expect(playback).toContain(
+      "DRIFT_ENVS=(-e npm_config_prefix=/drift/prefix -e npm_config_cache=/drift/npm-cache -e HKN_RIPGREP_DIR=/drift/ripgrep)",
+    );
+    expect(phase2).toContain('export PATH="$npm_config_prefix/bin:$PATH"');
+    expect(phase2).toContain(
+      "node scripts/assert-no-network.mjs --offline --require-env HOOKNOSTIC_PLAYBACK_VERSION,HKN_RIPGREP_DIR",
+    );
+    expect(phase2.indexOf("assert-no-network.mjs --offline")).toBeLessThan(phase2.indexOf("drive-capture-session.mjs"));
+    expect(phase2).toContain("-e HKN_NO_NETWORK_UID=1000 -e HOOKNOSTIC_PLAYBACK_NETWORK=none");
+    expect(phase2).not.toContain("--network bridge");
+  });
+
   it("publish-verdict is the single final writer gated on detect", () => {
     const publish = jobSource("publish-verdict");
     expect(publish).toMatch(/needs: \[detect, record, report-failure, drift\]/);

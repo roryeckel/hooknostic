@@ -278,6 +278,18 @@ integration-specific checklist:
   compaction/subagent where applicable, and the package/project install. Use
   `HOOKNOSTIC_PLAYBACK_VERSION` to verify a newer build without moving the
   reference.
+- Playback drives must not need the network: CI blocks non-loopback IP for
+  each lane, with a loopback-only namespace on Linux
+  (`scripts/without-network.sh`) and a dedicated user behind a firewall rule
+  on Windows (`scripts/without-network.ps1`), where a lane that needs it
+  fails. A call the lane does not need fails silently there, so CI
+  does not find new egress. Take a traced inventory of a new harness first
+  (`.capture/network-egress`), switch off its avoidable calls in
+  `playbackQuiet` (`packages/cli/test/harness-playback.ts`), and fetch
+  anything a lane needs in `scripts/prepare-offline-playback.mjs`. Add the
+  lane to `scripts/harness-lanes.mjs`, or the offline run fails. Reproduce
+  locally per `docs/testing.md`, "Network isolation on Linux" (the rule for
+  every OS is in "Network isolation in CI").
 - Add an opt-in `HOOKNOSTIC_SMOKE=<id>` test that proves one blocking and one
   mutating effect with a real model; never run it in normal CI.
 - Update `docs/harness-watch.md` with the lane's cost and any install/bootstrap

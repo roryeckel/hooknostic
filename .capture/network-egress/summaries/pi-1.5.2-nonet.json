@@ -1,0 +1,25 @@
+{
+ "run": "pi-1.5.2-nonet",
+ "meta": {
+  "lane": "pi",
+  "version": "1.5.2",
+  "mode": "nonet",
+  "date_utc": "2026-11-20T04:55:45Z",
+  "playback_version_env": "1.5.2",
+  "extra_env": [],
+  "seed_home": "none",
+  "kernel": "Linux 5.15.167.4-microsoft-standard-WSL2",
+  "node": "v24.22.3",
+  "which": "/home/user/hn-egress/harness/pi-1.5.2/bin/pi",
+  "interfaces": [
+   "lo UNKNOWN 127.0.0.1/8 ::1/128"
+  ],
+  "exit": "0",
+  "seconds": "19"
+ },
+ "tests": {
+  "passed": 70,
+  "skipped": 72
+ },
+ "failed": []
+}

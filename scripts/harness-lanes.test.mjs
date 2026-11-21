@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 import { expect, it } from "vitest";
 
 import { rollingPlaybackVersion } from "./check-harness-releases.mjs";
-import { harnessLaneId, harnessLanes } from "./harness-lanes.mjs";
+import { harnessLaneId, harnessLanes, isKnownLane } from "./harness-lanes.mjs";
 
 it.each(["opencode-v2", "pi", "copilot"])(
   "advances only the %s rolling baseline through the watch command-line tools",
@@ -112,3 +112,50 @@ it("keeps the OpenCode families on independent metadata and installation lanes",
     expect(actual).toBe(expected);
   }
 });
+
+const repoRoot = fileURLToPath(new URL("..", import.meta.url));
+
+it("knows every playback lane and the historical opencode alias", () => {
+  for (const lane of Object.keys(harnessLanes)) expect(isKnownLane(lane), lane).toBe(true);
+  expect(isKnownLane("opencode")).toBe(true);
+});
+
+it.each([[""], ["codexx"], ["opencode-v3"], ["CLAUDE"], ["toString"], ["__proto__"], [undefined]])(
+  "selects nothing for %j, which offline must fail rather than skip",
+  (id) => {
+    expect(isKnownLane(id)).toBe(false);
+  },
+);
+
+// The guard in harness-playback.test.ts runs only without network, which no
+// ordinary gate sets. Run just that test the way the namespaced lane would,
+// with no lane selected: it must fail, so deleting the guard fails here.
+it("fails, rather than skips, an offline playback run that selects no lane", () => {
+  const env = Object.fromEntries(Object.entries(process.env).filter(([name]) => !name.startsWith("VITEST")));
+  // Nor may it depend on how this run was invoked.
+  for (const name of ["HOOKNOSTIC_PLAYBACK", "HOOKNOSTIC_PLAYBACK_VERSION", "HOOKNOSTIC_SMOKE", "HOOKNOSTIC_PACK"])
+    delete env[name];
+  // In CI the nested run would add the github-actions reporter, turning its
+  // expected failure into an error annotation on this job, and would colour
+  // its summary. Neither belongs to the run under test.
+  delete env["GITHUB_ACTIONS"];
+  delete env["FORCE_COLOR"];
+  env["NO_COLOR"] = "1";
+  const result = spawnSync(
+    process.execPath,
+    [
+      fileURLToPath(new URL("../node_modules/vitest/vitest.mjs", import.meta.url)),
+      "run",
+      "packages/cli/test/harness-playback.test.ts",
+      "-t",
+      "selects a known playback lane when run without network",
+    ],
+    { cwd: repoRoot, encoding: "utf8", env: { ...env, HOOKNOSTIC_PLAYBACK_NETWORK: "none" } },
+  );
+  // eslint-disable-next-line no-control-regex -- strips ANSI colour codes
+  const output = `${result.stdout}${result.stderr}`.replace(/\x1b\[[0-9;]*m/g, "");
+  expect(output).not.toContain("::error");
+  expect(result.status, output).not.toBe(0);
+  expect(output).toContain("HOOKNOSTIC_PLAYBACK names no known lane");
+  expect(output).toMatch(/Tests\s+\S*1 failed/);
+}, 120_000);

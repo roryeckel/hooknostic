@@ -186,11 +186,14 @@ export function checkExtraction(expected, packageFiles) {
         if (manager === "github-actions" && dep.depType === "github-runner" && dep.currentValue === "latest") continue;
         // Newer Renovate emits a versionless `node` placeholder for every
         // setup-node step. Ours read a version file owned by the nodenv
-        // manager, and inventory() rejects any literal `node-version`.
+        // manager, and inventory() rejects any literal `node-version`. It does
+        // the same for a pnpm/action-setup step with a `with:` block (dest:)
+        // and no `version:`; pnpm's version is package.json's packageManager,
+        // and inventory() rejects a duplicated pnpm pin.
         if (
           manager === "github-actions" &&
           dep.depType === "uses-with" &&
-          dep.depName === "node" &&
+          (dep.depName === "node" || dep.depName === "pnpm") &&
           dep.currentValue === undefined &&
           dep.skipReason === "unspecified-version"
         )
