@@ -124,8 +124,7 @@ $sid = (Get-LocalUser -Name $LaneUser).SID.Value
 if (-not (@(Get-LocalGroupMember -SID 'S-1-5-32-545' -ErrorAction SilentlyContinue).SID.Value -contains $sid)) {
   Add-LocalGroupMember -SID 'S-1-5-32-545' -Member $LaneUser
 }
-New-NetFirewallRule -DisplayName "$RuleGroup outbound" -Group $RuleGroup -Direction Outbound -Action Block `
-  -LocalUser "D:(A;;CC;;;$sid)" -Profile Any | Out-Null
+# MUTANT A: no firewall rule.
 "without-network: user $LaneUser ($sid), Users only; outbound blocked by rule group $RuleGroup"
 
 # 4. Scratch directory.
