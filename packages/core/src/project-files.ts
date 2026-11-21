@@ -631,6 +631,10 @@ interface Journal {
   config: string;
   entries: JournalEntry[];
 }
+/**
+ * Replaces `path` with `value`, or removes it, and returns the destination it
+ * wrote, so a caller can flush that file's directory.
+ */
 async function replace(
   root: string,
   path: string,
@@ -638,13 +642,13 @@ async function replace(
   mode: number,
   expected?: FileState,
   staged?: string,
-): Promise<void> {
+): Promise<string> {
   const destination = await projectPath(root, path);
   if (expected !== undefined && !sameState(await fileState(destination), expected))
     throw new Error(`write precondition changed: ${path}`);
   if (value === null) {
     await rm(destination, { force: true });
-    return;
+    return destination;
   }
   await mkdir(dirname(destination), { recursive: true });
   const temp = staged ?? (await stage(root, value, mode));
@@ -656,6 +660,43 @@ async function replace(
   } finally {
     await rm(temp, { force: true });
   }
+  return destination;
+}
+/**
+ * Every error that means the filesystem cannot flush a directory at all,
+ * rather than failing to do so this time. `EINVAL` and `EISDIR` are what a
+ * platform answers when the call does not apply to a directory; the others are
+ * its "not implemented" spellings.
+ */
+const UNSUPPORTED_DIRECTORY_FLUSH = new Set(["EINVAL", "EISDIR", "ENOTSUP", "EOPNOTSUPP", "ENOSYS"]);
+/**
+ * Flushes a directory's own entries, making a completed rename into it durable
+ * across a power loss or kernel crash.
+ *
+ * Windows returns immediately: `fs.open` can open a directory there, but
+ * `fs.fsync` on that descriptor fails with EPERM, because Windows refuses
+ * `FlushFileBuffers` on a directory and exposes no `MOVEFILE_WRITE_THROUGH`.
+ * Rename durability there stays with the filesystem.
+ *
+ * Elsewhere the flush is `fs.fsync` on a descriptor from `fs.open(path, "r")`,
+ * not `FileHandle.sync()`, for the Yarn Plug'n'Play reason `createFlushed`
+ * records (#229). A filesystem that cannot flush a directory answers with one
+ * of `UNSUPPORTED_DIRECTORY_FLUSH`, which is skipped; every other failure is
+ * real and propagated.
+ */
+async function flushDirectory(path: string): Promise<void> {
+  if (process.platform === "win32") return;
+  const handle = await open(path, "r");
+  try {
+    await new Promise<void>((resolve, reject) => fsync(handle.fd, (error) => (error ? reject(error) : resolve())));
+  } catch (error) {
+    if (!UNSUPPORTED_DIRECTORY_FLUSH.has((error as NodeJS.ErrnoException).code ?? "")) {
+      // Never mask the flush error with a failed close.
+      await handle.close().catch(() => undefined);
+      throw error;
+    }
+  }
+  await handle.close();
 }
 /**
  * Creates `path` exclusively, writes `value`, flushes it to disk and closes
@@ -765,15 +806,37 @@ export async function applyProject(root: string, config: string, plan: Reconcili
         ...(c.beforeMode === undefined ? {} : { beforeMode: c.beforeMode }),
       })),
     };
-    await replace(root, JOURNAL, Buffer.from(JSON.stringify(journal)), 0o600);
+    const journalDestination = await replace(root, JOURNAL, Buffer.from(JSON.stringify(journal)), 0o600);
     journalWritten = true;
+    const stateDirectory = dirname(journalDestination);
+    // Persist the journal's rename before any destination changes. The root is
+    // flushed too because a first sync may have just created `.hooknostic`;
+    // flushing it alone does not persist its entry in the root.
+    await flushDirectory(stateDirectory);
+    await flushDirectory(dirname(stateDirectory));
+    const directories = new Set<string>();
     for (const change of plan.changes) {
       const expected = beforeState(change);
       if (!sameState(await fileState(await projectPath(root, change.path)), expected))
         throw new Error(`project changed during synchronization: ${change.path}`);
-      await replace(root, change.path, change.after, change.mode, expected, staged.get(change.path));
+      const destination = await replace(
+        root,
+        change.path,
+        change.after,
+        change.mode,
+        expected,
+        staged.get(change.path),
+      );
+      directories.add(dirname(destination));
     }
+    // A rename is durable only once its directory is; flush after them all so
+    // each directory is flushed once, in a stable order.
+    for (const directory of [...directories].sort()) await flushDirectory(directory);
     await rm(await projectPath(root, JOURNAL));
+    // Best-effort commit point. Only a crash can bring the journal back now,
+    // and recovery rolls that back, so this failure must not report an applied
+    // synchronization as failed.
+    await flushDirectory(stateDirectory).catch(() => undefined);
   } catch (error) {
     if (journalWritten) await restore(root, config);
     throw error;
@@ -827,13 +890,21 @@ async function restore(root: string, config: string): Promise<void> {
       );
     actions.push({ entry, before, current });
   }
+  const directories = new Set<string>();
   for (const { entry, before, current } of actions.reverse()) {
     if (!sameState(await fileState(await projectPath(root, entry.path)), current))
       throw new Error(`recovery precondition changed: ${entry.path}`);
-    if (!sameState(current, before))
-      await replace(root, entry.path, before.contents, before.mode ?? entry.mode, current);
+    if (!sameState(current, before)) {
+      const destination = await replace(root, entry.path, before.contents, before.mode ?? entry.mode, current);
+      directories.add(dirname(destination));
+    }
   }
-  await rm(await projectPath(root, JOURNAL));
+  // Without this, a crash during recovery can persist the journal's removal
+  // while losing a restore's rename.
+  for (const directory of [...directories].sort()) await flushDirectory(directory);
+  const journalDestination = await projectPath(root, JOURNAL);
+  await rm(journalDestination);
+  await flushDirectory(dirname(journalDestination)).catch(() => undefined);
 }
 /** Who may hold each lock, as the messages about it name them. */
 const LOCK_HOLDERS: Readonly<Record<LockName, string>> = { [LOCK]: "sync or recover", [RECOVERY_LOCK]: "recover" };

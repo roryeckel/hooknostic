@@ -180,6 +180,43 @@ because Codex has no equivalent native field.
 - **Pi is unchanged.** Its registration loses to a host file entry rather than
   overriding one, and no capture covers a disabled collision.
 
+## Amendment — 2026-11-21: directory flushes after renames
+
+- **This supersedes the last sentence of the durable-journal paragraph in the
+  Decision above** ("File data is flushed before rename; filesystem/power-loss
+  rename durability remains subject to platform guarantees"). Flushing file
+  data is not enough: a rename is durable only once its directory's entries
+  are, and the journal design never flushed one.
+- **The durable order is now explicit.** Every destination is staged and
+  content-flushed, then the journal is renamed into place. The journal's
+  directory (`.hooknostic`) is flushed, then the project root: a first sync may
+  have just created `.hooknostic`, and flushing it alone does not persist its
+  entry in the root. Only then are destinations renamed. After all of them,
+  each touched destination directory is flushed once, sorted for determinism.
+  The journal is removed, and `.hooknostic` is flushed once more as the commit
+  point.
+- **Failures before the commit point are fatal.** A failed journal-directory,
+  root or destination-directory flush fails the sync and rolls back: the
+  journal is durable, so rollback can restore every changed destination. The
+  final flush after the journal's removal is best effort and swallowed: only a
+  crash can bring the journal back, and recovery rolls it back, so it must not
+  turn an applied sync into a reported failure.
+- **Recovery mirrors the rule.** It flushes the directory of every path it
+  actually replaced, once each and sorted, before removing the journal, then
+  flushes `.hooknostic` best effort after the unlink. Without this, a crash
+  during recovery could persist the journal's removal while losing a restore
+  rename.
+- **Windows has a weaker boundary, and says so.** There `fs.open` can open a
+  directory but `fs.fsync` on it fails with EPERM, because Windows refuses
+  `FlushFileBuffers` on a directory and exposes no `MOVEFILE_WRITE_THROUGH`.
+  Directory flushes are therefore skipped on Windows. Filesystems that cannot
+  flush a directory at all (`EINVAL`, `EISDIR`, `ENOTSUP`, `EOPNOTSUPP`,
+  `ENOSYS`) are skipped the same way; every other error remains fatal. Network
+  and FUSE filesystems may honour these calls differently or not at all, so
+  power-loss durability there is the filesystem's guarantee, not Hooknostic's.
+  Recovery still checks every file against the journal before restoring
+  anything; directory flushing never weakens that check.
+
 ## Boundaries
 
 Hooknostic compiles artifacts and optionally reconciles explicitly configured

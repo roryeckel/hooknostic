@@ -300,6 +300,19 @@ resolution. Journal and staging files are ignored and can contain preimages of
 shared configuration; do not commit or publish them. Reconciliation is recoverable
 across files, but running harnesses may observe intermediate replacements.
 
+A rename counts only once its directory is durable. Sync flushes the journal's
+directory and then the project root after the journal rename, renames every
+destination, flushes each touched destination directory once, removes the
+journal, and flushes the journal's directory once more as the commit point. A
+failure before the journal is removed fails the operation and rolls back; the
+final flush is best effort, because only a crash can bring the journal back,
+and recovery rolls that back. Windows skips directory flushes: Node can open a
+directory there but cannot fsync it, and it offers no write-through rename.
+Filesystems that cannot flush a directory (`EINVAL`, `EISDIR`, `ENOTSUP`,
+`EOPNOTSUPP`, `ENOSYS`) are skipped the same way; every other flush error is
+fatal. Recovery still checks every file against the journal before restoring
+anything.
+
 `doctor` never executes hooks or connects to MCP servers. A clean result means
 configuration and wiring checks passed; execution remains unobserved, and restart
 or trust actions may still be required.
