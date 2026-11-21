@@ -12,9 +12,15 @@
 # - Before the lane runs it records a ctime stamp and SHA-256 sums of the
 #   file-command files, ~runner's dotfiles, the workspace's .git/config and
 #   scripts, and the staged root scripts. lane-after.sh compares them.
-# - The lane runs as hknlane: no supplementary groups, no capabilities,
-#   no_new_privs, an empty environment, only loopback. lane-probe.mjs loads its
-#   environment, probes, runs the canary, then the command.
+# - The lane runs in new network, mount and PID namespaces (lane-ns.sh):
+#   - only loopback;
+#   - every mount read-only but the scratch tree;
+#   - private /tmp, /var/tmp and /dev/shm;
+#   - RUNNER_TEMP and the runner's directory hidden;
+#   - the workspace an overlay with its upper layer in the scratch tree.
+#   It runs as hknlane: no supplementary groups, no capabilities, no_new_privs,
+#   an empty environment. lane-probe.mjs loads its environment, probes, runs
+#   the canary, then the command.
 # - --node-modules-grant (trial only) lets the lane create entries directly
 #   in the workspace's node_modules, where one test makes a temporary directory.
 set -uo pipefail
@@ -22,13 +28,14 @@ export PATH=/usr/sbin:/usr/bin:/sbin:/bin
 admin="$(cd -P -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck disable=SC1091
 . "$admin/state"
-envfile="" label="" require="" nmgrant=""
+envfile="" label="" require="" nmgrant="" mutant=""
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --env-file) envfile="$2"; shift 2 ;;
     --label) label="$2"; shift 2 ;;
     --require) require="$2"; shift 2 ;;
     --node-modules-grant) nmgrant=1; shift ;;
+    --mutant-no-readonly) mutant=no-ro; shift ;;
     --) shift; break ;;
     *) echo "lane-run: bad argument" >&2; exit 2 ;;
   esac
@@ -105,8 +112,9 @@ t write 'node binary' "$node"; t read 'admin state' "$admin/state"
   printf ']}'
 } > "$scratch/bin/lane.json"
 
-# 3. Hand the scratch tree over; trial-only grant.
-if [ -n "$nmgrant" ]; then setfacl -m "u:hknlane:wx" "$ws/node_modules"; echo "lane-run $label: TRIAL ONLY: the lane may create entries in workspace node_modules"; fi
+# 3. Hand the scratch tree over. The trial-only node_modules grant is applied
+# inside the namespace, to the workspace overlay, never to the real tree.
+if [ -n "$nmgrant" ]; then echo "lane-run $label: TRIAL ONLY: the lane may create entries in the overlay's node_modules"; fi
 chown -R "$uid:$gid" "$scratch"
 chmod 0600 "$laneenv"
 
@@ -125,8 +133,9 @@ echo "lane-run $label: snapshot of $(wc -l < "$admin/before.$label") trusted fil
 
 # 5. Run.
 start=$(date +%s)
-unshare --net -- /bin/bash -c 'ip link set lo up && exec setpriv --reuid="$1" --regid="$2" --clear-groups --inh-caps=-all --no-new-privs -- env -i "$3" "$4" "$5"' \
-  _ "$uid" "$gid" "$node" "$scratch/bin/lane-probe.mjs" "$scratch"
+runner_dir="${runner_bin%%/cached/*}"
+unshare --net --mount --pid --fork --mount-proc -- env -i /bin/bash "$admin/lane-ns.sh" \
+  "$uid" "$gid" "$node" "$scratch" "$ws" "$rt" "$runner_dir" "${nmgrant:+grant}" "$mutant"
 code=$?
 echo "lane-run $label: exit $code after $(( $(date +%s) - start )) s"
 exit "$code"

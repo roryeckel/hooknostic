@@ -22,13 +22,14 @@ grant="${5:-}"
 [ "$(id -u)" = 0 ] || { echo "lane-setup: needs root" >&2; exit 2; }
 caller="${SUDO_UID:?run through sudo}" callergid="${SUDO_GID:?run through sudo}"
 here="$(cd -P -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-admin=/var/lib/hkn-admin scratch=/var/tmp/hkn-lane
+# Not under /var/tmp or /tmp: the lane's namespace mounts fresh tmpfs there.
+admin=/var/lib/hkn-admin scratch=/var/lib/hkn-lane
 t0=$(date +%s%N)
 mark() { echo "lane-setup: $(( ($(date +%s%N) - t0) / 1000000 )) ms $*"; }
 redact() { sed -e "s#$ws#%GITHUB_WORKSPACE%#g" -e "s#$rt#%RUNNER_TEMP%#g" -e "s#$rhome#~runner#g"; }
 
 install -d -m 0700 -o root -g root "$admin"
-install -m 0700 -o root -g root "$here/lane-run.sh" "$here/lane-after.sh" "$admin/"
+install -m 0700 -o root -g root "$here/lane-run.sh" "$here/lane-ns.sh" "$here/lane-after.sh" "$admin/"
 mark "staged root scripts: $(stat -c '%A %U:%G' "$admin")"
 
 useradd --system --user-group --no-create-home --home-dir "$scratch/home" --shell /usr/sbin/nologin hknlane
@@ -61,25 +62,31 @@ for tool in pnpm claude codex copilot opencode pi; do
   found="$(PATH="$cpath" command -v "$tool" || true)"
   if [ -n "$found" ]; then needs+=("$found" "$(readlink -f "$found")"); fi
 done
+as_lane() { setpriv --reuid="$uid" --regid="$gid" --clear-groups -- "$@"; }
 for p in "${needs[@]}"; do
   [ -n "$p" ] || continue
-  if setpriv --reuid="$uid" --regid="$gid" --clear-groups -- test -r "$p"; then
+  if as_lane test -r "$p"; then
     echo "   readable: $(echo "$p" | redact)"
-  else
-    blocked=""
-    q="$p"
-    while [ "$q" != / ]; do
-      q="$(dirname "$q")"
-      setpriv --reuid="$uid" --regid="$gid" --clear-groups -- test -x "$q" || blocked="$q"
-    done
-    echo "   NOT readable: $(echo "$p" | redact); outermost untraversable ancestor: $(echo "${blocked:-none}" | redact)"
-    if [ "$grant" = --grant-traverse ] && [ -n "$blocked" ]; then
-      q="$p"
-      while [ "$q" != / ]; do
-        q="$(dirname "$q")"
-        setpriv --reuid="$uid" --regid="$gid" --clear-groups -- test -x "$q" || { setfacl -m "u:hknlane:x" "$q"; echo "   granted traverse (ACL u:hknlane:x): $(echo "$q" | redact)"; }
-      done
-    fi
+    continue
   fi
+  # Walk down from / and stop at the first directory the lane cannot
+  # traverse. Only that one gets an execute-only entry: a named-user ACL entry
+  # overrides "other" for that user, so granting x on a directory it could
+  # already list would take its listing away.
+  cur=""
+  IFS=/ read -ra parts <<< "${p#/}"
+  for part in "${parts[@]:0:${#parts[@]}-1}"; do
+    cur="$cur/$part"
+    if ! as_lane test -x "$cur"; then
+      if [ "$grant" = --grant-traverse ]; then
+        setfacl -m "u:hknlane:x" "$cur"
+        echo "   granted traverse only (ACL u:hknlane:--x): $(echo "$cur" | redact)"
+      else
+        echo "   blocked at: $(echo "$cur" | redact)"
+        break
+      fi
+    fi
+  done
+  if as_lane test -r "$p"; then echo "   readable now: $(echo "$p" | redact)"; else echo "   NOT readable: $(echo "$p" | redact)"; fi
 done
 mark done

@@ -110,7 +110,7 @@ if (Test-Path "$Admin\$Label.before.json") {
   $differs = @(foreach ($p in $before.entries.PSObject.Properties) { if ([string]$now[$p.Name] -ne [string]$p.Value) { $p.Name } })
   $added = @($now.Keys | Where-Object { $_ -like 'hash *' -and -not $before.entries.PSObject.Properties[$_] }).Count
   $newer = @($now.Keys | Where-Object { $_ -like 'newer *' -and $now[$_] })
-  "lane-after ${Label}: trusted snapshot compared in $([int]$snapTimer.Elapsed.TotalMilliseconds) ms: $($before.entries.PSObject.Properties.Count) entries, $($differs.Count) differ, $added new file-command hashes (later steps)"
+  "lane-after ${Label}: trusted snapshot compared in $([int]$snapTimer.Elapsed.TotalMilliseconds) ms: $(@($before.entries.PSObject.Properties).Count) entries, $($differs.Count) differ, $added new file-command hashes (later steps)"
   foreach ($d in $differs) { "  DIFFERS $d" }
   foreach ($n in $newer) { "  NEWER $n : $(([string]$now[$n]).Substring(0, [Math]::Min(300, ([string]$now[$n]).Length)))" }
   if ($differs.Count) { $problems.Add("$($differs.Count) trusted entries changed") }
