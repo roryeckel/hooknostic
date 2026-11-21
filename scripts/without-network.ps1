@@ -113,13 +113,15 @@ function Invoke-LaneCleanup {
     Write-Warning "without-network: could not stop the lane processes or disable ${LaneUser}: $($_.Exception.Message)"
   }
   try {
-    # Genuine absence returns no objects; a provider or access failure
-    # terminates, rather than reading as "no rules".
-    $existing = @(Get-NetFirewallRule -Group $RuleGroup -ErrorAction Stop)
+    # Enumerate without -Group: the real cmdlet raises ObjectNotFound for a
+    # missing group, which would fail a clean runner. The CIM object's property
+    # is RuleGroup (the class has no Group); filter the successful enumeration.
+    $existing = @(Get-NetFirewallRule -ErrorAction Stop | Where-Object { $_.RuleGroup -eq $RuleGroup })
     # Out-Null: the cmdlet's CIM objects must not join the helper's return value.
     if ($existing.Count) { $existing | Remove-NetFirewallRule -ErrorAction Stop | Out-Null }
-    # The recheck is discovery too: a failure must not read as "no rules".
-    $rules = @(Get-NetFirewallRule -Group $RuleGroup -ErrorAction Stop).Count
+    # The recheck is discovery too: absence is an empty filtered result, and a
+    # provider/access failure still terminates.
+    $rules = @(Get-NetFirewallRule -ErrorAction Stop | Where-Object { $_.RuleGroup -eq $RuleGroup }).Count
     [Console]::Out.WriteLine("without-network: firewall rules removed: $($existing.Count); left: $rules")
   } catch {
     $clean = $false

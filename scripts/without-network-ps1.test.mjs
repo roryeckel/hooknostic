@@ -114,6 +114,11 @@ $ErrorActionPreference = 'Continue'
 $WarningPreference = 'SilentlyContinue'
 $global:HknScenario = $Scenario
 $global:HknRuleCalls = 0
+$global:HknRemoved = 0
+$global:HknRules = @()
+if ($global:HknScenario -in 'clean-after-removal', 'rules-recheck') {
+  $global:HknRules = @([pscustomobject]@{ Name = 'hkn-offline outbound'; RuleGroup = 'hkn-offline' })
+}
 
 function global:Stop-LaneProcesses { param([string]$sid) 0 }
 function global:Get-LocalUser {
@@ -131,16 +136,29 @@ function global:Get-NetFirewallRule {
     Write-Error 'firewall rule provider unavailable'
     return
   }
-  if ($global:HknScenario -eq 'rules-recheck') {
-    if ($global:HknRuleCalls -eq 1) { return [pscustomobject]@{ Name = 'hkn-offline outbound' } }
+  if ($global:HknScenario -eq 'rules-recheck' -and $global:HknRuleCalls -eq 2) {
     Write-Error 'firewall rule provider unavailable'
     return
   }
+  if ($PSBoundParameters.ContainsKey('Group')) {
+    $matches = @($global:HknRules | Where-Object { $_.RuleGroup -eq $Group })
+    if ($matches.Count -eq 0) {
+      # The real cmdlet raises ObjectNotFound, not an empty result, for a
+      # missing group. A regression to -Group must fail on a clean runner.
+      Write-Error -Message "No MSFT_NetFirewallRule objects found with property 'Group' equal to '$Group'" -Category ObjectNotFound
+      return
+    }
+    return $matches
+  }
+  return $global:HknRules
 }
 function global:Remove-NetFirewallRule {
   [CmdletBinding()]
   param([Parameter(ValueFromPipeline = $true)]$InputObject)
-  process { }
+  process {
+    $global:HknRules = @($global:HknRules | Where-Object { $_.Name -ne $InputObject.Name })
+    $global:HknRemoved++
+  }
 }
 function global:Disable-LocalUser {
   [CmdletBinding()] param([string]$Name)
@@ -174,7 +192,13 @@ if ($Mode -eq 'helper') {
   } finally {
     [Console]::SetOut($original)
   }
-  [ordered]@{ clean = [bool]$result; output = $capture.ToString(); ruleCalls = $global:HknRuleCalls } | ConvertTo-Json -Compress
+  [ordered]@{
+    clean = [bool]$result
+    output = $capture.ToString()
+    ruleCalls = $global:HknRuleCalls
+    removed = $global:HknRemoved
+    remaining = @($global:HknRules).Count
+  } | ConvertTo-Json -Compress
   exit 0
 }
 
@@ -190,18 +214,22 @@ const cleanup = (mode, scenario) =>
   );
 // Both the helper's return value and the -Cleanup branch's exit code, so a
 // helper that returns false but exits 0 cannot pass.
-const expectCleanup = (scenario, clean) => {
+const expectCleanup = (scenario, clean, extra = {}) => {
   const helper = cleanup("helper", scenario);
   expect(helper.error).toBeUndefined();
   expect(helper.status, helper.stdout + helper.stderr).toBe(0);
-  expect(JSON.parse(helper.stdout.trim()), scenario).toMatchObject({ clean });
+  expect(JSON.parse(helper.stdout.trim()), scenario).toMatchObject({ clean, ...extra });
   const branch = cleanup("branch", scenario);
   expect(branch.error).toBeUndefined();
   expect(branch.status, branch.stdout + branch.stderr).toBe(clean ? 0 : 1);
 };
 
 it.skipIf(!shell)("keeps -Cleanup idempotent when there is no lane user and no rule", () => {
-  expectCleanup("absent", true);
+  expectCleanup("absent", true, { removed: 0, remaining: 0 });
+});
+
+it.skipIf(!shell)("keeps -Cleanup clean after a successful removal and empty recheck", () => {
+  expectCleanup("clean-after-removal", true, { removed: 1, remaining: 0 });
 });
 
 it.skipIf(!shell)("fails -Cleanup closed when the lane-user provider fails", () => {
@@ -213,7 +241,7 @@ it.skipIf(!shell)("fails -Cleanup closed when the initial rule-group discovery f
 });
 
 it.skipIf(!shell)("fails -Cleanup closed when the post-removal rule-group recheck fails", () => {
-  expectCleanup("rules-recheck", false);
+  expectCleanup("rules-recheck", false, { removed: 1, remaining: 0 });
 });
 
 it.skipIf(!shell)("keeps the user, rule, scratch and lane setup under one try/finally", () => {
