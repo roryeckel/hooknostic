@@ -848,7 +848,9 @@ The harness-watch dispatch:
 
 ### Drift's two phases, every harness, locally (2026-11-21)
 
-The dispatch ran drift for opencode-v2 only. To check that phase 2 needs
+The first dispatch (44862570019) ran drift for opencode-v2 only; a later
+one ran codex (44928700826, see "The codex resolver wait, removed"). To check
+that phase 2 needs
 nothing fetched for the others, the committed step ("Run the drift
 capture-compare", after `7d023fdc`) was run as it stands, with its `${{ }}`
 expressions filled in:
@@ -980,6 +982,13 @@ wrapper. It gets the same setting from Docker's `--dns-option timeout:0
   stopped before the drive.
 - The committed step for codex 0.171.0, twice each: phase 2 took 20.1 s and
   17.1 s before, 11.2 s and 10.8 s after. The verdict was clean every time.
+- On a runner's own Docker Engine too: harness-watch dispatch 44928700826
+  (`harness=codex`, `dry_run`, at `5992283c`, codex 0.171.0). Phase 2's check
+  printed `resolver timeout: 0 s in /etc/resolv.conf, expected 0 s` and
+  `DNS lookup: github.com -> EAI_AGAIN in 2 ms`, and the verdict was clean.
+  The whole drive step took about 19 s. Its log cannot split the phases (the
+  report is printed after both), and no runner drift of codex ran before the
+  option, so there is no runner before-and-after.
 
 ## Not measured
 
@@ -988,8 +997,9 @@ wrapper. It gets the same setting from Docker's `--dns-option timeout:0
   `HOOKNOSTIC_PLAYBACK` and `HOOKNOSTIC_SMOKE` empty and install no harness.
 - **Left after option B's CI runs**:
   - drift's two phases on a GitHub-hosted runner for harnesses other than
-    opencode-v2. The committed step ran locally for the other five
-    ("Drift's two phases, every harness, locally" above);
+    opencode-v2 and codex (dispatches 44862570019 and 44928700826). The
+    committed step ran locally for the five besides opencode-v2 ("Drift's
+    two phases, every harness, locally" above);
   - cancellation of a Windows job from the UI, where `always()` is not
     guaranteed (step and job timeouts were measured).
 - **Service-mediated Windows requests** other than DNS (for example WinHTTP
