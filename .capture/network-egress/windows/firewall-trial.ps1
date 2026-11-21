@@ -1,12 +1,28 @@
 # Windows Firewall trials for enforcing "no network" on a GitHub-hosted runner.
 # Throwaway runners only; needs admin.
 #   firewall-trial.ps1 inventory|a|b|c|restore -Dir <scratch dir>
+# Trial (b) sets DefaultOutboundAction Block on every firewall profile, which
+# is machine-wide and persistent. It refuses to run without the explicit
+# -IDangerAcceptGlobalBlock switch, and prints the restore command.
 # Each trial applies one mechanism, then runs probe.mjs (public IPv4, DNS,
 # HTTPS, loopback round trip). `restore` puts back the recorded profile state
 # and removes every rule and user the trials added. Prints names and states,
 # never environment values or the trial user's password.
-param([Parameter(Mandatory)][ValidateSet('inventory', 'a', 'b', 'c', 'restore')][string]$Step, [Parameter(Mandatory)][string]$Dir)
+param(
+  [Parameter(Mandatory)][ValidateSet('inventory', 'a', 'b', 'c', 'restore')][string]$Step,
+  [Parameter(Mandatory)][string]$Dir,
+  [switch]$IDangerAcceptGlobalBlock
+)
 $ErrorActionPreference = 'Stop'
+# Before New-Item: a refusal writes nothing, not even the scratch directory.
+if ($Step -eq 'b' -and -not $IDangerAcceptGlobalBlock) {
+  [Console]::Error.WriteLine('firewall-trial: refusing trial (b) without -IDangerAcceptGlobalBlock')
+  [Console]::Error.WriteLine('  Trial (b) sets DefaultOutboundAction Block on every Windows Firewall profile:')
+  [Console]::Error.WriteLine('  machine-wide and persistent, not scoped to this process or the trial user.')
+  [Console]::Error.WriteLine('  Run it only on a throwaway runner, then restore:')
+  [Console]::Error.WriteLine("  pwsh -File `"$PSCommandPath`" -Step restore -Dir `"$Dir`"")
+  exit 2
+}
 New-Item -ItemType Directory -Force -Path $Dir | Out-Null
 $probe = Join-Path $PSScriptRoot 'probe.mjs'
 $node = (Get-Command node).Source
@@ -60,6 +76,7 @@ switch ($Step) {
   'b' {
     # (b) default outbound Block on every profile, with allow rules for the
     # runner's own images (and its bundled node under externals\).
+    "== (b) restores the recorded profiles with: pwsh -File `"$PSCommandPath`" -Step restore -Dir `"$Dir`""
     Enable-Firewall
     $allow = @(Get-RunnerImages)
     $runnerDir = Split-Path -Parent (Split-Path -Parent ($allow | Select-Object -First 1))
@@ -71,6 +88,7 @@ switch ($Step) {
     Set-NetFirewallProfile -All -DefaultOutboundAction Block
     "== (b) default outbound Block; left in place for the next steps"
     Invoke-Probe 'trial-b-default-block'
+    "== (b) the block is still in place: every profile stays at DefaultOutboundAction Block until 'restore' runs"
   }
   'c' {
     # (c) block every outbound connection of one dedicated local user, by SID,

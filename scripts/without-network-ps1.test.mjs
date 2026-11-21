@@ -20,6 +20,7 @@ import { fileURLToPath } from "node:url";
 import { afterAll, expect, it } from "vitest";
 
 const script = fileURLToPath(new URL("without-network.ps1", import.meta.url));
+const firewallTrial = fileURLToPath(new URL("../.capture/network-egress/windows/firewall-trial.ps1", import.meta.url));
 const shell = ["pwsh", ...(process.platform === "win32" ? ["powershell"] : [])].find(
   (candidate) => spawnSync(candidate, ["-NoProfile", "-Command", "exit 0"], { encoding: "utf8" }).status === 0,
 );
@@ -130,6 +131,91 @@ $statement = $found[0]
   expect(parsed.finally).toContain("Invoke-LaneCleanup");
   expect(parsed.after).toContain('"without-network: the lane exited $code');
   expect(parsed.after).toMatch(/exit \$code\s*$/);
+});
+
+it.skipIf(!shell)("gates trial (b) before it writes or changes every firewall profile", () => {
+  const parsed = parse(
+    "firewall-trial-b",
+    firewallTrial,
+    String.raw`
+$gates = @($ast.FindAll({
+  param($n)
+  $n -is [System.Management.Automation.Language.IfStatementAst] -and
+    $n.Clauses.Count -eq 1 -and
+    $n.Clauses[0].Item1.Extent.Text.Contains('$Step -eq ''b''') -and
+    $n.Clauses[0].Item1.Extent.Text.Contains('-not $IDangerAcceptGlobalBlock')
+}, $true))
+if ($gates.Count -ne 1) {
+  [ordered]@{ gates = $gates.Count } | ConvertTo-Json -Compress
+  exit 0
+}
+$gate = $gates[0]
+$switches = @($ast.FindAll({
+  param($n)
+  $n -is [System.Management.Automation.Language.SwitchStatementAst] -and
+    $n.Condition.Extent.Text.Contains('$Step')
+}, $true))
+if ($switches.Count -ne 1) {
+  [ordered]@{ gates = $gates.Count; switches = $switches.Count } | ConvertTo-Json -Compress
+  exit 0
+}
+$clause = @($switches[0].Clauses | Where-Object { $_.Item1.Extent.Text.Contains("'b'") }) | Select-Object -First 1
+if (-not $clause) {
+  [ordered]@{ gates = $gates.Count; switches = $switches.Count; clause = $false } | ConvertTo-Json -Compress
+  exit 0
+}
+$enable = @($clause.Item2.FindAll({
+  param($n)
+  $n -is [System.Management.Automation.Language.CommandAst] -and $n.GetCommandName() -eq 'Enable-Firewall'
+}, $true))
+$setProfile = @($clause.Item2.FindAll({
+  param($n)
+  $n -is [System.Management.Automation.Language.CommandAst] -and $n.GetCommandName() -eq 'Set-NetFirewallProfile'
+}, $true))
+$probe = @($clause.Item2.FindAll({
+  param($n)
+  $n -is [System.Management.Automation.Language.CommandAst] -and
+    $n.GetCommandName() -eq 'Invoke-Probe' -and $n.Extent.Text.Contains('trial-b-default-block')
+}, $true))
+$newItem = @($ast.FindAll({
+  param($n)
+  $n -is [System.Management.Automation.Language.CommandAst] -and $n.GetCommandName() -eq 'New-Item'
+}, $true))
+$exit2 = @($gate.FindAll({
+  param($n)
+  $n -is [System.Management.Automation.Language.ExitStatementAst] -and $n.Extent.Text -match 'exit\s+2'
+}, $true))
+$before = if ($enable.Count) {
+  $clause.Item2.Extent.Text.Substring(0, $enable[0].Extent.StartOffset - $clause.Item2.Extent.StartOffset)
+} else { '' }
+$after = if ($probe.Count) {
+  $clause.Item2.Extent.Text.Substring($probe[0].Extent.EndOffset - $clause.Item2.Extent.StartOffset)
+} else { '' }
+[ordered]@{
+  gates = $gates.Count
+  switches = $switches.Count
+  clause = [bool]$clause
+  exit2 = $exit2.Count
+  beforeNewItem = ($newItem.Count -gt 0 -and $gate.Extent.EndOffset -lt $newItem[0].Extent.StartOffset)
+  beforeEnable = ($enable.Count -gt 0 -and $gate.Extent.EndOffset -lt $enable[0].Extent.StartOffset)
+  beforeSet = ($setProfile.Count -gt 0 -and $gate.Extent.EndOffset -lt $setProfile[0].Extent.StartOffset)
+  restoreBeforeEnable = $before.Contains('Step restore')
+  reminderAfterProbe = $after.Contains('still in place')
+} | ConvertTo-Json -Compress
+`,
+  );
+  expect(parsed.parseErrors).toBeUndefined();
+  expect(parsed).toMatchObject({
+    gates: 1,
+    switches: 1,
+    clause: true,
+    exit2: 1,
+    beforeNewItem: true,
+    beforeEnable: true,
+    beforeSet: true,
+    restoreBeforeEnable: true,
+    reminderAfterProbe: true,
+  });
 });
 
 // Loads only Read-New and Watch-Lane from the script, starts a node child

@@ -606,6 +606,11 @@ There was no ab.chatgpt.com: `analytics.enabled=false` holds on Windows too
 
 `windows/firewall-trial.ps1` ran on a fresh runner.
 
+**2026-11-21:** trial (b) now requires `-IDangerAcceptGlobalBlock` and prints
+the exact `-Step restore` command before it changes anything; without the
+switch it refuses before `New-Item` and exits 2. The recorded run below
+predates the gate. The mechanism and the results are unchanged.
+
 **Inventory:**
 - Firewall on in all three profiles; `DefaultOutboundAction`
   `NotConfigured`, which acts as Allow.
