@@ -470,14 +470,22 @@ per user.
   There is no interface check (the adapters stay up), and DNS is reported
   but not required to fail. The prepare step's `--check-online` is the
   positive control, as on Linux.
-- **Cleanup.** An `always()` step runs `without-network.ps1 -Cleanup`. It
-  stops every process the user owns, found by owner SID, with a bounded
-  recheck, then removes the rule group and disables the user. It needs no
-  precondition, so it is safe after a refusal. It deletes nothing.
+- **Cleanup.** Steps 3 to 6 run under one `finally` that stops every process
+  the user owns, found by owner SID, with a bounded recheck, then removes the
+  rule group and disables the user. It prints what remains; its own failures
+  are warnings, so they never replace the lane's error. A successful lane
+  reports its own exit code only after that cleanup returns. An `always()`
+  step still runs `without-network.ps1 -Cleanup` as the backstop: a runner
+  kill runs no managed `finally`. `-Cleanup` needs no precondition, so it is
+  safe after a refusal, and is idempotent. It deletes nothing.
   - The step is needed: on windows-latest, lane processes survived the
     runner's kill after a step timeout and after a job timeout, and the
     `always()` step still ran both times.
-  - A workflow cancelled by hand may skip it. The runner is single-use.
+  - `-Cleanup` fails closed: it exits 1 when either a lane process or a
+    `hkn-offline` rule remains, so a dirty runner fails the job instead of
+    passing to the next one.
+  - A workflow cancelled by hand may skip the `always()` step too; the runner
+    is single-use.
 - **pnpm.** CI installs pnpm with pnpm/action-setup's `dest:` in the
   toolcache. The default, `~/setup-pnpm`, is in the runner user's profile,
   which the lane user cannot reach, and the tests run pnpm.

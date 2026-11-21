@@ -71,6 +71,67 @@ const dir = mkdtempSync(join(tmpdir(), "without-network-ps1-"));
 // Retried: on Windows a child that has just been stopped can hold its files for a moment.
 afterAll(() => rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 }));
 
+// Parses a PowerShell script, then runs $body against its syntax tree. $body
+// must print one JSON object; a parse error is reported as parseErrors.
+const parse = (name, target, body) => {
+  const file = join(dir, `${name}.ps1`);
+  writeFileSync(
+    file,
+    `param([string]$Target)
+$tokens = $null
+$errors = $null
+$ast = [System.Management.Automation.Language.Parser]::ParseFile($Target, [ref]$tokens, [ref]$errors)
+if ($errors.Count) {
+  [ordered]@{ parseErrors = @($errors | ForEach-Object { "$($_.Extent.StartLineNumber): $($_.Message)" }) } | ConvertTo-Json -Depth 3 -Compress
+  exit 0
+}
+${body}
+`,
+  );
+  const result = spawnSync(shell, ["-NoProfile", "-NonInteractive", "-File", file, "-Target", target], {
+    encoding: "utf8",
+    timeout: 30_000,
+  });
+  expect(result.error).toBeUndefined();
+  expect(result.status, result.stdout + result.stderr).toBe(0);
+  return JSON.parse(result.stdout.trim());
+};
+
+it.skipIf(!shell)("keeps the user, rule, scratch and lane setup under one try/finally", () => {
+  const parsed = parse(
+    "try-finally",
+    script,
+    String.raw`
+$found = @($ast.FindAll({
+  param($n)
+  $n -is [System.Management.Automation.Language.TryStatementAst] -and
+    $n.Finally -and $n.Body.Extent.Text.Contains('New-LocalUser')
+}, $true))
+if ($found.Count -ne 1) {
+  [ordered]@{ found = $found.Count } | ConvertTo-Json -Compress
+  exit 0
+}
+$statement = $found[0]
+[ordered]@{
+  found = $found.Count
+  body = $statement.Body.Extent.Text
+  finally = $statement.Finally.Extent.Text
+  after = $ast.Extent.Text.Substring($statement.Extent.EndOffset)
+} | ConvertTo-Json -Compress
+`,
+  );
+  expect(parsed.parseErrors).toBeUndefined();
+  expect(parsed.found).toBe(1);
+  for (const name of ["New-LocalUser", "New-NetFirewallRule", "Start-Process", "Watch-Lane"]) {
+    expect(parsed.body).toContain(name);
+  }
+  // The finally runs the cleanup helper, and only then does a successful lane
+  // report its own code.
+  expect(parsed.finally).toContain("Invoke-LaneCleanup");
+  expect(parsed.after).toContain('"without-network: the lane exited $code');
+  expect(parsed.after).toMatch(/exit \$code\s*$/);
+});
+
 // Loads only Read-New and Watch-Lane from the script, starts a node child
 // with its output redirected to files, as the wrapper does, and watches it.
 const harness = join(dir, "harness.ps1");
