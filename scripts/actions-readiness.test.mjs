@@ -156,6 +156,20 @@ it("requires a deduped lockfile in the dependency policy lane", () => {
   );
 });
 
+// scripts/without-network.ps1 stops a lane a minute before the budget it is
+// told, so it must be told its step's own timeout-minutes, or the runner's
+// kill comes first and its message and stop never run. The job must keep at
+// least 3 minutes beyond the step: the steps before took up to 2.8 minutes
+// on windows-latest, and the always() cleanup runs after.
+function expectWindowsLaneBudget(job, body) {
+  const stepTimeout = Number(body?.match(/^ {8}timeout-minutes: (\d+)\r?$/m)?.[1]);
+  const told = Number(body?.match(/^ {8}run: \.\/scripts\/without-network\.ps1 -StepTimeoutMinutes (\d+) /m)?.[1]);
+  const jobTimeout = Number(job.match(/^ {4}timeout-minutes: (\d+)\r?$/m)?.[1]);
+  expect(stepTimeout).toBeGreaterThan(2);
+  expect(told).toBe(stepTimeout);
+  expect(jobTimeout - stepTimeout).toBeGreaterThanOrEqual(3);
+}
+
 it("runs the Linux and Windows playback lanes without network, after every step that needs it", () => {
   const ci = readFileSync(new URL("../.github/workflows/ci.yml", import.meta.url), "utf8");
   const job = ci.split("  harness-playback:")[1].split(/\r?\n {2}\S/)[0];
@@ -174,8 +188,9 @@ it("runs the Linux and Windows playback lanes without network, after every step 
   expect(field(windows, "if")).toBe("runner.os != 'Linux'");
   expect(field(windows, "shell")).toBe("pwsh");
   expect(field(windows, "run")).toBe(
-    `./scripts/without-network.ps1 -TimeoutMinutes 13 -RequireEnv 'HOOKNOSTIC_PLAYBACK,HKN_PLAYBACK_ARTIFACT_DIR,HKN_RIPGREP_DIR' -Run '${vitest}'`,
+    `./scripts/without-network.ps1 -StepTimeoutMinutes ${field(windows, "timeout-minutes")} -RequireEnv 'HOOKNOSTIC_PLAYBACK,HKN_PLAYBACK_ARTIFACT_DIR,HKN_RIPGREP_DIR' -Run '${vitest}'`,
   );
+  expectWindowsLaneBudget(job, windows);
   // The isolation check must also see that the step's variables crossed sudo.
   expect(field(offline, " {2}HKN_NO_NETWORK_REQUIRE_ENV")).toBe(
     "HOOKNOSTIC_PLAYBACK,HKN_PLAYBACK_ARTIFACT_DIR,HKN_RIPGREP_DIR",
@@ -224,8 +239,9 @@ it("runs the Code Mode gate without network, and removes the block afterwards", 
     "node --experimental-strip-types scripts/prepare-offline-playback.mjs codex --version '${{ steps.baseline.outputs.version }}' --check-online",
   );
   expect(field(gate, "run")).toBe(
-    "./scripts/without-network.ps1 -TimeoutMinutes 13 -RequireEnv HOOKNOSTIC_PLAYBACK -Run 'node scripts/verify-code-mode.mjs'",
+    `./scripts/without-network.ps1 -StepTimeoutMinutes ${field(gate, "timeout-minutes")} -RequireEnv HOOKNOSTIC_PLAYBACK -Run 'node scripts/verify-code-mode.mjs'`,
   );
+  expectWindowsLaneBudget(job, gate);
   expect(field(gate, " {2}HOOKNOSTIC_PLAYBACK")).toBe("codex");
   expect(field(cleanup, "if")).toBe("${{ always() }}");
   expect(field(cleanup, "run")).toBe("./scripts/without-network.ps1 -Cleanup");

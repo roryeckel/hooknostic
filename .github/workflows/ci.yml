@@ -331,11 +331,16 @@ jobs:
       # blocks; loopback is exempt. The wrapper proves the block before the
       # tests start (scripts/assert-no-network.mjs). Names still resolve
       # through the DNS Client service: the documented limitation.
+      # The wrapper is told the step's timeout, and stops the lane itself a
+      # minute before it, so its message and its stop come first. The job's
+      # 15 minutes leave about 4 for the steps before (2.8 at most, measured)
+      # and the cleanup after.
       - name: Run model-free playback without network (Windows)
         id: playback
         if: runner.os != 'Linux'
+        timeout-minutes: 11
         shell: pwsh
-        run: ./scripts/without-network.ps1 -TimeoutMinutes 13 -RequireEnv 'HOOKNOSTIC_PLAYBACK,HKN_PLAYBACK_ARTIFACT_DIR,HKN_RIPGREP_DIR' -Run 'pnpm exec vitest run packages/cli/test/harness-playback.test.ts packages/cli/test/opencode-v2-playback.test.ts scripts/pi-drift-driver.test.mjs'
+        run: ./scripts/without-network.ps1 -StepTimeoutMinutes 11 -RequireEnv 'HOOKNOSTIC_PLAYBACK,HKN_PLAYBACK_ARTIFACT_DIR,HKN_RIPGREP_DIR' -Run 'pnpm exec vitest run packages/cli/test/harness-playback.test.ts packages/cli/test/opencode-v2-playback.test.ts scripts/pi-drift-driver.test.mjs'
         env:
           HOOKNOSTIC_PLAYBACK: ${{ matrix.harness }}
           HKN_PLAYBACK_ARTIFACT_DIR: ${{ runner.temp }}/opencode-v2-playback
@@ -424,10 +429,11 @@ jobs:
         shell: bash
         run: node --experimental-strip-types scripts/prepare-offline-playback.mjs codex --version '${{ steps.baseline.outputs.version }}' --check-online
       # As the playback lanes do on Windows: a dedicated user, its outbound
-      # traffic blocked (scripts/without-network.ps1).
+      # traffic blocked (scripts/without-network.ps1), told the step's timeout.
       - name: Verify Code Mode guard dispatch with loopback model, without network
+        timeout-minutes: 11
         shell: pwsh
-        run: ./scripts/without-network.ps1 -TimeoutMinutes 13 -RequireEnv HOOKNOSTIC_PLAYBACK -Run 'node scripts/verify-code-mode.mjs'
+        run: ./scripts/without-network.ps1 -StepTimeoutMinutes 11 -RequireEnv HOOKNOSTIC_PLAYBACK -Run 'node scripts/verify-code-mode.mjs'
         env:
           # verify-code-mode.mjs selects codex itself; this is for the isolation check.
           HOOKNOSTIC_PLAYBACK: codex
