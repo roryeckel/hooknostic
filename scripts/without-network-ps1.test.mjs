@@ -123,37 +123,45 @@ const watch = (name, source, limit, poll) => {
 it.skipIf(!shell)(
   "streams every line the lane writes, while it writes, with multi-byte characters whole",
   () => {
-    // Written in bursts over a few seconds and polled every 100 ms, so each
-    // read finds far more than 64 KiB and lands while the lane is writing;
-    // 2-byte characters, so those 64 KiB reads keep splitting one. The last
-    // line comes just before the exit, after the last poll.
-    const total = 200_000;
+    // The lane writes for 1.5 s without pause, 20 lines a write, as fast as
+    // it can, and is polled every 100 ms. So every read lands while it is
+    // writing, and each finds far more than 64 KiB: 2-byte characters keep
+    // splitting across reads, and the original body's read-then-length
+    // window is wide. The cost is bounded by time, not volume: a
+    // slow runner writes fewer lines, and the test needs only 10,000. The
+    // last line comes just before the exit, after the last poll.
+    //
+    // It catches the reviewed defect, the original Read-New (ReadToEnd, then
+    // the file's length), every time. A known survivor: $fs.Length in place
+    // of $fs.Position inside the current read loop. Its window is the
+    // microseconds between the last Read returning 0 and that call. This
+    // test seldom hits it (it survived 6 of 6 runs, under Windows PowerShell
+    // 5.1 and PowerShell 7.7), and hitting it reliably would take a hook
+    // inside Read-New, so the test is no proof against that variant.
     const lines = watch(
       "lines",
       `import { writeSync } from "node:fs";
+const start = Date.now();
 let i = 0;
-const burst = () => {
-  // 20 lines a write: many writes, each one cheap.
-  for (const end = Math.min(i + 2000, ${total}); i < end; ) {
-    let chunk = "";
-    for (const stop = Math.min(i + 20, end); i < stop; i++) chunk += \`\${i} \${"é".repeat(20)}\\n\`;
-    writeSync(1, chunk);
-  }
-  if (i < ${total}) setTimeout(burst, 1);
-  else { writeSync(2, "done\\n"); process.exit(3); }
-};
-burst();`,
+while (Date.now() - start < 1500) {
+  let chunk = "";
+  for (const stop = i + 20; i < stop; i++) chunk += \`\${i} \${"é".repeat(20)}\\n\`;
+  writeSync(1, chunk);
+}
+writeSync(2, \`done \${i}\\n\`);
+process.exit(3);`,
       600,
       100,
     );
+    const total = Number(lines.find((line) => line.startsWith("done "))?.slice(5));
+    expect(total).toBeGreaterThanOrEqual(10_000);
     const streamed = lines.filter((line) => /^\d+ /.test(line));
     const gaps = streamed.filter((line, index) => line !== `${index} ${"é".repeat(20)}`);
-    expect({ streamed: streamed.length, first: gaps[0], replacement: lines.some((l) => l.includes("�")) }).toEqual({
-      streamed: total,
-      first: undefined,
-      replacement: false,
-    });
-    expect(lines).toContain("done");
+    expect({
+      streamed: streamed.length,
+      first: gaps[0],
+      replacement: lines.some((line) => line.includes("\uFFFD")),
+    }).toEqual({ streamed: total, first: undefined, replacement: false });
     expect(lines).toContain("harness: exit 3; child exited True");
   },
   120_000,
