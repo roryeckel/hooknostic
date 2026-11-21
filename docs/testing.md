@@ -256,8 +256,8 @@ What this establishes:
   "IP only").
 
 It does not detect new egress. A call that a lane does not depend on fails
-silently and the lane still passes. Codex's plugin sync is an example: it
-only adds about a minute of resolver retries. New egress is found by a traced
+silently and the lane still passes. Codex's plugin sync is an example: its
+lookups fail at once and the sync gives up. New egress is found by a traced
 inventory (`.capture/network-egress`, the procedure and the record this rests
 on), not by CI.
 
@@ -268,6 +268,14 @@ on), not by CI.
     unprivileged user namespace and no AppArmor userns restriction is
     involved;
   - brings `lo` up;
+  - in a private mount namespace (`unshare --mount`), binds the namespace's
+    own `/etc/resolv.conf`: the host's file with `options timeout:0
+    attempts:1` appended. No nameserver is reachable there, so a lookup can
+    only fail, and this makes it fail at once. glibc and c-ares already did;
+    musl, which codex is built against, waited its 5 s timeout after a send
+    that had failed, so every codex process lost about 5 s (about a minute a
+    codex lane, 10 s for the codex marketplace gate). The host's file is
+    untouched;
   - drops back to the calling user with no supplementary groups, no
     capabilities and `no_new_privs`;
   - sets `HOOKNOSTIC_PLAYBACK_NETWORK=none` inside.
@@ -314,7 +322,12 @@ on), not by CI.
   - only `lo` exists;
   - each public IPv4 probe (1.1.1.1, 8.8.8.8, 9.9.9.9) and the IPv6 probe
     fails with `ENETUNREACH`;
-  - DNS fails;
+  - DNS fails, and within 1 s (`DNS_FAST_MS`);
+  - the namespace's `/etc/resolv.conf` sets a resolver timeout of 0 (the
+    wrapper passes `--dns-timeout 0`; `resolverTimeout()` reads it as glibc
+    and musl do). The check's own lookup goes through glibc, which fails at
+    once either way, so this configuration check is the one that catches
+    musl's wait;
   - the user is the expected one, with no supplementary groups, no
     capabilities and `no_new_privs`;
   - every name in `HKN_NO_NETWORK_REQUIRE_ENV` is present and non-empty.
@@ -355,10 +368,10 @@ on), not by CI.
 
   Two calls remain and fail harmlessly: Codex's curated plugin sync
   (github.com, chatgpt.com, api.github.com) and Claude's official marketplace
-  fetch (downloads.claude.ai). Turning the sync off with
-  `-c features.plugins=false` would save the resolver retries at the
-  reference build. But newer Codex builds then load no installed plugin, and
-  the plugin drives fail, so it stays on.
+  fetch (downloads.claude.ai). Their lookups fail at once (see "The
+  namespace"). Turning the sync off with `-c features.plugins=false` was
+  measured and is not used: newer Codex builds then load no installed
+  plugin, and the plugin drives fail.
 - **Not isolated.** harness-watch drift's llm transport, by design, and the
   manual macOS `shell-interpreter-capture.yml`.
 - **Rollback.** Each blocked job group has its own `ci:` commit, so each can

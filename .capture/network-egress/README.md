@@ -724,8 +724,9 @@ Inside `without-network.sh`, with `-c features.plugins=false` added to
 | marketplace gate, codex 0.153.2 | 6 passed, 17 s | 1 failed: the marketplace install |
 
 Newer builds gate installed plugins behind the same key, so it stays off,
-and so does the namespace's resolver-retry cost. That cost is about 60 s in
-CI at 0.148.0 and gone at 0.171.0.
+and so did the namespace's resolver-retry cost, about 60 s in CI at 0.148.0
+and gone at 0.171.0. That cost was later removed in the wrapper instead
+("The codex resolver wait, removed").
 
 ### harness-watch verify and drift (ubuntu-latest, run 44845678483)
 
@@ -898,11 +899,78 @@ master run 44679264511. Runner variance is about ±20 s on unchanged jobs.
 | pi, Windows | 69 s / 4 s | 56 s | ≈ +17 s |
 | opencode-v2, Windows | 205 s / 2 s | 285 s | within variance; the wrapper's own setup is 20–28 s in its log |
 | Code Mode gate / cleanup | 28 s / 3 s | 26 s | ≈ +5 s |
-| marketplace codex gate | 18 s | 8 s | ≈ +10 s (the plugin sync's resolver retries) |
+| marketplace codex gate | 18 s | 8 s | ≈ +10 s (the plugin sync's resolver retries; since removed, "The codex resolver wait, removed") |
 | marketplace claude gate | 4 s | 6 s | ≈ 0 |
 | harness-watch verify, opencode-v2 | prepare 0 s (ripgrep cached), playback 229 s | playback 132 s (2.3.0, an older build) | not attributable: another build, and a failing test that waits |
 | harness-watch drift, opencode-v2 | 54 s (job) | 3–88 s (jobs) | within the range |
-| Linux playback lanes | unchanged since #288's namespace | — | codex about +60 s (the plugin sync's retries, kept), the others within variance |
+| Linux playback lanes | unchanged since #288's namespace | — | codex about +60 s (the plugin sync's retries; since removed, "The codex resolver wait, removed"), the others within variance |
+
+## The codex resolver wait, removed (WSL, 2026-11-21)
+
+The codex lane ran about a minute longer in the namespace than with
+network, and the codex marketplace gate about 10 s. Measured before any
+change, the cause is DNS, but only for musl.
+
+**Lookups in a loopback-only namespace**, each configuration bound over
+`/etc/resolv.conf` in a private mount namespace:
+- `getent ahosts` (glibc) failed in 1-2 ms;
+- Node's `dns.lookup` failed with `EAI_AGAIN` and `dns.resolve4` (c-ares)
+  with `ECONNREFUSED`, in milliseconds past Node's start;
+- this held for WSL's `nameserver 10.255.255.254` (no route), a runner's
+  `127.0.0.53` stub, `127.0.0.1`, `timeout:1 attempts:1`, and no
+  nameserver line;
+- `localhost` and `127.0.0.1` resolved from `/etc/hosts`, with no DNS
+  query, in every case.
+
+**Where the codex lane's time went** (codex 0.148.0):
+- 12 s with network, 90-97 s in the namespace; 80.7 s of growth, about 5 s
+  for each of its codex tests;
+- no non-loopback connect, and the timed sleeps (`nanosleep`) under 9 s;
+- per codex process, a `tokio-rt-worker` thread sent the query for
+  `chatgpt.com` (another, `api.github.com`) to the nameserver; `sendto`
+  failed at once with `ENETUNREACH`. musl's resolver ignores that: it
+  `poll`ed 2.5 s for a reply, sent again, and `poll`ed 2.5 s more, its
+  default 5 s timeout over two attempts. Two lookups in parallel, so about
+  5 s a process. The codex binary is `x86_64-unknown-linux-musl`.
+
+**The whole codex lane in the namespace, by resolver file:**
+
+| `/etc/resolv.conf` | Wall | Tests |
+| --- | --- | --- |
+| as on a runner: `nameserver 127.0.0.53` | 91 s | 72 passed |
+| `nameserver 127.0.0.1` (closed port) | 92 s | 72 passed |
+| `options timeout:1 attempts:1` (any nameserver, or none) | 22-24 s | 72 passed |
+| `options timeout:0 attempts:1` | 13 s | 72 passed |
+
+A closed loopback port does not help: musl sends on an unconnected socket,
+so no refusal reaches it. `timeout:0` stops musl's send loop from running,
+and leaves glibc and c-ares failing at once as before.
+
+**Acted on** (`scripts/without-network.sh`): the namespace gets a private
+mount namespace, and its `/etc/resolv.conf` is the host's file with
+`options timeout:0 attempts:1` appended. Nothing is reachable there, so a
+lookup could only fail; this only makes it fail at once. The host's file was
+byte-identical after every run. The isolation check gained a bounded DNS
+miss and, with `--dns-timeout 0`, a check of the effective resolver
+timeout. Without the file it printed `FAIL resolver timeout: 5 s in
+/etc/resolv.conf, expected 0 s`, with its own (glibc) lookup still at 2 ms.
+
+**Through the wrapper, at the CI reference versions, before and after**, with
+every count unchanged:
+
+| Lane | Before | After |
+| --- | --- | --- |
+| codex 0.148.0 | 91 s | 14 s |
+| marketplace codex 0.153.2 | 19 s | 3 s |
+| claude 2.1.238 | 39 s | 39 s |
+| copilot 1.0.101 | 33 s | 33 s |
+| pi 1.3.0 | 18 s | 17 s |
+| opencode-v1 1.18.18 | 156 s | 155 s |
+| opencode-v2 2.0.17 | 146 s | 146 s |
+| marketplace claude 2.1.260 | 3 s | 3 s |
+
+harness-watch drift's phase 2 is a `--network none` container, not this
+wrapper, and keeps its image's resolver file.
 
 ## Not measured
 
@@ -925,7 +993,8 @@ master run 44679264511. Runner variance is about ±20 s on unchanged jobs.
   at 127.0.0.53. The destination traces ran only in WSL. The enforcement did
   run on runners (see "CI evidence" above). There, lookups inside the
   namespace failed with `EAI_AGAIN`, and the Codex resolver delay persisted,
-  at about a minute per lane.
+  at about a minute per lane, until the wrapper's resolver file ("The codex
+  resolver wait, removed"), measured in WSL.
 - **Request paths and bodies.** Purposes come from the binaries' strings and
   from which knob removes a destination. TLS hides the path, and no MITM proxy
   was used.
