@@ -52,7 +52,8 @@ To build with a CLI installed with npm elsewhere, globally or in another
 directory, load that file into Node yourself from the project directory with
 `node -r`, and name
 the package's `bin/hooknostic.mjs` (the `node_modules/.bin` entry is not
-always a Node script). For a global npm install, in a POSIX shell:
+always a Node script). For a CLI installed outside the project, such as a
+global npm install, in a POSIX shell:
 
 ```sh
 node -r ./.pnp.cjs "$(npm root -g)/hooknostic/bin/hooknostic.mjs" build
@@ -64,14 +65,16 @@ In PowerShell:
 node -r ./.pnp.cjs "$(npm root -g)\hooknostic\bin\hooknostic.mjs" build
 ```
 
-The suite runs this with a CLI installed outside any other Yarn Plug'n'Play
-project; one installed inside another such project's tree is untested. Run
-any other way (`npx`, a globally installed `hooknostic` run directly,
-`pnpm dlx`), a build that needs a package from Yarn's install fails with
-HN504. `yarn dlx` is unsupported too, and best effort: at most it builds when
-the project's Zod is in range, it can fail in other ways, and it never warns
-HN110, because looking up the project's SDK there would break the build
-(#216). See [ADR-0041](decisions/0041-yarn-pnp-runtime.md).
+The suite runs this with the CLI installed in an ordinary directory outside
+any other Yarn Plug'n'Play project; a global prefix follows the same route,
+which the suite does not run, and a CLI installed inside another such
+project's tree is untested. Run any other way (`npx`, a globally installed
+`hooknostic` run directly, `pnpm dlx`), a build that needs a package from
+Yarn's install fails with HN504. `yarn dlx` is unsupported too, and best
+effort: at most it builds when the project's Zod is in range, it can fail in
+other ways, and it never warns HN110, because looking up the project's SDK
+there would break the build (#216).
+See [ADR-0041](decisions/0041-yarn-pnp-runtime.md).
 
 pnpm's Plug'n'Play mode (`nodeLinker: pnp` in `pnpm-workspace.yaml`; pnpm 12
 ignores `node-linker` in `.npmrc`) is best effort: run each command as

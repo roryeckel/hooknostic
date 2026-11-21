@@ -42,9 +42,12 @@ and its Zod included, is inlined into its bundle, so that dependency exists for
 generated artifacts. A shim's SDK schemas take Zod from the CLI's install when
 the SDK reaches no Zod in the project, silently, or reaches one outside the
 SDK's peer range. A project that installs the CLI beside the SDK normally
-reaches the CLI's Zod; reaching none happens in an SDK-only project built by a
-global or `npx` CLI, or under Yarn Plug'n'Play. Reaching a Zod outside the
-range, including any Zod 3.24 or older, which has no `zod/v4`, reports HN109.
+reaches the CLI's Zod. Reaching none happens when the project's tree provides
+no Zod for the SDK to reach, as an SDK-only project can when its package
+manager does not install the peer, and as Yarn's Plug'n'Play does when the
+project declares no Zod, since its peers come from the project.
+Reaching a Zod outside the range, including any Zod 3.24 or older, which has
+no `zod/v4`, reports HN109.
 Sharing the catalog keeps that dependency equal to the peer range, so the copy
 it supplies always satisfies it. When the project's
 Zod satisfies the range, the SDK and the project's own code share that one

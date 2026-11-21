@@ -711,14 +711,18 @@ User code that imports Zod still bundles the project's copy (ADR-0040).
 different releases, so the build would mix one release's SDK with another
 release's compiler and shims. The CLI's version is the one it stamps into the
 build report as `hooknosticVersion`; the SDK's is the `version` in the manifest
-of the SDK package the build resolves, the one it bundles. Any difference in
-version counts, prereleases included, because the two are released in
-lockstep; build metadata (`+local.1`) is ignored, as semver orders it. The
-message names the SDK's directory relative to the configuration's directory
-when it is inside it, and says so:
-`at node_modules/@hooknostic/sdk (relative to the config's directory)`. A
-committed build report then names no machine's path. In a Plug'n'Play project,
-an SDK served from Yarn's install, inside a zip archive or behind a virtual
+of the `node_modules/@hooknostic/sdk` that a walk from the configuration's
+directory finds, the one the runtime bundles. A build resolves the SDK from
+each file that imports it instead, so an SDK only a nested `entry` reaches is
+not the one HN110 judges (#258). Any difference in version counts,
+prereleases included, because the two are released in lockstep; build metadata
+(`+local.1`) is ignored, as semver orders it. The message names the SDK's
+directory relative to the configuration's directory when it is inside it, and
+says so: `at node_modules/@hooknostic/sdk (relative to the config's directory)`.
+A committed build report then names no machine's path when the SDK is inside
+the configuration's directory; one outside it, such as a workspace root's
+hoisted install, is named absolutely. In a Plug'n'Play project, an SDK served
+from Yarn's install, inside a zip archive or behind a virtual
 folder (`__virtual__`, Yarn 2's `$$virtual`), is named by that install instead:
 `@hooknostic/sdk from Yarn's Plug'n'Play install is 0.11.9` (#225). Its path is
 unreadable, and usually machine-specific: it runs through `__virtual__` into
@@ -743,7 +747,8 @@ report, may repeat it. It is silent when no SDK
 resolves, when either version is not valid semver, and in this repository's
 workspace, whose examples resolve `packages/sdk` at the CLI's own version. The
 SDK counts only when a `node_modules` folder in the config's directory or an
-ancestor holds it, or Yarn's runtime serves a Plug'n'Play project: one that
+ancestor holds a `@hooknostic/sdk` with a `package.json`, or Yarn's runtime
+serves a Plug'n'Play project: one that
 only `NODE_PATH` (which pnpm's bin shims set) or a global folder reaches is not
 the project's, as for `doctor`, and the build does not bundle it either (#246,
 #258). It is also silent under another install's Plug'n'Play runtime, as under
