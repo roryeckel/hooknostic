@@ -574,8 +574,8 @@ describe("bundleMcpLauncher's dependency resolution", () => {
   });
 
   it("falls back to Node's resolver when two loaded PnP APIs control the CLI, and names what it cannot resolve (#292)", async () => {
-    // `yarn dlx` beside a project's own install: both loaded APIs list the
-    // CLI's archive, so Yarn cannot say which serves it.
+    // Simulate two loaded PnP APIs that both list the CLI archive, so Yarn
+    // cannot say which serves it.
     const split = await splitDependencies();
     const crossSpawn = join(split.crossSpawn, "index.js");
     const cli = join(split.dir, "cache", "hooknostic-npm-1.0.0.zip", "node_modules", "hooknostic", "dist", "index.js");
