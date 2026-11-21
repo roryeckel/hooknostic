@@ -2,9 +2,9 @@
 # Removed by a revert commit once the runs are recorded. Not a gate. The job
 # id reuses a playback one so check-dependencies applies the playback Node
 # version file to it.
-# Round 2 of the Linux trial: network, mount and PID namespaces, everything
-# read-only but the scratch tree, the workspace as an overlay; plus a plant
-# attempt with and without the read-only remount.
+# Round 3 of the Linux trial: the trusted-state check runs in the lane step
+# itself, and compares only the files it recorded. claude and opencode-v1,
+# plus a plant attempt with and without the read-only remount.
 name: Lane isolation trial (temporary)
 
 on:
@@ -28,11 +28,7 @@ jobs:
       matrix:
         include:
           - { label: claude, harness: claude, kind: lane }
-          - { label: codex, harness: codex, kind: lane }
-          - { label: copilot, harness: copilot, kind: lane }
-          - { label: pi, harness: pi, kind: lane }
           - { label: opencode-v1, harness: opencode-v1, kind: lane }
-          - { label: opencode-v2, harness: opencode-v2, kind: lane }
           - { label: plant-blocked, harness: pi, kind: plant }
           - { label: plant-mutant, harness: pi, kind: plant-mutant }
     steps:
