@@ -763,16 +763,23 @@ jobs:
             # fetches what the drive needs (the pinned ripgrep, OpenCode v1's
             # npm cache) into the mounted /drift.
             DRIFT_ENVS=(-e npm_config_prefix=/drift/prefix -e npm_config_cache=/drift/npm-cache -e HKN_RIPGREP_DIR=/drift/ripgrep)
+            # A marker after the install and bootstrap tells a failed prepare
+            # from a failed install, as verify's outcomes do.
+            rm -f "$SCRATCH_ROOT/installed"
             docker run --network bridge "${COMMON[@]}" "${DRIFT_ENVS[@]}" "$IMAGE" \
               sh -ec '
                 export PATH="$npm_config_prefix/bin:$PATH"
                 '"$INSTALL"'
+                : > /drift/installed
                 node --experimental-strip-types scripts/prepare-offline-playback.mjs "$3" --version "$2" --check-online
               ' sh "${{ matrix.pkg }}" "${{ matrix.latest }}" "${{ matrix.harness }}" \
               > "drift-report-${{ matrix.harness }}.log" 2>&1
             CODE=$?
-            # No drive ran: the verdict is an install failure, not a drive's.
-            if [ "$CODE" != 0 ]; then FAILED_PHASE=install; fi
+            # No drive ran: the verdict is the install's or the prepare's, not
+            # a drive's.
+            if [ "$CODE" != 0 ]; then
+              if [ -f "$SCRATCH_ROOT/installed" ]; then FAILED_PHASE=prepare; else FAILED_PHASE=install; fi
+            fi
             # Phase 2, with --network none: only loopback, where the drive's
             # model server runs in-process. The same prefix, cache and
             # ripgrep; the isolation check first. That the drive then needs
@@ -812,10 +819,12 @@ jobs:
           # Exit contract (drive-capture-session.mjs): 0 clean, 4 drift,
           # 5 inconclusive, 6 drive failure. 4/5 are reportable outcomes;
           # 6 (no capture or a failed harness process) is also non-clean.
-          # The playback transport's phase 1 (install and prepare) runs before
-          # any drive: its failure is install-failure, whatever its code.
+          # The playback transport's phase 1 runs before any drive: a failed
+          # install or bootstrap is install-failure, a failed prepare is
+          # prepare-failure (the labels verify uses), whatever the code.
           CODE="${{ steps.drive.outputs.code }}"
           if [ "${{ steps.drive.outputs.failed_phase }}" = "install" ]; then VERDICT=install-failure
+          elif [ "${{ steps.drive.outputs.failed_phase }}" = "prepare" ]; then VERDICT=prepare-failure
           elif [ "$CODE" = "0" ]; then VERDICT=clean
           elif [ "$CODE" = "4" ]; then VERDICT=drift
           elif [ "$CODE" = "5" ]; then VERDICT=inconclusive

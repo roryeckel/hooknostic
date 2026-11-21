@@ -333,7 +333,7 @@ it("reports a failed prepare step as a prepare failure, not an install failure",
 
 // The drift step's real body, with docker replaced by a stub that records
 // each call and exits with the code given for its network mode.
-function runDriftDrive({ bridge = 0, none = 0, forceLlm = "false" }) {
+function runDriftDrive({ bridge = 0, none = 0, forceLlm = "false", installed = false, stale = false }) {
   const result = runWatchStep(
     "Run the drift capture-compare",
     {
@@ -344,10 +344,11 @@ function runDriftDrive({ bridge = 0, none = 0, forceLlm = "false" }) {
       "matrix.bootstrap": "install.cjs",
     },
     `mkdir -p .github/node/playback && echo 24.22.3 > .github/node/playback/.node-version
+    ${stale ? "mkdir -p drift && : > drift/installed" : ""}
     GITHUB_WORKSPACE="$PWD"
     docker() {
       case "$*" in
-        *"--network bridge"*) echo "docker: bridge" >> calls.txt; return ${bridge} ;;
+        *"--network bridge"*) echo "docker: bridge" >> calls.txt; ${installed ? ': > "$SCRATCH_ROOT/installed";' : ""} return ${bridge} ;;
         *"--network none"*) echo "docker: none" >> calls.txt; return ${none} ;;
       esac
     }
@@ -356,8 +357,12 @@ function runDriftDrive({ bridge = 0, none = 0, forceLlm = "false" }) {
   return result.stdout.split(/\r?\n/).filter((line) => /^(docker: |code=|failed_phase=)/.test(line));
 }
 
-it("records a failed drift phase 1 as the failed phase, and runs no drive", () => {
+it("records which part of drift's phase 1 failed, as verify's labels do, and runs no drive", () => {
   expect(runDriftDrive({ bridge: 1 })).toEqual(["docker: bridge", "code=1", "failed_phase=install"]);
+  // The install and bootstrap left their marker, so the prepare failed.
+  expect(runDriftDrive({ bridge: 1, installed: true })).toEqual(["docker: bridge", "code=1", "failed_phase=prepare"]);
+  // A marker left from before the step cannot count: the step removes it first.
+  expect(runDriftDrive({ bridge: 1, stale: true })).toEqual(["docker: bridge", "code=1", "failed_phase=install"]);
   // A drive failure in phase 2 is the drive's, as before.
   expect(runDriftDrive({ none: 6 })).toEqual(["docker: bridge", "docker: none", "code=6", "failed_phase="]);
   expect(runDriftDrive({ none: 4 })).toEqual(["docker: bridge", "docker: none", "code=4", "failed_phase="]);
@@ -368,6 +373,8 @@ it("records a failed drift phase 1 as the failed phase, and runs no drive", () =
 it.each([
   ["install", "1", "install-failure"],
   ["install", "4", "install-failure"],
+  ["prepare", "1", "prepare-failure"],
+  ["prepare", "5", "prepare-failure"],
   ["", "0", "clean"],
   ["", "4", "drift"],
   ["", "5", "inconclusive"],

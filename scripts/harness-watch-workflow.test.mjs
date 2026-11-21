@@ -239,6 +239,12 @@ describe("harness-watch workflow structure", () => {
     const phase2 = playback.slice(playback.indexOf("# Phase 2"));
     expect(phase1).toContain('docker run --network bridge "${COMMON[@]}" "${DRIFT_ENVS[@]}"');
     expect(phase1).toContain('scripts/prepare-offline-playback.mjs "$3" --version "$2" --check-online');
+    // The marker that tells a failed prepare from a failed install (run in
+    // the container, so the executed step tests stub it): after the install,
+    // before the prepare.
+    const marker = phase1.indexOf(": > /drift/installed");
+    expect(marker).toBeGreaterThan(phase1.indexOf('"$INSTALL"'));
+    expect(marker).toBeLessThan(phase1.indexOf("scripts/prepare-offline-playback.mjs"));
     expect(phase2).toContain('docker run --network none "${COMMON[@]}" "${DRIFT_ENVS[@]}"');
     // The drive needs phase 1's prefix and ripgrep, or it would fetch them offline.
     expect(playback).toContain(
