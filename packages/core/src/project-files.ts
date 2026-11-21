@@ -703,15 +703,14 @@ const DIRECTORY_OPEN_FLAGS = constants.O_RDONLY | constants.O_DIRECTORY | consta
 const LINUX_DESCRIPTOR_ROOT = "/proc/self/fd";
 let descriptorTraversal: Promise<boolean> | undefined;
 /**
- * Whether directory flushing has a real descriptor-relative primitive. Linux's
- * `/proc/self/fd` is the only one used; fdescfs `/dev/fd` resolves the
- * descriptor to a pathname, so macOS and FreeBSD take the weaker boundary.
- * The Linux traversal probe is cached. Its open failures mean "unavailable";
- * close failures are best effort and do not make an otherwise usable probe
- * fail.
+ * Whether the Linux descriptor-relative primitive works on this host. This is
+ * capability-only: `flushDirectory` owns the platform gate, so removing that
+ * gate is observable as a `/proc/self/fd` open attempt. fdescfs `/dev/fd` is
+ * not used because it resolves the descriptor to a pathname. The probe result
+ * is cached. Its open failures mean "unavailable"; close failures are best
+ * effort and do not make an otherwise usable probe fail.
  */
 export async function supportsDirectoryFlush(): Promise<boolean> {
-  if (process.platform !== "linux") return false;
   descriptorTraversal ??= probeLinuxDescriptorTraversal();
   return await descriptorTraversal;
 }
@@ -759,10 +758,10 @@ async function openWalkedDirectory(path: string, displayPath: string): Promise<F
  * component through the pinned parent descriptor with
  * `O_NOFOLLOW | O_DIRECTORY`; no absolute-path `lstat` walk or identity check
  * is involved. A component swapped for a symlink therefore fails with
- * `ELOOP`/`ENOTDIR` instead of being followed, and the journal stays. The root
- * itself is opened by absolute path: the guarantee starts below it and assumes
- * its ancestors stay stable. Path-based recovery metadata checks, renames and
- * removals are outside this guarantee.
+ * `ELOOP`/`ENOTDIR` instead of being followed. The root itself is opened by
+ * absolute path: the guarantee starts below it and assumes its ancestors stay
+ * stable. Path-based recovery metadata checks, renames and removals are outside
+ * this guarantee.
  *
  * Windows, macOS, FreeBSD and any Linux host where `/proc/self/fd` traversal
  * does not work skip directory flushing entirely rather than fall back to
@@ -779,6 +778,7 @@ async function openWalkedDirectory(path: string, displayPath: string): Promise<F
  * filesystem.
  */
 async function flushDirectory(root: string, path: string): Promise<void> {
+  if (process.platform !== "linux") return;
   if (!(await supportsDirectoryFlush())) return;
   const relation = relative(root, path);
   if (isAbsolute(relation) || relation === ".." || relation.startsWith(`..${sep}`))

@@ -1,5 +1,5 @@
 import type * as fs from "node:fs";
-import { fsync } from "node:fs";
+import { type BigIntStats, fsync } from "node:fs";
 import type * as fsPromises from "node:fs/promises";
 import {
   mkdir,
@@ -76,6 +76,8 @@ const io = vi.hoisted(() => ({
   flushes: [] as Flush[],
   /** Flushes that failed, so a test can prove the failure was reached without counting it as completed. */
   failedFlushes: [] as Flush[],
+  /** Unexpected fstat failures in the fsync mock; afterEach requires none. */
+  fstatFailures: [] as unknown[],
   /** Every completed open, flush, rename, removal and link, in order. */
   events: [] as IoEvent[],
   /** Every attempt to open a directory, completed or not; Windows must make none. */
@@ -201,7 +203,14 @@ vi.mock("node:fs", async (importOriginal) => {
       const path = io.paths.get(fd) ?? `<fd ${fd}>`;
       // A directory is never read as a file; its identity and directory-ness
       // come from the descriptor, not a pathname that a swap can change.
-      const stats = actual.fstatSync(fd, { bigint: true });
+      let stats: BigIntStats;
+      try {
+        stats = actual.fstatSync(fd, { bigint: true });
+      } catch (error) {
+        // A post-unlink best-effort flush could swallow this; afterEach must see it.
+        io.fstatFailures.push(error);
+        throw error;
+      }
       const directory = stats.isDirectory();
       const flush: Flush = {
         path,
@@ -241,7 +250,7 @@ vi.mock("node:fs", async (importOriginal) => {
   };
 });
 
-const descriptorWalk = await supportsDirectoryFlush();
+const descriptorWalk = process.platform === "linux" && (await supportsDirectoryFlush());
 resetIo();
 
 let root: string;
@@ -285,6 +294,8 @@ beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), "hooknostic-durability-"));
 });
 afterEach(async () => {
+  const fstatFailures = [...io.fstatFailures];
+  io.fstatFailures.length = 0;
   io.notImplemented = false;
   io.failFlush = undefined;
   io.failDirectoryFlush = undefined;
@@ -310,6 +321,7 @@ afterEach(async () => {
   io.beforeOpen = undefined;
   vi.mocked(fsync).mockClear();
   await rm(root, { recursive: true, force: true });
+  expect(fstatFailures, "unexpected fstatSync failures").toEqual([]);
 });
 
 /** Forgets every event so far, with the descriptors and contents that named them. */
@@ -449,10 +461,11 @@ it.skipIf(!descriptorWalk)("skips directory flushing when only descriptor traver
   // The failed result is cached: a second call does not probe again.
   expect(await fresh.supportsDirectoryFlush()).toBe(false);
   expect(io.failRawOpen).toBeUndefined();
-  expect(io.openRequests.filter((path) => path === "/proc/self/fd")).toHaveLength(1);
-  expect(io.openRequests.filter((path) => path.startsWith("/proc/self/fd/"))).toHaveLength(1);
   await fresh.applyProject(root, owner, plan);
 
+  // Exactly the two probe opens across both capability calls and the sync.
+  expect(io.openRequests.filter((path) => path === "/proc/self/fd")).toHaveLength(1);
+  expect(io.openRequests.filter((path) => path.startsWith("/proc/self/fd/"))).toHaveLength(1);
   expect(io.flushes.filter((flush) => flush.directory)).toEqual([]);
   expect(await readFile(join(root, "a.txt"), "utf8")).toBe("one");
 });
@@ -504,6 +517,7 @@ describe("directory flushes make each rename durable before the next step", () =
   );
 
   it.runIf(win32)("skips directory flushes on Windows, where fsync cannot flush a directory", async () => {
+    const project = await realpath(root);
     // The recorder must see failed opens too, or a failed probe attempt would
     // be invisible below.
     await expect(open(join(root, "missing"), "r")).rejects.toMatchObject({ code: "ENOENT" });
@@ -514,6 +528,7 @@ describe("directory flushes make each rename durable before the next step", () =
 
     expect(io.directoryOpenAttempts).toEqual([]);
     expect(io.openRequests.filter((path) => path === "/proc/self/fd" || path.startsWith("/proc/self/fd/"))).toEqual([]);
+    expect(io.openRequests).not.toContain(project);
     expect(io.flushes.filter((flush) => flush.directory)).toEqual([]);
     expect(await readFile(join(root, "a.txt"), "utf8")).toBe("one");
     expect(await exists(".hooknostic/transaction.json")).toBe(false);
