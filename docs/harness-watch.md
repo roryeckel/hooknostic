@@ -278,9 +278,14 @@ job's steps:
      - Phase 2 runs with `--network none`, so only loopback, where the
        driver's model server is. It gets the same prefix (on `PATH`), cache
        and `HKN_RIPGREP_DIR`, and `HOOKNOSTIC_PLAYBACK_NETWORK=none`, so the
-       plugin dependency installs `--offline`. It runs
-       `scripts/assert-no-network.mjs --offline` first, so a drive that needs
-       the network fails ("Network isolation in CI" in `docs/testing.md`).
+       plugin dependency installs `--offline`. Its `--dns-option timeout:0
+       --dns-option attempts:1` make a lookup fail at once, as the Linux
+       wrapper's namespace does: musl, which codex is built against,
+       otherwise waits 5 s a lookup. It runs
+       `scripts/assert-no-network.mjs --offline --dns-timeout 0` first, so a
+       drive that needs the network fails, and so does a resolver option
+       Docker wrote but nothing honours: Docker does not check them ("Network
+       isolation in CI" in `docs/testing.md`).
        That phase 2 needs nothing fetched is measured, not assumed: each of
        the six harnesses completed its drive this way at its newest build
        (`.capture/network-egress`, "Drift's two phases, every harness,

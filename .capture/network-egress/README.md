@@ -970,7 +970,16 @@ every count unchanged:
 | marketplace claude 2.1.260 | 3 s | 3 s |
 
 harness-watch drift's phase 2 is a `--network none` container, not this
-wrapper, and keeps its image's resolver file.
+wrapper. It gets the same setting from Docker's `--dns-option timeout:0
+--dns-option attempts:1`:
+- Docker Desktop 29.6.2 wrote `options timeout:0 attempts:1` into the
+  container's `/etc/resolv.conf`.
+- Docker checks no option: a bogus `hkn-bogus:1` was written with exit 0.
+  So phase 2's isolation check passes `--dns-timeout 0`. With the option
+  misspelled (`timeout=0`), it failed `resolver timeout: 5 s`, and phase 2
+  stopped before the drive.
+- The committed step for codex 0.171.0, twice each: phase 2 took 20.1 s and
+  17.1 s before, 11.2 s and 10.8 s after. The verdict was clean every time.
 
 ## Not measured
 
