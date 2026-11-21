@@ -4,7 +4,9 @@
 #   scripts/without-network.sh <command> [args...]
 #
 # Run it as yourself. It re-runs itself as root through `sudo -n /bin/bash`,
-# enters a new network namespace and brings loopback up. It then drops back to
+# enters a new network namespace and brings loopback up. A private mount
+# namespace binds the namespace's own resolv.conf, the host's with
+# `options timeout:0 attempts:1`, so a lookup fails at once. It then drops back to
 # your uid/gid with no supplementary groups, no capabilities and
 # no_new_privs, restores your environment, proves the isolation with
 # scripts/assert-no-network.mjs --offline, and runs the command. Inside,
@@ -110,7 +112,7 @@ case "${1:-}" in
     [ -n "$_hkn_path" ] && export PATH="$_hkn_path"
     [ -n "$_hkn_home" ] && export HOME="$_hkn_home"
     export HOOKNOSTIC_PLAYBACK_NETWORK=none HKN_NO_NETWORK_UID="$_hkn_uid"
-    node "$_hkn_here/assert-no-network.mjs" --offline --require-env "$_hkn_require"
+    node "$_hkn_here/assert-no-network.mjs" --offline --require-env "$_hkn_require" --dns-timeout 0
     exec "$@"
     ;;
   --netns)
@@ -123,6 +125,21 @@ case "${1:-}" in
     # Only a file root made (root entry); a successful exec drops the trap.
     [ "$owner" = root ] && trap 'rm -f -- "$envfile"' EXIT
     ip link set lo up
+    # This namespace's own resolver configuration, in its private mount
+    # namespace: the host's file with `options timeout:0 attempts:1` last. No
+    # nameserver is reachable here, so a lookup can only fail; the option
+    # makes it fail at once. glibc and c-ares did already, but musl (codex's
+    # static build) waited its 5 s timeout per lookup after a send that had
+    # already failed: about 5 s for every codex process. The host's file is
+    # untouched; the bind lives and dies with this namespace.
+    resolv="$(readlink -f /etc/resolv.conf)"
+    if [ -f "$resolv" ]; then
+      fast="$(mktemp /tmp/without-network-resolv.XXXXXX)"
+      { cat -- "$resolv"; echo "options timeout:0 attempts:1"; } > "$fast"
+      chmod 644 -- "$fast"
+      mount --bind "$fast" "$resolv"
+      rm -f -- "$fast"
+    fi
     exec setpriv --reuid="$uid" --regid="$gid" --clear-groups --inh-caps=-all --no-new-privs -- \
       env -i PATH="$_hkn_syspath" bash "$_hkn_self" --inside "$uid" "$envfile" "$path" "$home" "$require" -- "$@"
     ;;
@@ -171,7 +188,8 @@ case "${1:-}" in
       env -0 > "$envfile"
       chown "$uid:$gid" -- "$envfile"
     fi
-    exec unshare --net -- env -i PATH="$_hkn_syspath" \
+    # A private mount namespace too, for the resolver file the --netns hop binds.
+    exec unshare --net --mount --propagation private -- env -i PATH="$_hkn_syspath" \
       bash "$_hkn_self" --netns "$uid" "$gid" "$envfile" "$owner" "$path" "$home" "$require" -- "$@"
     ;;
   "" | -*)
