@@ -776,9 +776,10 @@ jobs:
             # Phase 2, with --network none: only loopback, where the drive's
             # model server runs in-process. The same prefix, cache and
             # ripgrep; the isolation check first. That the drive then needs
-            # nothing fetched is measured for the harnesses listed in
-            # .capture/network-egress ("Option B CI evidence"); a harness
-            # that does need it fails here as a drive failure.
+            # nothing fetched is measured, at each harness's newest build
+            # (.capture/network-egress, "Drift's two phases, every harness,
+            # locally"); a build that does need it fails here as a drive
+            # failure.
             if [ "$CODE" = 0 ]; then
               docker run --network none "${COMMON[@]}" "${DRIFT_ENVS[@]}" \
                 -e HKN_NO_NETWORK_UID=1000 -e HOOKNOSTIC_PLAYBACK_NETWORK=none \
