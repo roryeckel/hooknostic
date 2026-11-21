@@ -12,7 +12,7 @@ import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
-const lane = JSON.parse(readFileSync(process.argv[2], "utf8").replace(/^﻿/, ""));
+const lane = JSON.parse(readFileSync(process.argv[2], "utf8").replace(/^\uFEFF/, ""));
 const check = spawnSync(
   process.execPath,
   [
