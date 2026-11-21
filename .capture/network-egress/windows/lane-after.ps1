@@ -57,6 +57,12 @@ foreach ($e in $creations) {
   }
 }
 "lane-after ${Label}: 4688 process creations since setup: $($creations.Count)"
+# The started pid, recorded by lane-run: its 4688 does not carry the lane SID.
+if (Test-Path "$Admin\$Label.pid") {
+  $rootPid = [int](Get-Content -Raw "$Admin\$Label.pid").Trim()
+  if (-not $lanePids.ContainsKey($rootPid)) { $lanePids[$rootPid] = $since }
+  "lane-after ${Label}: joined the started pid $rootPid"
+} else { $problems.Add('no started pid recorded') }
 # Debug: how the lane's first processes are logged (SIDs classified, never printed raw).
 function SidClass([string]$s) { if ($s -eq $state.sid) { 'lane' } elseif ($s -eq 'S-1-5-18') { 'SYSTEM' } elseif ($s -eq 'S-1-0-0') { 'NULL' } elseif ($s) { 'other' } else { 'empty' } }
 $creations | Where-Object { $_.Message -match 'node\.exe|cmd\.exe' } | Select-Object -Last 400 | ForEach-Object {
@@ -91,7 +97,25 @@ $drops | ForEach-Object { $d = Get-Data $_; "$(Split-Path -Leaf $d.Application) 
 $blocked | Group-Object app, dest | Sort-Object Count -Descending | Select-Object -First 25 | ForEach-Object { "  blocked $($_.Name) x$($_.Count)" }
 "lane-after ${Label}: lane ALLOWED non-loopback (5156): $($allowed.Count)"
 $allowed | Group-Object app, dest | ForEach-Object { "  ALLOWED $($_.Name) x$($_.Count)" }
-if ($blocked.Count -lt 3) { $problems.Add("audit not live: only $($blocked.Count) blocked lane connections (the canary alone makes 3)") }
+if ($blocked.Count -lt 4) { $problems.Add("audit not live: only $($blocked.Count) blocked lane connections (the canary alone makes 4)") }
+
+# Did anything later admin steps trust change? Every "hash" and "list" entry
+# of the before-snapshot must be identical; new "hash" entries (file-command
+# files of later steps) are expected and only counted.
+if (Test-Path "$Admin\$Label.before.json") {
+  $snapTimer = [Diagnostics.Stopwatch]::StartNew()
+  $before = Get-Content -Raw "$Admin\$Label.before.json" | ConvertFrom-Json
+  $snapSince = if ($before.since -is [datetime]) { $before.since } else { [datetime]::Parse([string]$before.since, $null, [Globalization.DateTimeStyles]::RoundtripKind) }
+  $now = & "$Admin\lane-snapshot.ps1" -Workspace $before.workspace -NpmPrefix $before.npmPrefix -Since $snapSince
+  $differs = @(foreach ($p in $before.entries.PSObject.Properties) { if ([string]$now[$p.Name] -ne [string]$p.Value) { $p.Name } })
+  $added = @($now.Keys | Where-Object { $_ -like 'hash *' -and -not $before.entries.PSObject.Properties[$_] }).Count
+  $newer = @($now.Keys | Where-Object { $_ -like 'newer *' -and $now[$_] })
+  "lane-after ${Label}: trusted snapshot compared in $([int]$snapTimer.Elapsed.TotalMilliseconds) ms: $($before.entries.PSObject.Properties.Count) entries, $($differs.Count) differ, $added new file-command hashes (later steps)"
+  foreach ($d in $differs) { "  DIFFERS $d" }
+  foreach ($n in $newer) { "  NEWER $n : $(([string]$now[$n]).Substring(0, [Math]::Min(300, ([string]$now[$n]).Length)))" }
+  if ($differs.Count) { $problems.Add("$($differs.Count) trusted entries changed") }
+  if ($newer.Count) { $problems.Add("files newer than the lane under $($newer -join ', ')") }
+} else { $problems.Add('no before-snapshot') }
 if ($allowed.Count) { $problems.Add("$($allowed.Count) allowed lane connections") }
 [ordered]@{
   label = $Label; seconds = [math]::Round($timer.Elapsed.TotalSeconds, 1); laneProcessesCreated = $lanePids.Count; aliveBeforeKill = $alive.Count

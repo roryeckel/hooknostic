@@ -17,7 +17,7 @@
 #   copy of node.exe labelled Low, so every lane process runs at Low
 #   integrity and cannot write any object that lacks a Low label.
 # Prints names, SIDs and timings, never environment values or the password.
-param([ValidateSet('Medium', 'Low')][string]$Integrity = 'Medium', [string]$Admin = 'C:\hkn-admin', [string]$Scratch = 'D:\hkn-lane')
+param([ValidateSet('Medium', 'Low')][string]$Integrity = 'Medium', [switch]$LabelProfile, [string]$Admin = 'C:\hkn-admin', [string]$Scratch = 'D:\hkn-lane')
 $ErrorActionPreference = 'Stop'
 $timer = [Diagnostics.Stopwatch]::StartNew()
 $started = (Get-Date).ToUniversalTime()
@@ -31,7 +31,7 @@ if ($off.Count) { throw "lane-setup: firewall profile(s) not enabled: $($off.Nam
 # 1. Admin-only staging.
 New-Item -ItemType Directory -Force -Path $Admin | Out-Null
 icacls $Admin /inheritance:r /grant:r '*S-1-5-32-544:(OI)(CI)F' '*S-1-5-18:(OI)(CI)F' | Out-Null
-foreach ($f in 'lane-run.ps1', 'lane-after.ps1', 'lane-inner.mjs') { Copy-Item -Force (Join-Path $PSScriptRoot $f) $Admin }
+foreach ($f in 'lane-run.ps1', 'lane-after.ps1', 'lane-inner.mjs', 'lane-snapshot.ps1') { Copy-Item -Force (Join-Path $PSScriptRoot $f) $Admin }
 Mark "staged admin scripts; ACL: $((icacls $Admin | Select-Object -Skip 1 | Where-Object { $_.Trim() } | ForEach-Object { $_.Trim() }) -join ' | ')"
 
 # 2. Auditing, checked.
@@ -71,7 +71,7 @@ if ($Integrity -eq 'Low') {
   $laneNode = "$Scratch\bin\node.exe"
 }
 Copy-Item -Force (Join-Path $PSScriptRoot 'lane-inner.mjs') "$Scratch\bin\lane-inner.mjs"
-if ($Integrity -eq 'Low') {
+if ($Integrity -eq 'Low' -and $LabelProfile) {
   # Some harnesses find their home through the known-folder API, which ignores
   # USERPROFILE and names the real profile. Create it with one logon, then
   # label it Low, so a Low lane can write there too.

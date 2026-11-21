@@ -23,6 +23,7 @@ param(
   [switch]$WorkspaceCacheDirs,
   [switch]$CopyNpmPrefix,
   [switch]$NodeModulesCreate,
+  [switch]$CodexHome,
   [int]$TimeoutSec = 0,
   [string]$Cwd = (Get-Location).Path
 )
@@ -56,6 +57,10 @@ if ($laneEnv.Contains('HKN_RIPGREP_DIR')) {
   $laneEnv['HKN_RIPGREP_DIR'] = $rg
 }
 if ($laneEnv.Contains('HKN_PLAYBACK_ARTIFACT_DIR')) { $laneEnv['HKN_PLAYBACK_ARTIFACT_DIR'] = Join-Path $Scratch 'work\playback-artifacts' }
+# Codex resolves ~\.codex through the known-folder API, which ignores
+# USERPROFILE; CODEX_HOME points it into the scratch tree instead of a
+# Low-labelled real profile.
+if ($CodexHome) { $laneEnv['CODEX_HOME'] = Join-Path $laneHome '.codex'; New-Item -ItemType Directory -Force -Path $laneEnv['CODEX_HOME'] | Out-Null; "lane-run ${Label}: CODEX_HOME in the scratch tree" }
 # pnpm/action-setup installs pnpm under the runner user's profile, which the
 # lane cannot traverse. The lane gets its own copy; the admin never runs it.
 $pnpmCmd = Get-Command pnpm -ErrorAction SilentlyContinue
@@ -137,7 +142,6 @@ Add-Target 'node toolcache dir' dir (Split-Path -Parent (Get-Command node).Sourc
 $pnpm = Get-Command pnpm -ErrorAction SilentlyContinue
 if ($pnpm) {
   Add-Target 'pnpm command dir' dir (Split-Path -Parent $pnpm.Source)
-  Add-Target 'pnpm command' read $pnpm.Source
   Add-Target 'pnpm store' dir ((& $pnpm.Source store path 2>$null) | Select-Object -First 1)
 }
 Add-Target 'hostedtoolcache' dir 'C:\hostedtoolcache\windows'
@@ -173,6 +177,14 @@ $require = @($RequireEnv -split ',' | Where-Object { $_ })
   scratch = $Scratch; targets = $targets; env = $laneEnv
 } | ConvertTo-Json -Depth 5 | Set-Content -Encoding utf8 "$Scratch\bin\lane.json"
 
+# Before-snapshot of what later admin steps trust (compared by lane-after).
+$snapTimer = [Diagnostics.Stopwatch]::StartNew()
+$since = (Get-Date).ToUniversalTime()
+$npmPrefix = (npm config get prefix) | Select-Object -First 1
+[ordered]@{ since = $since.ToString('o'); npmPrefix = $npmPrefix; workspace = $Cwd; entries = (& "$Admin\lane-snapshot.ps1" -Workspace $Cwd -NpmPrefix $npmPrefix) } |
+  ConvertTo-Json -Depth 4 | Set-Content "$Admin\$Label.before.json"
+"lane-run ${Label}: before-snapshot in $([int]$snapTimer.Elapsed.TotalMilliseconds) ms"
+
 # 4. Launch as the lane user and stream its output.
 $cred = [pscredential]::new($state.user, (Get-Content "$Admin\cred.txt" | ConvertTo-SecureString))
 $out = "$Admin\$Label.out"; $err = "$Admin\$Label.err"
@@ -185,6 +197,9 @@ try {
   $p = Start-Process -FilePath $state.laneNode -ArgumentList $argList -Credential $cred -WorkingDirectory $Cwd -NoNewWindow -PassThru -RedirectStandardOutput $out -RedirectStandardError $err
 }
 $null = $p.Handle
+# The lane's first process is created by seclogon, and its 4688 does not carry
+# the lane SID; lane-after joins this pid out of band.
+Set-Content "$Admin\$Label.pid" $p.Id
 "lane-run ${Label}: started pid $($p.Id) after $([int]$timer.Elapsed.TotalMilliseconds) ms ($mode)"
 $pos = @{ $out = [long]0; $err = [long]0 }
 function Read-New([string]$path) {
