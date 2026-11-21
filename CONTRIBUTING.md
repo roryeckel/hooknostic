@@ -124,8 +124,11 @@ reviewed Renovate PRs; Node support-floor changes remain manual decisions.
 
 If your change touches an adapter, also run the **playback lane**. It drives the
 real harness binary against a loopback scripted model server: no API key, no
-model spend, and it is exactly what CI runs, so there is no gap between what you
-can verify and what the pull request will be judged by.
+model spend, and it is the command CI runs, so there is little gap between what
+you can verify and what the pull request will be judged by. CI also blocks
+non-loopback IP around it, so a drive that needs the network fails there; to
+run it that way on Linux, see "Network isolation on Linux" in
+[docs/testing.md](docs/testing.md).
 
 ```bash
 pnpm run bundle

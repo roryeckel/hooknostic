@@ -205,9 +205,38 @@ verified copy. A cached copy is used only if it matches the pinned executable's
 SHA-256. Set `HKN_RIPGREP_DIR` to a directory that holds, or should receive,
 that build. See `.capture/opencode-v2/README.md`, "ripgrep pre-seed".
 
+## Network isolation in CI
+
+One rule on every OS: every CI job that drives a real harness and is meant
+to be offline runs with non-loopback IP blocked. A lane that needs a new
+download, or a harness build that starts calling home, then fails loudly
+instead of passing with network.
+
+The goal is catching **accidental** egress. Stopping a deliberate escape is
+a non-goal: these jobs run our own tests against harness builds pinned by
+version, and the threat being guarded against is drift and carelessness,
+not a hostile harness.
+
+The one documented limitation: on Windows, hostnames still resolve through
+the system DNS Client service. A lane can look a name up, but cannot connect
+to it.
+
+| Job | Block |
+| --- | --- |
+| ci.yml `harness-playback`, Linux (claude, codex, copilot, pi, opencode-v1, opencode-v2) | a loopback-only network namespace ("Network isolation on Linux") |
+| ci.yml `harness-playback`, Windows (copilot, pi, opencode-v2), and `code-mode` | a dedicated user whose outbound traffic a firewall rule blocks ("Network isolation on Windows") |
+| ci.yml `marketplace` (claude, codex), harness-watch `verify` | the Linux namespace |
+| harness-watch `drift`, playback transport | the drive's container runs with `--network none` (`docs/harness-watch.md`) |
+| harness-watch `drift`, llm transport | none: online by design, through the LiteLLM sidecar |
+
+No macOS job drives a real harness. A future macOS lane would run as a
+dedicated user behind a `pf` rule on that user, the counterpart of the
+Windows rule.
+
 ## Network isolation on Linux
 
-The six Linux playback lanes run in CI with no IP network but loopback.
+The six Linux playback lanes, the marketplace gate and harness-watch's
+verification of newer builds run in CI with no IP network but loopback.
 
 What this establishes:
 - A lane that **needs** the IP network fails.
@@ -280,7 +309,8 @@ on), not by CI.
   - every name in `HKN_NO_NETWORK_REQUIRE_ENV` is present and non-empty.
 
   The wrapper reads that list before the sudo hop and passes it on as an
-  argument, so a lost environment cannot also lose the list. The check prints
+  argument, so a lost environment cannot also lose the list. It refuses an
+  empty list, which would check nothing. The check prints
   one line per item and never prints values. Its positive control,
   `--online`, runs in the prepare step outside the namespace: one IPv4 probe
   and the lookup must succeed there, so one filtered address does not fail a
@@ -308,28 +338,52 @@ on), not by CI.
   - Claude's `plugin validate` gets the drives' environment.
 
   Nothing asserts on these; inside the namespace the calls would fail
-  harmlessly anyway. The traced inventory is what shows each one works.
+  harmlessly anyway. The traced inventory is what shows each one works. The
+  marketplace gate's install calls get the same treatment: Claude's API on a
+  refused loopback port, and Codex's analytics off.
 
   Two calls remain and fail harmlessly: Codex's curated plugin sync
   (github.com, chatgpt.com, api.github.com) and Claude's official marketplace
-  fetch (downloads.claude.ai).
-- **Not isolated.** The Windows lanes, the Code Mode and marketplace jobs, and
-  harness-watch's scheduled verification of newer builds still run with
+  fetch (downloads.claude.ai). Turning the sync off with
+  `-c features.plugins=false` would save the resolver retries at the
+  reference build. But newer Codex builds then load no installed plugin, and
+  the plugin drives fail, so it stays on.
+- **Not isolated.** harness-watch drift's llm transport, by design, and the
+  manual macOS `shell-interpreter-capture.yml`.
+- **Rollback.** Each blocked job group has its own `ci:` commit, so each can
+  be reverted alone:
+  - the Linux lanes;
+  - the Windows lanes and Code Mode;
+  - the marketplace gate;
+  - harness-watch verify and drift.
+
+  After reverting all of them, also revert the hunks that describe
+  enforcement as current:
+  - "Network isolation in CI" and the per-OS sections below it;
+  - the "no network beyond loopback" clause in AGENTS.md;
+  - the matching bullet in the harness-integration skill.
+
+  The switches, the npm `--offline` mode and the scripts stay harmless with
   network.
-- **Rollback.** Revert the `ci:` commit that wraps the lanes. Also revert the
-  hunks that describe enforcement as current: this section, the "on Linux CI
-  no IP network" clause in AGENTS.md, and the matching bullet in the
-  harness-integration skill. The switches, the npm `--offline` mode and the
-  scripts stay harmless with network.
 
 To reproduce a lane on Linux, install its harness and bundle as above. Then
-run CI's two commands. On a Linux CI runner the prepare step adds
-`--check-online`:
+run CI's two commands:
 
 ```bash
 node --experimental-strip-types scripts/prepare-offline-playback.mjs codex --check-online
 HOOKNOSTIC_PLAYBACK=codex HKN_NO_NETWORK_REQUIRE_ENV=HOOKNOSTIC_PLAYBACK scripts/without-network.sh \
   pnpm exec vitest run packages/cli/test/harness-playback.test.ts packages/cli/test/opencode-v2-playback.test.ts scripts/pi-drift-driver.test.mjs
+```
+
+The marketplace gate and harness-watch's verification of a newer build use
+the same wrapper:
+
+```bash
+HOOKNOSTIC_PLAYBACK=codex HKN_NO_NETWORK_REQUIRE_ENV=HOOKNOSTIC_PLAYBACK scripts/without-network.sh \
+  node scripts/verify-marketplaces.mjs codex
+HOOKNOSTIC_PLAYBACK=opencode-v2 HOOKNOSTIC_PLAYBACK_VERSION=<version> HKN_RIPGREP_DIR=<dir> \
+  HKN_NO_NETWORK_REQUIRE_ENV=HOOKNOSTIC_PLAYBACK,HOOKNOSTIC_PLAYBACK_VERSION,HKN_RIPGREP_DIR \
+  scripts/without-network.sh pnpm exec vitest run packages/cli/test/harness-playback.test.ts packages/cli/test/opencode-v2-playback.test.ts
 ```
 
 That needs unrestricted passwordless sudo (see the trust boundary above).
@@ -340,6 +394,80 @@ becomes the user's, and `PATH` and `HOME` come from the arguments:
 ```bash
 scripts/without-network.sh --as "$(id -u user):$(id -g user)" --path "$PATH" --home /home/user -- <command>
 ```
+
+## Network isolation on Windows
+
+The Windows playback lanes (copilot, pi, opencode-v2) and the Code Mode gate
+run in CI as a dedicated standard user, whose outbound traffic one Windows
+Firewall rule blocks. There is no network namespace on Windows; the block is
+per user.
+
+- **The wrapper.** `scripts/without-network.ps1 -RequireEnv A,B -Run
+  '<command line>'` does the following:
+  - refuses unless on a GitHub-hosted runner, elevated, with the firewall
+    service running and every profile enabled;
+  - creates the user `hknoffline` (a random password held only in memory, a
+    member of `Users` only);
+  - adds one outbound block rule on its SID (rule group `hkn-offline`). A
+    block rule beats every allow rule, and loopback is exempt from firewall
+    rules, so the playback model servers still work;
+  - points the lane's profile, temp and app-data variables at a scratch
+    directory it may write;
+  - starts `scripts/without-network-lane.mjs` as that user, through
+    `Start-Process -Credential`, with output streamed into the log and the
+    lane's exit code kept.
+- **The environment is an allowlist**:
+  - passed: Windows' own variables; `CI`, `GITHUB_ACTIONS` and
+    `RUNNER_OS`/`ARCH`/`ENVIRONMENT`/`TRACKING_ID`; `HOOKNOSTIC_*` and
+    `HKN_*`;
+  - set: `HOOKNOSTIC_PLAYBACK_NETWORK=none`, and `CODEX_HOME` in the scratch
+    directory, for harness paths that set none of their own;
+  - kept out: everything else, `ACTIONS_*` and the file-command paths
+    included.
+
+  It is cheap, and it keeps tokens out of the lane.
+- **The proof.** Before the command, as the lane user,
+  `scripts/assert-no-network.mjs --offline` fails the run unless:
+  - the process is exactly the SID the wrapper created, and not an
+    administrator;
+  - each public IPv4 probe is refused by the firewall (`EACCES`), and the
+    IPv6 probe is refused or unroutable;
+  - a loopback round trip works;
+  - the required names (passed as an argument, never read from the lane's
+    own environment) are present;
+  - no forbidden name reached the lane.
+
+  There is no interface check (the adapters stay up), and DNS is reported
+  but not required to fail. The prepare step's `--check-online` is the
+  positive control, as on Linux.
+- **Cleanup.** An `always()` step runs `without-network.ps1 -Cleanup`. It
+  stops every process the user owns, found by owner SID, with a bounded
+  recheck, then removes the rule group and disables the user. It needs no
+  precondition, so it is safe after a refusal. It deletes nothing.
+  - The step is needed: on windows-latest, lane processes survived the
+    runner's kill after a step timeout and after a job timeout, and the
+    `always()` step still ran both times.
+  - A workflow cancelled by hand may skip it. The runner is single-use.
+- **pnpm.** CI installs pnpm with pnpm/action-setup's `dest:` in the
+  toolcache. The default, `~/setup-pnpm`, is in the runner user's profile,
+  which the lane user cannot reach, and the tests run pnpm.
+- **Vacuous green.** Several guards keep a green run from meaning nothing:
+  - `HOOKNOSTIC_PLAYBACK_NETWORK=none` arms the known-lane guard, as on
+    Linux;
+  - an empty `-RequireEnv` is refused;
+  - the SID check means a lane that somehow ran as the runner user, and so
+    unblocked, fails;
+  - Code Mode keeps `requireGateCoverage`.
+- **Out of scope, by the goal above.** A standard user on windows-latest can
+  write much of the runner (the workspace, the toolcache, the npm prefix),
+  and can read the runner's own credentials. Closing that is not this
+  block's job; `.capture/network-egress`, "Hardening findings", records what
+  it took.
+
+It runs only on a GitHub-hosted runner, because it creates a user and a
+firewall rule. Locally, only its argument checks and refusals run:
+`scripts/without-network-ps1.test.mjs` uses `-DryRun`, which stops before
+anything is created.
 
 ## Marketplace release gates
 

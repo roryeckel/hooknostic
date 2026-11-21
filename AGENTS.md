@@ -65,7 +65,8 @@ artifacts per harness, one `packages/adapter-*` each (the generated
 - Three tiers of harness verification, in increasing cost. `pnpm test` alone
   replays captured fixtures. `HOOKNOSTIC_PLAYBACK=<harness>` drives the real
   harness binary against a loopback model server — no credentials, no spend,
-  and on Linux CI no IP network (a drive that needs it fails there) — and it is
+  and in CI no network beyond loopback (a drive that needs it fails there; on
+  Windows names still resolve) — and it is
   what CI runs, so an adapter change should clear it before review
   (`docs/testing.md`). `HOOKNOSTIC_SMOKE=1 pnpm test` spends real model
   credits and has side effects (harness trust entries); run it only when the

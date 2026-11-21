@@ -232,20 +232,38 @@ job's steps:
    inputs.force_llm == 'true'`).
 2. Bundle the workspace on the runner, install the pinned LiteLLM dependency
    before injecting its upstream key, then start the installed harness inside
-   `node:<playback version>-bookworm` (from `.github/node/playback/.node-version`): the third-party harness package is installed there
-   with `--ignore-scripts`, the repository is mounted read-only, only the
-   throwaway capture directory is writable, and no Docker socket is mounted.
-   The container runs as the image's unprivileged `node` user with an init
-   process; npm installs into a temporary prefix owned by that user. Claude
-   refuses the driver's permission-bypassing session when run as root.
-   Claude and OpenCode then run their package-owned bootstrap explicitly;
-   Codex and Copilot need none.
-   For OpenCode, the driver also pre-seeds the exact-version plugin dependency
-   into its project and redirected config directories, both under the
-   throwaway capture root.
-   In the paid transport, LiteLLM stays outside that container, so its upstream
-   credential cannot be read by the harness.
-3. The container runs `node --experimental-strip-types
+   `node:<playback version>-bookworm` (from `.github/node/playback/.node-version`).
+   - The third-party harness package is installed there with
+     `--ignore-scripts`, the repository is mounted read-only, the throwaway
+     `/drift` directory is the only writable mount, and no Docker socket is
+     mounted.
+   - The container runs as the image's unprivileged `node` user with an init
+     process. Claude refuses the driver's permission-bypassing session when
+     run as root.
+   - Claude and OpenCode then run their package-owned bootstrap explicitly;
+     Codex and Copilot need none.
+   - For OpenCode, the driver also pre-seeds the exact-version plugin
+     dependency into its project and redirected config directories, both
+     under the throwaway capture root.
+
+   The two transports differ:
+   - **playback** (offline by intent) runs two containers.
+     - Phase 1, on the bridge network, installs into `/drift/prefix`, with
+       npm's cache in `/drift/npm-cache`. It runs the bootstrap, then
+       `prepare-offline-playback.mjs <harness> --version <latest>
+       --check-online`, which fetches the pinned ripgrep into
+       `/drift/ripgrep` and warms OpenCode v1's npm cache.
+     - Phase 2 runs with `--network none`, so only loopback, where the
+       driver's model server is. It gets the same prefix (on `PATH`), cache
+       and `HKN_RIPGREP_DIR`, and `HOOKNOSTIC_PLAYBACK_NETWORK=none`, so the
+       plugin dependency installs `--offline`. It runs
+       `scripts/assert-no-network.mjs --offline` first, so a drive that needs
+       the network fails ("Network isolation in CI" in `docs/testing.md`).
+   - **llm** (online by design) runs one bridge container that installs and
+     drives, because the harness talks to the owner's model through the
+     LiteLLM sidecar. LiteLLM stays outside that container, so its upstream
+     credential cannot be read by the harness.
+3. The drive runs `node --experimental-strip-types
    scripts/drive-capture-session.mjs <harness> --transport playback|llm
    --scratch ...`; its exit code is captured, never propagated: 0 clean,
    **4 drift**, **5 inconclusive**, and 6 (drive failure) are all reportable
