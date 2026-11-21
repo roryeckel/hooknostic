@@ -498,11 +498,181 @@ plain step. The wrapped runs are 44693790195 and 44695948182.
 Codex's added minute is the price of leaving its plugin sync on. It is well
 inside the 15-minute job timeout.
 
+## Windows (GitHub-hosted windows-latest, 2026-11-20)
+
+The Windows playback lanes (copilot, pi, opencode-v2) and the `code-mode` job
+(Codex on Windows, `scripts/verify-code-mode.mjs`) were measured on GitHub's
+own windows-latest runners. strace has no Windows equivalent, and these jobs
+need the runner's admin rights, so the method is different.
+
+### Method
+
+A temporary workflow ran one job per lane and version (run
+[44839983846](https://github.com/roryeckel/hooknostic/actions/runs/44839983846),
+tree `6af11f8f`, reverted afterwards). Each job:
+
+1. Installed the harness and ran the lane's prepare step. Neither was measured.
+2. Started the audit (`windows/start-audit.ps1`):
+   - Windows Filtering Platform connection auditing: Security events 5156
+     (allowed) and 5157 (blocked). Each event carries the process id, image,
+     destination address, port and protocol.
+   - Process-creation auditing with command lines: Security event 4688.
+   - The DNS Client operational log.
+3. Ran CI's own test command in one `pwsh` step, the "measured step":
+   - playback lanes: `vitest run` over `harness-playback.test.ts`,
+     `opencode-v2-playback.test.ts` and `pi-drift-driver.test.mjs`;
+   - Code Mode: `node scripts/verify-code-mode.mjs`.
+
+   Step 3 recorded the step shell's pid and the time window.
+4. Exported the audit (`windows/export-audit.ps1`):
+   - It joins every outbound connection to the process that made it, and walks
+     that process's creators through 4688.
+   - A connection is **lane** when the measured step's shell is an ancestor.
+   - Otherwise it is **runner** (`Runner.Worker`, `Runner.Listener`, or the
+     runner's `externals\` node) or **system**.
+   - Loopback is counted per class and image, not listed.
+   - Hostnames come from the DNS log's answers.
+
+**Positive control.** `windows/probe.mjs` runs first inside the measured step.
+It connects to three public IPv4 addresses, fetches `https://github.com/`, and
+makes a loopback round trip. In every job these four connections appear as
+**lane** egress, attributed `node.exe < pwsh.exe`. So the audit sees the step's
+processes, and the classification puts them in the lane. The control is the only
+egress the step adds itself; it is left out of the tables below.
+
+**Not lane traffic, and why.** None of these processes descends from the
+measured step's shell. The runner's and agents' processes were started before
+the audit. They are classified by image, and the system ones have no lane
+ancestor in 4688.
+
+| Process | Destinations | What it is |
+| --- | --- | --- |
+| `Runner.Worker.exe` | results-receiver.actions.githubusercontent.com:443, productionresultssa8.blob.core.windows.net:443 | Step logs and results upload. The upload runs while the step is still running. |
+| `Runner.Listener.exe` | broker.actions.githubusercontent.com:443 | A long-lived connection, established before the step. It shows in the inventory's `Get-NetTCPConnection`, not in 5156, which only logs new connections. |
+| `hosted-compute-agent`, `provjobd.exe*` | hosted-compute-{request-orchestrator,watchdog}-*.githubapp.com:443 | GitHub's hosted-compute agent: orchestration and watchdog |
+| `WindowsAzureGuestAgent.exe`, `WaAppAgent.exe` | 168.63.129.16:80 (Azure WireServer), 169.254.169.254:80 (IMDS) | Azure VM agent |
+| `svchost.exe`, `taskhostw.exe`, `System` | NTP :123, crl.microsoft.com, fs.microsoft.com, settings-win.data.microsoft.com, the resolver on 168.63.129.16:53, ICMP | OS services |
+| `firefox.exe < default-browser-agent.exe` | incoming.telemetry.mozilla.org | A scheduled task of the image's Firefox |
+
+**Attribution limit.** Some requests are carried out by a service on a
+process's behalf. These are attributed to the service, not to the lane. DNS is
+the visible case: the DNS Client service sends every query. The DNS log still
+names the requesting process (its event `Execution ProcessID`). That is how the
+lookups below are attributed to lane processes.
+
+### Results
+
+The playback harness already applies `playbackQuiet` on every OS, so this is
+the state after the Linux switches. It is captured for Codex: the
+`-c analytics.enabled=false` is in the 4688 command lines. For OpenCode it is an
+inference: no `models.opencode.ai` or `opencode.ai` connection appeared. The
+environment is not in the audit.
+
+| Lane | audited | enforced | Non-loopback destinations (audited) |
+| --- | --- | --- | --- |
+| copilot 1.0.101 | 77 passed, 70 skipped | not run | **none** |
+| copilot 1.0.114 (latest) | same | not run | **none**. DNS only: `copilot.exe` looked up `wpad.*.internal.cloudapp.net` (proxy auto-discovery), 95 queries, no answer, no connection |
+| pi 1.3.0 | 82 passed, 65 skipped | not run | **none** |
+| pi 1.6.0 (latest) | same | not run | **none** |
+| opencode-v2 2.0.17 | 102 passed, 45 skipped | not run | **none** |
+| opencode-v2 2.3.2 (latest) | same | not run | **none** |
+| code-mode, codex 0.156.1 | 3 passed, 75 skipped | not run | github.com (git), chatgpt.com |
+| code-mode, codex 0.171.0 (latest) | same | not run | github.com (git). **chatgpt.com was not contacted** |
+
+Every lane also made loopback connections: its model server, the MCP servers,
+and OpenCode's local server, 51 to 437 per job. This shows the audit saw the
+harness processes themselves.
+
+#### code-mode
+
+| Destination | Process and test | Purpose | Needed | Knob |
+| --- | --- | --- | --- | --- |
+| github.com:443 (140.82.112.3, 140.82.113.3, 140.82.114.4) | `git-remote-https https://github.com/openai/plugins.git`, chain `git.exe < git.exe < git.exe < codex.exe < node.exe`, 4 transports in each version | The curated plugin catalog sync, as on Linux (**captured**: the URL is in the argv) | **No** | `-c features.plugins=false` (**captured** on Linux only; see codex 0.148.0 above). Linux leaves it alone. |
+| chatgpt.com:443 (172.64.155.209) | `codex.exe exec -`, the Code Mode drive, already with `-c analytics.enabled=false`, 2 connections. 0.156.1 only. | The curated plugin export, as on Linux (**inference**, from the Linux evidence) | **No** | `-c features.plugins=false` (**inference** from Linux) |
+
+There was no ab.chatgpt.com: `analytics.enabled=false` holds on Windows too
+(**captured**).
+
+### Firewall trials (same run, job "firewall trials")
+
+`windows/firewall-trial.ps1` ran on a fresh runner.
+
+**Inventory:**
+- Firewall on in all three profiles; `DefaultOutboundAction`
+  `NotConfigured`, which acts as Allow.
+- Services: `mpssvc` and `bfe` running; `seclogon` stopped, manual start.
+- The step runs as `runneradmin`, an administrator. `Runner.Listener` and
+  `Runner.Worker` run as the same user, from
+  `C:\actions-runner\cached\2.338.2\bin\`.
+- The runner talks home over HTTPS to broker., launch. and
+  results-receiver.actions.githubusercontent.com, and to blob storage.
+
+Each trial ran `probe.mjs` afterwards:
+
+| Mechanism | Public IPv4 (3) | HTTPS | DNS lookup | Loopback round trip | Side effects |
+| --- | --- | --- | --- | --- | --- |
+| none | connected | 200 | resolved | yes | — |
+| (a) outbound block rule for `node.exe` (the toolcache image) | `EACCES` | `EACCES` | **resolved** | yes | — |
+| (b) `DefaultOutboundAction Block` on all profiles, allow rules for `Runner.Listener`, `Runner.Worker` and the runner's `externals\node20`/`node24` | `EACCES` | `EACCES` | **resolved** | yes | For 30 s and one later step, the runner kept streaming logs. `actions/upload-artifact` uploaded and finalized under the block (artifact `egress-windows-firewall-trial-b`). |
+| (c) outbound block rule for one dedicated local user's SID (`-LocalUser "D:(A;;CC;;;<SID>)"`), probe started as that user with `Start-Process -Credential` | `EACCES` | `EACCES` | **resolved** | yes | The step's own user stayed online under the same rule. Starting the probe as a scheduled task under that user did not run (result `267011`). |
+
+`restore` put every profile back to its recorded state, both times, with 0
+trial rules left (**captured**).
+
+What this shows (**captured**):
+- Loopback is exempt from the firewall's block rules: the round trip worked
+  under all three mechanisms. WFP still logs it as 5156.
+- No mechanism stops DNS resolution. Lookups go through the DNS Client service,
+  which the firewall's built-in rules allow. This differs from Linux, where
+  lookups in the namespace fail with `EAI_AGAIN`. A process can still leak data
+  through query names, but it can open no connection to the answer.
+- What (b)'s test did not cover: a runner session that lasts minutes, and the
+  hosted-compute and Azure agents. None of these agents was in the allow list,
+  and none of them connected during the trial.
+
+### Marketplace (ubuntu `marketplace` job, WSL, 2026-11-20)
+
+`node scripts/verify-marketplaces.mjs <claude|codex>` (the job's command) was
+run with the Linux tools above: traced as the user, then inside
+`scripts/without-network.sh`. It runs at the reference versions. It is a
+loopback-model job, and today it runs outside the namespace.
+
+| Lane | traced | nonet | Non-loopback destinations (traced) |
+| --- | --- | --- | --- |
+| claude 2.1.260 | 3 passed, 77 skipped | same | api.anthropic.com |
+| codex 0.153.2 | 6 passed, 74 skipped | same | github.com (git), chatgpt.com, ab.chatgpt.com |
+
+| Destination | Process and test | Purpose | Needed | Knob |
+| --- | --- | --- | --- | --- |
+| api.anthropic.com:443 | `claude plugin marketplace add <dir>`, 2 of 7 harness processes. `marketplace-example.test.ts` passes it the test's `env`, which has no `ANTHROPIC_BASE_URL`. | As for `plugin validate` above (**captured** for that call) | **No** | `ANTHROPIC_BASE_URL` on loopback (**captured** for `plugin validate`, **inference** for `marketplace add`) |
+| github.com:443 | `git-remote-https https://github.com/openai/plugins.git`, 7 processes | Curated plugin sync (**captured**) | **No** | `-c features.plugins=false` (**captured**, codex 0.148.0) |
+| chatgpt.com, ab.chatgpt.com:443 | `codex exec hello …`, 4 processes. The test builds its own `-c` list, without `analytics.enabled=false`. | Plugin export and metrics, as above | **No** | `-c analytics.enabled=false` for ab.chatgpt.com (**captured**, as above) |
+
+### Files
+
+| File | What it is |
+| --- | --- |
+| `windows/start-audit.ps1` | Turn on WFP, process-creation and DNS Client logging (admin) |
+| `windows/export-audit.ps1` | Write `summary.json` and `outbound.csv`: destinations by class, process, chain and command line; DNS queries with answers and the requesting process |
+| `windows/probe.mjs` | The connectivity probe and positive control |
+| `windows/firewall-trial.ps1` | `inventory`, trials `a`, `b`, `c`, and `restore` |
+
+The per-job `summary.json` and `outbound.csv` files are artifacts of run
+44839983846, kept for 14 days. The marketplace traces were reduced with
+`parse_strace.py`.
+
 ## Not measured
 
-- **Windows and macOS.** The Windows playback lanes (copilot, pi, opencode-v2)
-  and the Windows Code Mode lane were not traced; the Linux results say nothing
-  about them.
+- **macOS.** No macOS job drives a real harness except the manual
+  `shell-interpreter-capture.yml`. The macOS unit-test entries leave
+  `HOOKNOSTIC_PLAYBACK` and `HOOKNOSTIC_SMOKE` empty and install no harness.
+- **The Windows lanes under enforcement.** Only the probe ran under the trial
+  mechanisms; no lane did.
+- **Service-mediated Windows requests** other than DNS (for example WinHTTP
+  proxy auto-discovery, or certificate revocation fetches made by a service).
+  They are attributed to the service. `svchost.exe` fetched crl.microsoft.com
+  during the copilot and opencode-v2 jobs; whether a lane triggered it is not
+  known.
 - **A traced inventory on a GitHub-hosted runner.** WSL's NAT network and
   resolver differ from a runner's: the runner uses the systemd-resolved stub
   at 127.0.0.53. The destination traces ran only in WSL. The enforcement did
@@ -517,5 +687,6 @@ inside the 15-minute job timeout.
 - **Writes that strace does not show.** Node writes TCP data with `write` and
   `writev`, which were not traced, so SNI is missing for Node clients. Every
   connection is still recorded through its `connect` and DNS query.
-- **Marketplace, Code Mode, packed-consumer and Yarn PnP jobs.** These are
-  separate CI jobs, not playback lanes.
+- **Packed-consumer and Yarn PnP jobs.** These are separate CI jobs, not
+  playback lanes, and drive no harness. Marketplace and Code Mode are in
+  "Windows" above.
