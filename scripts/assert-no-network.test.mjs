@@ -4,7 +4,7 @@
 // tests and fail there.
 import { expect, it } from "vitest";
 
-import { evaluate, missingNames } from "./assert-no-network.mjs";
+import { DNS_FAST_MS, evaluate, missingNames, resolverTimeout } from "./assert-no-network.mjs";
 
 const unreachable = ["ENETUNREACH", "ENETUNREACH", "ENETUNREACH"];
 const isolated = {
@@ -12,6 +12,8 @@ const isolated = {
   ipv4: unreachable,
   ipv6: "ENETUNREACH",
   dns: "ECONNREFUSED",
+  dnsMs: 12,
+  resolver: { timeout: 0, expected: 0 },
   linux: {
     uid: 1001,
     expectedUid: 1001,
@@ -39,6 +41,12 @@ it.each([
   ["public IPv4 connect", { ipv4: [] }],
   ["public IPv6 connect", { ipv6: "connected" }],
   ["DNS lookup", { dns: "resolved" }],
+  // A miss that takes musl's 5 s wait, or one whose time was never taken.
+  ["DNS lookup", { dnsMs: 5003 }],
+  ["DNS lookup", { dnsMs: DNS_FAST_MS }],
+  ["DNS lookup", { dnsMs: undefined }],
+  // The wrapper asked for a 0 s resolver timeout, and the file gives the default.
+  ["resolver timeout", { resolver: { timeout: 5, expected: 0 } }],
   ["user", { linux: { ...isolated.linux, uid: 0, expectedUid: undefined } }],
   ["user", { linux: { ...isolated.linux, uid: 1002 } }],
   // e.g. `docker`, through which the Docker socket reaches the network.
@@ -127,4 +135,23 @@ it("counts an empty required variable as missing: it selects nothing, like an ab
     "UNSET",
   ]);
   expect(missingNames(["HKN_RIPGREP_DIR"], env)).toEqual([]);
+});
+
+it("reads the resolver timeout as glibc and musl do: the last options timeout, else 5", () => {
+  expect(resolverTimeout("nameserver 127.0.0.53\noptions edns0 trust-ad\nsearch lan\n")).toBe(5);
+  expect(resolverTimeout("")).toBe(5);
+  // scripts/without-network.sh appends its line to the host's file.
+  expect(
+    resolverTimeout("nameserver 127.0.0.53\noptions edns0 trust-ad timeout:2\noptions timeout:0 attempts:1\n"),
+  ).toBe(0);
+  expect(resolverTimeout("options timeout:0 attempts:1\noptions timeout:3\n")).toBe(3);
+  // Only an options line counts, and only a whole timeout:N word.
+  expect(resolverTimeout("# options timeout:0\nsearch timeout:0\noptions timeouts:0 timeout:x\n")).toBe(5);
+});
+
+it("checks the resolver timeout only when asked for one", () => {
+  const { resolver, ...unasked } = isolated;
+  expect(resolver).toBeDefined();
+  expect(evaluate("offline", unasked).map((check) => check.name)).not.toContain("resolver timeout");
+  expect(failing(evaluate("offline", unasked))).toEqual([]);
 });

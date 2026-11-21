@@ -7,7 +7,11 @@
 //       - no non-loopback interface;
 //       - every public IPv4 probe and the IPv6 probe refused by the kernel
 //         with ENETUNREACH;
-//       - DNS failing;
+//       - DNS failing, within DNS_FAST_MS;
+//       - with --dns-timeout N, the resolver configuration's effective timeout
+//         is N. scripts/without-network.sh passes 0: musl, which codex is
+//         built against, otherwise waits its timeout after a send that has
+//         already failed (5 s a lookup), where glibc and c-ares fail at once;
 //       - the expected unprivileged user, with no supplementary groups, no
 //         capabilities and no_new_privs;
 //       - every required variable present and non-empty.
@@ -49,6 +53,27 @@ export const PROBE_IPV4 = ["1.1.1.1", "8.8.8.8", "9.9.9.9"];
 export const PROBE_IPV6 = "2606:4700:4700::1111";
 export const PROBE_HOST = "github.com";
 const TIMEOUT_MS = 5000;
+/** How long a lookup may take to fail without network: a miss must be quick. */
+export const DNS_FAST_MS = 1000;
+
+/**
+ * The resolver timeout, in seconds, that resolv.conf text configures: the
+ * last `timeout:N` on an `options` line, as glibc and musl both read it, or
+ * their default of 5.
+ * @param {string} text
+ */
+export function resolverTimeout(text) {
+  let timeout = 5;
+  for (const line of text.split(/\r?\n/)) {
+    const words = line.trim().split(/\s+/);
+    if (words[0] !== "options") continue;
+    for (const word of words.slice(1)) {
+      const value = /^timeout:(\d+)$/.exec(word)?.[1];
+      if (value !== undefined) timeout = Number(value);
+    }
+  }
+  return timeout;
+}
 
 /**
  * The required names that are missing or empty. An empty value selects
@@ -75,6 +100,8 @@ const REFUSED_IPV6 = ["EACCES", "ENETUNREACH", "EHOSTUNREACH"];
  *   ipv4: string[],
  *   ipv6: string,
  *   dns: string,
+ *   dnsMs?: number,
+ *   resolver?: { timeout: number, expected: number },
  *   linux?: { uid: number, expectedUid?: number, gid: number, groups: number[], capEff: string, capPrm: string, noNewPrivs: string },
  *   windows?: { sid: string, expectedSid?: string, admin: boolean, loopback: string },
  *   env?: { required: string[], missing: string[], offlineMarker: boolean, forbidden?: string[] },
@@ -111,7 +138,16 @@ export function evaluate(mode, seen) {
     );
     check("public IPv4 connect", seen.ipv4.length > 0 && seen.ipv4.every((result) => result === "ENETUNREACH"), v4);
     check("public IPv6 connect", seen.ipv6 === "ENETUNREACH", `[${PROBE_IPV6}]:443 -> ${seen.ipv6}`);
-    check("DNS lookup", seen.dns !== "resolved", `${PROBE_HOST} -> ${seen.dns}`);
+    const fast = seen.dnsMs !== undefined && seen.dnsMs < DNS_FAST_MS;
+    check(
+      "DNS lookup",
+      seen.dns !== "resolved" && fast,
+      `${PROBE_HOST} -> ${seen.dns} in ${seen.dnsMs ?? "?"} ms${fast ? "" : `, not under ${DNS_FAST_MS} ms`}`,
+    );
+    if (seen.resolver) {
+      const { timeout, expected } = seen.resolver;
+      check("resolver timeout", timeout === expected, `${timeout} s in /etc/resolv.conf, expected ${expected} s`);
+    }
   }
   if (mode === "offline") {
     if (seen.linux) {
@@ -175,12 +211,16 @@ function tcp(host) {
   });
 }
 
+let dnsMs;
 async function dns() {
+  const start = performance.now();
   try {
     await lookup(PROBE_HOST);
     return "resolved";
   } catch (error) {
     return error.code ?? error.message;
+  } finally {
+    dnsMs = Math.round(performance.now() - start);
   }
 }
 
@@ -242,7 +282,18 @@ async function observe(mode) {
     ipv4,
     ipv6,
     dns: resolved,
+    dnsMs,
   };
+  const dnsTimeout = argument("--dns-timeout");
+  if (mode === "offline" && dnsTimeout !== undefined) {
+    let text = "";
+    try {
+      text = readFileSync("/etc/resolv.conf", "utf8");
+    } catch {
+      // No file: the resolvers' defaults, which resolverTimeout("") gives.
+    }
+    seen.resolver = { timeout: resolverTimeout(text), expected: Number(dnsTimeout) };
+  }
   if (mode === "offline" && process.platform === "linux") {
     const expected = process.env["HKN_NO_NETWORK_UID"];
     seen.linux = {
@@ -286,7 +337,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   const mode = process.argv[2] === "--offline" ? "offline" : process.argv[2] === "--online" ? "online" : undefined;
   if (!mode) {
     console.error(
-      "usage: node scripts/assert-no-network.mjs --offline [--require-env A,B] [--expect-sid S] | --online",
+      "usage: node scripts/assert-no-network.mjs --offline [--require-env A,B] [--dns-timeout N] [--expect-sid S] | --online",
     );
     process.exit(2);
   }
