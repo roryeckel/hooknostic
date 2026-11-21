@@ -573,6 +573,51 @@ describe("bundleMcpLauncher's dependency resolution", () => {
     expect(resolved).toContainEqual({ request: "which", issuer: join(split.crossSpawn, "index.js") });
   });
 
+  it("falls back to Node's resolver when two loaded PnP APIs control the CLI, and names what it cannot resolve (#292)", async () => {
+    // `yarn dlx` beside a project's own install: both loaded APIs list the
+    // CLI's archive, so Yarn cannot say which serves it.
+    const split = await splitDependencies();
+    const crossSpawn = join(split.crossSpawn, "index.js");
+    const cli = join(split.dir, "cache", "hooknostic-npm-1.0.0.zip", "node_modules", "hooknostic", "dist", "index.js");
+    const ownDirectory = dirname(cli);
+    const asked: string[] = [];
+    const nodeRequests: { request: string; issuer: string | undefined }[] = [];
+    const findPnpApi = (location: string) => {
+      asked.push(location);
+      throw new Error(`Unable to locate pnpapi, the module '${location}' is controlled by multiple pnpapi instances.`);
+    };
+    const outcome = await withPnpRuntime({ findPnpApi }, () =>
+      withNodeResolver(
+        (request, issuer) => {
+          nodeRequests.push({ request, issuer });
+          if (request === "which" && issuer?.startsWith(split.crossSpawn + sep))
+            throw new Error(
+              `Unable to locate pnpapi, the module '${issuer}' is controlled by multiple pnpapi instances.`,
+            );
+          return standIn(split, false, request, issuer);
+        },
+        () =>
+          bundleMcpLauncher({ frontEnd: "client-expanded" }, cli).then(
+            () => undefined,
+            (thrown: unknown) => ({ thrown }),
+          ),
+      ),
+    );
+    expect(asked).toEqual([ownDirectory]);
+    expect(nodeRequests).toContainEqual({ request: "which", issuer: crossSpawn });
+    expect(outcome).toBeDefined();
+    expect(outcome!.thrown).toBeInstanceOf(Error);
+    const message = (outcome!.thrown as Error).message;
+    // The CLI's own directory was refused, but that refusal is why the
+    // fallback exists; what surfaces is the dependency that still cannot
+    // resolve through it.
+    expect(message).not.toContain(`'${ownDirectory}' is controlled by multiple pnpapi instances`);
+    expect(message).toContain(
+      `could not resolve "which" from ${crossSpawn}: ` +
+        `Unable to locate pnpapi, the module '${crossSpawn}' is controlled by multiple pnpapi instances.`,
+    );
+  });
+
   it("uses Node's resolver, not a PnP API, for a CLI outside every Yarn install", async () => {
     // `node -r .pnp.cjs` with a CLI installed by npm: its imports resolve as
     // the CLI's own do, through Node's resolver, which is Yarn's runtime.
