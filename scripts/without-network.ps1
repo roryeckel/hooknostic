@@ -2,18 +2,23 @@
 # Windows only, and GitHub-hosted runners only: it creates a local user and a
 # firewall rule. scripts/without-network.sh is the Linux twin.
 #
-#   pwsh scripts/without-network.ps1 -RequireEnv A,B [-TimeoutMinutes N] -Run '<command line>'
+#   pwsh scripts/without-network.ps1 -StepTimeoutMinutes N -RequireEnv A,B -Run '<command line>'
 #   pwsh scripts/without-network.ps1 -Cleanup
-#   pwsh scripts/without-network.ps1 -DryRun -RequireEnv A,B -Run '<command line>'
+#   pwsh scripts/without-network.ps1 -DryRun -StepTimeoutMinutes N -RequireEnv A,B -Run '<command line>'
 # The command line runs through cmd.exe, so .cmd shims such as pnpm work.
+#
+# -StepTimeoutMinutes is the calling step's own timeout-minutes. The wrapper
+# stops the lane itself $StopReserveSeconds before that budget runs out,
+# counted from its own start, so its message, its stop by owner SID and exit
+# 124 happen before the runner kills the step.
 #
 # The goal is that accidental egress fails loudly: a lane that needs a
 # download, or a harness that calls home. A deliberate escape is out of
 # scope (docs/testing.md, "Network isolation on Windows").
 #
 # A run:
-# 1. Checks its arguments: a non-empty -RequireEnv of variable names, and a
-#    command line.
+# 1. Checks its arguments: a non-empty -RequireEnv of variable names, a
+#    command line, and a step budget long enough to keep the reserve.
 # 2. Refuses unless on a GitHub-hosted runner, elevated, with the Windows
 #    Firewall service running and every profile enabled. -DryRun stops after
 #    these checks: tests use it, so no test ever reaches the steps below,
@@ -44,12 +49,17 @@ param(
   [string]$RequireEnv = '',
   [switch]$Cleanup,
   [switch]$DryRun,
-  [int]$TimeoutMinutes = 0,
+  [int]$StepTimeoutMinutes = 0,
   [string]$Run = ''
 )
+# From the wrapper's first line, so the limit counts its own setup too.
+$timer = [Diagnostics.Stopwatch]::StartNew()
 $ErrorActionPreference = 'Stop'
 $LaneUser = 'hknoffline'
 $RuleGroup = 'hkn-offline'
+# Time kept back from the step's budget: Stop-LaneProcesses' bounded recheck,
+# a bounded wait for the lane, and the last reads of its output.
+$StopReserveSeconds = 60
 
 function Stop-Refusing([string]$why) {
   [Console]::Error.WriteLine("without-network: $why")
@@ -71,6 +81,53 @@ function Stop-LaneProcesses([string]$sid) {
     Start-Sleep -Seconds 1
   }
   $left
+}
+
+# Prints what was appended to a lane output file since the last call.
+# $state holds, per file, the offset reached and one UTF-8 decoder, so a
+# multi-byte character split across two reads decodes whole. The offset is
+# where the reads stopped, never the file's length afterwards: bytes the
+# lane appends meanwhile are read on the next call, not skipped.
+function Read-New([string]$path, [hashtable]$state) {
+  if (-not (Test-Path -LiteralPath $path)) { return }
+  if (-not $state.ContainsKey($path)) {
+    $state[$path] = @{ pos = [long]0; decoder = (New-Object Text.UTF8Encoding($false)).GetDecoder() }
+  }
+  $file = $state[$path]
+  $buffer = New-Object byte[] 65536
+  $chars = New-Object char[] ($buffer.Length + 8)
+  $fs = [IO.File]::Open($path, 'Open', 'Read', 'ReadWrite')
+  try {
+    $null = $fs.Seek($file.pos, 'Begin')
+    while (($n = $fs.Read($buffer, 0, $buffer.Length)) -gt 0) {
+      $count = $file.decoder.GetChars($buffer, 0, $n, $chars, 0)
+      if ($count) { [Console]::Out.Write([string]::new($chars, 0, $count)) }
+    }
+    $file.pos = $fs.Position
+  } finally { $fs.Dispose() }
+}
+
+# Streams the lane's output files until it exits. Past $LimitSeconds on
+# $Timer it says so, runs $Stop, waits a bounded time, and returns 124;
+# otherwise it returns the lane's exit code.
+function Watch-Lane($Process, [string[]]$Paths, [double]$LimitSeconds, [Diagnostics.Stopwatch]$Timer, [scriptblock]$Stop, [int]$PollMilliseconds = 1000) {
+  $state = @{}
+  $timedOut = $false
+  while (-not $Process.HasExited) {
+    foreach ($path in $Paths) { Read-New $path $state }
+    if ($Timer.Elapsed.TotalSeconds -gt $LimitSeconds) { $timedOut = $true; break }
+    Start-Sleep -Milliseconds $PollMilliseconds
+  }
+  if ($timedOut) {
+    [Console]::Out.WriteLine("without-network: the lane ran past its limit of $([int]$LimitSeconds) s; stopping the user's processes")
+    $null = & $Stop
+    $null = $Process.WaitForExit(15000)
+  } else {
+    $Process.WaitForExit()
+  }
+  foreach ($path in $Paths) { Read-New $path $state }
+  if ($timedOut) { return 124 }
+  return $Process.ExitCode
 }
 
 if ($Cleanup) {
@@ -96,6 +153,10 @@ if ($names.Count -eq 0) { Stop-Refusing 'no required variables: pass -RequireEnv
 $bad = @($names | Where-Object { $_ -notmatch '^[A-Za-z_][A-Za-z0-9_]*$' })
 if ($bad.Count) { Stop-Refusing "not a variable name: $($bad -join ', ')" }
 if (-not $Run.Trim()) { Stop-Refusing "no command: pass -Run '<command line>'" }
+if ($StepTimeoutMinutes * 60 -le 2 * $StopReserveSeconds) {
+  Stop-Refusing "no room to stop the lane: pass -StepTimeoutMinutes, the step's timeout-minutes, above $(2 * $StopReserveSeconds / 60) (got $StepTimeoutMinutes)"
+}
+$limitSeconds = $StepTimeoutMinutes * 60 - $StopReserveSeconds
 
 # 2. Refusals.
 if ($env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_ENVIRONMENT -ne 'github-hosted') {
@@ -110,10 +171,9 @@ $off = @(Get-NetFirewallProfile | Where-Object { -not $_.Enabled })
 if ($off.Count) { Stop-Refusing "firewall profile(s) not enabled: $($off.Name -join ', ')" }
 if (Get-LocalUser -Name $LaneUser -ErrorAction SilentlyContinue) { Stop-Refusing "user $LaneUser exists already: one lane per job" }
 if ($DryRun) {
-  "without-network: dry run: would run $(($Run.Trim() -split '\s+')[0]) as $LaneUser, requiring $($names -join ', ')"
+  "without-network: dry run: would run $(($Run.Trim() -split '\s+')[0]) as $LaneUser, requiring $($names -join ', '); stopping it $limitSeconds s after the wrapper starts (the step's $StepTimeoutMinutes minutes less $StopReserveSeconds s)"
   exit 0
 }
-$timer = [Diagnostics.Stopwatch]::StartNew()
 
 # 3. The user and its rule.
 $bytes = New-Object byte[] 24
@@ -173,35 +233,17 @@ $start = @{
   FilePath = $node; ArgumentList = @("`"$lane`"", "`"$laneJson`""); Credential = $cred; WorkingDirectory = (Get-Location).Path
   NoNewWindow = $true; PassThru = $true; RedirectStandardOutput = $out; RedirectStandardError = $err
 }
-try { $p = Start-Process @start -UseNewEnvironment } catch { $p = Start-Process @start }
+try {
+  $p = Start-Process @start -UseNewEnvironment
+  'without-network: started the lane script with a fresh environment (-UseNewEnvironment)'
+} catch {
+  # The lane script then has the runner's environment; it hands its own
+  # children (the check and the command) only lane.json's allowlist.
+  "without-network: Start-Process -UseNewEnvironment failed ($($_.Exception.GetType().Name)); started the lane script without it, so only its children get the allowlisted environment"
+  $p = Start-Process @start
+}
 $null = $p.Handle # keeps ExitCode readable after the process ends
-"without-network: started the lane as $LaneUser after $([int]$timer.Elapsed.TotalSeconds) s"
-$pos = @{}
-function Read-New([string]$path) {
-  if (-not (Test-Path $path)) { return }
-  if (-not $pos.ContainsKey($path)) { $pos[$path] = [long]0 }
-  $fs = [IO.File]::Open($path, 'Open', 'Read', 'ReadWrite')
-  try {
-    $null = $fs.Seek($pos[$path], 'Begin')
-    $text = (New-Object IO.StreamReader($fs)).ReadToEnd()
-    $pos[$path] = $fs.Length
-  } finally { $fs.Dispose() }
-  if ($text) { [Console]::Out.Write($text) }
-}
-$timedOut = $false
-while (-not $p.HasExited) {
-  Read-New $out
-  Read-New $err
-  if ($TimeoutMinutes -gt 0 -and $timer.Elapsed.TotalMinutes -gt $TimeoutMinutes) { $timedOut = $true; break }
-  Start-Sleep -Milliseconds 1000
-}
-if ($timedOut) {
-  "without-network: the lane ran past $TimeoutMinutes minutes; stopping the user's processes"
-  $null = Stop-LaneProcesses $sid
-}
-$p.WaitForExit()
-Read-New $out
-Read-New $err
-$code = if ($timedOut) { 124 } else { $p.ExitCode }
+"without-network: started the lane as $LaneUser after $([int]$timer.Elapsed.TotalSeconds) s; it is stopped after $limitSeconds s"
+$code = Watch-Lane -Process $p -Paths $out, $err -LimitSeconds $limitSeconds -Timer $timer -Stop { Stop-LaneProcesses $sid }
 "without-network: the lane exited $code after $([int]$timer.Elapsed.TotalSeconds) s"
 exit $code
