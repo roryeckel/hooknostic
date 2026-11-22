@@ -67,4 +67,18 @@ export default tseslint.config(
       "@typescript-eslint/no-explicit-any": "off",
     },
   },
+  {
+    // Opt-in suites print progress through report() (packages/cli/test/report.ts),
+    // whose stderr every reporter shows on a passing run (#274). The rule bans
+    // every console method so a later console.log cannot restore the hidden
+    // output. Inline config is off so an eslint-disable comment cannot reopen
+    // the regression (#291).
+    files: [
+      "packages/cli/test/report.ts",
+      "packages/cli/test/yarn-pnp-consumer.test.ts",
+      "packages/cli/test/opencode-v2-playback.test.ts",
+    ],
+    linterOptions: { noInlineConfig: true },
+    rules: { "no-console": "error" },
+  },
 );
