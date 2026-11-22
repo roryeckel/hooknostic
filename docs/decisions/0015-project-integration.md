@@ -180,6 +180,71 @@ because Codex has no equivalent native field.
 - **Pi is unchanged.** Its registration loses to a host file entry rather than
   overriding one, and no capture covers a disabled collision.
 
+## Amendment — 2026-11-21: directory flushes after renames
+
+- **This supersedes the last sentence of the durable-journal paragraph in the
+  Decision above** ("File data is flushed before rename; filesystem/power-loss
+  rename durability remains subject to platform guarantees"). Flushing file
+  data is not enough: a rename is durable only once its directory's entries
+  are, and the journal design never flushed one.
+- **The durable order is now explicit.** Every destination is staged and
+  content-flushed, then the journal is renamed into place. The journal's
+  directory (`.hooknostic`) is flushed, then the project root: a first sync may
+  have just created `.hooknostic`, and flushing it alone does not persist its
+  entry in the root. Only then are destinations replaced or removed. After all
+  of them, each touched destination directory — including every newly created
+  ancestor — is flushed once, sorted for determinism. The journal is removed,
+  and `.hooknostic` is flushed once more as the commit point.
+- **A failure before the commit point attempts rollback only once the journal
+  is installed.** If staging or the journal replacement fails before its
+  rename, no destination file has changed (state and staging directories may
+  exist) and no rollback runs. Once the journal rename has succeeded, a
+  journal-directory flush failure leaves that rename unconfirmed, while a
+  project-root flush failure can lose a newly created `.hooknostic` entry even
+  though its own flush succeeded. Both abort before any destination is replaced
+  or removed and attempt rollback from the in-process journal, which is visible
+  to the process but not known to be crash-durable. A destination-directory
+  flush failure aborts after the destinations are replaced or removed and
+  attempts rollback. Rollback is attempted, not guaranteed: a recovery
+  conflict, or any other failure to complete it, leaves the journal and
+  `hooknostic recover` must be run with the same configuration. The final flush
+  after the journal's removal is best effort and swallowed: only a crash can
+  bring the journal back, and recovery rolls it back, so it must not turn an
+  applied sync into a reported failure.
+- **Recovery flushes before it forgets.** It flushes every existing ancestor,
+  through the project root, of every validated journal entry — including
+  entries already at their preimage, which a retried recovery skips replacing
+  — plus every directory created while restoring, once each and sorted, before
+  removing the journal. It then flushes `.hooknostic` best effort after the
+  unlink. Without this, a crash during recovery, or a retry after a failed
+  flush, could persist the journal's removal while losing a restored
+  replacement.
+- **Directory flushes are Linux descriptor-relative, or skipped.** Linux's
+  `/proc/self/fd` is used only when a cached traversal probe succeeds. Windows,
+  macOS, FreeBSD and Linux hosts without working `/proc/self/fd` traversal skip
+  directory flushing and take the weaker boundary; fdescfs `/dev/fd` is not used
+  because it resolves the descriptor to a pathname. The root is opened by
+  absolute path, then each component below it is opened relative to the pinned
+  parent descriptor with `O_NOFOLLOW | O_DIRECTORY`. The guarantee starts below
+  the opened root, assumes its ancestors stay stable, and does not extend to
+  path-based recovery metadata checks, renames or removals. A component swapped
+  for a symlink below the root fails with `ELOOP`/`ENOTDIR`. On a pre-unlink
+  flush that prevents normal journal removal, though sync can still attempt
+  rollback (which may remove it); a post-unlink commit flush has no journal to
+  retain. Filesystems that cannot flush a directory at all (`EINVAL`, `EISDIR`,
+  `ENOTSUP`, `EOPNOTSUPP`, `ENOSYS`) are skipped too; there is no absolute-path
+  fallback and no universal POSIX guarantee. Every other error remains fatal
+  before the journal is removed, while the post-unlink commit flush is best
+  effort.
+- **Windows has no directory flush.** `fs.open` can open a directory there, but
+  `fs.fsync` on it fails with EPERM because `FlushFileBuffers` refuses a
+  directory handle. Win32 has `MOVEFILE_WRITE_THROUGH`, but Node does not expose
+  it through `fs.rename`. Network and FUSE filesystems may honour descriptor
+  flushes differently or not at all, so power-loss durability there is the
+  filesystem's guarantee, not Hooknostic's. Recovery still checks every file
+  against the journal before restoring anything; directory flushing never
+  weakens that check.
+
 ## Boundaries
 
 Hooknostic compiles artifacts and optionally reconciles explicitly configured

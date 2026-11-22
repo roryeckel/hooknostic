@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
-import { type BigIntStats, fsync } from "node:fs";
-import { lstat, mkdir, open, readFile, realpath, rename, rm } from "node:fs/promises";
+import { type BigIntStats, constants, fsync } from "node:fs";
+import { type FileHandle, lstat, mkdir, open, readFile, realpath, rename, rm } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, sep } from "node:path";
 
 import { applyEdits, modify, type Node as JsonNode, type ParseError, parseTree } from "jsonc-parser/lib/esm/main.js";
@@ -631,6 +631,16 @@ interface Journal {
   config: string;
   entries: JournalEntry[];
 }
+interface Replaced {
+  destination: string;
+  directories: string[];
+}
+/**
+ * Replaces `path` with `value`, or removes it, and reports the destination it
+ * wrote plus every directory whose entries changed, so the caller can flush
+ * them. A newly created ancestor counts: the entry for a new child directory in
+ * its parent is itself a directory change.
+ */
 async function replace(
   root: string,
   path: string,
@@ -638,24 +648,181 @@ async function replace(
   mode: number,
   expected?: FileState,
   staged?: string,
-): Promise<void> {
-  const destination = await projectPath(root, path);
-  if (expected !== undefined && !sameState(await fileState(destination), expected))
-    throw new Error(`write precondition changed: ${path}`);
-  if (value === null) {
-    await rm(destination, { force: true });
-    return;
-  }
-  await mkdir(dirname(destination), { recursive: true });
-  const temp = staged ?? (await stage(root, value, mode));
+): Promise<Replaced> {
+  // `replace` owns a caller's staged file from here on. Its own cleanup is best
+  // effort, so a failed replacement is never reported as a failed cleanup.
+  let temp = staged;
   try {
+    const destination = await projectPath(root, path);
+    if (expected !== undefined && !sameState(await fileState(destination), expected))
+      throw new Error(`write precondition changed: ${path}`);
+    if (value === null) {
+      await rm(destination, { force: true });
+      return { destination, directories: [dirname(destination)] };
+    }
+    const parent = dirname(destination);
+    const created = await mkdir(parent, { recursive: true });
+    const source = temp ?? (await stage(root, value, mode));
+    temp = source;
     await projectPath(root, path);
     if (expected !== undefined && !sameState(await fileState(destination), expected))
       throw new Error(`write precondition changed: ${path}`);
-    await rename(temp, destination);
+    await rename(source, destination);
+    // The rename consumed the staged file; there is nothing left to clean up.
+    temp = undefined;
+    const directories = new Set([parent]);
+    if (created !== undefined) {
+      directories.add(created);
+      // The new directory's own entry in its parent changed too, as did every
+      // intermediate directory between the first one created and the destination.
+      for (let cursor = parent; cursor !== created && cursor !== dirname(cursor);) {
+        cursor = dirname(cursor);
+        directories.add(cursor);
+      }
+      directories.add(dirname(created));
+    }
+    return { destination, directories: [...directories] };
   } finally {
-    await rm(temp, { force: true });
+    if (temp !== undefined) await rm(temp, { force: true }).catch(() => undefined);
   }
+}
+/**
+ * Every error that means the filesystem cannot flush a directory at all,
+ * rather than failing to do so this time. `EINVAL` and `EISDIR` are what a
+ * platform answers when the call does not apply to a directory; the others are
+ * its "not implemented" spellings.
+ */
+const UNSUPPORTED_DIRECTORY_FLUSH = new Set(["EINVAL", "EISDIR", "ENOTSUP", "EOPNOTSUPP", "ENOSYS"]);
+function unsupportedDirectoryFlush(error: unknown): boolean {
+  return UNSUPPORTED_DIRECTORY_FLUSH.has((error as NodeJS.ErrnoException).code ?? "");
+}
+function changedDirectory(path: string): Error {
+  return new Error(`directory changed while flushing: ${path}`);
+}
+const DIRECTORY_OPEN_FLAGS = constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW;
+const LINUX_DESCRIPTOR_ROOT = "/proc/self/fd";
+let descriptorTraversal: Promise<boolean> | undefined;
+/**
+ * Whether the Linux descriptor-relative primitive works on this host. This is
+ * capability-only: `flushDirectory` owns the platform gate, so removing that
+ * gate is observable as a `/proc/self/fd` open attempt. fdescfs `/dev/fd` is
+ * not used because it resolves the descriptor to a pathname. The probe result
+ * is cached. Its open failures mean "unavailable"; close failures are best
+ * effort and do not make an otherwise usable probe fail.
+ */
+export async function supportsDirectoryFlush(): Promise<boolean> {
+  descriptorTraversal ??= probeLinuxDescriptorTraversal();
+  return await descriptorTraversal;
+}
+async function probeLinuxDescriptorTraversal(): Promise<boolean> {
+  let root: FileHandle | undefined;
+  try {
+    root = await open(LINUX_DESCRIPTOR_ROOT, DIRECTORY_OPEN_FLAGS);
+  } catch {
+    return false;
+  }
+  let child: FileHandle | undefined;
+  try {
+    try {
+      child = await open(`${LINUX_DESCRIPTOR_ROOT}/${root.fd}/.`, DIRECTORY_OPEN_FLAGS);
+      return true;
+    } catch {
+      return false;
+    }
+  } finally {
+    if (child !== undefined) await child.close().catch(() => undefined);
+    await root.close().catch(() => undefined);
+  }
+}
+/**
+ * Opens one directory of the walk. `ELOOP`/`ENOTDIR` mean a component was
+ * swapped for a symlink or a non-directory after its parent was pinned, so the
+ * flush fails closed. The unsupported-filesystem allowlist skips the flush.
+ */
+async function openWalkedDirectory(path: string, displayPath: string): Promise<FileHandle | null> {
+  try {
+    return await open(path, DIRECTORY_OPEN_FLAGS);
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === "ELOOP" || code === "ENOTDIR") throw changedDirectory(displayPath);
+    if (unsupportedDirectoryFlush(error)) return null;
+    throw error;
+  }
+}
+/**
+ * Flushes a directory's own entries, making a completed rename into it durable
+ * across a power loss or kernel crash.
+ *
+ * `root` is the canonical project root. On Linux, where `/proc/self/fd` gives a
+ * real descriptor-relative primitive, the walk opens the root and then each
+ * component through the pinned parent descriptor with
+ * `O_NOFOLLOW | O_DIRECTORY`; no absolute-path `lstat` walk or identity check
+ * is involved. A component swapped for a symlink therefore fails with
+ * `ELOOP`/`ENOTDIR` instead of being followed. The root itself is opened by
+ * absolute path: the guarantee starts below it and assumes its ancestors stay
+ * stable. Path-based recovery metadata checks, renames and removals are outside
+ * this guarantee.
+ *
+ * Windows, macOS, FreeBSD and any Linux host where `/proc/self/fd` traversal
+ * does not work skip directory flushing entirely rather than fall back to
+ * absolute paths, so their durability is weaker. A filesystem that cannot
+ * flush a directory answers with one of `UNSUPPORTED_DIRECTORY_FLUSH`, which
+ * is skipped; every other failure is real and propagated. The flush is
+ * `fs.fsync` on the descriptor, not `FileHandle.sync()`, for the Yarn
+ * Plug'n'Play reason `createFlushed` records (#229).
+ *
+ * Windows returns immediately: `fs.open` can open a directory there, but
+ * `fs.fsync` on that descriptor fails with EPERM, because `FlushFileBuffers`
+ * refuses a directory handle. Win32 has `MOVEFILE_WRITE_THROUGH`, but Node does
+ * not expose it through `fs.rename`. Rename durability there stays with the
+ * filesystem.
+ */
+async function flushDirectory(root: string, path: string): Promise<void> {
+  if (process.platform !== "linux") return;
+  if (!(await supportsDirectoryFlush())) return;
+  const relation = relative(root, path);
+  if (isAbsolute(relation) || relation === ".." || relation.startsWith(`..${sep}`))
+    throw new Error(`refusing to flush a directory outside the project root: ${path}`);
+  const openedRoot = await openWalkedDirectory(root, path);
+  if (openedRoot === null) return;
+  let current: FileHandle | undefined = openedRoot;
+  try {
+    if (relation !== "")
+      for (const part of relation.split(sep)) {
+        const parent = current;
+        if (parent === undefined) return;
+        current = undefined;
+        let child: FileHandle | null;
+        try {
+          child = await openWalkedDirectory(`${LINUX_DESCRIPTOR_ROOT}/${parent.fd}/${part}`, path);
+        } catch (error) {
+          // The child failed first; its error is the one to report.
+          await parent.close().catch(() => undefined);
+          throw error;
+        }
+        try {
+          await parent.close();
+        } catch (error) {
+          // A standalone close failure must surface; clean up the child first.
+          if (child !== null) await child.close().catch(() => undefined);
+          throw error;
+        }
+        if (child === null) return;
+        current = child;
+      }
+    const final = current;
+    if (final === undefined) return;
+    try {
+      await new Promise<void>((resolve, reject) => fsync(final.fd, (error) => (error ? reject(error) : resolve())));
+    } catch (error) {
+      if (!unsupportedDirectoryFlush(error)) throw error;
+    }
+  } catch (error) {
+    // Never mask the first error with a failed close.
+    if (current !== undefined) await current.close().catch(() => undefined);
+    throw error;
+  }
+  if (current !== undefined) await current.close();
 }
 /**
  * Creates `path` exclusively, writes `value`, flushes it to disk and closes
@@ -739,11 +906,28 @@ async function verifyPreconditions(root: string, preconditions: readonly Project
     }
   }
 }
+function failureText(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+/**
+ * The error reported when the transaction could not roll back. It keeps both
+ * failures so neither is lost, and points at the journal recovery needs.
+ */
+function rollbackFailure(original: unknown, rollback: unknown): Error {
+  return new Error(
+    `synchronization failed: ${failureText(original)}; rollback failed: ${failureText(rollback)}; ` +
+      `the transaction journal remains at ${JOURNAL}; run hooknostic recover with the same configuration`,
+    { cause: new AggregateError([original, rollback], "synchronization and rollback failed") },
+  );
+}
 export async function applyProject(root: string, config: string, plan: Reconciliation): Promise<void> {
+  const canonicalRoot = await realpath(root);
   const release = await acquire(root);
   let journalWritten = false;
   const staged = new Map<string, string>();
-  try {
+  let failure: unknown;
+
+  const synchronize = async (): Promise<void> => {
     if (await bytes(await projectPath(root, JOURNAL)))
       throw new Error("unfinished transaction; run hooknostic recover");
     await verifyPreconditions(root, plan.preconditions);
@@ -765,25 +949,91 @@ export async function applyProject(root: string, config: string, plan: Reconcili
         ...(c.beforeMode === undefined ? {} : { beforeMode: c.beforeMode }),
       })),
     };
-    await replace(root, JOURNAL, Buffer.from(JSON.stringify(journal)), 0o600);
+    const journalReplacement = await replace(root, JOURNAL, Buffer.from(JSON.stringify(journal)), 0o600);
     journalWritten = true;
+    const stateDirectory = dirname(journalReplacement.destination);
+    // Persist the journal's rename before any destination changes. The root is
+    // flushed too because a first sync may have just created `.hooknostic`;
+    // flushing it alone does not persist its entry in the root.
+    await flushDirectory(canonicalRoot, stateDirectory);
+    await flushDirectory(canonicalRoot, dirname(stateDirectory));
+    const directories = new Set<string>();
     for (const change of plan.changes) {
       const expected = beforeState(change);
       if (!sameState(await fileState(await projectPath(root, change.path)), expected))
         throw new Error(`project changed during synchronization: ${change.path}`);
-      await replace(root, change.path, change.after, change.mode, expected, staged.get(change.path));
+      // `replace` takes ownership of a staged file and removes it best effort
+      // if the replacement fails, so the caller's cleanup must forget it.
+      const stagedPath = staged.get(change.path);
+      staged.delete(change.path);
+      const replaced = await replace(root, change.path, change.after, change.mode, expected, stagedPath);
+      for (const directory of replaced.directories) directories.add(directory);
     }
+    // A rename is durable only once its directory is; flush after them all so
+    // each directory is flushed once, in a stable order. New ancestors count:
+    // their own entries in their parents also changed.
+    for (const directory of [...directories].sort()) await flushDirectory(canonicalRoot, directory);
     await rm(await projectPath(root, JOURNAL));
-  } catch (error) {
-    if (journalWritten) await restore(root, config);
-    throw error;
-  } finally {
+    // Best-effort commit point. Only a crash can bring the journal back now,
+    // and recovery rolls that back, so this failure must not report an applied
+    // synchronization as failed.
+    await flushDirectory(canonicalRoot, stateDirectory).catch(() => undefined);
+  };
+
+  try {
     try {
-      for (const path of staged.values()) await rm(path, { force: true });
-    } finally {
-      await release();
+      await synchronize();
+    } catch (error) {
+      failure = error;
+      if (journalWritten) {
+        try {
+          await restore(root, config);
+        } catch (rollback) {
+          failure = rollbackFailure(error, rollback);
+        }
+      }
     }
+  } finally {
+    let cleanupFailure: unknown;
+    for (const path of staged.values()) {
+      try {
+        await rm(path, { force: true });
+      } catch (error) {
+        cleanupFailure ??= error;
+      }
+    }
+    try {
+      await release();
+    } catch (error) {
+      cleanupFailure ??= error;
+    }
+    // A body failure is the one the caller needs; cleanup must not mask it.
+    if (failure === undefined) failure = cleanupFailure;
   }
+  if (failure !== undefined) throw failure;
+}
+/**
+ * The existing ancestors of `start`, from `start` up to `root` inclusive, for
+ * a recovery that must flush every directory a restored rename could have
+ * changed. A missing ancestor is skipped; every other failure is real. The walk
+ * stops before leaving the project root.
+ */
+async function existingAncestors(root: string, start: string): Promise<string[]> {
+  const directories: string[] = [];
+  let cursor = start;
+  while (true) {
+    const relation = relative(root, cursor);
+    if (isAbsolute(relation) || relation === ".." || relation.startsWith(`..${sep}`)) break;
+    try {
+      await lstat(cursor);
+      directories.push(cursor);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    }
+    if (cursor === root || cursor === dirname(cursor)) break;
+    cursor = dirname(cursor);
+  }
+  return directories;
 }
 async function restore(root: string, config: string): Promise<void> {
   const raw = await bytes(await projectPath(root, JOURNAL));
@@ -791,7 +1041,8 @@ async function restore(root: string, config: string): Promise<void> {
   const journal = JSON.parse(raw.toString()) as Journal;
   if (journal.schemaVersion !== 1 || journal.config !== config || !Array.isArray(journal.entries))
     throw new Error("invalid recovery journal");
-  const actions: { entry: JournalEntry; before: FileState; current: FileState }[] = [];
+  const canonicalRoot = await realpath(root);
+  const actions: { entry: JournalEntry; before: FileState; current: FileState; parent: string }[] = [];
   const seen = new Set<string>();
   for (const entry of journal.entries) {
     if (
@@ -814,7 +1065,8 @@ async function restore(root: string, config: string): Promise<void> {
       contents: beforeContents,
       ...(entry.beforeMode === undefined ? {} : { mode: entry.beforeMode }),
     };
-    const current = await fileState(await projectPath(root, entry.path));
+    const destination = await projectPath(root, entry.path);
+    const current = await fileState(destination);
     const matchesAfter =
       entry.afterHash === null
         ? current.contents === null
@@ -825,15 +1077,30 @@ async function restore(root: string, config: string): Promise<void> {
       throw new Error(
         `recovery conflict at ${entry.path}; preserve the journal and resolve the external edit manually`,
       );
-    actions.push({ entry, before, current });
+    actions.push({ entry, before, current, parent: dirname(destination) });
   }
+  const directories = new Set<string>();
   for (const { entry, before, current } of actions.reverse()) {
     if (!sameState(await fileState(await projectPath(root, entry.path)), current))
       throw new Error(`recovery precondition changed: ${entry.path}`);
-    if (!sameState(current, before))
-      await replace(root, entry.path, before.contents, before.mode ?? entry.mode, current);
+    if (!sameState(current, before)) {
+      const replaced = await replace(root, entry.path, before.contents, before.mode ?? entry.mode, current);
+      for (const directory of replaced.directories) directories.add(directory);
+    }
   }
-  await rm(await projectPath(root, JOURNAL));
+  // A retry can find a path already at its preimage, so no replacement adds its
+  // parent below. Flush every existing ancestor of every validated entry
+  // anyway: an earlier attempt may have restored the bytes without persisting a
+  // rename, and removing the journal now would discard the only record of that.
+  for (const { parent } of actions) {
+    for (const directory of await existingAncestors(canonicalRoot, parent)) directories.add(directory);
+  }
+  // Without this, a crash during recovery can persist the journal's removal
+  // while losing a restore's rename.
+  for (const directory of [...directories].sort()) await flushDirectory(canonicalRoot, directory);
+  const journalDestination = await projectPath(root, JOURNAL);
+  await rm(journalDestination);
+  await flushDirectory(canonicalRoot, dirname(journalDestination)).catch(() => undefined);
 }
 /** Who may hold each lock, as the messages about it name them. */
 const LOCK_HOLDERS: Readonly<Record<LockName, string>> = { [LOCK]: "sync or recover", [RECOVERY_LOCK]: "recover" };
@@ -993,15 +1260,31 @@ export async function recoverProject(root: string, config: string): Promise<void
   validatePath(config);
   await clearDeadLock(root, RECOVERY_LOCK);
   const recoveryRelease = await acquire(root, RECOVERY_LOCK);
+  let failure: unknown;
   try {
     await clearDeadLock(root, LOCK);
     const release = await acquire(root);
     try {
       await restore(root, config);
+    } catch (error) {
+      failure = error;
     } finally {
-      await release();
+      try {
+        await release();
+      } catch (error) {
+        // A release error is secondary to a restore error; surface it only when
+        // recovery itself succeeded.
+        failure ??= error;
+      }
     }
+  } catch (error) {
+    failure ??= error;
   } finally {
-    await recoveryRelease();
+    try {
+      await recoveryRelease();
+    } catch (error) {
+      failure ??= error;
+    }
   }
+  if (failure !== undefined) throw failure;
 }
