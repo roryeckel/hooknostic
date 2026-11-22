@@ -20,6 +20,7 @@ import { fileURLToPath } from "node:url";
 import { afterAll, expect, it } from "vitest";
 
 const script = fileURLToPath(new URL("without-network.ps1", import.meta.url));
+const firewallTrial = fileURLToPath(new URL("../.capture/network-egress/windows/firewall-trial.ps1", import.meta.url));
 const shell = ["pwsh", ...(process.platform === "win32" ? ["powershell"] : [])].find(
   (candidate) => spawnSync(candidate, ["-NoProfile", "-Command", "exit 0"], { encoding: "utf8" }).status === 0,
 );
@@ -70,6 +71,298 @@ it.skipIf(!shell)("accepts valid arguments, then refuses outside a GitHub-hosted
 const dir = mkdtempSync(join(tmpdir(), "without-network-ps1-"));
 // Retried: on Windows a child that has just been stopped can hold its files for a moment.
 afterAll(() => rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 }));
+
+// Parses a PowerShell script, then runs $body against its syntax tree. $body
+// must print one JSON object; a parse error is reported as parseErrors.
+const parse = (name, target, body) => {
+  const file = join(dir, `${name}.ps1`);
+  writeFileSync(
+    file,
+    `param([string]$Target)
+$tokens = $null
+$errors = $null
+$ast = [System.Management.Automation.Language.Parser]::ParseFile($Target, [ref]$tokens, [ref]$errors)
+if ($errors.Count) {
+  [ordered]@{ parseErrors = @($errors | ForEach-Object { "$($_.Extent.StartLineNumber): $($_.Message)" }) } | ConvertTo-Json -Depth 3 -Compress
+  exit 0
+}
+${body}
+`,
+  );
+  const result = spawnSync(shell, ["-NoProfile", "-NonInteractive", "-File", file, "-Target", target], {
+    encoding: "utf8",
+    timeout: 30_000,
+  });
+  expect(result.error).toBeUndefined();
+  expect(result.status, result.stdout + result.stderr).toBe(0);
+  return JSON.parse(result.stdout.trim());
+};
+
+// Runs only Invoke-LaneCleanup, or the real -Cleanup branch, with the
+// firewall and local-user cmdlets stubbed. A guard aborts before either runs
+// if a stub does not shadow the real cmdlet, so no firewall rule or user is
+// touched on this host.
+const cleanupHarness = join(dir, "cleanup-harness.ps1");
+writeFileSync(
+  cleanupHarness,
+  `param(
+  [Parameter(Mandatory)][ValidateSet('helper', 'branch')][string]$Mode,
+  [Parameter(Mandatory)][string]$Scenario,
+  [Parameter(Mandatory)][string]$Script
+)
+$ErrorActionPreference = 'Continue'
+$WarningPreference = 'SilentlyContinue'
+$global:HknScenario = $Scenario
+$global:HknRuleCalls = 0
+$global:HknRemoved = 0
+$global:HknRules = @()
+if ($global:HknScenario -in 'clean-after-removal', 'rules-recheck') {
+  $global:HknRules = @([pscustomobject]@{ Name = 'hkn-offline outbound'; RuleGroup = 'hkn-offline' })
+}
+
+function global:Stop-LaneProcesses { param([string]$sid) 0 }
+function global:Get-LocalUser {
+  [CmdletBinding()] param([string]$Name)
+  if ($global:HknScenario -eq 'user-discovery') {
+    Write-Error 'local user provider unavailable'
+    return
+  }
+  @()
+}
+function global:Get-NetFirewallRule {
+  [CmdletBinding()] param([string]$Group)
+  $global:HknRuleCalls++
+  if ($global:HknScenario -eq 'rules-discovery' -and $global:HknRuleCalls -eq 1) {
+    Write-Error 'firewall rule provider unavailable'
+    return
+  }
+  if ($global:HknScenario -eq 'rules-recheck' -and $global:HknRuleCalls -eq 2) {
+    Write-Error 'firewall rule provider unavailable'
+    return
+  }
+  if ($PSBoundParameters.ContainsKey('Group')) {
+    $matches = @($global:HknRules | Where-Object { $_.RuleGroup -eq $Group })
+    if ($matches.Count -eq 0) {
+      # The real cmdlet raises ObjectNotFound, not an empty result, for a
+      # missing group. A regression to -Group must fail on a clean runner.
+      Write-Error -Message "No MSFT_NetFirewallRule objects found with property 'Group' equal to '$Group'" -Category ObjectNotFound
+      return
+    }
+    return $matches
+  }
+  return $global:HknRules
+}
+function global:Remove-NetFirewallRule {
+  [CmdletBinding()]
+  param([Parameter(ValueFromPipeline = $true)]$InputObject)
+  process {
+    $global:HknRules = @($global:HknRules | Where-Object { $_.Name -ne $InputObject.Name })
+    $global:HknRemoved++
+  }
+}
+function global:Disable-LocalUser {
+  [CmdletBinding()] param([string]$Name)
+}
+
+# A provider/access failure is a nonterminating error, so SilentlyContinue
+# hides it while Stop terminates. That is the distinction the helper must keep.
+foreach ($name in 'Get-LocalUser', 'Get-NetFirewallRule', 'Remove-NetFirewallRule', 'Disable-LocalUser') {
+  $command = Get-Command $name -ErrorAction Stop
+  if ($command.CommandType -ne 'Function') { throw "not stubbed: $name" }
+}
+
+if ($Mode -eq 'helper') {
+  $tokens = $null
+  $errors = $null
+  $ast = [System.Management.Automation.Language.Parser]::ParseFile($Script, [ref]$tokens, [ref]$errors)
+  if ($errors.Count) { throw 'parse errors' }
+  $definition = $ast.FindAll({
+    param($n)
+    $n -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq 'Invoke-LaneCleanup'
+  }, $true) | Select-Object -First 1
+  if (-not $definition) { throw 'missing Invoke-LaneCleanup' }
+  . ([scriptblock]::Create($definition.Extent.Text))
+  $LaneUser = 'hknoffline'
+  $RuleGroup = 'hkn-offline'
+  $capture = New-Object IO.StringWriter
+  $original = [Console]::Out
+  try {
+    [Console]::SetOut($capture)
+    $result = Invoke-LaneCleanup
+  } finally {
+    [Console]::SetOut($original)
+  }
+  [ordered]@{
+    clean = [bool]$result
+    output = $capture.ToString()
+    ruleCalls = $global:HknRuleCalls
+    removed = $global:HknRemoved
+    remaining = @($global:HknRules).Count
+  } | ConvertTo-Json -Compress
+  exit 0
+}
+
+& $Script -Cleanup
+exit $LASTEXITCODE
+`,
+);
+const cleanup = (mode, scenario) =>
+  spawnSync(
+    shell,
+    ["-NoProfile", "-NonInteractive", "-File", cleanupHarness, "-Mode", mode, "-Scenario", scenario, "-Script", script],
+    { encoding: "utf8", timeout: 60_000 },
+  );
+// Both the helper's return value and the -Cleanup branch's exit code, so a
+// helper that returns false but exits 0 cannot pass.
+const expectCleanup = (scenario, clean, extra = {}) => {
+  const helper = cleanup("helper", scenario);
+  expect(helper.error).toBeUndefined();
+  expect(helper.status, helper.stdout + helper.stderr).toBe(0);
+  expect(JSON.parse(helper.stdout.trim()), scenario).toMatchObject({ clean, ...extra });
+  const branch = cleanup("branch", scenario);
+  expect(branch.error).toBeUndefined();
+  expect(branch.status, branch.stdout + branch.stderr).toBe(clean ? 0 : 1);
+};
+
+it.skipIf(!shell)("keeps -Cleanup idempotent when there is no lane user and no rule", () => {
+  expectCleanup("absent", true, { removed: 0, remaining: 0 });
+});
+
+it.skipIf(!shell)("keeps -Cleanup clean after a successful removal and empty recheck", () => {
+  expectCleanup("clean-after-removal", true, { removed: 1, remaining: 0 });
+});
+
+it.skipIf(!shell)("fails -Cleanup closed when the lane-user provider fails", () => {
+  expectCleanup("user-discovery", false);
+});
+
+it.skipIf(!shell)("fails -Cleanup closed when the initial rule-group discovery fails", () => {
+  expectCleanup("rules-discovery", false);
+});
+
+it.skipIf(!shell)("fails -Cleanup closed when the post-removal rule-group recheck fails", () => {
+  expectCleanup("rules-recheck", false, { removed: 1, remaining: 0 });
+});
+
+it.skipIf(!shell)("keeps the user, rule, scratch and lane setup under one try/finally", () => {
+  const parsed = parse(
+    "try-finally",
+    script,
+    String.raw`
+$found = @($ast.FindAll({
+  param($n)
+  $n -is [System.Management.Automation.Language.TryStatementAst] -and
+    $n.Finally -and $n.Body.Extent.Text.Contains('New-LocalUser')
+}, $true))
+if ($found.Count -ne 1) {
+  [ordered]@{ found = $found.Count } | ConvertTo-Json -Compress
+  exit 0
+}
+$statement = $found[0]
+[ordered]@{
+  found = $found.Count
+  body = $statement.Body.Extent.Text
+  finally = $statement.Finally.Extent.Text
+  after = $ast.Extent.Text.Substring($statement.Extent.EndOffset)
+} | ConvertTo-Json -Compress
+`,
+  );
+  expect(parsed.parseErrors).toBeUndefined();
+  expect(parsed.found).toBe(1);
+  for (const name of ["New-LocalUser", "New-NetFirewallRule", "Start-Process", "Watch-Lane"]) {
+    expect(parsed.body).toContain(name);
+  }
+  // The finally runs the cleanup helper, and only then does a successful lane
+  // report its own code.
+  expect(parsed.finally).toContain("Invoke-LaneCleanup");
+  expect(parsed.after).toContain('"without-network: the lane exited $code');
+  expect(parsed.after).toMatch(/exit \$code\s*$/);
+});
+
+it.skipIf(!shell)("gates trial (b) before it writes or changes every firewall profile", () => {
+  const parsed = parse(
+    "firewall-trial-b",
+    firewallTrial,
+    String.raw`
+$gates = @($ast.FindAll({
+  param($n)
+  $n -is [System.Management.Automation.Language.IfStatementAst] -and
+    $n.Clauses.Count -eq 1 -and
+    $n.Clauses[0].Item1.Extent.Text.Contains('$Step -eq ''b''') -and
+    $n.Clauses[0].Item1.Extent.Text.Contains('-not $IDangerAcceptGlobalBlock')
+}, $true))
+if ($gates.Count -ne 1) {
+  [ordered]@{ gates = $gates.Count } | ConvertTo-Json -Compress
+  exit 0
+}
+$gate = $gates[0]
+$switches = @($ast.FindAll({
+  param($n)
+  $n -is [System.Management.Automation.Language.SwitchStatementAst] -and
+    $n.Condition.Extent.Text.Contains('$Step')
+}, $true))
+if ($switches.Count -ne 1) {
+  [ordered]@{ gates = $gates.Count; switches = $switches.Count } | ConvertTo-Json -Compress
+  exit 0
+}
+$clause = @($switches[0].Clauses | Where-Object { $_.Item1.Extent.Text.Contains("'b'") }) | Select-Object -First 1
+if (-not $clause) {
+  [ordered]@{ gates = $gates.Count; switches = $switches.Count; clause = $false } | ConvertTo-Json -Compress
+  exit 0
+}
+$enable = @($clause.Item2.FindAll({
+  param($n)
+  $n -is [System.Management.Automation.Language.CommandAst] -and $n.GetCommandName() -eq 'Enable-Firewall'
+}, $true))
+$setProfile = @($clause.Item2.FindAll({
+  param($n)
+  $n -is [System.Management.Automation.Language.CommandAst] -and $n.GetCommandName() -eq 'Set-NetFirewallProfile'
+}, $true))
+$probe = @($clause.Item2.FindAll({
+  param($n)
+  $n -is [System.Management.Automation.Language.CommandAst] -and
+    $n.GetCommandName() -eq 'Invoke-Probe' -and $n.Extent.Text.Contains('trial-b-default-block')
+}, $true))
+$newItem = @($ast.FindAll({
+  param($n)
+  $n -is [System.Management.Automation.Language.CommandAst] -and $n.GetCommandName() -eq 'New-Item'
+}, $true))
+$exit2 = @($gate.FindAll({
+  param($n)
+  $n -is [System.Management.Automation.Language.ExitStatementAst] -and $n.Extent.Text -match 'exit\s+2'
+}, $true))
+$before = if ($enable.Count) {
+  $clause.Item2.Extent.Text.Substring(0, $enable[0].Extent.StartOffset - $clause.Item2.Extent.StartOffset)
+} else { '' }
+$after = if ($probe.Count) {
+  $clause.Item2.Extent.Text.Substring($probe[0].Extent.EndOffset - $clause.Item2.Extent.StartOffset)
+} else { '' }
+[ordered]@{
+  gates = $gates.Count
+  switches = $switches.Count
+  clause = [bool]$clause
+  exit2 = $exit2.Count
+  beforeNewItem = ($newItem.Count -gt 0 -and $gate.Extent.EndOffset -lt $newItem[0].Extent.StartOffset)
+  beforeEnable = ($enable.Count -gt 0 -and $gate.Extent.EndOffset -lt $enable[0].Extent.StartOffset)
+  beforeSet = ($setProfile.Count -gt 0 -and $gate.Extent.EndOffset -lt $setProfile[0].Extent.StartOffset)
+  restoreBeforeEnable = $before.Contains('Step restore')
+  reminderAfterProbe = $after.Contains('still in place')
+} | ConvertTo-Json -Compress
+`,
+  );
+  expect(parsed.parseErrors).toBeUndefined();
+  expect(parsed).toMatchObject({
+    gates: 1,
+    switches: 1,
+    clause: true,
+    exit2: 1,
+    beforeNewItem: true,
+    beforeEnable: true,
+    beforeSet: true,
+    restoreBeforeEnable: true,
+    reminderAfterProbe: true,
+  });
+});
 
 // Loads only Read-New and Watch-Lane from the script, starts a node child
 // with its output redirected to files, as the wrapper does, and watches it.

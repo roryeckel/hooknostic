@@ -296,7 +296,9 @@ on), not by CI.
     pinning `PATH` to the system directories.
   - Every later hop starts from `env -i PATH=<system>`, and `ip`, `setpriv`
     and `unshare` are found only there.
-  - `--as` must name the user that invoked sudo (`SUDO_UID`/`SUDO_GID`).
+  - `--as` is numeric `UID:GID` only, and must name the user that invoked
+    sudo (`SUDO_UID`/`SUDO_GID`). uid 0 and gid 0 are refused, so the command
+    runs neither as root nor with root's group.
   - These refusals, and the ones on the env file below, run before the root
     check. That way `scripts/without-network.test.mjs` exercises them as a
     normal user in the Ubuntu test job.
@@ -324,8 +326,10 @@ on), not by CI.
 - **The proof.** Before the command, `scripts/assert-no-network.mjs --offline`
   fails the step unless:
   - only `lo` exists;
-  - each public IPv4 probe (1.1.1.1, 8.8.8.8, 9.9.9.9) and the IPv6 probe
-    fails with `ENETUNREACH`;
+  - each public IPv4 probe (1.1.1.1, 8.8.8.8, 9.9.9.9) and every public IPv6
+    probe (Cloudflare's `2606:4700:4700::1111` and Google's
+    `2001:4860:4860::8888`) fails with `ENETUNREACH`;
+  - a loopback round trip works;
   - DNS fails, and within 1 s (`DNS_FAST_MS`);
   - the namespace's `/etc/resolv.conf` sets a resolver timeout of 0 (the
     wrapper passes `--dns-timeout 0`; `resolverTimeout()` reads it as glibc
@@ -342,7 +346,7 @@ on), not by CI.
   one line per item and never prints values. Its positive control,
   `--online`, runs in the prepare step outside the namespace: one IPv4 probe
   and the lookup must succeed there, so one filtered address does not fail a
-  lane. IPv6 is reported, not required; hosted runners have none.
+  lane. Every IPv6 result is reported, not required; hosted runners have none.
 - **No lane, no pass.** Under `HOOKNOSTIC_PLAYBACK_NETWORK=none`,
   `harness-playback.test.ts` requires `HOOKNOSTIC_PLAYBACK` to name a known
   lane, so a namespaced run that selects nothing fails instead of skipping
@@ -460,8 +464,11 @@ per user.
   `scripts/assert-no-network.mjs --offline` fails the run unless:
   - the process is exactly the SID the wrapper created, and not an
     administrator;
-  - each public IPv4 probe is refused by the firewall (`EACCES`), and the
-    IPv6 probe is refused or unroutable;
+  - each public IPv4 probe is refused by the firewall (`EACCES`), and every
+    public IPv6 probe is refused or unroutable. All `ENETUNREACH` passes, but
+    the check says so: a host with no IPv6 route cannot distinguish the
+    firewall from the missing route, so that result alone does not prove the
+    block;
   - a loopback round trip works;
   - the required names (passed as an argument, never read from the lane's
     own environment) are present;
@@ -469,15 +476,24 @@ per user.
 
   There is no interface check (the adapters stay up), and DNS is reported
   but not required to fail. The prepare step's `--check-online` is the
-  positive control, as on Linux.
-- **Cleanup.** An `always()` step runs `without-network.ps1 -Cleanup`. It
-  stops every process the user owns, found by owner SID, with a bounded
-  recheck, then removes the rule group and disables the user. It needs no
-  precondition, so it is safe after a refusal. It deletes nothing.
+  positive control, as on Linux; it reports every IPv6 probe and requires
+  none.
+- **Cleanup.** Steps 3 to 6 run under one `finally` that stops every process
+  the user owns, found by owner SID, with a bounded recheck, then removes the
+  rule group and disables the user. It prints what remains; its own failures
+  are warnings, so they never replace the lane's error. A successful lane
+  reports its own exit code only after that cleanup returns. An `always()`
+  step still runs `without-network.ps1 -Cleanup` as the backstop: a runner
+  kill runs no managed `finally`. `-Cleanup` needs no precondition, so it is
+  safe after a refusal, and is idempotent. It deletes nothing.
   - The step is needed: on windows-latest, lane processes survived the
     runner's kill after a step timeout and after a job timeout, and the
     `always()` step still ran both times.
-  - A workflow cancelled by hand may skip it. The runner is single-use.
+  - `-Cleanup` fails closed: it exits 1 when either a lane process or a
+    `hkn-offline` rule remains, so a dirty runner fails the job instead of
+    passing to the next one.
+  - A workflow cancelled by hand may skip the `always()` step too; the runner
+    is single-use.
 - **pnpm.** CI installs pnpm with pnpm/action-setup's `dest:` in the
   toolcache. The default, `~/setup-pnpm`, is in the runner user's profile,
   which the lane user cannot reach, and the tests run pnpm.

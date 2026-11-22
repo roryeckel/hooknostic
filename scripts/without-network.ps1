@@ -40,10 +40,13 @@
 #    expected SID from here, and runs the command only if that passes. Output
 #    streams into the log; the exit code is the lane's.
 #
-# -Cleanup is the always() step. It needs no precondition and is safe after
-# a refusal: it stops every process owned by the user (and checks that none
-# is left), removes the rule group, and disables the user. It deletes
-# nothing. A cancelled workflow may skip it; the runner is single-use.
+# Once steps 3 to 6 start, they run under a finally that stops every process
+# owned by the user (and checks that none is left), removes the rule group and
+# disables the user. It prints what remains, and its own failures are warnings:
+# it never hides the lane's error. -Cleanup is the workflow's always() step,
+# the backstop for a runner kill, which runs no managed finally. It needs no
+# precondition, is safe after a refusal, writes nothing, and exits 1 unless no
+# process and no rule remains.
 [CmdletBinding()]
 param(
   [string]$RequireEnv = '',
@@ -78,9 +81,53 @@ function Stop-LaneProcesses([string]$sid) {
     $left = $procs.Count
     if ($left -eq 0) { break }
     foreach ($p in $procs) { Stop-Process -Id $p.ProcessId -Force -ErrorAction SilentlyContinue }
-    Start-Sleep -Seconds 1
+    # Not Start-Sleep: a .NET call is not a pipeline stop point, so a Ctrl+C
+    # during a lane is less likely to skip the wait (and the finally after it).
+    [Threading.Thread]::Sleep(1000)
   }
   $left
+}
+
+# Stops every process the lane user owns, disables the user, and removes the
+# rule group. Reports what remains and returns $false if any process or rule
+# does. Runs in a finally, so a failing step prints a warning and never
+# replaces the lane's own error.
+function Invoke-LaneCleanup {
+  $clean = $true
+  $left = 0
+  $rules = 0
+  try {
+    # Enumerate and filter: a missing user is an empty result, while a
+    # provider or access failure terminates. Get-LocalUser -Name cannot tell
+    # those apart.
+    $user = @(Get-LocalUser -ErrorAction Stop) | Where-Object { $_.Name -eq $LaneUser } | Select-Object -First 1
+    if ($user) {
+      $left = Stop-LaneProcesses $user.SID.Value
+      [Console]::Out.WriteLine("without-network: lane processes left after stopping: $left")
+      Disable-LocalUser -Name $LaneUser -ErrorAction Stop | Out-Null
+    } else {
+      [Console]::Out.WriteLine('without-network: no lane user, so no lane processes')
+    }
+  } catch {
+    $clean = $false
+    Write-Warning "without-network: could not stop the lane processes or disable ${LaneUser}: $($_.Exception.Message)"
+  }
+  try {
+    # Enumerate without -Group: the real cmdlet raises ObjectNotFound for a
+    # missing group, which would fail a clean runner. The CIM object's property
+    # is RuleGroup (the class has no Group); filter the successful enumeration.
+    $existing = @(Get-NetFirewallRule -ErrorAction Stop | Where-Object { $_.RuleGroup -eq $RuleGroup })
+    # Out-Null: the cmdlet's CIM objects must not join the helper's return value.
+    if ($existing.Count) { $existing | Remove-NetFirewallRule -ErrorAction Stop | Out-Null }
+    # The recheck is discovery too: absence is an empty filtered result, and a
+    # provider/access failure still terminates.
+    $rules = @(Get-NetFirewallRule -ErrorAction Stop | Where-Object { $_.RuleGroup -eq $RuleGroup }).Count
+    [Console]::Out.WriteLine("without-network: firewall rules removed: $($existing.Count); left: $rules")
+  } catch {
+    $clean = $false
+    Write-Warning "without-network: could not remove the ${RuleGroup} firewall rules: $($_.Exception.Message)"
+  }
+  return ($clean -and $left -eq 0 -and $rules -eq 0)
 }
 
 # Prints what was appended to a lane output file since the last call.
@@ -131,20 +178,10 @@ function Watch-Lane($Process, [string[]]$Paths, [double]$LimitSeconds, [Diagnost
 }
 
 if ($Cleanup) {
-  $left = 0
-  $user = Get-LocalUser -Name $LaneUser -ErrorAction SilentlyContinue
-  if ($user) {
-    $left = Stop-LaneProcesses $user.SID.Value
-    "without-network: lane processes left after stopping: $left"
-    Disable-LocalUser -Name $LaneUser -ErrorAction SilentlyContinue
-  } else {
-    'without-network: no lane user, so no lane processes'
-  }
-  $rules = @(Get-NetFirewallRule -Group $RuleGroup -ErrorAction SilentlyContinue)
-  if ($rules.Count) { $rules | Remove-NetFirewallRule -ErrorAction SilentlyContinue }
-  "without-network: firewall rules removed: $($rules.Count); left: $(@(Get-NetFirewallRule -Group $RuleGroup -ErrorAction SilentlyContinue).Count)"
-  if ($left) { exit 1 }
-  exit 0
+  # Fail closed: a process or a rule still there is not a clean runner, and
+  # the next job on it may inherit either.
+  if (Invoke-LaneCleanup) { exit 0 }
+  exit 1
 }
 
 # 1. Arguments.
@@ -175,75 +212,93 @@ if ($DryRun) {
   exit 0
 }
 
-# 3. The user and its rule.
-$bytes = New-Object byte[] 24
-[Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($bytes)
-$secure = ConvertTo-SecureString ([Convert]::ToBase64String($bytes) + 'aA1!') -AsPlainText -Force
-New-LocalUser -Name $LaneUser -Password $secure -PasswordNeverExpires -AccountNeverExpires -UserMayNotChangePassword | Out-Null
-$sid = (Get-LocalUser -Name $LaneUser).SID.Value
-if (-not (@(Get-LocalGroupMember -SID 'S-1-5-32-545' -ErrorAction SilentlyContinue).SID.Value -contains $sid)) {
-  Add-LocalGroupMember -SID 'S-1-5-32-545' -Member $LaneUser
-}
-New-NetFirewallRule -DisplayName "$RuleGroup outbound" -Group $RuleGroup -Direction Outbound -Action Block `
-  -LocalUser "D:(A;;CC;;;$sid)" -Profile Any | Out-Null
-"without-network: user $LaneUser ($sid), Users only; outbound blocked by rule group $RuleGroup"
-
-# 4. Scratch directory.
-$scratch = Join-Path (Split-Path -Qualifier $env:RUNNER_TEMP) 'hkn-lane'
-New-Item -ItemType Directory -Force -Path $scratch | Out-Null
-icacls $scratch /grant "*${sid}:(OI)(CI)M" | Out-Null
-foreach ($d in 'home', 'temp', 'appdata', 'localappdata', 'codex') { New-Item -ItemType Directory -Force -Path (Join-Path $scratch $d) | Out-Null }
-
-# 5. The allowlisted environment.
-$system = @('ALLUSERSPROFILE', 'CommonProgramFiles', 'CommonProgramFiles(x86)', 'CommonProgramW6432', 'COMPUTERNAME', 'ComSpec',
-  'DriverData', 'NUMBER_OF_PROCESSORS', 'OS', 'Path', 'PATHEXT', 'PROCESSOR_ARCHITECTURE', 'PROCESSOR_IDENTIFIER', 'PROCESSOR_LEVEL',
-  'PROCESSOR_REVISION', 'ProgramData', 'ProgramFiles', 'ProgramFiles(x86)', 'ProgramW6432', 'PSModulePath', 'PUBLIC', 'SystemDrive',
-  'SystemRoot', 'windir', 'CI', 'GITHUB_ACTIONS', 'RUNNER_OS', 'RUNNER_ARCH', 'RUNNER_ENVIRONMENT', 'RUNNER_TRACKING_ID')
-$laneEnv = [ordered]@{}
-$dropped = New-Object System.Collections.Generic.List[string]
-foreach ($item in Get-ChildItem env:) {
-  if ($item.Name -in $system -or $item.Name -match '^(HOOKNOSTIC_|HKN_)') { $laneEnv[$item.Name] = $item.Value } else { $dropped.Add($item.Name) }
-}
-$laneHome = Join-Path $scratch 'home'
-$laneEnv['USERPROFILE'] = $laneHome
-$laneEnv['HOME'] = $laneHome
-$laneEnv['HOMEDRIVE'] = Split-Path -Qualifier $laneHome
-$laneEnv['HOMEPATH'] = Split-Path -NoQualifier $laneHome
-$laneEnv['APPDATA'] = Join-Path $scratch 'appdata'
-$laneEnv['LOCALAPPDATA'] = Join-Path $scratch 'localappdata'
-$laneEnv['TEMP'] = Join-Path $scratch 'temp'
-$laneEnv['TMP'] = Join-Path $scratch 'temp'
-$laneEnv['USERNAME'] = $LaneUser
-# For harness paths that set no CODEX_HOME of their own (the Code Mode drives).
-$laneEnv['CODEX_HOME'] = Join-Path $scratch 'codex'
-$laneEnv['HOOKNOSTIC_PLAYBACK_NETWORK'] = 'none'
-$sensitive = '^(ACTIONS_|GITHUB_TOKEN$|GITHUB_(ENV|PATH|OUTPUT|STATE|STEP_SUMMARY)$|INPUT_)'
-"without-network: environment: $($laneEnv.Count) names passed, $($dropped.Count) kept out, of which: $((@($dropped | Where-Object { $_ -match $sensitive }) | Sort-Object) -join ', ')"
-$laneJson = Join-Path $scratch 'lane.json'
-[ordered]@{ env = $laneEnv; require = $names; sid = $sid; command = $Run.Trim(); cwd = (Get-Location).Path } |
-  ConvertTo-Json -Depth 4 | Set-Content -Encoding utf8 -Path $laneJson
-
-# 6. Run as the user, streaming its output.
-$cred = New-Object System.Management.Automation.PSCredential($LaneUser, $secure)
-$node = (Get-Command node).Source
-$lane = Join-Path $PSScriptRoot 'without-network-lane.mjs'
-$out = Join-Path $env:RUNNER_TEMP "without-network-$PID.out"
-$err = Join-Path $env:RUNNER_TEMP "without-network-$PID.err"
-$start = @{
-  FilePath = $node; ArgumentList = @("`"$lane`"", "`"$laneJson`""); Credential = $cred; WorkingDirectory = (Get-Location).Path
-  NoNewWindow = $true; PassThru = $true; RedirectStandardOutput = $out; RedirectStandardError = $err
-}
+# Steps 3 to 6 run under one finally: whatever ends the lane (its own exit, a
+# thrown error, or a hand cancellation), the user's processes, the user and
+# the rule group do not outlive it. The workflow's always() -Cleanup step stays
+# as the backstop: a runner kill runs no managed finally.
+$code = 0
 try {
-  $p = Start-Process @start -UseNewEnvironment
-  'without-network: started the lane script with a fresh environment (-UseNewEnvironment)'
-} catch {
-  # The lane script then has the runner's environment; it hands its own
-  # children (the check and the command) only lane.json's allowlist.
-  "without-network: Start-Process -UseNewEnvironment failed ($($_.Exception.GetType().Name)); started the lane script without it, so only its children get the allowlisted environment"
-  $p = Start-Process @start
+  # 3. The user and its rule.
+  $bytes = New-Object byte[] 24
+  [Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($bytes)
+  $secure = ConvertTo-SecureString ([Convert]::ToBase64String($bytes) + 'aA1!') -AsPlainText -Force
+  New-LocalUser -Name $LaneUser -Password $secure -PasswordNeverExpires -AccountNeverExpires -UserMayNotChangePassword | Out-Null
+  $sid = (Get-LocalUser -Name $LaneUser).SID.Value
+  if (-not (@(Get-LocalGroupMember -SID 'S-1-5-32-545' -ErrorAction SilentlyContinue).SID.Value -contains $sid)) {
+    Add-LocalGroupMember -SID 'S-1-5-32-545' -Member $LaneUser
+  }
+  New-NetFirewallRule -DisplayName "$RuleGroup outbound" -Group $RuleGroup -Direction Outbound -Action Block `
+    -LocalUser "D:(A;;CC;;;$sid)" -Profile Any | Out-Null
+  "without-network: user $LaneUser ($sid), Users only; outbound blocked by rule group $RuleGroup"
+
+  # 4. Scratch directory.
+  $scratch = Join-Path (Split-Path -Qualifier $env:RUNNER_TEMP) 'hkn-lane'
+  New-Item -ItemType Directory -Force -Path $scratch | Out-Null
+  icacls $scratch /grant "*${sid}:(OI)(CI)M" | Out-Null
+  foreach ($d in 'home', 'temp', 'appdata', 'localappdata', 'codex') { New-Item -ItemType Directory -Force -Path (Join-Path $scratch $d) | Out-Null }
+
+  # 5. The allowlisted environment.
+  $system = @('ALLUSERSPROFILE', 'CommonProgramFiles', 'CommonProgramFiles(x86)', 'CommonProgramW6432', 'COMPUTERNAME', 'ComSpec',
+    'DriverData', 'NUMBER_OF_PROCESSORS', 'OS', 'Path', 'PATHEXT', 'PROCESSOR_ARCHITECTURE', 'PROCESSOR_IDENTIFIER', 'PROCESSOR_LEVEL',
+    'PROCESSOR_REVISION', 'ProgramData', 'ProgramFiles', 'ProgramFiles(x86)', 'ProgramW6432', 'PSModulePath', 'PUBLIC', 'SystemDrive',
+    'SystemRoot', 'windir', 'CI', 'GITHUB_ACTIONS', 'RUNNER_OS', 'RUNNER_ARCH', 'RUNNER_ENVIRONMENT', 'RUNNER_TRACKING_ID')
+  $laneEnv = [ordered]@{}
+  $dropped = New-Object System.Collections.Generic.List[string]
+  foreach ($item in Get-ChildItem env:) {
+    if ($item.Name -in $system -or $item.Name -match '^(HOOKNOSTIC_|HKN_)') { $laneEnv[$item.Name] = $item.Value } else { $dropped.Add($item.Name) }
+  }
+  $laneHome = Join-Path $scratch 'home'
+  $laneEnv['USERPROFILE'] = $laneHome
+  $laneEnv['HOME'] = $laneHome
+  $laneEnv['HOMEDRIVE'] = Split-Path -Qualifier $laneHome
+  $laneEnv['HOMEPATH'] = Split-Path -NoQualifier $laneHome
+  $laneEnv['APPDATA'] = Join-Path $scratch 'appdata'
+  $laneEnv['LOCALAPPDATA'] = Join-Path $scratch 'localappdata'
+  $laneEnv['TEMP'] = Join-Path $scratch 'temp'
+  $laneEnv['TMP'] = Join-Path $scratch 'temp'
+  $laneEnv['USERNAME'] = $LaneUser
+  # For harness paths that set no CODEX_HOME of their own (the Code Mode drives).
+  $laneEnv['CODEX_HOME'] = Join-Path $scratch 'codex'
+  $laneEnv['HOOKNOSTIC_PLAYBACK_NETWORK'] = 'none'
+  $sensitive = '^(ACTIONS_|GITHUB_TOKEN$|GITHUB_(ENV|PATH|OUTPUT|STATE|STEP_SUMMARY)$|INPUT_)'
+  "without-network: environment: $($laneEnv.Count) names passed, $($dropped.Count) kept out, of which: $((@($dropped | Where-Object { $_ -match $sensitive }) | Sort-Object) -join ', ')"
+  $laneJson = Join-Path $scratch 'lane.json'
+  [ordered]@{ env = $laneEnv; require = $names; sid = $sid; command = $Run.Trim(); cwd = (Get-Location).Path } |
+    ConvertTo-Json -Depth 4 | Set-Content -Encoding utf8 -Path $laneJson
+
+  # 6. Run as the user, streaming its output.
+  $cred = New-Object System.Management.Automation.PSCredential($LaneUser, $secure)
+  $node = (Get-Command node).Source
+  $lane = Join-Path $PSScriptRoot 'without-network-lane.mjs'
+  $out = Join-Path $env:RUNNER_TEMP "without-network-$PID.out"
+  $err = Join-Path $env:RUNNER_TEMP "without-network-$PID.err"
+  $start = @{
+    FilePath = $node; ArgumentList = @("`"$lane`"", "`"$laneJson`""); Credential = $cred; WorkingDirectory = (Get-Location).Path
+    NoNewWindow = $true; PassThru = $true; RedirectStandardOutput = $out; RedirectStandardError = $err
+  }
+  try {
+    $p = Start-Process @start -UseNewEnvironment
+    'without-network: started the lane script with a fresh environment (-UseNewEnvironment)'
+  } catch {
+    # The lane script then has the runner's environment; it hands its own
+    # children (the check and the command) only lane.json's allowlist.
+    "without-network: Start-Process -UseNewEnvironment failed ($($_.Exception.GetType().Name)); started the lane script without it, so only its children get the allowlisted environment"
+    $p = Start-Process @start
+  }
+  $null = $p.Handle # keeps ExitCode readable after the process ends
+  "without-network: started the lane as $LaneUser after $([int]$timer.Elapsed.TotalSeconds) s; it is stopped after $limitSeconds s"
+  $code = Watch-Lane -Process $p -Paths $out, $err -LimitSeconds $limitSeconds -Timer $timer -Stop { Stop-LaneProcesses $sid }
+} finally {
+  $clean = $null
+  try {
+    $clean = Invoke-LaneCleanup
+  } catch {
+    $clean = $false
+    Write-Warning "without-network: cleanup failed: $($_.Exception.Message)"
+  }
+  if (-not $clean) {
+    Write-Warning 'without-network: cleanup left lane processes or firewall rules behind; the workflow''s always() step retries it'
+  }
 }
-$null = $p.Handle # keeps ExitCode readable after the process ends
-"without-network: started the lane as $LaneUser after $([int]$timer.Elapsed.TotalSeconds) s; it is stopped after $limitSeconds s"
-$code = Watch-Lane -Process $p -Paths $out, $err -LimitSeconds $limitSeconds -Timer $timer -Stop { Stop-LaneProcesses $sid }
 "without-network: the lane exited $code after $([int]$timer.Elapsed.TotalSeconds) s"
 exit $code

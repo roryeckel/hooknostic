@@ -51,9 +51,9 @@
 # The checks on --as and --env-file run before the root check, so a normal
 # user can test them (scripts/without-network.test.mjs).
 #
-# Root without sudo (e.g. `wsl -u root`): name the user explicitly. Here PATH
-# and HOME do appear in argv, and the rest of root's own environment becomes
-# the user's:
+# Root without sudo (e.g. `wsl -u root`): name the user explicitly. --as takes
+# numeric UID:GID only, and refuses uid 0 and gid 0. Here PATH and HOME do
+# appear in argv, and the rest of root's own environment becomes the user's:
 #   scripts/without-network.sh --as UID:GID --path "$PATH" --home "$HOME" -- <command>
 #
 # A root `unshare --net` needs no unprivileged user namespace, so AppArmor's
@@ -163,9 +163,14 @@ case "${1:-}" in
     done
     [ -n "$as" ] && [ "$#" -gt 0 ] || usage
     [ -n "$require" ] || die "no required variables: set HKN_NO_NETWORK_REQUIRE_ENV or pass --require-env (an empty list checks nothing)"
-    uid="${as%%:*}" gid="${as#*:}"
-    [[ "$uid" =~ ^[0-9]+$ && "$gid" =~ ^[0-9]+$ ]] || die "--as takes numeric UID:GID"
+    # One whole-string shape: a missing colon is not read as UID:UID, a second
+    # colon is malformed, and a leading zero is decimal. Without 10#, bash
+    # arithmetic would read 08 and 09 as invalid octal. The 10-digit cap
+    # bounds the arithmetic.
+    [[ "$as" =~ ^([0-9]{1,10}):([0-9]{1,10})$ ]] || die "--as takes numeric UID:GID"
+    uid=$((10#${BASH_REMATCH[1]})) gid=$((10#${BASH_REMATCH[2]}))
     [ "$uid" != 0 ] || die "refusing to run the command as root"
+    [ "$gid" != 0 ] || die "refusing to run the command with root's group"
     # Through sudo, run only as the user who invoked sudo.
     if [ -n "${SUDO_UID:-}" ]; then
       [ "$uid" = "$SUDO_UID" ] && [ "$gid" = "${SUDO_GID:-}" ] || die "--as $as is not the invoking user"

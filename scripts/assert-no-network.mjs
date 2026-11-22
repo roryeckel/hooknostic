@@ -5,8 +5,9 @@
 //     Inside scripts/without-network.sh, before the playback command. Fails
 //     unless the process has no route out:
 //       - no non-loopback interface;
-//       - every public IPv4 probe and the IPv6 probe refused by the kernel
-//         with ENETUNREACH;
+//       - every public IPv4 probe and every public IPv6 probe (Cloudflare and
+//         Google) refused by the kernel with ENETUNREACH;
+//       - a loopback round trip works;
 //       - DNS failing, within DNS_FAST_MS;
 //       - with --dns-timeout N, the resolver configuration's effective timeout
 //         is N. scripts/without-network.sh passes 0: musl, which codex is
@@ -20,8 +21,10 @@
 //     The block there is a firewall rule on that user's SID, not a
 //     namespace: the adapters stay, so there is no interface check, and the
 //     block is shown by effect. Fails unless:
-//       - every public IPv4 probe is refused by the firewall (EACCES), and the
-//         IPv6 probe refused or unroutable;
+//       - every public IPv4 probe is refused by the firewall (EACCES), and
+//         every public IPv6 probe is refused or unroutable. All ENETUNREACH
+//         passes, with a note: no IPv6 route exists, so that alone does not
+//         prove the firewall;
 //       - a loopback round trip works;
 //       - the process runs as exactly the SID the wrapper created, and not as
 //         an administrator;
@@ -50,7 +53,7 @@ import { fileURLToPath } from "node:url";
 
 /** Public anycast resolvers that also listen on 443 (DNS over HTTPS). */
 export const PROBE_IPV4 = ["1.1.1.1", "8.8.8.8", "9.9.9.9"];
-export const PROBE_IPV6 = "2606:4700:4700::1111";
+export const PROBE_IPV6 = ["2606:4700:4700::1111", "2001:4860:4860::8888"];
 export const PROBE_HOST = "github.com";
 const TIMEOUT_MS = 5000;
 /** How long a lookup may take to fail without network: a miss must be quick. */
@@ -98,27 +101,33 @@ const REFUSED_IPV6 = ["EACCES", "ENETUNREACH", "EHOSTUNREACH"];
  * @param {{
  *   interfaces: string[],
  *   ipv4: string[],
- *   ipv6: string,
+ *   ipv6: string[],
+ *   loopback: string,
  *   dns: string,
  *   dnsMs?: number,
  *   resolver?: { timeout: number, expected: number },
  *   linux?: { uid: number, expectedUid?: number, gid: number, groups: number[], capEff: string, capPrm: string, noNewPrivs: string },
- *   windows?: { sid: string, expectedSid?: string, admin: boolean, loopback: string },
+ *   windows?: { sid: string, expectedSid?: string, admin: boolean },
  *   env?: { required: string[], missing: string[], offlineMarker: boolean, forbidden?: string[] },
  * }} seen `ipv4` holds one result per PROBE_IPV4 address, and `ipv6` one
- *   result: "connected" or an error code. `dns` is "resolved" or an error
- *   code. `interfaces` names those with a non-internal address. `windows`
- *   marks a Windows lane: `loopback` is "round-trip" or an error code.
+ *   per PROBE_IPV6 address: "connected" or an error code. `loopback` is
+ *   "round-trip" or an error code for every offline lane. `dns` is "resolved"
+ *   or an error code. `interfaces` names those with a non-internal address.
+ *   `windows` marks a Windows lane.
  * @returns {{ name: string, ok: boolean, detail: string }[]}
  */
 export function evaluate(mode, seen) {
   const checks = [];
   const check = (name, ok, detail) => checks.push({ name, ok, detail });
   const v4 = seen.ipv4.map((result, index) => `${PROBE_IPV4[index] ?? "?"}:443 -> ${result}`).join(", ");
+  const v6 = seen.ipv6.map((result, index) => `[${PROBE_IPV6[index] ?? "?"}]:443 -> ${result}`).join(", ");
+  // All unroutable is consistent with a firewall block, but on a host with no
+  // IPv6 route it proves only that. Say so instead of reading it as the rule.
+  const noIpv6Route = seen.ipv6.length > 0 && seen.ipv6.every((result) => result === "ENETUNREACH");
   if (mode === "offline" && seen.windows) {
     // A firewall rule on the lane user's SID: the adapters stay, so the block
     // is shown by effect, never by the interface list.
-    const { sid, expectedSid, admin, loopback } = seen.windows;
+    const { sid, expectedSid, admin } = seen.windows;
     check(
       "user",
       Boolean(expectedSid) && sid === expectedSid,
@@ -126,8 +135,12 @@ export function evaluate(mode, seen) {
     );
     check("administrators", !admin, admin ? "member" : "not a member");
     check("public IPv4 connect", seen.ipv4.length > 0 && seen.ipv4.every((result) => result === "EACCES"), v4);
-    check("public IPv6 connect", REFUSED_IPV6.includes(seen.ipv6), `[${PROBE_IPV6}]:443 -> ${seen.ipv6}`);
-    check("loopback round trip", loopback === "round-trip", loopback);
+    check(
+      "public IPv6 connect",
+      seen.ipv6.length === PROBE_IPV6.length && seen.ipv6.every((result) => REFUSED_IPV6.includes(result)),
+      `${v6}${noIpv6Route ? "; all ENETUNREACH: no IPv6 route, so this does not prove the firewall" : ""}`,
+    );
+    check("loopback round trip", seen.loopback === "round-trip", seen.loopback);
     // The DNS Client service resolves for the lane; documented, not enforced.
     check("DNS lookup (allowed on Windows)", true, `${PROBE_HOST} -> ${seen.dns}`);
   } else if (mode === "offline") {
@@ -137,7 +150,12 @@ export function evaluate(mode, seen) {
       seen.interfaces.length === 0 ? "loopback only" : `non-loopback: ${seen.interfaces.join(", ")}`,
     );
     check("public IPv4 connect", seen.ipv4.length > 0 && seen.ipv4.every((result) => result === "ENETUNREACH"), v4);
-    check("public IPv6 connect", seen.ipv6 === "ENETUNREACH", `[${PROBE_IPV6}]:443 -> ${seen.ipv6}`);
+    check(
+      "public IPv6 connect",
+      seen.ipv6.length === PROBE_IPV6.length && seen.ipv6.every((result) => result === "ENETUNREACH"),
+      v6,
+    );
+    check("loopback round trip", seen.loopback === "round-trip", seen.loopback);
     const fast = seen.dnsMs !== undefined && seen.dnsMs < DNS_FAST_MS;
     check(
       "DNS lookup",
@@ -192,7 +210,7 @@ export function evaluate(mode, seen) {
     );
     check("DNS lookup", seen.dns === "resolved", `${PROBE_HOST} -> ${seen.dns}`);
     // Informational: a host without IPv6 egress is still online.
-    check("public IPv6 connect (not required)", true, `[${PROBE_IPV6}]:443 -> ${seen.ipv6}`);
+    check("public IPv6 connect (not required)", true, v6);
   }
   return checks;
 }
@@ -274,7 +292,12 @@ function argument(name) {
 }
 
 async function observe(mode) {
-  const [ipv4, ipv6, resolved] = await Promise.all([Promise.all(PROBE_IPV4.map(tcp)), tcp(PROBE_IPV6), dns()]);
+  const [ipv4, ipv6, resolved, loopback] = await Promise.all([
+    Promise.all(PROBE_IPV4.map(tcp)),
+    Promise.all(PROBE_IPV6.map(tcp)),
+    dns(),
+    mode === "offline" ? loopbackRoundTrip() : Promise.resolve(undefined),
+  ]);
   const seen = {
     interfaces: Object.entries(networkInterfaces())
       .filter(([, addresses]) => (addresses ?? []).some((address) => !address.internal))
@@ -283,6 +306,7 @@ async function observe(mode) {
     ipv6,
     dns: resolved,
     dnsMs,
+    ...(loopback === undefined ? {} : { loopback }),
   };
   const dnsTimeout = argument("--dns-timeout");
   if (mode === "offline" && dnsTimeout !== undefined) {
@@ -311,7 +335,6 @@ async function observe(mode) {
     seen.windows = {
       ...windowsIdentity(),
       ...(expectedSid ? { expectedSid } : {}),
-      loopback: await loopbackRoundTrip(),
     };
   }
   if (mode === "offline") {
