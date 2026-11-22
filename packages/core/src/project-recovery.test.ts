@@ -2,6 +2,7 @@ import { spawnSync } from "node:child_process";
 import type * as fs from "node:fs/promises";
 import {
   chmod,
+  link,
   mkdir,
   mkdtemp,
   readdir,
@@ -14,7 +15,7 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
@@ -96,9 +97,11 @@ const locks = [
 ];
 /**
  * An interrupted transaction of a.txt from "before" to "after", and the lock
- * `name` left by a process that has exited, its mtime an hour in the past.
+ * `name` left by a process that has exited, its mtime an hour in the past. With
+ * `create` set to `link`, the lock is created the way `acquire` does it: a
+ * staged pid file linked into place.
  */
-async function deadLockAndJournal(name: string) {
+async function deadLockAndJournal(name: string, create: "write" | "link" = "write") {
   const { pid: dead } = spawnSync(process.execPath, ["-e", ""]);
   expect(dead, "spawn a child to get a dead pid").toBeTypeOf("number");
   await mkdir(join(root, ".hooknostic"));
@@ -112,7 +115,15 @@ async function deadLockAndJournal(name: string) {
   });
   await writeFile(join(root, ".hooknostic/transaction.json"), journal);
   const lock = join(await realpath(root), name);
-  await writeFile(lock, String(dead));
+  if (create === "link") {
+    const staged = join(dirname(lock), "staging", "lock");
+    await mkdir(dirname(staged), { recursive: true });
+    await writeFile(staged, String(dead));
+    await link(staged, lock);
+    await rm(staged);
+  } else {
+    await writeFile(lock, String(dead));
+  }
   const old = new Date(Date.now() - 3_600_000);
   await utimes(lock, old, old);
   /** Recover changed nothing: the transaction is still unfinished and staging holds no claim. */
@@ -124,6 +135,16 @@ async function deadLockAndJournal(name: string) {
   return { lock, dead: String(dead), untouched };
 }
 const actualFs = () => vi.importActual<typeof fs>("node:fs/promises");
+it.each(locks)("clears a dead $name created by linking a flushed staging file (#293)", async ({ name }) => {
+  const { lock } = await deadLockAndJournal(name, "link");
+
+  await recoverProject(root, owner);
+
+  expect(await readFile(join(root, "a.txt"), "utf8")).toBe("before");
+  await expect(readFile(join(root, ".hooknostic/transaction.json"))).rejects.toMatchObject({ code: "ENOENT" });
+  await expect(readFile(lock)).rejects.toMatchObject({ code: "ENOENT" });
+  expect(await readdir(join(root, ".hooknostic/staging"))).toEqual([]);
+});
 it.each(locks)(
   "leaves a live lock that replaced a dead $name while recover checked it (#267)",
   async ({ name, holder }) => {
@@ -159,6 +180,31 @@ it.each(locks)(
         await actual(`${lock}.peer`, lock);
       }
       return actual(from, to);
+    });
+    await expect(recoverProject(root, owner)).rejects.toThrow(
+      `another hooknostic ${holder} is running: it took ${lock} while recover was checking it`,
+    );
+    expect(await readFile(lock, "utf8")).toBe(dead);
+    await untouched();
+  },
+);
+it.each(locks)(
+  "tells a live $name linked from staging with the same bytes from the one it judged dead (#293)",
+  async ({ name, holder }) => {
+    const { lock, dead, untouched } = await deadLockAndJournal(name);
+    const actual = await actualFs();
+    vi.mocked(rename).mockImplementation(async (from, to) => {
+      // A peer replaced the dead lock with a new file holding the same bytes,
+      // created exactly as acquire does it: written to staging, then linked.
+      // Only the new inode and mtime set it apart.
+      if (String(from) === lock) {
+        const staged = join(dirname(lock), "staging", "peer-lock");
+        await actual.rm(lock);
+        await writeFile(staged, dead);
+        await actual.link(staged, lock);
+        await actual.rm(staged);
+      }
+      return actual.rename(from, to);
     });
     await expect(recoverProject(root, owner)).rejects.toThrow(
       `another hooknostic ${holder} is running: it took ${lock} while recover was checking it`,
@@ -214,10 +260,23 @@ it.each(locks)(
   async ({ name, holder }) => {
     const { lock, untouched } = await deadLockAndJournal(name);
     const actual = await actualFs();
+    const recoveryLock = join(await realpath(root), ".hooknostic", "recovery.lock");
+    let replaced = false;
     vi.mocked(mkdir).mockImplementation(async (...args: Parameters<typeof actual.mkdir>) => {
       // Recover creates the staging directory after judging the lock and
-      // before claiming it; a peer replaces the lock in that window.
-      if (String(args[0]).endsWith(join(".hooknostic", "staging"))) {
+      // before claiming it; a peer replaces the lock in that window. Taking the
+      // recovery lock now also creates staging first, so for the sync lock wait
+      // until that lock exists: the next staging mkdir is the claim's.
+      if (
+        !replaced &&
+        String(args[0]).endsWith(join(".hooknostic", "staging")) &&
+        (name.endsWith("recovery.lock") ||
+          (await stat(recoveryLock).then(
+            () => true,
+            () => false,
+          )))
+      ) {
+        replaced = true;
         await writeFile(`${lock}.peer`, String(process.pid));
         await actual.rename(`${lock}.peer`, lock);
       }

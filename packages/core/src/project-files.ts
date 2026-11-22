@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { type BigIntStats, constants, fsync } from "node:fs";
-import { type FileHandle, lstat, mkdir, open, readFile, realpath, rename, rm } from "node:fs/promises";
+import { type FileHandle, link, lstat, mkdir, open, readFile, realpath, rename, rm } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, sep } from "node:path";
 
 import { applyEdits, modify, type Node as JsonNode, type ParseError, parseTree } from "jsonc-parser/lib/esm/main.js";
@@ -868,34 +868,62 @@ async function stage(root: string, value: Buffer, mode: number): Promise<string>
   await createFlushed(temp, value, mode, true);
   return temp;
 }
+/** Errors that mean this filesystem cannot hard-link, rather than a real link failure. */
+const UNSUPPORTED_HARD_LINK = new Set(["EPERM", "EACCES", "EBUSY", "EINVAL", "ENOTSUP", "EOPNOTSUPP", "ENOSYS"]);
+function lockExists(name: LockName, lock: string, cause: unknown): Error {
+  return Object.assign(
+    new Error(
+      name === LOCK
+        ? `another hooknostic sync or recover may be running: ${lock} exists; if neither is, run hooknostic recover with the same configuration, which removes a lock whose recorded process ID has exited`
+        : `another hooknostic recover may be running: ${lock} exists; rerun hooknostic recover, which removes a lock whose recorded process ID has exited`,
+      { cause },
+    ),
+    { code: "EEXIST", path: lock },
+  );
+}
 /**
- * Takes the lock `name` by creating it with this process's pid. A lock that
- * already exists becomes an error that names `hooknostic recover`; it keeps
- * the raw error as `cause` and its `code` and `path`, so a caller that checks
- * for EEXIST still sees it. The messages hedge on purpose: recover removes a
- * lock only when its pid names a process that has exited (`clearDeadLock`),
- * and refuses one whose process may be alive or that holds no valid pid, such
- * as an empty one.
+ * Takes the lock `name` by writing and flushing this process's pid into a
+ * staging file, then publishing it with `link`. Link, not `rename`: rename
+ * replaces an existing destination on POSIX and Windows, so it could overwrite
+ * a peer's live lock; link publishes the fully written inode and fails with
+ * EEXIST if the lock exists. A filesystem that cannot hard-link answers with
+ * one of `UNSUPPORTED_HARD_LINK` and falls back to the historical exclusive
+ * create, which cannot overwrite a live lock either but can leave an empty one
+ * if killed between create and write; recovery refuses that.
+ *
+ * The staging link is removed in a `finally`, best effort. A hard kill before
+ * the link leaves only an ignored staging file; after the link it leaves a
+ * valid lock, possibly beside a stale staging file. A lock that already exists
+ * becomes an error that names `hooknostic recover`; it keeps the raw error as
+ * `cause` and its `code` and `path`, so a caller that checks for EEXIST still
+ * sees it. The messages hedge on purpose: recover removes a lock only when its
+ * pid names a process that has exited (`clearDeadLock`), and refuses one whose
+ * process may be alive or that holds no valid pid, such as an empty one.
  * Recover clears a dead recovery lock before taking its own, so it meets an
  * existing one here only when another recover created it in between.
  */
 async function acquire(root: string, name: LockName = LOCK): Promise<() => Promise<void>> {
   const lock = await projectPath(root, name);
   await mkdir(dirname(lock), { recursive: true });
+  const temp = await projectPath(root, `.hooknostic/staging/lock-${randomUUID()}`);
+  await mkdir(dirname(temp), { recursive: true });
   try {
-    await createFlushed(lock, String(process.pid), 0o600, false);
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "EEXIST")
-      throw Object.assign(
-        new Error(
-          name === LOCK
-            ? `another hooknostic sync or recover may be running: ${lock} exists; if neither is, run hooknostic recover with the same configuration, which removes a lock whose recorded process ID has exited`
-            : `another hooknostic recover may be running: ${lock} exists; rerun hooknostic recover, which removes a lock whose recorded process ID has exited`,
-          { cause: error },
-        ),
-        { code: "EEXIST", path: lock },
-      );
-    throw error;
+    await createFlushed(temp, String(process.pid), 0o600, false);
+    try {
+      await link(temp, lock);
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code === "EEXIST") throw lockExists(name, lock, error);
+      if (!UNSUPPORTED_HARD_LINK.has(code ?? "")) throw error;
+      try {
+        await createFlushed(lock, String(process.pid), 0o600, false);
+      } catch (fallbackError) {
+        if ((fallbackError as NodeJS.ErrnoException).code === "EEXIST") throw lockExists(name, lock, fallbackError);
+        throw fallbackError;
+      }
+    }
+  } finally {
+    await rm(temp, { force: true }).catch(() => undefined);
   }
   return () => rm(lock, { force: true });
 }
@@ -1139,11 +1167,16 @@ async function lockState(path: string): Promise<LockState | null> {
  *   alive. A pid reused by an unrelated process therefore makes recover
  *   refuse, never take a live lock; the message names the pid and the path so
  *   the user can check and delete the file.
+ * - Locks are created by writing and flushing the pid to a staging file and
+ *   linking it into place (#293), so a half-created lock is unobservable on a
+ *   filesystem with hard links. Link, not rename: rename replaces an existing
+ *   destination and could overwrite a peer's live lock. The fallback for a
+ *   filesystem that cannot hard-link is the historical exclusive create plus
+ *   write, which is still exclusive but can be killed between the two.
  * - A lock that holds no valid pid is refused, with how to remove it by hand.
- *   That includes an empty one: a kill between creating the lock and writing
- *   the pid leaves it empty, but so does a live holder stalled there (a
- *   suspended process, a hung network share), and no age tells the two apart
- *   safely.
+ *   That includes an empty one, which an older hooknostic, another tool, or
+ *   the no-hard-link fallback can leave. A live holder stalled in the fallback
+ *   can also have one, and no age tells the two apart safely.
  * - The lock is claimed by renaming it into `.hooknostic/staging/` and then
  *   checked to be the very file judged dead (same inode, mtime and bytes)
  *   before it is removed. A plain check-then-remove could remove a lock that a
@@ -1183,7 +1216,7 @@ async function clearDeadLock(root: string, name: LockName): Promise<void> {
   if (!seen) return;
   if (seen.contents.length === 0)
     throw new Error(
-      `invalid lock: ${path} is empty and holds no process ID, perhaps because a process was killed while creating it; if no hooknostic sync or recover is running, delete it and rerun hooknostic recover`,
+      `invalid lock: ${path} is empty and holds no process ID, as an older hooknostic, another tool, or a filesystem without hard links can leave it; if no hooknostic sync or recover is running, delete it and rerun hooknostic recover`,
     );
   const pid = Number(seen.contents.toString());
   if (!Number.isSafeInteger(pid) || pid <= 0 || pid > MAX_PID)

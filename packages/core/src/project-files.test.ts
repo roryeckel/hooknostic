@@ -362,8 +362,12 @@ describe("project reconciliation", () => {
       message: `another hooknostic sync or recover may be running: ${lock} exists; if neither is, run hooknostic recover with the same configuration, which removes a lock whose recorded process ID has exited`,
       code: "EEXIST",
       path: lock,
-      cause: { code: "EEXIST", path: lock },
+      // `link` puts the staging source in the raw cause's `path`, so the
+      // wrapper keeps the cause untouched and reports the lock itself.
+      cause: { code: "EEXIST" },
     });
+    // The failed attempt's own staging link is cleaned up, leaving the peer's lock.
+    expect(await readdir(join(root, ".hooknostic/staging"))).toEqual([]);
     await expect(recoverProject(root, config)).rejects.toThrow("still running");
   });
   it("lets recover remove a leftover sync lock from a process that has exited", async () => {
@@ -437,15 +441,16 @@ describe("project reconciliation", () => {
   it.each([".hooknostic/recovery.lock", ".hooknostic/sync.lock"])(
     "refuses an empty %s, however old, and says how to remove it",
     async (name) => {
-      // A process killed between creating the lock and writing its PID leaves
-      // it empty, but so does a live one stalled there: recover cannot tell.
+      // Current hooknostic links a flushed staging file, so a half-created
+      // lock is unobservable; an older one, another tool, or the no-hard-link
+      // fallback can still leave an empty lock, so recover refuses it.
       await mkdir(join(root, ".hooknostic"));
       await writeFile(join(root, name), "");
       const old = new Date(Date.now() - 3_600_000);
       await utimes(join(root, name), old, old);
       const lock = join(await realpath(root), name);
       await expect(recoverProject(root, config)).rejects.toThrow(
-        `invalid lock: ${lock} is empty and holds no process ID, perhaps because a process was killed while creating it; if no hooknostic sync or recover is running, delete it and rerun hooknostic recover`,
+        `invalid lock: ${lock} is empty and holds no process ID, as an older hooknostic, another tool, or a filesystem without hard links can leave it; if no hooknostic sync or recover is running, delete it and rerun hooknostic recover`,
       );
       expect(await readFile(lock, "utf8")).toBe("");
     },

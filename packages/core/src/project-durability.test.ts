@@ -54,6 +54,10 @@ const io = vi.hoisted(() => ({
   failRealpath: undefined as ((path: string) => NodeJS.ErrnoException | undefined) | undefined,
   /** Fail the next rename chosen by its source and destination, with the error it returns. */
   failRename: undefined as ((from: string, to: string) => NodeJS.ErrnoException | undefined) | undefined,
+  /** Fail the next link chosen by its source and destination, with the error it returns. */
+  failLink: undefined as ((from: string, to: string) => NodeJS.ErrnoException | undefined) | undefined,
+  /** Runs once, just before the link of the source and destination it is given. */
+  beforeLink: undefined as ((from: string, to: string) => Promise<void>) | undefined,
   /** Fail the next removal chosen by its path, with the error it returns. */
   failRm: undefined as ((path: string) => NodeJS.ErrnoException | undefined) | undefined,
   /** Swap the tree once, just before the open of the path it names and after the flush revalidates it. */
@@ -188,8 +192,18 @@ vi.mock("node:fs/promises", async (importOriginal) => {
       return result;
     },
     async link(...args: Parameters<typeof actual.link>) {
+      const from = String(args[0]);
+      const to = String(args[1]);
+      const beforeLink = io.beforeLink;
+      io.beforeLink = undefined;
+      await beforeLink?.(from, to);
+      const injected = io.failLink?.(from, to);
+      if (injected) {
+        io.failLink = undefined;
+        throw injected;
+      }
       const result = await actual.link(...args);
-      io.events.push({ type: "link", from: String(args[0]), to: String(args[1]) });
+      io.events.push({ type: "link", from, to });
       return result;
     },
   };
@@ -285,8 +299,9 @@ const exists = (path: string) =>
     () => false,
   );
 const staging = async () => readdir(join(root, ".hooknostic/staging")).catch(() => []);
-const isLock = (name: string) => (path: string) => path.endsWith(join(".hooknostic", name));
 const isStaged = (path: string) => path.includes(join(".hooknostic", "staging"));
+/** The staging file whose flushed contents become the lock: it holds this process's pid. */
+const isLockStaging = (path: string) => isStaged(path) && io.written.get(path) === String(process.pid);
 /** The recovery journal, which is staged like any file; the manifest is indented and names no entries. */
 const isJournal = (contents: string) => contents.startsWith(`{"schemaVersion":1,"config":"${owner}","entries":`);
 
@@ -304,9 +319,11 @@ afterEach(async () => {
   io.failRawOpen = undefined;
   io.failRealpath = undefined;
   io.failRename = undefined;
+  io.failLink = undefined;
   io.failRm = undefined;
   io.failClose = undefined;
   io.failCloseWith = undefined;
+  io.beforeLink = undefined;
   io.swapBeforeOpen = undefined;
   io.paths.clear();
   io.written.clear();
@@ -375,10 +392,17 @@ async function expectFlushedAfterWriting(): Promise<void> {
     if (flush.directory) continue;
     expect(flush.contents, flush.path).toBe(io.written.get(flush.path));
   }
-  expect(
-    io.flushes.filter((flush) => !flush.directory && isLock("sync.lock")(flush.path)).map((flush) => flush.contents),
-  ).toEqual([String(process.pid)]);
   const project = await realpath(root);
+  const lock = at(project, ".hooknostic/sync.lock");
+  const lockLink = io.events.find((event) => event.type === "link" && event.to === lock);
+  if (lockLink?.type !== "link") throw new Error("no sync lock link recorded");
+  const lockFlushes = io.flushes.filter((flush) => !flush.directory && flush.path === lockLink.from);
+  expect(
+    lockFlushes.map((flush) => flush.contents),
+    "the staged lock was flushed with this pid",
+  ).toEqual([String(process.pid)]);
+  expect(io.openRequests, "the lock path is never opened").not.toContain(lock);
+  expect(await staging()).toEqual([]);
   for (const path of ["a.txt", "z.txt", ".hooknostic/integration.json"]) {
     const rename = io.events.find((event) => event.type === "rename" && event.to === at(project, path));
     if (rename?.type !== "rename") throw new Error(`no rename recorded for ${path}`);
@@ -402,6 +426,58 @@ async function expectFlushedAfterWriting(): Promise<void> {
 it("flushes the lock and every staged file after writing it", async () => {
   await sync("one");
   await expectFlushedAfterWriting();
+});
+
+it("never opens the lock path: it links a flushed staging file and removes the staging link", async () => {
+  const project = await realpath(root);
+  const lock = at(project, ".hooknostic/sync.lock");
+
+  await sync("one");
+
+  expect(io.openRequests).not.toContain(lock);
+  const lockLink = io.events.find((event) => event.type === "link" && event.to === lock);
+  if (lockLink?.type !== "link") throw new Error("no sync lock link recorded");
+  expect(io.flushes.filter((flush) => flush.path === lockLink.from)).toMatchObject([
+    { contents: String(process.pid), directory: false },
+  ]);
+  expect(await staging()).toEqual([]);
+
+  resetIo();
+  await recoverProject(root, owner);
+  expect(io.openRequests).not.toContain(lock);
+  expect(io.openRequests).not.toContain(at(project, ".hooknostic/recovery.lock"));
+  expect(await staging()).toEqual([]);
+});
+
+it("rejects a link failure and leaves no lock or staging file", async () => {
+  const project = await realpath(root);
+  io.failLink = () => Object.assign(new Error("injected link failure"), { code: "EIO", syscall: "link" });
+
+  await expect(sync("one")).rejects.toMatchObject({ code: "EIO" });
+
+  expect(io.failLink).toBeUndefined();
+  expect(io.openRequests).not.toContain(at(project, ".hooknostic/sync.lock"));
+  expect(await exists(".hooknostic/sync.lock")).toBe(false);
+  expect(await staging()).toEqual([]);
+  expect(await exists("a.txt")).toBe(false);
+});
+
+it("falls back to an exclusive create when the filesystem cannot hard-link", async () => {
+  const project = await realpath(root);
+  const lock = at(project, ".hooknostic/sync.lock");
+  io.failLink = () =>
+    Object.assign(new Error("ENOTSUP: operation not supported, link"), { code: "ENOTSUP", syscall: "link" });
+
+  await sync("one");
+
+  expect(io.failLink).toBeUndefined();
+  expect(io.openRequests).toContain(lock);
+  expect(io.flushes.filter((flush) => !flush.directory && flush.path === lock).map((flush) => flush.contents)).toEqual([
+    String(process.pid),
+  ]);
+  expect(await readFile(join(root, "a.txt"), "utf8")).toBe("one");
+  expect(await exists(".hooknostic/sync.lock")).toBe(false);
+  expect(await staging()).toEqual([]);
 });
 
 it("synchronizes and recovers when FileHandle.sync() is not implemented, as under Yarn PnP (#229)", async () => {
@@ -1035,7 +1111,7 @@ describe("directory flushes make each rename durable before the next step", () =
 
 describe("a failed flush aborts and leaves nothing behind", () => {
   it.each([
-    { name: "the lock", fail: isLock("sync.lock") },
+    { name: "the lock", fail: isLockStaging },
     { name: "a staged file", fail: (path: string, written: string) => isStaged(path) && written === "after" },
     { name: "the journal", fail: (path: string, written: string) => isStaged(path) && isJournal(written) },
   ])("in synchronization, at $name", async ({ fail }) => {
@@ -1056,7 +1132,7 @@ describe("a failed flush aborts and leaves nothing behind", () => {
   });
 
   it("in recovery, at its lock", async () => {
-    io.failFlush = isLock("recovery.lock");
+    io.failFlush = isLockStaging;
 
     await expect(recoverProject(root, owner)).rejects.toMatchObject({ code: "EIO" });
     expect(await exists(".hooknostic/recovery.lock")).toBe(false);
@@ -1070,23 +1146,25 @@ describe("a failed flush aborts and leaves nothing behind", () => {
 
 it("names the other recover when one takes the recovery lock first (#267)", async () => {
   const lock = join(await realpath(root), ".hooknostic", "recovery.lock");
-  // A peer recover creates its lock after this one found none and before it creates its own.
-  io.beforeOpen = async (path) => {
-    if (path === lock) await writeFile(lock, String(process.pid));
+  // A peer recover creates its lock after this one found none and before it links its own.
+  io.beforeLink = async (_from, to) => {
+    if (to === lock) await writeFile(lock, String(process.pid));
   };
 
   await expect(recoverProject(root, owner)).rejects.toMatchObject({
     message: `another hooknostic recover may be running: ${lock} exists; rerun hooknostic recover, which removes a lock whose recorded process ID has exited`,
     code: "EEXIST",
     path: lock,
-    cause: { code: "EEXIST", path: lock },
+    // `link` names the staging source in `path` and the lock in `dest`, so the
+    // raw cause is kept as it is rather than rewritten to match `open`.
+    cause: { code: "EEXIST" },
   });
   expect(await readFile(lock, "utf8")).toBe(String(process.pid));
 });
 
 it("removes the lock when closing it fails after a successful flush", async () => {
   await sync("before");
-  io.failClose = isLock("sync.lock");
+  io.failClose = isLockStaging;
 
   await expect(sync("after")).rejects.toMatchObject({ code: "EIO", syscall: "close" });
   expect(io.failClose).toBeUndefined();
@@ -1098,8 +1176,8 @@ it("removes the lock when closing it fails after a successful flush", async () =
 });
 
 it("reports a failed flush, not the failed close after it", async () => {
-  io.failFlush = isLock("sync.lock");
-  io.failClose = isLock("sync.lock");
+  io.failFlush = isLockStaging;
+  io.failClose = isLockStaging;
 
   await expect(sync("one")).rejects.toMatchObject({ code: "EIO", syscall: "fsync" });
   expect(io.failClose).toBeUndefined();

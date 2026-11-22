@@ -350,9 +350,11 @@ journal and rerun recover. Recover clears a
 exited. When the PID belongs to a running process, possibly an unrelated one
 that reused the number, it refuses and names the PID and the lock's path. It
 also refuses a lock that holds no valid PID, naming its path. That includes an
-empty lock, which a process killed while creating it leaves, but which a live
-process paused at that moment also has. In each case, delete the file only after
-confirming no hooknostic sync or recover is running, then rerun recover. Run
-sync and recover from one environment at a time: a process in WSL, a container
-or another host that shares the checkout cannot be seen, and its lock looks
-abandoned.
+empty lock. Current hooknostic writes and flushes the PID to a staging file,
+then links it into place, so on a filesystem with hard links a half-created lock
+is unobservable; an empty one can still come from an older hooknostic, another
+tool, or a filesystem without hard links. In each case, delete the file only
+after confirming no hooknostic sync or recover is running, then rerun recover.
+Run sync and recover from one environment at a time: a process in WSL, a
+container or another host that shares the checkout cannot be seen, and its lock
+looks abandoned.
