@@ -2,6 +2,12 @@
 
 Run with: uv run --with-requirements .github/requirements/litellm.txt python scripts/probe-litellm-sidecar.py
 No harness binaries, model credentials, or paid model calls are used.
+
+Besides routing, the stub records what reaches upstream so the probe can pin
+the two model-side shims the paid drift lane depends on: system messages are
+merged into one leading message (.github/litellm_callbacks.py), and
+reasoning_effort never reaches upstream (additional_drop_params in
+.github/litellm.json). A shim failure exits 3.
 """
 
 import json
@@ -11,11 +17,16 @@ import secrets
 import shutil
 import socket
 import subprocess
+import sys
 import tempfile
 import threading
 import time
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+
+RECEIVED = []
+RECEIVED_LOCK = threading.Lock()
 
 
 class Upstream(BaseHTTPRequestHandler):
@@ -24,6 +35,8 @@ class Upstream(BaseHTTPRequestHandler):
 
     def do_POST(self):
         payload = json.loads(self.rfile.read(int(self.headers.get("Content-Length", "0"))))
+        with RECEIVED_LOCK:
+            RECEIVED.append((self.path, payload))
         # Native Responses/Messages requests must be translated by the sidecar.
         if self.path != "/v1/chat/completions":
             self.send_error(404)
@@ -51,6 +64,28 @@ class Upstream(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(data)))
         self.end_headers()
         self.wfile.write(data)
+
+
+def shim_failures(received, system_parts):
+    """What the upstream request reveals about the sidecar's model-side shims."""
+    paths = [path for path, _ in received]
+    if paths != ["/v1/chat/completions"]:
+        return [f"expected one upstream chat-completions request, got {paths}"]
+    payload = received[0][1]
+    problems = []
+    messages = payload.get("messages") or []
+    roles = [message.get("role") for message in messages]
+    if roles.count("system") != 1 or roles[0] != "system":
+        problems.append(f"expected exactly one leading system message, got roles {roles}")
+    else:
+        content = messages[0].get("content")
+        text = content if isinstance(content, str) else json.dumps(content)
+        missing = [part for part in system_parts if part not in text]
+        if missing:
+            problems.append(f"leading system message lost {missing}")
+    if "reasoning_effort" in payload:
+        problems.append(f"reasoning_effort reached upstream: {payload['reasoning_effort']!r}")
+    return problems
 
 
 def main():
@@ -98,13 +133,45 @@ def main():
                         time.sleep(1)
                 else:
                     raise RuntimeError("Proxy health timeout")
+                # Each probe names the system text that must arrive upstream as
+                # one leading system message. The chat-completions probe carries
+                # a system message after the first user turn, as Claude Code's
+                # bridged requests do; reasoning_effort arrives directly there
+                # and as Codex's Responses reasoning object. The Messages probe
+                # carries Claude Code's thinking/output_config pair (recorded
+                # from 2.1.330): LiteLLM keeps adaptive thinking on chat
+                # completions, but routes {"type": "enabled"} thinking to the
+                # upstream's native /v1/responses, which this stub refuses.
                 probes = [
-                    ("/v1/chat/completions", {"messages": [{"role": "user", "content": "ping"}], "max_tokens": 16}),
-                    ("/v1/messages", {"messages": [{"role": "user", "content": "ping"}], "max_tokens": 16}),
-                    ("/v1/responses", {"input": "ping", "max_output_tokens": 16}),
+                    ("/v1/chat/completions", {
+                        "messages": [
+                            {"role": "system", "content": "probe-system-1"},
+                            {"role": "user", "content": "ping"},
+                            {"role": "system", "content": "probe-system-2"},
+                            {"role": "user", "content": "again"},
+                        ],
+                        "max_tokens": 16,
+                        "reasoning_effort": "high",
+                    }, ["probe-system-1", "probe-system-2"]),
+                    ("/v1/messages", {
+                        "system": "probe-system-1",
+                        "messages": [{"role": "user", "content": "ping"}],
+                        "max_tokens": 16,
+                        "thinking": {"type": "adaptive", "display": "omitted"},
+                        "output_config": {"effort": "high"},
+                    }, ["probe-system-1"]),
+                    ("/v1/responses", {
+                        "instructions": "probe-system-1",
+                        "input": "ping",
+                        "max_output_tokens": 16,
+                        "reasoning": {"effort": "high"},
+                    }, ["probe-system-1"]),
                 ]
-                for route, payload in probes:
+                failures = []
+                for route, payload, system_parts in probes:
                     for stream in (False, True):
+                        with RECEIVED_LOCK:
+                            RECEIVED.clear()
                         request = urllib.request.Request(
                             base + route,
                             data=json.dumps(dict(payload, model="readiness-probe", stream=stream)).encode(),
@@ -114,7 +181,15 @@ def main():
                         with urllib.request.urlopen(request, timeout=20) as response:
                             body = response.read().decode()
                             assert response.status == 200 and "pong" in body, (route, stream, body)
-                        print(f"{route} stream={stream}: 200 pong", flush=True)
+                        with RECEIVED_LOCK:
+                            received = list(RECEIVED)
+                        problems = shim_failures(received, system_parts)
+                        failures.extend(f"{route} stream={stream}: {problem}" for problem in problems)
+                        print(f"{route} stream={stream}: 200 pong, upstream shims "
+                              f"{'FAILED' if problems else 'ok'}", flush=True)
+                if failures:
+                    print("Model-side shim failures:", *failures, sep="\n  ", flush=True)
+                    sys.exit(3)
             except Exception:
                 print(log_path.read_text(encoding="utf-8", errors="replace")[-8000:].replace(proxy_key, "<proxy-key>"))
                 raise
