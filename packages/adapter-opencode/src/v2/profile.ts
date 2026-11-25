@@ -337,6 +337,27 @@ export const opencodeV2CapabilityProfiles: CapabilityProfile[] = [
           artifact: ".capture/opencode-v2",
           what: "ripgrep pre-seed (#264), tools drive on Linux (WSL): unseeded, the harness logged downloading ripgrep at INFO and cached it as $XDG_CACHE_HOME/opencode/bin/rg; seeded there, it logged no download and glob/grep completed. This build logs no process spawns, so which rg ran is not recorded.",
         },
+        {
+          version: "2.4.0",
+          date: "2026-11-23",
+          method: "captured",
+          artifact: "fixtures/opencode/2.0/subagent-background/inbox-background-result.json",
+          what: "Windows loopback subagent drive, isolated state (#303): the background child's result reaches the parent as a user-role `<background-result kind=\"subagent\" ...>` message instead of `<subagent ...>`, from the same synthetic session.inbox.enqueued item with metadata.source subagent. Launch notice, tool.after, agent.stop and the parent's extra execution are unchanged. 2.3.2 still sent `<subagent ...>`; 2.4.1 sends the new wrapper. No decoder or shim reads the wrapper.",
+        },
+        {
+          version: "2.4.0",
+          date: "2026-11-23",
+          method: "captured",
+          artifact: "fixtures/opencode/2.0/remote/observations-server-discover.json",
+          what: "Windows loopback remote MCP drive (#303): each remote server now receives a POST server/discover (mcp-protocol-version 2026-07-28) before initialize. The constructed Streamable HTTP peer answered it with an empty result; OpenCode then initialized, listed and called the tool with the declared headers. The legacy SSE endpoint answered both POSTs 405 and got no fallback GET, as before; 2.3.2 sent initialize alone. 2.4.1 behaved the same.",
+        },
+        {
+          version: "2.4.1",
+          date: "2026-11-23",
+          method: "captured",
+          artifact: "fixtures/opencode/2.0/tool-before-watch-linux.input.json",
+          what: "Linux isolated harness-watch playback capture (run 45213265898, #303), compared with the 2.0.17 fixtures; which build changed each field is not established. Shell execute.before adds top-level codemode and info; the advertised shell input keys (command, workdir) are unchanged, so tool.shell decodes as before. Shell execute.after's result.output drops exit, truncated and status and adds exitCode and wallTimeSeconds; result.metadata still carries status, truncated and exit, and tool.after reads result.content, which is unchanged. The context callback's messages drop metadata and its tools add generate_image and generate_video (tool-after-watch-linux, context-watch-linux). Raw forms are preserved; no capability changes.",
+        },
       ],
     },
     // Optional event fields (ADR-0027). The turn fields rest on the 2.0.18
@@ -439,7 +460,7 @@ export const opencodeV2CapabilityProfiles: CapabilityProfile[] = [
       "tool.after.observe": {
         level: "exact",
         rationale:
-          "Via execute.after, with the tool's own result. For a subagent call (kind agent) that is the child's final response when the child runs in the foreground, the default up to 2.2.7. For a background child it is the launch notice, with raw result.output.status running: every child from 2.3.0, and one given the tool's opt-in background argument on 2.0.17 and 2.2.6, the earlier builds where that argument was probed. The child's result then reaches the parent as a user-role `<subagent>` message that no tool hook sees; agent.stop reports the child's completion, with its last message as lastMessage when declared.",
+          "Via execute.after, with the tool's own result. For a subagent call (kind agent) that is the child's final response when the child runs in the foreground, the default up to 2.2.7. For a background child it is the launch notice, with raw result.output.status running: every child from 2.3.0, and one given the tool's opt-in background argument on 2.0.17 and 2.2.6, the earlier builds where that argument was probed. The child's result then reaches the parent as a user-role `<subagent>` message (`<background-result kind=\"subagent\">` from 2.4.0) that no tool hook sees; agent.stop reports the child's completion, with its last message as lastMessage when declared.",
       },
       "tool.error.observe": {
         level: "approximate",

@@ -80,7 +80,12 @@ export async function auditStops({ api, wait, records, model, project }) {
   const child = { parentID: parent, parent: await outcome(parent), created: created.event, childID,
     child: await outcome(childID), launch, reasonMessages,
     subagentMessageRequests: model.requests.filter((request) => request.messages?.some((message) => message.role === "user" &&
-      typeof message.content === "string" && message.content.startsWith(`<subagent sessionID="${childID}"`))).length };
+      typeof message.content === "string" && SUBAGENT_RESULT.some((open) => message.content.startsWith(`${open} sessionID="${childID}"`)))).length };
 
   return { prevent, ...unsuccessful, child };
 }
+
+// The child's result as the parent receives it: `<subagent ...>` on 2.3.x,
+// `<background-result kind="subagent" ...>` from 2.4.0
+// (fixtures/opencode/2.0/subagent-background).
+const SUBAGENT_RESULT = ["<subagent", '<background-result kind="subagent"'];
