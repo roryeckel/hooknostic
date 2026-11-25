@@ -75,10 +75,22 @@ workspace override to TypeScript 6.0, the supported linter API line; Renovate
 retains that line. Both catalog aliases and the override are compared against
 Renovate's extracted target package and version range.
 
+Since typescript-eslint 8.73.0, `@typescript-eslint/typescript-estree` declares
+`@typescript/native` as an optional peer, so pnpm links the workspace's
+`@typescript/native` alias (TypeScript 7.0.2) into it alongside the TS 6.0 API.
+The link is dormant: typescript-estree loads it only when
+`projectService.EXPERIMENTAL_backend: 'tsgo'` is configured, which this
+repository does not do. Configuring it would throw, because that backend
+requires TypeScript 7.1 or later (the peer range starts at a 7.1 prerelease).
+The same range makes `pnpm install` warn about peer issues; `pnpm peers check`
+lists it as an unmet `@typescript/native` peer, which is expected until the
+catalog reaches TypeScript 7.1.
+
 An override may instead reference a catalog (`catalog:` or `catalog:<name>`), as
-the lint tooling's `minimatch` overrides do (see the dated record below). It then
-follows the catalog entry Renovate maintains. Renovate extracts such an override
-as a versionless `catalog:` reference and skips it, as it does for manifest
+the lint tooling's `minimatch` overrides did until 2026-11-23 (see the dated
+record below). It then follows the catalog entry Renovate maintains. Renovate
+extracts such an override as a versionless `catalog:` reference and skips it,
+as it does for manifest
 catalog references, so `pnpm check:dependencies` does not expect it in the
 extraction. Instead, the check fails unless the override's target package has an
 entry in the named catalog.
@@ -190,14 +202,21 @@ Compatibility evidence:
   `check-dependencies.mjs` learned catalog overrides, that real extraction failed
   the comparison with `Missing extracted dependency`.
 
-Regression tests check that the overrides resolve through the catalog, that the
-captured extraction passes, and that an unresolvable catalog override fails. A
-separate test fails if the lockfile resolves any minimatch below 11.0.1.
+Regression tests check that catalog overrides resolve through the catalog, that
+the captured extraction passes, and that an unresolvable catalog override fails.
+A separate test fails if the lockfile resolves any minimatch below 11.0.1.
 
-Remove the overrides once ESLint, `@eslint/config-array` and
-`@typescript-eslint/typescript-estree` all declare a minimatch 11 (or later)
-requirement. Then confirm that `pnpm why minimatch -r` still shows only patched
-versions.
+Removal, 2026-11-23: all three parents now declare a patched minimatch 11
+requirement themselves: `eslint@10.15.0` (`^11.0.5`),
+`@eslint/config-array@0.23.6` (`^11.0.5`) and
+`@typescript-eslint/typescript-estree@8.73.0` (`^11.0.1`). The overrides were
+removed together. The lockfile lost only its three override records: every
+consumer still resolves the catalog's `minimatch@11.0.9`, `pnpm why minimatch -r`
+reports one version, and `pnpm dedupe --check --lockfile-only` and
+`pnpm check:dependencies` pass. The lockfile test that rejects any minimatch
+below 11.0.1 stays. The catalog-override support in `check-dependencies.mjs`
+also stays, its tests now injecting a synthetic override, since no workspace
+override references a catalog any more.
 
 Monthly lockfile maintenance intentionally refreshes transitive resolutions
 within the declared ranges in both lockfiles. The example plugin's generated `package-lock.json`

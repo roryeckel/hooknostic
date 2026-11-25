@@ -386,9 +386,34 @@ uv run --with-requirements .github/requirements/litellm.txt python scripts/probe
 
 This installs the pinned proxy in an isolated environment and makes no paid
 model calls. The probe generates its own disposable proxy key and authenticates
-the health check and all six streaming/non-streaming API cases. The required
-Ubuntu CI lane runs the same probe against the pinned requirement. It proves
-proxy translation, not a live harness session or the owner's upstream credentials.
+the health check and all six streaming/non-streaming API cases. Its stub
+records each request that reaches upstream, and every case must arrive as one
+chat-completions request with exactly one leading system message (the
+chat-completions case sends a second system message after the first user
+turn) and no `reasoning_effort` (sent directly on chat completions, as
+`reasoning: {effort}` on Responses, and as Claude Code's thinking pair on
+Messages). A shim failure exits 3; removing the callback and the drop setting
+from the config fails it. The required Ubuntu CI lane runs the same probe
+against the pinned requirement. It proves proxy translation, not a live
+harness session or the owner's upstream credentials.
+
+Thinking routing (LiteLLM 1.109.1 and 1.110.2, probed 2026-11-23): a
+`/v1/messages` request carrying `thinking: {"type": "enabled", ...}` bypasses
+`use_chat_completions_url_for_anthropic_messages` and goes to the upstream's
+native `/v1/responses`, which an OpenAI-compatible chat-only upstream does not
+serve. Adaptive thinking stays on chat completions, and its
+`output_config.effort` arrives there as `reasoning_effort`, so the drop setting
+protects the Claude route as well as Codex's. The paid lane as driven today
+should not hit the native route (it has not been rerun to confirm): a loopback
+recording of Claude Code 2.1.330 on Windows, run with `driveClaude`'s
+environment and an isolated config directory (non-Claude model names,
+including the configured upstream model), showed it sending
+`thinking: {"type": "adaptive"}` with `output_config: {"effort": "high"}`,
+which the probe pins. The driver's pre-drive probe sends
+no `thinking`, so if a Claude Code release switched to enabled thinking the
+paid lane would pass that probe and then fail on the drive itself; the CI probe
+would stay green, since it pins the recorded shape. Re-record the request shape
+before trusting a paid Claude run on a new Claude Code release.
 
 | Item | Type | Purpose |
 | --- | --- | --- |
