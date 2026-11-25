@@ -8,7 +8,15 @@
   "gitIgnoredAuthors": ["16675082+roryeckel@users.noreply.github.com"],
   "rangeStrategy": "bump",
   "enabledManagers": ["npm", "nodenv", "github-actions", "pip_requirements"],
-  "ignorePaths": ["**/node_modules/**", "**/dist/**", ".capture/**", "fixtures/**", "docs/**", "examples/*/com.*/**"],
+  "ignorePaths": [
+    "**/node_modules/**",
+    "**/dist/**",
+    ".capture/**",
+    "fixtures/**",
+    "docs/**",
+    "examples/*/com.*/**",
+    "media/**"
+  ],
   "pip_requirements": {
     "managerFilePatterns": ["/^\\.github/requirements/[^/]+\\.txt$/"]
   },

@@ -1,0 +1,6 @@
+# Its own pnpm root on purpose: Remotion and React stay out of the hooknostic
+# workspace, its lockfile, CI installs and Renovate (see README.md). Mirrors
+# the root's install policy.
+minimumReleaseAge: 1440
+allowBuilds:
+  esbuild: true
