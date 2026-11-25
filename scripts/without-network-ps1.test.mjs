@@ -422,25 +422,32 @@ it.skipIf(!shell)(
     // characters keep splitting across reads, and the original body's
     // read-then-length window is wide. It writes for 1.5 s, and on until it
     // has 20,000 lines, which the test requires: CI's Windows test job wrote
-    // only 6,480 lines in 1.5 s (run 44878091388). It stops at 10 s whatever
-    // it has. So the cost is bounded by time, not by a line count: 200,000
-    // fixed lines took 39.7 s there. The last line comes just before the
-    // exit, after the last poll.
+    // only 6,480 lines in 1.5 s (run 44878091388). It has no time cap: past
+    // 1.5 s every pass adds 20 lines toward the 20,000, so it always ends.
+    // A 10 s cap left one runner at 18,140 lines (run 45331650734); a slow
+    // runner now takes longer, within the 90 s spawn timeout, instead of
+    // writing less. The cost stays small: once past 1.5 s it stops at
+    // 20,000 lines, a tenth of the 200,000 fixed lines that took 39.7 s
+    // there. The last line comes just before the exit, after the last poll.
     //
-    // It catches the reviewed defect, the original Read-New (ReadToEnd, then
-    // the file's length), every time. A known survivor: $fs.Length in place
-    // of $fs.Position inside the current read loop. Its window is the
-    // microseconds between the last Read returning 0 and that call. This
-    // test hits it only some of the time (killed in 3 of 12 local runs over
-    // two rounds, none under PowerShell 7.7), and hitting it reliably would
-    // take a hook inside Read-New, so the test is no proof against that
-    // variant.
+    // At a fast machine's rate it catches the reviewed defect, the original
+    // Read-New (ReadToEnd, then the file's length), every time. With the
+    // writer held to that 18,140-line runner's rate by an 11 ms busy-wait
+    // after each write, it caught it in 1 of 3 local runs: a writer that
+    // pauses between writes seldom lands in the window.
+    //
+    // A known survivor: $fs.Length in place of $fs.Position inside the
+    // current read loop. Its window is the microseconds between the last
+    // Read returning 0 and that call. This test hits it only some of the
+    // time (killed in 3 of 12 local runs over two rounds, none under
+    // PowerShell 7.7), and hitting it reliably would take a hook inside
+    // Read-New, so the test is no proof against that variant.
     const lines = watch(
       "lines",
       `import { writeSync } from "node:fs";
 const start = Date.now();
 let i = 0;
-while ((Date.now() - start < 1500 || i < 20_000) && Date.now() - start < 10_000) {
+while (Date.now() - start < 1500 || i < 20_000) {
   let chunk = "";
   for (const stop = i + 20; i < stop; i++) chunk += \`\${i} \${"é".repeat(20)}\\n\`;
   writeSync(1, chunk);
