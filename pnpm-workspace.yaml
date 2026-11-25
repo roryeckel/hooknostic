@@ -9,11 +9,8 @@ allowBuilds:
 overrides:
   # The compatibility package otherwise permits any TypeScript 6.x API.
   "@typescript/typescript6>@typescript/old": "npm:typescript@~6.0.3"
-  # GHSA-g3hv-75wg-m249: lint tooling still requests minimatch 10, which has no
-  # patched release. Move it onto the workspace's patched minimatch line.
-  "eslint>minimatch": "catalog:"
-  "@eslint/config-array>minimatch": "catalog:"
-  "@typescript-eslint/typescript-estree>minimatch": "catalog:"
+  # GHSA-g3hv-75wg-m249 needs no override: the lint tooling's own minimatch
+  # requirements now start at 11.0.1 (docs/dependencies.md, 2026-11-13 record).
 
 # Shared external requirements. Intentional differences have named catalogs.
 catalog:
@@ -30,15 +27,15 @@ catalog:
   "esbuild": "^0.28.2"
   "eslint": "^10.15.0"
   "eslint-plugin-simple-import-sort": "^14.0.0"
-  "minimatch": "^11.0.8"
+  "minimatch": "^11.0.9"
   "node-pty": "^1.1.0"
   "npm-package-arg": "^14.0.0"
   "prettier": "^3.10.1"
   "typescript": "npm:@typescript/typescript6@~6.0.2"
   "@typescript/native": "npm:typescript@~7.0.2"
-  "typescript-eslint": "^8.72.2"
+  "typescript-eslint": "^8.73.0"
   "validate-npm-package-name": "^8.0.0"
-  "vitest": "^5.1.0"
+  "vitest": "^5.1.1"
   "yaml": "^2.9.1"
 catalogs:
   semver-runtime:

@@ -213,9 +213,11 @@ it("inventories the compiler API override on the linter-supported minor line", (
   });
 });
 
-// Renovate 44.235.1's extraction of this repository's catalog overrides, as logged by
-// `renovate --platform=local --dry-run=extract` on 2026-11-13.
-const minimatchOverrides = [
+// Renovate 44.235.1's extraction of this repository's former minimatch catalog
+// overrides, as logged by `renovate --platform=local --dry-run=extract` on
+// 2026-11-13. Since their 2026-11-23 removal no workspace override references a
+// catalog, so these tests inject the same overrides into a workspace copy.
+const catalogOverrides = [
   "eslint>minimatch",
   "@eslint/config-array>minimatch",
   "@typescript-eslint/typescript-estree>minimatch",
@@ -228,19 +230,8 @@ const extractedCatalogOverride = (depName) => ({
   skipReason: "unspecified-version",
 });
 
-it("follows catalog overrides through the catalog entry Renovate maintains", () => {
-  const expected = inventory();
-  for (const depName of minimatchOverrides) expect(expected.find((dep) => dep.depName === depName)).toBeUndefined();
-  const catalogEntry = expected.find((dep) => dep.depName === "minimatch" && dep.depType === "pnpm.catalog.default");
-  // GHSA-g3hv-75wg-m249 is fixed in 11.0.1; the overrides inherit this floor.
-  expect(semver.gte(semver.minVersion(catalogEntry.currentValue), "11.0.1")).toBe(true);
-  const packageFiles = {};
-  for (const dep of expected) (packageFiles[dep.manager] ??= []).push({ packageFile: dep.packageFile, deps: [dep] });
-  packageFiles.npm.push({ packageFile: "pnpm-workspace.yaml", deps: minimatchOverrides.map(extractedCatalogOverride) });
-  expect(() => checkExtraction(expected, packageFiles)).not.toThrow();
-});
-
-it("rejects a catalog override that does not resolve to a catalog entry for its target", () => {
+/** Runs `check` against a copy of this repository's tooling whose workspace has the catalog overrides. */
+function withCatalogOverrides(check) {
   const root = mkdtempSync(join(tmpdir(), "hooknostic-overrides-"));
   try {
     for (const path of [
@@ -255,9 +246,32 @@ it("rejects a catalog override that does not resolve to a catalog entry for its 
     mkdirSync(join(root, "packages"));
     const { engines } = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
     writeFileSync(join(root, "examples/agent-plugin/package.json"), JSON.stringify({ engines }));
-    const workspace = readFileSync(new URL("../pnpm-workspace.yaml", import.meta.url), "utf8");
+    const original = readFileSync(new URL("../pnpm-workspace.yaml", import.meta.url), "utf8");
+    const lines = catalogOverrides.map((depName) => `  "${depName}": "catalog:"\n`).join("");
+    const workspace = original.replace(/^overrides:\n/m, (header) => header + lines);
+    expect(workspace).not.toBe(original);
     const write = (source) => writeFileSync(join(root, "pnpm-workspace.yaml"), source);
     write(workspace);
+    check({ root, workspace, write });
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+}
+
+it("follows catalog overrides through the catalog entry Renovate maintains", () => {
+  withCatalogOverrides(({ root }) => {
+    const expected = inventory(root);
+    for (const depName of catalogOverrides) expect(expected.find((dep) => dep.depName === depName)).toBeUndefined();
+    expect(expected.find((dep) => dep.depName === "minimatch" && dep.depType === "pnpm.catalog.default")).toBeDefined();
+    const packageFiles = {};
+    for (const dep of expected) (packageFiles[dep.manager] ??= []).push({ packageFile: dep.packageFile, deps: [dep] });
+    packageFiles.npm.push({ packageFile: "pnpm-workspace.yaml", deps: catalogOverrides.map(extractedCatalogOverride) });
+    expect(() => checkExtraction(expected, packageFiles)).not.toThrow();
+  });
+});
+
+it("rejects a catalog override that does not resolve to a catalog entry for its target", () => {
+  withCatalogOverrides(({ root, workspace, write }) => {
     expect(() => inventory(root)).not.toThrow();
     for (const broken of [
       ['"eslint>minimatch": "catalog:"', '"eslint>minimatch": "catalog:semver-runtime"'],
@@ -268,12 +282,13 @@ it("rejects a catalog override that does not resolve to a catalog entry for its 
       write(workspace.replace(...broken));
       expect(() => inventory(root)).toThrow("must resolve through a workspace catalog");
     }
-  } finally {
-    rmSync(root, { recursive: true, force: true });
-  }
+  });
 });
 
 it("resolves no minimatch affected by GHSA-g3hv-75wg-m249", () => {
+  // GHSA-g3hv-75wg-m249 is fixed in 11.0.1; the product's catalog range keeps that floor.
+  const catalogEntry = inventory().find((dep) => dep.depName === "minimatch" && dep.depType === "pnpm.catalog.default");
+  expect(semver.gte(semver.minVersion(catalogEntry.currentValue), "11.0.1")).toBe(true);
   // pnpm writes its own environment lockfile as a leading YAML document.
   const documents = parseAllDocuments(readFileSync(new URL("../pnpm-lock.yaml", import.meta.url), "utf8"));
   const versions = documents
