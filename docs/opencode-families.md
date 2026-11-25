@@ -183,9 +183,11 @@ opt-in `background` argument, a child still running when
 2.0.17, while 2.2.6 waited for the same child.
 [Capture](../.capture/opencode-v2-audit/README.md). Legacy SSE
 remains unsupported. SSE receives no fallback
-GET after a failed POST in the captured baseline. Default MCP OAuth discovery,
-PKCE and refresh are verified against a local issuer through project and packed
-delivery. Provider OAuth and custom OAuth options remain unverified. Context
+GET after a failed POST in the captured baseline; from 2.4.0 a
+`server/discover` POST precedes the failed `initialize`, and still no GET
+follows. Default MCP OAuth discovery, PKCE and refresh are verified against a
+local issuer through project and packed delivery. Provider OAuth and custom
+OAuth options remain unverified. Context
 coverage includes OpenAI-compatible, Anthropic Messages and OpenAI Responses
 over HTTP; WebSocket and other providers remain unverified. V1 retains its own
 capability matrix.
@@ -270,9 +272,10 @@ coverage is limited to admission. A subagent runs in a separate session. Up to
 From 2.3.0 it always runs in the background, as it did on 2.0.17 and 2.2.6
 when given the tool's opt-in `background` argument: `tool.after` fires as the
 child starts and carries a launch notice (`raw.event.result.output.status` is `running`), and the
-child's result reaches the parent later as a user-role `<subagent>` message that
-no tool hook reports. In both cases the child's completion is reported as
-`agent.stop`, whose `lastMessage` carries the child's last text. Code Mode MCP
+child's result reaches the parent later as a user-role `<subagent>` message
+(`<background-result kind="subagent">` from 2.4.0) that no tool hook reports.
+In both cases the child's completion is reported as `agent.stop`, whose
+`lastMessage` carries the child's last text. Code Mode MCP
 calls emit both the outer `execute` and an inner native tool hook. Both remain
 `kind: "other"` because reliable MCP identity normalization is not implemented;
 hooks matching `kind: "mcp"` do not cover those calls. Raw inputs and names

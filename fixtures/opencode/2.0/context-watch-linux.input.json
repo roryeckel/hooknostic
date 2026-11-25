@@ -1,0 +1,511 @@
+{
+  "hook": "context",
+  "directory": "/drift/opencode-v2/project",
+  "event": {
+    "sessionID": "ses_df6cf6f1fffehaY7Th7kR5jAwA",
+    "model": {
+      "id": "hooknostic-playback",
+      "providerID": "playback"
+    },
+    "system": [
+      {
+        "type": "text",
+        "text": "You are an AI agent running in OpenCode, a coding agent harness. Help the user accomplish their goals using the tools you have available.\n\n# Harness\n- Responses are rendered as GitHub-flavored Markdown.\n- `<system-update>` blocks are harness instructions, not user-authored content. Read and follow them.\n- Background work is reported as harness input: user-role messages containing `<background-result>` XML. They are not the user speaking, and never something you write yourself: do not reproduce the XML in your own output. Distinguish them by the `<background-result>` opening tag.\n- Prefer parallelizing independent tool calls.\n- Prefer dedicated tools over shell commands; fall back to the shell when a tool cannot do what you need.\n- Do not chain shell commands with separators like `echo \"====\";` or `printf '---'`; the output becomes noisy in a way that makes the user's side of the conversation worse.\n- Use the write tool to create files or completely replace their content. Prefer using the edit tool for targeted changes.\n- Use the edit tool for targeted changes to existing text files. It replaces the exact text in `oldString` with `newString`, and the values must differ. By default, `oldString` must occur exactly once. If it occurs multiple times, include more surrounding context to make it unique or set `replaceAll` to true to replace every occurrence.\n\n# Communication\n- Use clear file paths when referring to files.\n- Keep responses clear and concise, and avoid unnecessary technical jargon.\n\n# Working in codebases\n- Keep changes consistent with the structure, naming, style, and patterns of the surrounding code.\n- Treat unfamiliar files or changes as potential user work and investigate before deleting or overwriting them.\n"
+      },
+      {
+        "type": "text",
+        "text": "# Your Model\n- Name: Playback\n- Provider ID: playback\n- Model ID: hooknostic-playback"
+      },
+      {
+        "type": "text",
+        "text": "# Code Mode\n\nThe tools listed below, and `search`, cannot be called directly: they only work as JavaScript inside the `execute` tool. Every other tool you have is a normal tool call: call it directly, never inside `execute`.\n\nThe catalog is partial. Before calling a tool that is not listed below, find it with the global `search(...)` function. Do not guess tool names. Each result's `path` is the complete call expression: write it out as code, for example `await tools.ns.tool_name({ ... })`. Do not use it as a key such as `tools[path]`.\n\n- search(query: string | {\n  query?: string,\n  namespace?: string,\n  /** @integer @exclusiveMinimum 0 */\n  limit?: number,\n  /** @integer @minimum 0 */\n  offset?: number,\n}): {\n  items: Array<{\n      path: string,\n      description: string,\n      signature: string,\n    }>,\n  /** @integer @minimum 0 */\n  remaining: number,\n  next: {\n      /** @integer @minimum 0 */\n      offset: number,\n    } | null,\n}\n\n## Code Mode tools (call only inside `execute`)\n\n- automation (5 tools, 2 shown) // Schedule recurring or one-off jobs (cron jobs, timers, reminders). Each one runs a prompt or Code Mode action at a time, every interval, on a cron or when a connected MCP server pushes an event. Use these when the user asks you to schedule, remind, repeat or check back on something, instead of waiting, sleeping or polling.\n  - tools.automation.create({\n  /** A short label shown in lists. @minLength 1 */\n  name: string,\n  /**\n   * When it runs: { type: \"at\", at: \"in 20 minutes\" | \"2026-10-27T09:00\" }, { type: \"every\", every: \"1 hour\" } or { type: \"cron\", cron: \"0 9 * * 1-5\" }, each with an optional tz. Or { type: \"event\", server, event, args? } for a connected MCP server advertising push delivery.\n   */\n  trigger: {\n      type: \"at\",\n      /** An instant with an offset, a wall-clock time in tz such as \"2026-10-27T09:00\", or \"in 10 minutes\". */\n      at: string,\n      tz?: string,\n    } | {\n      type: \"every\",\n      /** A duration such as \"90 seconds\", \"5 minutes\" or \"2 hours\". */\n      every: string,\n      tz?: string,\n    } | {\n      type: \"cron\",\n      cron: string,\n      tz?: string,\n    } | {\n      type: \"event\",\n      /** @minLength 1 */\n      server: string,\n      /** @minLength 1 */\n      event: string,\n      args?: {},\n    },\n  /**\n   * What it does: { type: \"prompt\", prompt, to? } sends a prompt; { type: \"code\", code, args? } runs Code Mode; { type: \"shell\", command } runs a fixed shell command.\n   */\n  action: {\n      type: \"prompt\",\n      /**\n       * The message the target Session receives, with enough context to act on it without this conversation.\n       * @minLength 1\n       */\n      prompt: string,\n      to?: {\n          /** @pattern ^ses */\n          session: string,\n          subagent?: unknown,\n        } | {\n          subagent: string,\n          session?: unknown,\n        },\n    } | {\n      type: \"code\",\n      /**\n       * Code Mode JavaScript run on each trigger with no model (32 KB output cap). Call tools statically as tools.<ns>.<tool>(...) or tools[\"ns-name\"].tool(...); each is authorized once at creation to run unattended. Receives input = { state, now, runs, args } (also globals): state starts null, now is epoch ms, runs counts earlier runs. Event triggers also receive input.event = { id, timestamp, data }; data follows the event type's payloadSchema. Return nothing, or { state?, done?, send? }. JSON state is kept for the next run; done: true stops. lastOutput shows the delivery target and any logs. Return at most one send per run. { send: { prompt } } steers the creating session; { send: { prompt, to: { subagent } } } starts a permitted child that does not report back. No session IDs. Omit send to stay quiet. A rejected send commits neither state nor done. Example code string: if (runs < 2) return; return { done: true, send: { prompt: \"Three checks elapsed. Review the build.\" } }\n       * @minLength 1\n       */\n      code: string,\n      args?: unknown,\n    } | {\n      type: \"shell\",\n      /** The fixed shell command to run on each trigger without a model. @minLength 1 */\n      command: string,\n    },\n  expires?: string,\n}): Promise<{\n  /** @pattern ^aut_ */\n  id: string,\n  name: string,\n  trigger: {\n      type: \"at\",\n      /** An instant with an offset, a wall-clock time in tz such as \"2026-10-27T09:00\", or \"in 10 minutes\". */\n      at: string,\n      tz?: string,\n    } | {\n      type: \"every\",\n      /** A duration such as \"90 seconds\", \"5 minutes\" or \"2 hours\". */\n      every: string,\n      tz?: string,\n    } | {\n      type: \"cron\",\n      cron: string,\n      tz?: string,\n    } | {\n      type: \"event\",\n      /** @minLength 1 */\n      server: string,\n      /** @minLength 1 */\n      event: string,\n      args?: {},\n    },\n  tz: string,\n  status: \"active\" | \"paused\" | \"done\",\n  nextDueAt?: string,\n  expires?: string,\n  runCount: number,\n  lastRunAt?: string,\n  lastOutcome?: \"fired\" | \"late\" | \"skipped\" | \"disabled\" | \"failed\" | \"expired\",\n  action: {\n      type: \"prompt\",\n      prompt: string,\n      to: {\n          /** @pattern ^ses */\n          session: string,\n          subagent?: unknown,\n        } | {\n          subagent: string,\n          session?: unknown,\n        },\n    } | {\n      type: \"code\",\n      code: string,\n      args?: unknown,\n    } | {\n      type: \"shell\",\n      /** @minLength 1 */\n      command: string,\n    },\n  lastOutput?: string,\n  state?: unknown,\n}> // Create an automation that runs a prompt, a Code Mode script, or a shell command once at a set time, on an interval, on a cron, or when an MCP server sends an event.\n  - tools.automation.delete({\n  /** Automation id from automation.list. @pattern ^aut_ */\n  id: string,\n}): Promise<{\n  /** @pattern ^aut_ */\n  id: string,\n  removed: boolean,\n}> // Delete an automation for good.\n- opencode (9 tools, 6 shown) // Tools for managing OpenCode itself, such as working with sessions and worktrees, searching the available models, and reading MCP resources.\n  - tools.opencode.session.move({\n  /** Omit to move the current session. @pattern ^ses */\n  sessionID?: string,\n  /** Destination directory, relative to the target session's directory or absolute. Supports ~. @minLength 1 */\n  directory: string,\n}): Promise<{\n  /** @pattern ^ses */\n  sessionID: string,\n  directory: string,\n}> // Move a session to another directory, or omit sessionID to move the current session. The current session moves at the next safe boundary; do not run destination-dependent tools in the same execute call.\n  - tools.opencode.worktree_create({\n  name: string,\n}): Promise<{\n  directory: string,\n}> // Create a named worktree. Returns its directory.\n  - tools.opencode.worktree_list(): Promise<{\n  worktrees: Array<{\n      directory: string,\n      strategy?: string,\n    }>,\n}> // List a repository's worktrees.\n  - tools.opencode.worktree_remove({\n  /** Absolute path of the worktree to remove. @minLength 1 */\n  directory: string,\n  /** Discard modified and untracked files. Only set this when the user has confirmed forced removal. */\n  force?: boolean,\n}): Promise<{\n  directory: string,\n  removed: boolean,\n}> // Remove a worktree. The repository location selects configuration; directory identifies the worktree to remove.\n  - tools.opencode.list_mcp_events({\n  /** MCP server name as configured */\n  server: string,\n}): Promise<{\n  events: Array<{\n      server: string,\n      event: string,\n      description?: string | null,\n      args?: {} | null,\n      data?: {} | null,\n    }>,\n}> // List the events an MCP server sends. Use one as an automation's event trigger.\n  - tools.opencode.list_mcp_resources({\n  /** MCP server name as configured. Omit to list every server. */\n  server?: string,\n}): Promise<{\n  resources: Array<{\n      server: string,\n      name: string,\n      uri: string,\n      description?: string,\n      mimeType?: string,\n    }>,\n  templates: Array<{\n      server: string,\n      name: string,\n      uriTemplate: string,\n      description?: string,\n      mimeType?: string,\n    }>,\n}> // List documents, records, and other data exposed by MCP servers. Use this when the user refers to something that is not a local file, such as a URI with a custom scheme, then load a match with read_mcp_resource. Each entry names the server to read it from. Templates are resources addressed by a parameter such as a record ID; fill in the uriTemplate placeholders before reading.\n\nSkills provide specialized instructions and workflows for specific tasks.\nUse the skill tool to load a skill when a task matches its description.\nThe user may also invoke a skill directly. When that happens, its instructions appear in the conversation as a <skill_content> block, the same shape the skill tool returns. A skill that is already present this way does not need to be invoked again.\n<available_skills>\n  <skill>\n    <id>opencode</id>\n    <name>OpenCode</name>\n    <description>Use this skill for any question about OpenCode itself, including how OpenCode works, using or configuring it, migrating from V1 to V2, troubleshooting it, developing plugins or integrations, using the OpenCode SDK, clients, server, or API, and contributing to the OpenCode codebase. Also use it for OpenCode agents, commands, skills, tools, permissions, MCP servers, providers, models, themes, keybinds, formatters, the CLI, TUI, desktop app, and web app.</description>\n  </skill>\n  <skill>\n    <id>report</id>\n    <name>Report</name>\n    <description>Use when the user wants to report an opencode issue or bug. Collect standard diagnostics, add user-specific reproduction context, and publish the issue with GitHub CLI.</description>\n  </skill>\n</available_skills>\n\nToday's date: Mon Nov 23 2026\n\nHere is some useful information about the environment you are running in:\n<env>\n  Working directory: /drift/opencode-v2/project\n  Workspace root folder: /drift/opencode-v2/project\n  Is directory a git repo: no\n  Platform: linux\n  Prefer /tmp/opencode over generic system temporary directories such as /tmp; it is pre-created and approved for external access.\n</env>",
+        "metadata": {
+          "experimental": {
+            "instructions": [
+              {
+                "key": "core/codemode",
+                "text": "# Code Mode\n\nThe tools listed below, and `search`, cannot be called directly: they only work as JavaScript inside the `execute` tool. Every other tool you have is a normal tool call: call it directly, never inside `execute`.\n\nThe catalog is partial. Before calling a tool that is not listed below, find it with the global `search(...)` function. Do not guess tool names. Each result's `path` is the complete call expression: write it out as code, for example `await tools.ns.tool_name({ ... })`. Do not use it as a key such as `tools[path]`.\n\n- search(query: string | {\n  query?: string,\n  namespace?: string,\n  /** @integer @exclusiveMinimum 0 */\n  limit?: number,\n  /** @integer @minimum 0 */\n  offset?: number,\n}): {\n  items: Array<{\n      path: string,\n      description: string,\n      signature: string,\n    }>,\n  /** @integer @minimum 0 */\n  remaining: number,\n  next: {\n      /** @integer @minimum 0 */\n      offset: number,\n    } | null,\n}\n\n## Code Mode tools (call only inside `execute`)\n\n- automation (5 tools, 2 shown) // Schedule recurring or one-off jobs (cron jobs, timers, reminders). Each one runs a prompt or Code Mode action at a time, every interval, on a cron or when a connected MCP server pushes an event. Use these when the user asks you to schedule, remind, repeat or check back on something, instead of waiting, sleeping or polling.\n  - tools.automation.create({\n  /** A short label shown in lists. @minLength 1 */\n  name: string,\n  /**\n   * When it runs: { type: \"at\", at: \"in 20 minutes\" | \"2026-10-27T09:00\" }, { type: \"every\", every: \"1 hour\" } or { type: \"cron\", cron: \"0 9 * * 1-5\" }, each with an optional tz. Or { type: \"event\", server, event, args? } for a connected MCP server advertising push delivery.\n   */\n  trigger: {\n      type: \"at\",\n      /** An instant with an offset, a wall-clock time in tz such as \"2026-10-27T09:00\", or \"in 10 minutes\". */\n      at: string,\n      tz?: string,\n    } | {\n      type: \"every\",\n      /** A duration such as \"90 seconds\", \"5 minutes\" or \"2 hours\". */\n      every: string,\n      tz?: string,\n    } | {\n      type: \"cron\",\n      cron: string,\n      tz?: string,\n    } | {\n      type: \"event\",\n      /** @minLength 1 */\n      server: string,\n      /** @minLength 1 */\n      event: string,\n      args?: {},\n    },\n  /**\n   * What it does: { type: \"prompt\", prompt, to? } sends a prompt; { type: \"code\", code, args? } runs Code Mode; { type: \"shell\", command } runs a fixed shell command.\n   */\n  action: {\n      type: \"prompt\",\n      /**\n       * The message the target Session receives, with enough context to act on it without this conversation.\n       * @minLength 1\n       */\n      prompt: string,\n      to?: {\n          /** @pattern ^ses */\n          session: string,\n          subagent?: unknown,\n        } | {\n          subagent: string,\n          session?: unknown,\n        },\n    } | {\n      type: \"code\",\n      /**\n       * Code Mode JavaScript run on each trigger with no model (32 KB output cap). Call tools statically as tools.<ns>.<tool>(...) or tools[\"ns-name\"].tool(...); each is authorized once at creation to run unattended. Receives input = { state, now, runs, args } (also globals): state starts null, now is epoch ms, runs counts earlier runs. Event triggers also receive input.event = { id, timestamp, data }; data follows the event type's payloadSchema. Return nothing, or { state?, done?, send? }. JSON state is kept for the next run; done: true stops. lastOutput shows the delivery target and any logs. Return at most one send per run. { send: { prompt } } steers the creating session; { send: { prompt, to: { subagent } } } starts a permitted child that does not report back. No session IDs. Omit send to stay quiet. A rejected send commits neither state nor done. Example code string: if (runs < 2) return; return { done: true, send: { prompt: \"Three checks elapsed. Review the build.\" } }\n       * @minLength 1\n       */\n      code: string,\n      args?: unknown,\n    } | {\n      type: \"shell\",\n      /** The fixed shell command to run on each trigger without a model. @minLength 1 */\n      command: string,\n    },\n  expires?: string,\n}): Promise<{\n  /** @pattern ^aut_ */\n  id: string,\n  name: string,\n  trigger: {\n      type: \"at\",\n      /** An instant with an offset, a wall-clock time in tz such as \"2026-10-27T09:00\", or \"in 10 minutes\". */\n      at: string,\n      tz?: string,\n    } | {\n      type: \"every\",\n      /** A duration such as \"90 seconds\", \"5 minutes\" or \"2 hours\". */\n      every: string,\n      tz?: string,\n    } | {\n      type: \"cron\",\n      cron: string,\n      tz?: string,\n    } | {\n      type: \"event\",\n      /** @minLength 1 */\n      server: string,\n      /** @minLength 1 */\n      event: string,\n      args?: {},\n    },\n  tz: string,\n  status: \"active\" | \"paused\" | \"done\",\n  nextDueAt?: string,\n  expires?: string,\n  runCount: number,\n  lastRunAt?: string,\n  lastOutcome?: \"fired\" | \"late\" | \"skipped\" | \"disabled\" | \"failed\" | \"expired\",\n  action: {\n      type: \"prompt\",\n      prompt: string,\n      to: {\n          /** @pattern ^ses */\n          session: string,\n          subagent?: unknown,\n        } | {\n          subagent: string,\n          session?: unknown,\n        },\n    } | {\n      type: \"code\",\n      code: string,\n      args?: unknown,\n    } | {\n      type: \"shell\",\n      /** @minLength 1 */\n      command: string,\n    },\n  lastOutput?: string,\n  state?: unknown,\n}> // Create an automation that runs a prompt, a Code Mode script, or a shell command once at a set time, on an interval, on a cron, or when an MCP server sends an event.\n  - tools.automation.delete({\n  /** Automation id from automation.list. @pattern ^aut_ */\n  id: string,\n}): Promise<{\n  /** @pattern ^aut_ */\n  id: string,\n  removed: boolean,\n}> // Delete an automation for good.\n- opencode (9 tools, 6 shown) // Tools for managing OpenCode itself, such as working with sessions and worktrees, searching the available models, and reading MCP resources.\n  - tools.opencode.session.move({\n  /** Omit to move the current session. @pattern ^ses */\n  sessionID?: string,\n  /** Destination directory, relative to the target session's directory or absolute. Supports ~. @minLength 1 */\n  directory: string,\n}): Promise<{\n  /** @pattern ^ses */\n  sessionID: string,\n  directory: string,\n}> // Move a session to another directory, or omit sessionID to move the current session. The current session moves at the next safe boundary; do not run destination-dependent tools in the same execute call.\n  - tools.opencode.worktree_create({\n  name: string,\n}): Promise<{\n  directory: string,\n}> // Create a named worktree. Returns its directory.\n  - tools.opencode.worktree_list(): Promise<{\n  worktrees: Array<{\n      directory: string,\n      strategy?: string,\n    }>,\n}> // List a repository's worktrees.\n  - tools.opencode.worktree_remove({\n  /** Absolute path of the worktree to remove. @minLength 1 */\n  directory: string,\n  /** Discard modified and untracked files. Only set this when the user has confirmed forced removal. */\n  force?: boolean,\n}): Promise<{\n  directory: string,\n  removed: boolean,\n}> // Remove a worktree. The repository location selects configuration; directory identifies the worktree to remove.\n  - tools.opencode.list_mcp_events({\n  /** MCP server name as configured */\n  server: string,\n}): Promise<{\n  events: Array<{\n      server: string,\n      event: string,\n      description?: string | null,\n      args?: {} | null,\n      data?: {} | null,\n    }>,\n}> // List the events an MCP server sends. Use one as an automation's event trigger.\n  - tools.opencode.list_mcp_resources({\n  /** MCP server name as configured. Omit to list every server. */\n  server?: string,\n}): Promise<{\n  resources: Array<{\n      server: string,\n      name: string,\n      uri: string,\n      description?: string,\n      mimeType?: string,\n    }>,\n  templates: Array<{\n      server: string,\n      name: string,\n      uriTemplate: string,\n      description?: string,\n      mimeType?: string,\n    }>,\n}> // List documents, records, and other data exposed by MCP servers. Use this when the user refers to something that is not a local file, such as a URI with a custom scheme, then load a match with read_mcp_resource. Each entry names the server to read it from. Templates are resources addressed by a parameter such as a record ID; fill in the uriTemplate placeholders before reading."
+              },
+              {
+                "key": "core/skill-guidance",
+                "text": "Skills provide specialized instructions and workflows for specific tasks.\nUse the skill tool to load a skill when a task matches its description.\nThe user may also invoke a skill directly. When that happens, its instructions appear in the conversation as a <skill_content> block, the same shape the skill tool returns. A skill that is already present this way does not need to be invoked again.\n<available_skills>\n  <skill>\n    <id>opencode</id>\n    <name>OpenCode</name>\n    <description>Use this skill for any question about OpenCode itself, including how OpenCode works, using or configuring it, migrating from V1 to V2, troubleshooting it, developing plugins or integrations, using the OpenCode SDK, clients, server, or API, and contributing to the OpenCode codebase. Also use it for OpenCode agents, commands, skills, tools, permissions, MCP servers, providers, models, themes, keybinds, formatters, the CLI, TUI, desktop app, and web app.</description>\n  </skill>\n  <skill>\n    <id>report</id>\n    <name>Report</name>\n    <description>Use when the user wants to report an opencode issue or bug. Collect standard diagnostics, add user-specific reproduction context, and publish the issue with GitHub CLI.</description>\n  </skill>\n</available_skills>"
+              },
+              {
+                "key": "core/date",
+                "text": "Today's date: Mon Nov 23 2026"
+              },
+              {
+                "key": "core/environment",
+                "text": "Here is some useful information about the environment you are running in:\n<env>\n  Working directory: /drift/opencode-v2/project\n  Workspace root folder: /drift/opencode-v2/project\n  Is directory a git repo: no\n  Platform: linux\n  Prefer /tmp/opencode over generic system temporary directories such as /tmp; it is pre-created and approved for external access.\n</env>"
+              }
+            ]
+          }
+        }
+      },
+      {
+        "type": "text",
+        "text": "When you create a worktree outside the current working directory and intend to use it as your primary working directory, consider using `execute` to call `tools.opencode.session.move` and make the worktree the session's working directory."
+      }
+    ],
+    "messages": [
+      {
+        "id": "msg_20930927e001cM9ldFKME94cKn",
+        "role": "user",
+        "content": [
+          {
+            "type": "text",
+            "text": "Use the shell once to create hooknostic-tool.txt, then stop."
+          }
+        ]
+      }
+    ],
+    "options": {
+      "maxTokens": 4096
+    },
+    "agent": "build",
+    "tools": {
+      "edit": {
+        "description": "Edit the contents of a file by finding and replacing exact text. When editing text from Read output, preserve the exact indentation (tabs or spaces) and omit the line-number prefix, such as `1: `. Never include the prefix in oldString or newString. Write line breaks as \\n; the file's existing CRLF or LF line endings are matched and preserved. To change line endings themselves, make oldString and newString differ only in \\r; that edit applies to the exact bytes. If there is no exact match, the edit retries while ignoring typographic quote, dash, and space variants, then trailing whitespace on each line. The edit fails if oldString is not found. By default, oldString must identify a UNIQUE location. Multiple matches FAIL unless replaceAll is true. Add more surrounding context to disambiguate, or set replaceAll to true to replace every occurrence. Use replaceAll when the change should apply to every occurrence, such as renaming a variable.",
+        "input": {
+          "type": "object",
+          "properties": {
+            "path": {
+              "type": "string",
+              "description": "File to edit"
+            },
+            "oldString": {
+              "type": "string",
+              "description": "Exact text to find and replace"
+            },
+            "newString": {
+              "type": "string",
+              "description": "Text to replace oldString with (must differ from oldString)"
+            },
+            "replaceAll": {
+              "type": "boolean",
+              "description": "Whether to replace every occurrence of oldString. When false, oldString must match exactly once. Defaults to false."
+            }
+          },
+          "required": [
+            "path",
+            "oldString",
+            "newString"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "generate_image": {
+        "description": "Generates a new image, or edits existing ones.\nOnly call this when the user asks you to create or edit an image. If you think an image would help but the user didn't ask for one, ask them first instead of generating it.\nImages you pass are used as the source to edit, or as references for style and subject.\nEach call makes one image. For several images, call it once per image.\nIt runs in the background: the call starts a job and returns right away, and you are notified automatically when the image is saved, with its path. Never poll, sleep, or check for the file while you wait.\nDon't repeat a request unless the user asks.",
+        "input": {
+          "type": "object",
+          "properties": {
+            "prompt": {
+              "type": "string",
+              "minLength": 1,
+              "description": "What to create, or for edits, what to change. Be specific about subject, style, composition and any text that should appear in the image."
+            },
+            "images": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              },
+              "minItems": 1,
+              "maxItems": 8,
+              "description": "Images to edit, or to use as references for style and subject when creating a new image, in order. Local file paths (relative to the session directory or absolute) or http(s) URLs."
+            },
+            "model": {
+              "type": "string",
+              "description": "NEVER set this unless the user explicitly asks for a particular image model or variant. The value is written as \"providerID/modelID\", or \"providerID/modelID#variant\" to include a variant. Do not guess the ID: look it up with the models tool using type: \"image\", filtering to your own provider first."
+            },
+            "path": {
+              "type": "string",
+              "description": "Where to save the image, relative to the session directory or absolute. The extension is replaced with the image's real format, and an existing file is overwritten. Defaults to a new file in the session's temp folder."
+            }
+          },
+          "required": [
+            "prompt"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "generate_video": {
+        "description": "Generates a video from a prompt, optionally starting or ending on given images and guided by reference images, videos or audio.\nOnly call this when the user asks for a video: videos are slow and expensive.\nIt runs in the background, and you are notified with every saved file when it finishes. Never poll, sleep, or check for the file while you wait.",
+        "input": {
+          "type": "object",
+          "properties": {
+            "prompt": {
+              "type": "string",
+              "minLength": 1,
+              "description": "What happens in the video. Describe the subject, action, camera movement, style and, when sound is on, any dialogue or sound."
+            },
+            "start": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Image the video starts on exactly. A local file path (relative to the session directory or absolute) or an http(s) URL."
+            },
+            "end": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Image the video ends on exactly. A local file path or an http(s) URL."
+            },
+            "references": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              },
+              "minItems": 1,
+              "description": "Images, videos or audio that guide the subject, style, motion or voice without being shown as-is. Local file paths or http(s) URLs."
+            },
+            "duration": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "description": "Length in seconds."
+            },
+            "aspect": {
+              "type": "string",
+              "description": "Aspect ratio as \"width:height\", such as \"16:9\" or \"9:16\", or \"auto\" to follow the start image."
+            },
+            "resolution": {
+              "type": "string",
+              "description": "Output resolution, such as \"480p\", \"720p\", \"1080p\" or \"4k\"."
+            },
+            "sound": {
+              "type": "boolean",
+              "description": "Whether the video has generated sound. Unset uses the model's default."
+            },
+            "model": {
+              "type": "string",
+              "description": "NEVER set this unless the user explicitly asks for a particular video model. The value is written as \"providerID/modelID\". Do not guess the ID: look it up with the models tool using type: \"video\", filtering to your own provider first."
+            },
+            "path": {
+              "type": "string",
+              "description": "Where to save the video, relative to the session directory or absolute, usually ending in .mp4. An existing file is overwritten. Further videos from the same job go next to it with -1, -2, … before the extension. Defaults to a new file in the session's temp folder."
+            }
+          },
+          "required": [
+            "prompt"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "glob": {
+        "description": "Search file paths using a glob pattern (examples: \"**/*.ts\", \"src/**/*.tsx\").",
+        "input": {
+          "type": "object",
+          "properties": {
+            "pattern": {
+              "type": "string",
+              "description": "Glob pattern to match files against"
+            },
+            "path": {
+              "type": "string",
+              "description": "Directory to search. Defaults to the current working directory."
+            },
+            "hidden": {
+              "type": "boolean",
+              "description": "Include hidden files and directories (default: false)."
+            },
+            "limit": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "description": "Maximum number of matching files to return (default: 100)"
+            }
+          },
+          "required": [
+            "pattern"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "grep": {
+        "description": "Search file contents using ripgrep's regular expression syntax or literal text matching. Use it to locate specific code, symbols, or text patterns, and narrow searches with `path` or `include`. Returns matching file paths, line numbers, and line previews.",
+        "input": {
+          "type": "object",
+          "properties": {
+            "pattern": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Regular expression or literal text to match in file contents."
+            },
+            "path": {
+              "type": "string",
+              "description": "File or directory to search. Defaults to the current working directory."
+            },
+            "include": {
+              "type": "string",
+              "description": "Glob pattern to filter files (for example, \"*.js\" or \"*.{ts,tsx}\")"
+            },
+            "literal": {
+              "type": "boolean",
+              "description": "Treat `pattern` as exact text instead of a regular expression (default: false)."
+            },
+            "caseSensitive": {
+              "type": "boolean",
+              "description": "Use case-sensitive matching (default: true)."
+            },
+            "limit": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "description": "Maximum number of matching lines to return (default: 100)"
+            }
+          },
+          "required": [
+            "pattern"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "question": {
+        "description": "Use this tool when you need to ask the user questions during execution. This allows you to:\n1. Gather user preferences or requirements\n2. Clarify ambiguous instructions\n3. Get decisions on implementation choices as you work\n4. Offer choices to the user about what direction to take.\n\nUsage notes:\n- A \"Type your own answer\" option is added automatically; don't include a separate option for free form answers\n- Set `multiple: true` to allow selecting more than one option\n- If you recommend a specific option, make that the first option in the list and add \"(Recommended)\" at the end of the label",
+        "input": {
+          "type": "object",
+          "properties": {
+            "questions": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "question": {
+                    "type": "string",
+                    "description": "Complete question"
+                  },
+                  "header": {
+                    "type": "string",
+                    "description": "Very short label (max 30 chars)"
+                  },
+                  "options": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "label": {
+                          "type": "string",
+                          "description": "Display text (1-5 words, concise)"
+                        },
+                        "description": {
+                          "type": "string",
+                          "description": "Explanation of choice"
+                        }
+                      },
+                      "required": [
+                        "label",
+                        "description"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "description": "Available choices"
+                  },
+                  "multiple": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "question",
+                  "header",
+                  "options"
+                ],
+                "additionalProperties": false
+              },
+              "minItems": 1,
+              "description": "Questions to ask"
+            }
+          },
+          "required": [
+            "questions"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "read": {
+        "description": "Read the contents of a file or directory. Supports text files, images, and PDFs. Each text line is prefixed by its 1-based line number as <line>: <content>. The prefix is for reference and is not part of the file content. Directory entries are returned one per line. Use offset and limit to read large files or directories in sections. Prefer one larger read over many small slices, and use grep to find specific content in large files.",
+        "input": {
+          "type": "object",
+          "properties": {
+            "path": {
+              "type": "string",
+              "description": "File or directory to read"
+            },
+            "offset": {
+              "type": "integer",
+              "description": "The line or directory entry to start reading from (1-based)"
+            },
+            "limit": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "The maximum number of lines or directory entries to read (defaults to and capped at 2000)"
+            }
+          },
+          "required": [
+            "path"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "shell": {
+        "description": "Execute a shell command and return its output. Commands run on Linux using bash. Quote file paths containing spaces or special characters. Prefer dedicated tools over shell commands when possible. When output is large, the full result is saved to a file and a truncated preview is returned. Rely on automatic truncation unless filtering the output is more useful. Commands still running after their timeout move to the background. Background commands return immediately, and you will be notified when they complete. The current session ID is available in the OPENCODE_SESSION_ID environment variable.",
+        "input": {
+          "type": "object",
+          "properties": {
+            "command": {
+              "type": "string",
+              "description": "Shell command string to execute"
+            },
+            "workdir": {
+              "type": "string",
+              "description": "Working directory to execute the command in. Defaults to the current working directory. When possible, avoid changing directories in the command and set the working directory here instead."
+            },
+            "timeout": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Optional timeout in milliseconds (default 120000). When it expires, a foreground command moves to the background and a background command is stopped."
+            },
+            "background": {
+              "type": "boolean",
+              "description": "Run the command in the background and return immediately (useful for dev servers and long-running builds). You do not need to use '&' at the end of the command when using this parameter. You will be notified when it completes. DO NOT poll for completion."
+            }
+          },
+          "required": [
+            "command"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "skill": {
+        "description": "Load a specialized skill's instructions and resources into the current conversation when the task at hand matches its description.\n\nThe skill ID must match an available skill or a skill explicitly referenced by the user.",
+        "input": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string",
+              "description": "The ID of an available skill or a skill explicitly referenced by the user"
+            }
+          },
+          "required": [
+            "id"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "subagent": {
+        "description": "Spawns an agent in a child session to work on the specified task.\nSubagents always run in the background: the call returns immediately with a sessionID, and you receive a `<background-result kind=\"subagent\">` message each time the child goes idle, including after later work.\nKeep working on non-overlapping tasks, or briefly tell the user what you launched and end your response. Do not sleep, poll, or proactively check on the child's progress.\nNew child sessions start with fresh context, so include all relevant context and instructions when you don't pass a sessionID.\nPass the returned sessionID to continue that specific child conversation. A follow-up to a running child joins its current run.\n\nAvailable subagents:\n- explore: Fast agent specialized for exploring codebases. Use this when you need to quickly find files by patterns (eg. \"src/components/**/*.tsx\"), search code for keywords (eg. \"API endpoints\"), or answer questions about the codebase (eg. \"how do API endpoints work?\"). When calling this agent, specify the desired thoroughness level: \"quick\" for basic searches, \"medium\" for moderate exploration, or \"very thorough\" for comprehensive analysis across multiple locations and naming conventions.\n- general: General-purpose agent for researching complex questions and executing multi-step tasks. Use this agent to execute multiple units of work in parallel.",
+        "input": {
+          "type": "object",
+          "properties": {
+            "agent": {
+              "type": "string",
+              "description": "The type of specialized agent to use for this task. If the user asks for a subagent by a name that is not one of the available subagents, they most likely mean a model: pick a suitable agent and pass the name through the model parameter instead."
+            },
+            "description": {
+              "type": "string",
+              "description": "A short 3-5 word label for the task, displayed to the user"
+            },
+            "prompt": {
+              "type": "string",
+              "description": "The task for the subagent to perform"
+            },
+            "model": {
+              "type": "string",
+              "description": "NEVER set this unless the user explicitly asks for a particular model or variant. It must be a chat model; image and decision models can't run subagents. The value is written as \"providerID/modelID\", or \"providerID/modelID#variant\" to include a variant. Do not guess the ID: look the model up with the models tool, filtering to your own provider first."
+            },
+            "sessionID": {
+              "type": "string",
+              "pattern": "^ses",
+              "description": "Send a follow-up to an existing subagent, running or finished. Omit to start a new one."
+            }
+          },
+          "required": [
+            "agent",
+            "description",
+            "prompt"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "webfetch": {
+        "description": "Fetch content from an HTTP or HTTPS URL and return it as text, markdown, or HTML. Markdown is the default.\n\nUse a more targeted tool when one is available. This tool is read-only. Large text results may be replaced with a preview while the complete output is retained in managed storage.",
+        "input": {
+          "type": "object",
+          "properties": {
+            "url": {
+              "type": "string",
+              "description": "The HTTP or HTTPS URL to fetch content from"
+            },
+            "format": {
+              "type": "string",
+              "enum": [
+                "text",
+                "markdown",
+                "html"
+              ],
+              "description": "The format to return the content in. Defaults to markdown."
+            },
+            "timeout": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "maximum": 120,
+              "description": "Optional timeout in seconds (maximum: 120)"
+            }
+          },
+          "required": [
+            "url"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "websearch": {
+        "description": "Search the web using the user's selected search integration. Use this for current information beyond knowledge cutoff.\n\nThe current year is 2026. Use this year when searching for recent information or current events.",
+        "input": {
+          "type": "object",
+          "properties": {
+            "query": {
+              "type": "string",
+              "description": "Websearch query"
+            }
+          },
+          "required": [
+            "query"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "write": {
+        "description": "Writes a file to the local filesystem, overwriting if one exists.\n\nMissing parent directories are created automatically.\n\nUse this tool to create new files or overwrite existing files. For partial changes, use the edit tool instead.",
+        "input": {
+          "type": "object",
+          "properties": {
+            "path": {
+              "type": "string",
+              "description": "Path to the file to write to"
+            },
+            "content": {
+              "type": "string",
+              "description": "Content to write to the file"
+            }
+          },
+          "required": [
+            "path",
+            "content"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "execute": {
+        "description": "Run JavaScript in a confined Code Mode runtime to script tool calls and HTTP requests and compose their results.\nWrite plain JavaScript and send it exactly as written: no code fence, and no JSON or other wrapper around it.\n`fetch` is available for HTTP requests. Imports, direct filesystem access, and timers are unavailable: there is no `setTimeout` or sleep. All other external access goes through `tools`.\nInside `execute`, the only callable tools are those explicitly listed in the Code Mode catalog instructions or returned by the `search` function. Ignore tools shown outside the Code Mode catalog. They are not available in the Code Mode runtime.\nCall tools through `tools` using only exact paths and signatures from the catalog. Do not infer or normalize tool names; preserve bracket notation such as `tools.<namespace>[\"tool-name\"](input)`.\nPrefer an explicit `return`; if omitted, the final top-level expression becomes the result.\nAwait every call whose completion matters; pending calls are interrupted when execution ends. Run independent calls concurrently with `Promise.allSettled`.",
+        "input": {
+          "type": "object",
+          "properties": {
+            "code": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "code"
+          ],
+          "additionalProperties": false
+        }
+      }
+    }
+  }
+}

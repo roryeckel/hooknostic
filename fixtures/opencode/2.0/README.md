@@ -199,3 +199,20 @@ The sequences are unmapped bus events, kept in a subdirectory and not named
 `*.input.json`, as with `turn-fields`. As elsewhere in this directory, the
 canonical `harness.version` is the adapter's reference build. Procedure and
 limits: `.capture/opencode-v2-audit`.
+
+## 2.4.0 and 2.4.1 (#303)
+
+| Case | Provenance | Observation |
+| --- | --- | --- |
+| subagent-background/inbox-background-result.json | captured | 2.4.0, Windows, `drive.mjs subagent`: the parent's `session.inbox.enqueued` item carrying the background child's result, now wrapped as `<background-result kind="subagent" ...>`. Same `metadata.source: subagent` and `childID` as the 2.3.0 item. Promoted with `promote-audits.mjs background-result` |
+| remote/observations-server-discover.json | captured + constructed scenario label | 2.4.0, Windows, `drive.mjs remote`: a `server/discover` POST precedes `initialize` on each remote server; the legacy SSE endpoint gets two 405 POSTs and no GET. The peer's replies are constructed (`remote-mcp.mjs`). Promoted with `promote-remote.mjs --as` |
+| context-watch-linux, tool-before-watch-linux, tool-after-watch-linux | captured | 2.4.1, Linux, harness-watch run 45213265898, artifact `drift-verdict-opencode-v2`, `captured-opencode-v2/events.jsonl` (SHA-256 `e5a9ce66503cde97dc25cdabf294eb7b06b9bef6faf6035af26e3052a543d93d`): the first snapshot of each new context, shell `execute.before` and shell `execute.after` shape. Promoted with `promote-audits.mjs watch-variants` |
+
+The 2.4.0 drives used a native scratch install on 2026-11-23, isolated state
+and the loopback model; model replies and tool arguments were scripted. The
+watch capture's container paths contain no capturing account; the Windows
+files are redacted as above. As elsewhere in this directory, the canonical
+`harness.version` is the adapter's reference build. The older fixtures remain
+intact: both shapes of each variant are accepted, and the saved 2.4.1 drift
+session compares clean with these added. Procedure and limits:
+`.capture/opencode-v2`, "2.4.0 and 2.4.1".

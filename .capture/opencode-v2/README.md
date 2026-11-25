@@ -813,3 +813,51 @@ later execution. What the shim gathered reaches the decoder beside the
 completion envelope, never inside `event.raw`. Both are rated `emulated`, and both are skipped unless a
 `turn.stop` hook declares them. Promoted as `fixtures/opencode/2.0/turn-fields`
 and `execution-succeeded-with-turn`.
+
+## 2.4.0 and 2.4.1 (#303)
+
+Question: harness-watch run 45213265898 failed model-free playback on 2.4.1
+and the free drift lane reported drift. Which changes reach the adapter?
+
+The failing scenarios were repeated on Windows (2026-11-23) against native
+`@opencode/cli` 2.3.2, 2.4.0 and 2.4.1 installs in scratch prefixes, each
+bootstrapped by its own `postinstall.mjs`, through `HKN_OPENCODE_BINARY` and a
+`PATH` prefix, with `HOOKNOSTIC_PLAYBACK_VERSION` set to match. Loopback model
+only; no credential or paid model. Two harness changes, both first seen on
+2.4.0 and absent on 2.3.2:
+
+- **The background child's result wrapper.** `drive.mjs subagent`: the
+  parent receives `<background-result kind="subagent" sessionID=... state=...
+  description=...>` instead of `<subagent ...>`, from the same synthetic
+  `session.inbox.enqueued` item (`metadata.source: subagent`, `childID`). No
+  decoder or shim code reads the wrapper; playback and `stop-audit.mjs` matched
+  the old one. `promote-audits.mjs background-result <subagent-root>` promoted
+  the 2.4.0 item as `subagent-background/inbox-background-result.json`.
+- **A `server/discover` POST before `initialize`.** `drive.mjs remote`: each
+  remote server first receives `server/discover` with
+  `mcp-protocol-version: 2026-07-28`. The constructed Streamable HTTP peer
+  answers any unknown method with an empty result, after which OpenCode
+  initialized, listed and called the tool with the declared headers. The
+  legacy SSE endpoint answered both POSTs 405 and received no GET, so the
+  missing fallback stands. `promote-remote.mjs --as
+  observations-server-discover.json remote <remote-root>` promoted the 2.4.0
+  drive beside the baseline. How a real 2026-07-28 server answers discovery,
+  and what OpenCode does with a non-empty answer, was not probed.
+
+The drift lane's remaining differences are payload shapes that no decoder
+reads: shell `execute.before` gains `codemode` and `info`; shell
+`execute.after` replaces `result.output.{exit,truncated,status}` with
+`exitCode` and `wallTimeSeconds` (`result.metadata` still has the old three,
+and `tool.after` reads `result.content`); the `context` callback's messages
+lose `metadata` and its tools gain `generate_image` and `generate_video`. The
+missing `workdir` in the drift report is the scripted call omitting it; the
+advertised shell schema still lists `command` and `workdir`.
+`promote-audits.mjs watch-variants <events.jsonl> watch-linux` promoted the
+first snapshot of each new shape from the run's artifact (SHA-256
+`e5a9ce66503cde97dc25cdabf294eb7b06b9bef6faf6035af26e3052a543d93d`), so the
+same session compares clean.
+
+Consequence: 2.4.1 stays inside the `>=2.0.17 <3` profile. No normalized view,
+effect or capability cell changed. Playback now matches whichever wrapper the
+build's validation record says, and asserts the SSE sequence as discovery
+POSTs, one failed `initialize` and no GET.

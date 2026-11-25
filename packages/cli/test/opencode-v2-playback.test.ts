@@ -70,6 +70,18 @@ const backgroundSubagents = () => {
   expect(backgroundSubagentCapture).toBeDefined();
   return semver.gte(version, backgroundSubagentCapture!.version);
 };
+// The first build captured wrapping a background child's result as
+// `<background-result kind="subagent">` rather than `<subagent>`, likewise read
+// from its validation record. 2.3.2 still used `<subagent>`.
+const backgroundResultCapture = opencodeV2CapabilityProfiles
+  .flatMap((profile) => profile.source.validatedOn ?? [])
+  .find((record) => record.artifact === "fixtures/opencode/2.0/subagent-background/inbox-background-result.json");
+const subagentResultTag = () => {
+  expect(backgroundResultCapture).toBeDefined();
+  return semver.gte(version, backgroundResultCapture!.version)
+    ? { open: '<background-result kind="subagent"', close: "</background-result>" }
+    : { open: "<subagent", close: "</subagent>" };
+};
 
 async function toolModelDelta(baseUrl: string, messages: unknown[]) {
   const response = await fetch(baseUrl + "/chat/completions", {
@@ -656,11 +668,12 @@ describe.skipIf(!enabled)("OpenCode v2 offline playback", () => {
       expect(resultEvent.result.output.status).toBe("running");
       expect(JSON.stringify(resultEvent.result)).not.toContain("hooknostic-child-result");
       expect(carriesResult("tool")).toEqual([]);
+      const tag = subagentResultTag();
       expect(carriesResult("user")).toEqual([
         expect.objectContaining({
           content: expect.stringMatching(
             new RegExp(
-              `^<subagent sessionID="${child}" state="completed"[^>]*>\\s*hooknostic-child-result\\s*</subagent>$`,
+              `^${tag.open} sessionID="${child}" state="completed"[^>]*>\\s*hooknostic-child-result\\s*${tag.close}$`,
             ),
           ),
         }),
@@ -1686,8 +1699,13 @@ describe.skipIf(!enabled)("OpenCode v2 offline playback", () => {
       expect(result.code, result.stdout + result.stderr).toBe(0);
       const { root } = JSON.parse(result.stdout.split("\n").find((line) => line.startsWith('{"root"'))!);
       const requests = JSON.parse(await readFile(join(root, "remote.json"), "utf8"));
+      // One failed initialize POST and no fallback GET. From 2.4.0 an MCP
+      // server/discover POST precedes it (remote/observations-server-discover.json).
       const sse = requests.filter((row: { path: string }) => row.path.startsWith("/sse"));
-      expect(sse.map((row: { method: string }) => row.method)).toEqual(["POST"]);
+      expect(sse.map((row: { method: string; body: { method?: string } }) => [row.method, row.body.method])).toEqual([
+        ...sse.slice(0, -1).map(() => ["POST", "server/discover"]),
+        ["POST", "initialize"],
+      ]);
       const records = (await readFile(join(root, "captured/events.jsonl"), "utf8"))
         .trim()
         .split("\n")

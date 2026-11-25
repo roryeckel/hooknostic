@@ -29,6 +29,50 @@ if (process.argv[2] === "subagent-background") {
   await write("subagent-background/inbox-subagent-completed.json", inbox);
   process.exit(0);
 }
+// `promote-audits.mjs background-result <subagent-root>`: only the child's
+// inbox item from one `subagent` drive on a build that wraps the child's result
+// as `<background-result kind="subagent">` (2.4.0 and later). The 2.3.0 files
+// above are left as they are.
+if (process.argv[2] === "background-result") {
+  const rows = await events(process.argv[3]);
+  const launch = rows.find(row => row.hook === "execute.after" && row.event.tool === "subagent");
+  if (launch?.event.result?.output?.status !== "running") throw new Error("not a background subagent launch");
+  const inbox = rows.find(row => row.hook === "event" && row.event.type === "session.inbox.enqueued" &&
+    row.event.data?.item?.payload?.metadata?.source === "subagent");
+  if (inbox?.event.data.item.payload.metadata.childID !== launch.event.result.output.sessionID) throw new Error("no inbox item for the child");
+  if (!inbox.event.data.item.payload.text.startsWith('<background-result kind="subagent" ')) throw new Error("not a background-result message");
+  await mkdir(new URL("subagent-background/", destination), { recursive: true });
+  await write("subagent-background/inbox-background-result.json", inbox);
+  process.exit(0);
+}
+// `promote-audits.mjs watch-variants <events.jsonl> <suffix>`: a harness-watch
+// drift capture (the `drift-verdict-opencode-v2` artifact's
+// `captured-opencode-v2/events.jsonl`). For each of the context, shell
+// execute.before and shell execute.after variants, the first snapshot whose
+// shape no committed fixture of that variant has becomes
+// `<base>-<suffix>.input.json`, with its canonical form. Nothing is projected
+// or deleted; a variant whose every snapshot already matches is skipped.
+if (process.argv[2] === "watch-variants") {
+  const { shapeOf, variantOf } = await import("../../scripts/compare-capture-shapes.mjs");
+  const suffix = process.argv[4];
+  if (!/^[a-z0-9-]+$/.test(suffix ?? "")) throw new Error("give a lowercase suffix");
+  const rows = (await readFile(process.argv[3], "utf8")).trim().split("\n").map(JSON.parse);
+  const { readdir } = await import("node:fs/promises");
+  const committed = await Promise.all((await readdir(destination)).filter(name => name.endsWith(".input.json"))
+    .map(async name => JSON.parse(await readFile(new URL(name, destination), "utf8"))));
+  const known = variant => committed.filter(fixture => variantOf("opencode-v2", fixture) === variant)
+    .map(fixture => JSON.stringify(shapeOf(fixture)));
+  for (const [variant, base] of [["context", "context"], ["execute.before+shell", "tool-before"], ["execute.after+shell", "tool-after"]]) {
+    const shapes = known(variant);
+    const row = rows.find(candidate => variantOf("opencode-v2", candidate) === variant && !shapes.includes(JSON.stringify(shapeOf(candidate))));
+    if (row === undefined) continue;
+    const input = JSON.parse(redact(JSON.stringify(row)));
+    const { raw, ...canonical } = decodeOpenCodeV2(input, { targetId: "opencode", harnessVersion: opencodeV2Harness.referenceVersion });
+    await write(`${base}-${suffix}.input.json`, input);
+    await write(`${base}-${suffix}.canonical.json`, canonical);
+  }
+  process.exit(0);
+}
 // `promote-audits.mjs subagent-stop <foreground-root> <background-root>`: two
 // `subagent` drives, the first on a build that runs the child in the
 // foreground (the reference build), the second on one that runs it in the
