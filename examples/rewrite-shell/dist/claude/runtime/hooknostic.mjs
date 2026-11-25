@@ -8194,8 +8194,8 @@ await runClaudeCommandShim(() => Promise.resolve().then(() => (init_hooks(), hoo
 /*!
 Bundled package notices
 
-@hooknostic/adapter-claude@0.14.1
-@hooknostic/runtime@0.14.1
+@hooknostic/adapter-claude@0.14.2
+@hooknostic/runtime@0.14.2
 LICENSE
 Apache License
                            Version 2.0, January 2004
@@ -8403,8 +8403,8 @@ Apache License
 /*!
 Bundled package notices
 
-@hooknostic/sdk@0.14.1
-hooknostic@0.14.1
+@hooknostic/sdk@0.14.2
+hooknostic@0.14.2
 LICENSE
 Apache License
                            Version 2.0, January 2004
