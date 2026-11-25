@@ -1,0 +1,23 @@
+{
+  "hook": "execute.before",
+  "directory": "/drift/opencode-v2/project",
+  "event": {
+    "tool": "shell",
+    "info": {
+      "name": "shell",
+      "options": {
+        "codemode": false
+      },
+      "description": "Execute a shell command and return its output. Commands run on Linux using bash. Quote file paths containing spaces or special characters. Prefer dedicated tools over shell commands when possible. When output is large, the full result is saved to a file and a truncated preview is returned. Rely on automatic truncation unless filtering the output is more useful. Commands still running after their timeout move to the background. Background commands return immediately, and you will be notified when they complete. The current session ID is available in the OPENCODE_SESSION_ID environment variable.",
+      "id": "shell"
+    },
+    "codemode": false,
+    "sessionID": "ses_df6cf6f1fffehaY7Th7kR5jAwA",
+    "agent": "build",
+    "messageID": "msg_2093093a8001i6meGwiePKWYpE",
+    "id": "call_playback",
+    "input": {
+      "command": "node -e \"require('node:fs').writeFileSync('hooknostic-tool.txt','hooknostic-original')\""
+    }
+  }
+}
